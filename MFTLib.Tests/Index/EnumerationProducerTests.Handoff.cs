@@ -80,8 +80,10 @@ public sealed partial class EnumerationProducerTests
             }
         };
 
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         using var cancellation = new CancellationTokenSource();
         Task? produceTask = null;
         try

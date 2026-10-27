@@ -32,22 +32,10 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
     public void Dispose() => _directory.Dispose();
 
-    BlockFile CreateBlock()
-    {
-        return BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = _blockPath,
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = 64,
-            NamePoolCapacity = 512
-        });
-    }
-
     [TestMethod]
     public void Flush_ViewLargerThanOneRange_ReportsEachRangeEndInOrder()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var rangeBytes = (long)Environment.SystemPageSize;
         Assert.IsGreaterThan(2 * rangeBytes, block.Length, "The block must span more than two ranges.");
         block.Hooks._flushRangeBytes = rangeBytes;
@@ -69,7 +57,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void Flush_ViewSmallerThanOneRange_ReportsOnceWithTheViewLength()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var reported = new List<long>();
 
         block.Flush(reported.Add);
@@ -80,7 +68,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void Flush_NullCallback_Flushes()
     {
-        using (var block = CreateBlock())
+        using (var block = TestBlocks.Create(_blockPath))
         {
             block.Hooks._flushRangeBytes = Environment.SystemPageSize;
             new BlockWriter(block).TryWriteRow(0, "root", RootColumns);
@@ -98,7 +86,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void Flush_AfterDispose_Throws()
     {
-        var block = CreateBlock();
+        var block = TestBlocks.Create(_blockPath);
         block.Dispose();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() => block.Flush(null));
@@ -107,7 +95,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void Complete_PassesTheCallbackToTheFlush()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         var reported = new List<long>();
@@ -121,7 +109,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void Flush_CallbackThrows_PropagatesAndLeavesTheBlockUsable()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         block.Hooks._flushRangeBytes = Environment.SystemPageSize;
         var thrown = CaptureException(block, _ => throw new InvalidOperationException("callback"));
 
@@ -135,7 +123,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void FlushViewWithRetry_LockViolationThatClears_IsRetriedAndSucceeds()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var results = new Queue<int>([33, 33, 0]);
         var attempts = 0;
         var pauses = new List<int>();
@@ -156,7 +144,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void FlushViewWithRetry_DifferentError_ThrowsAtOnce()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var attempts = 0;
         var pauses = 0;
         block.Hooks._flushViewRange = (_, _) =>
@@ -176,7 +164,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void FlushViewWithRetry_LockViolationForever_IsBounded()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var attempts = 0;
         var pauses = new List<int>();
         block.Hooks._flushViewRange = (_, _) =>
@@ -197,7 +185,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void FlushViewWithRetry_LockViolationThenDifferentError_ThrowsWithoutSpinningAfterIt()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var results = new Queue<int>([33, 33, 5]);
         var spins = 0;
         var pauses = new List<int>();
@@ -238,7 +226,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     public void SynchronizeRange_UnalignedStart_SynchronizesFromItsPageBoundaryWithThePlatformFlag(
         string platform, int expectedFlag)
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var pageBytes = Environment.SystemPageSize;
         var calls = new List<(long Start, long End, int Flag)>();
         block.Hooks._synchronizeViewRange = (start, end, flag) =>
@@ -255,7 +243,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void SynchronizeRange_CallFails_ThrowsWithTheErrno()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         block.Hooks._synchronizeViewRange = (_, _, _) => 5;
 
         IOException? thrown = null;

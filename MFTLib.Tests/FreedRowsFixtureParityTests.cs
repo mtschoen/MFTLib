@@ -40,16 +40,7 @@ public class FreedRowsFixtureParityTests
     {
         using var scanned = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
         var freedRecords = scanned.ToRecords().Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"mft-parity-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 1,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 32,
-            NamePoolCapacity = 4096,
-            DeleteOnClose = true
-        });
+        using var block = TestBlocks.Create(Path.Combine(Path.GetTempPath(), $"mft-parity-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 32, 4096, volumeSerial: 1, rootRow: 5, deleteOnClose: true);
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToRecords()],
             new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
 

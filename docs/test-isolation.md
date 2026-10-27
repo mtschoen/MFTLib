@@ -157,6 +157,20 @@ The single ten-second `TestTimeouts.HangGuard` lives in the test package's
 using. Longer watchdogs are explicit multiples. Protocol timeout assertions and
 fake-clock inputs remain independent scenario data.
 
+`TestBlocks` centralizes production-backed block setup in the test assembly.
+`Create` returns an incomplete, unseeded block owned by the caller; `Options`
+supplies the same defaults to named-section and low-level construction tests.
+An omitted path gets a unique temporary file with delete-on-close; a supplied
+path remains caller-owned and persistent unless explicitly overridden.
+Capacities are exact (the name pool is measured in bytes), and root row zero
+is the default for every producer. `WriteCache` completes and closes an
+inspection seed after any requested post-completion mutation;
+`WriteInvalidCache` writes deliberately invalid content for deletion tests.
+Neither seed creates an owner lock. `SyntheticBlockBuilder` writes mapped
+rows independently of the production writer and remains the fixture for
+tests requiring that independence. Dispose mapped blocks before their
+temporary-directory owners.
+
 ## Broker client and launch dependencies
 
 Each BrokerProcess owns one internal ProcessHooks object through Hooks.

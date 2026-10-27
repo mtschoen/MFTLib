@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -206,17 +207,7 @@ public class BlockHeaderTests
     public void BlockFileCreateOptions_SetsRootRowInHeader()
     {
         var path = Path.Combine(Path.GetTempPath(), $"mftlib-test-{Guid.NewGuid():N}.mlix");
-        var options = new BlockFileCreateOptions
-        {
-            Path = path,
-            VolumeSerial = 0x12345678,
-            ProducerKind = ProducerKind.Mft,
-            SlotCapacity = 256,
-            NamePoolCapacity = 4096,
-            RootRow = 5,
-            DeleteOnClose = true
-        };
-        using var block = BlockFile.Create(options);
+        using var block = TestBlocks.Create(path, ProducerKind.Mft, 256, 4096, volumeSerial: 0x12345678, rootRow: 5, deleteOnClose: true);
         Assert.AreEqual(5u, block.Header.RootRow);
     }
 }

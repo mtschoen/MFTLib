@@ -25,26 +25,16 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
 
     int _blockId;
 
-    (BlockFile Block, BlockWriter Writer) CreateBlock(uint slotCapacity = 4096, uint namePoolCapacity = 1048576)
-    {
-        var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
-            VolumeSerial = 1,
-            ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity
-        });
-
-        return (block, new BlockWriter(block));
-    }
-
     DriveBlock[] Produce(out BlockFile block,
         IReadOnlyCollection<string>? retainedFileNames = null, DirectoryWalkOptions? directoryWalk = null,
         string? rootDirectory = null, int maximumWorkers = int.MaxValue)
     {
         var root = rootDirectory ?? _treeRoot;
-        var created = CreateBlock();
+        // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to the returned DriveBlock snapshot, which callers release via ReleaseNowAsync
+        var createdBlock = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: createdBlock, Writer: new BlockWriter(createdBlock));
         block = created.Block;
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
@@ -292,8 +282,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_ReportsProgress()
     {
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
 
         var observed = new List<IndexScanProgress>();
         var reportingThreadIds = new HashSet<int>();
@@ -328,8 +320,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_ExhaustedSlotCapacity_SetsCapacityExhaustedAndDoesNotThrow()
     {
-        var created = CreateBlock(slotCapacity: 3);
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 3, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
@@ -411,8 +405,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_MissingRootDirectory_CountsAnAccessDeniedSubtreeAndDoesNotThrow()
     {
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = Path.Combine(_treeRoot, "does-not-exist"),
@@ -432,8 +428,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_HonoursCancellation()
     {
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
         var token = cancellation.Token;
@@ -612,8 +610,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
                 }
             };
 
-            var created = CreateBlock();
-            using var block = created.Block;
+            using var block = TestBlocks.Create(
+                Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+                slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+            var created = (Block: block, Writer: new BlockWriter(block));
             var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
                 RootDirectory = _treeRoot,
@@ -704,8 +704,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
                 }
             };
 
-            var created = CreateBlock();
-            using var block = created.Block;
+            using var block = TestBlocks.Create(
+                Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+                slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+            var created = (Block: block, Writer: new BlockWriter(block));
             var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
                 RootDirectory = _treeRoot,
@@ -769,8 +771,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     public async Task Produce_HonoursCancellation_MidWalkDrainsAllWorkers()
     {
         EnumerationWalkTestSupport.GenerateBranchingTree(_treeRoot, 3, 2, 2);
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
         Action cancel = cancellation.Cancel;
@@ -882,8 +886,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             }
         };
 
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         try
         {
             using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
@@ -923,8 +929,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             BeforeMoveNext = observation.FailActiveRead(sentinel)
         };
 
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         Task? produceTask = null;
         {
             try
@@ -984,8 +992,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Drive = 'T'
         });
 
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         if (failInWriter)
         {
             created.Writer.Hooks._rowCaptured = () =>
@@ -1051,10 +1061,13 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Drive = 'T'
         });
 
-        var created = testSlotCapacity
-            ? CreateBlock(slotCapacity: 3, namePoolCapacity: 1048576)
-            : CreateBlock(slotCapacity: 4096, namePoolCapacity: (uint)(_treeRoot.Length + (2 * "child-0".Length)) * sizeof(char));
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: testSlotCapacity ? 3u : 4096u,
+            namePoolCapacity: testSlotCapacity ? 1048576u
+                : (uint)(_treeRoot.Length + (2 * "child-0".Length)) * sizeof(char),
+            volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         Task? produceTask = null;
         {
             try

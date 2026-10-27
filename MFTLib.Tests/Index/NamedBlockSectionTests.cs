@@ -37,15 +37,9 @@ public sealed class NamedBlockSectionTests : IDisposable
     public void CreateThenOpenExisting_SeesTheSameRows()
     {
         var sectionName = NamedBlockSection.BuildSectionName('T');
-        var options = new BlockFileCreateOptions
-        {
-            Path = _blockPath,
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(64),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(1024)
-        };
+        var options = TestBlocks.Options(_blockPath, ProducerKind.Mft,
+            slotCapacity: BlockLayout.ComputeSlotCapacity(64),
+            namePoolCapacity: BlockLayout.ComputeNamePoolCapacity(1024), rootRow: 5);
 
         var (creatorBlock, lifetime) = NamedBlockSection.Create(options, sectionName);
         using (lifetime)
@@ -69,14 +63,7 @@ public sealed class NamedBlockSectionTests : IDisposable
     public void Create_MappingConstructionFails_DeletesTheFileAndDisposesTheStream()
     {
         var sectionName = NamedBlockSection.BuildSectionName('T');
-        var firstOptions = new BlockFileCreateOptions
-        {
-            Path = _blockPath,
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Mft,
-            SlotCapacity = 64,
-            NamePoolCapacity = 256
-        };
+        var firstOptions = TestBlocks.Options(_blockPath, ProducerKind.Mft, namePoolCapacity: 256);
         var (firstBlock, firstLifetime) = NamedBlockSection.Create(firstOptions, sectionName);
         using (firstLifetime)
         using (firstBlock)
@@ -85,14 +72,7 @@ public sealed class NamedBlockSectionTests : IDisposable
             // MemoryMappedFile.CreateFromFile itself throw, before ownership transfers,
             // exercising the branch that deletes the second file and disposes its stream.
             var secondPath = Path.Combine(_directory.Path, "second.mlix");
-            var secondOptions = new BlockFileCreateOptions
-            {
-                Path = secondPath,
-                VolumeSerial = 0x0BADF00E,
-                ProducerKind = ProducerKind.Mft,
-                SlotCapacity = 64,
-                NamePoolCapacity = 256
-            };
+            var secondOptions = TestBlocks.Options(secondPath, ProducerKind.Mft, namePoolCapacity: 256, volumeSerial: 0x0BADF00E);
 
             Assert.ThrowsExactly<IOException>(() => NamedBlockSection.Create(secondOptions, sectionName));
 

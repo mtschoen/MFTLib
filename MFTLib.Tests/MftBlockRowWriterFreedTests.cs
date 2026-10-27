@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -16,7 +17,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void FreedRow_HasTheFlagsAJournalDeleteLeavesAndIsNotLive()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -41,7 +43,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void LiveRows_AreUnchangedWhenFreedRowsAreIncluded()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[Root(), Live(20, 5, "a.txt", 1, RootSequence)]],
             IncludingFreed, null, CancellationToken.None);
@@ -54,7 +57,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void FreedRecord_WithoutTheOption_GetsNoRowAndIsNotCounted()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records = [Root(), Freed(21, 5, "freed.txt", 4, RootSequence)];
 
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], new MftScanOptions(), null,
@@ -76,7 +80,8 @@ public class MftBlockRowWriterFreedTests
     public void RetentionAndFreedInclusion_AreOrthogonal(string[]? names, bool includeFreed,
         bool ignoredFileRetained, bool namedFileRetained)
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -101,7 +106,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustedFreedRow_KeepsItsParentAndUntrustedFreedRowIsDetached()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -122,7 +128,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_ParentArrivingInALaterBatch_StillVerifiesTheChild()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         var freedFile = Freed(13, 12, "early.txt", 14, parentSequence: 6);
         var directory = Live(12, 5, "dir", 6, RootSequence, isDirectory: true);
 
@@ -146,7 +153,8 @@ public class MftBlockRowWriterFreedTests
     public void TrustRule_ParentSequence(bool parentLive, ushort storedSequence, ushort referencedSequence,
         bool trusted)
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         var directory = parentLive
             ? Live(12, 5, "dir", storedSequence, RootSequence, isDirectory: true)
             : Freed(12, 5, "dir", storedSequence, RootSequence, isDirectory: true);
@@ -161,7 +169,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_FinalHopMustMatchTheRootSequence()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -180,7 +189,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_MissingOrNonDirectoryParentIsUntrusted()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -201,7 +211,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_ParentChainCycle_IsUntrustedForEveryMember()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -221,7 +232,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_ASelfParentedFreedRecordIsUntrusted()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Root(), Freed(12, 12, "loop", 14, parentSequence: 14, isDirectory: true)]], IncludingFreed, null,
@@ -233,7 +245,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_AFreedRootRecordIsNeverTrusted()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         var freedRoot = new MftRecord(5, 5, new MftRecordFields(2, FileAttributes.Directory, 0, 0, RootSequence,
             RootSequence), ".");
 
@@ -246,7 +259,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_RootWithoutAStoredNameStillVerifiesTheFinalHop()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         var namelessRoot = new MftRecord(5, 5, new MftRecordFields(3, FileAttributes.Directory, 0, 0, RootSequence),
             "");
         MftRecord[] records =
@@ -269,7 +283,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_NamelessNonRootParent_DetachesTheFreedChildWithItsBareName()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -291,7 +306,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void TrustRule_WithoutAnyRootRecordNothingIsTrusted()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Freed(12, 5, "dir", 14, parentSequence: RootSequence, isDirectory: true)]], IncludingFreed, null,
@@ -306,7 +322,8 @@ public class MftBlockRowWriterFreedTests
     [DataRow(128, false)]
     public void TrustRule_ComponentLimit(int directoryCount, bool trusted)
     {
-        using var block = CreateBlock(slotCapacity: 256, namePoolCapacity: 4096);
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 256, namePoolCapacity: 4096, volumeSerial: 123, rootRow: 5);
         var records = new List<MftRecord> { Root() };
         for (var index = 0; index < directoryCount; index++)
         {
@@ -330,7 +347,8 @@ public class MftBlockRowWriterFreedTests
     [DataRow(109, false)]
     public void TrustRule_PathLengthLimit(int componentCount, bool trusted)
     {
-        using var block = CreateBlock(slotCapacity: 256, namePoolCapacity: 65536);
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 256, namePoolCapacity: 65536, volumeSerial: 123, rootRow: 5);
         var longName = new string('n', 300);
         var records = new List<MftRecord> { Root() };
         for (var index = 0; index < componentCount - 1; index++)
@@ -355,7 +373,8 @@ public class MftBlockRowWriterFreedTests
     [TestMethod]
     public void DetachedRows_DoNotChangeTheVerdictOfTheirNeighbours()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
             Root(),
@@ -383,18 +402,4 @@ public class MftBlockRowWriterFreedTests
         bool isDirectory = false) =>
         new(recordNumber, parent, new MftRecordFields((ushort)(isDirectory ? 2 : 0),
             isDirectory ? FileAttributes.Directory : FileAttributes.Normal, 0, 0, sequence, parentSequence), name);
-
-    static BlockFile CreateBlock(uint slotCapacity = 32, uint namePoolCapacity = 1024)
-    {
-        return BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"mft-block-freed-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity,
-            DeleteOnClose = true
-        });
-    }
 }

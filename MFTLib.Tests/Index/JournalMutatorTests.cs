@@ -21,14 +21,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
     public void Initialize()
     {
         _directory = new TempDirectory("mftlib-mutate");
-        _block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(_directory.Path, "T-0BADF00D.mlix"),
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Mft,
-            SlotCapacity = 32,
-            NamePoolCapacity = 512
-        });
+        _block = TestBlocks.Create(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft, 32);
 
         _writer = new BlockWriter(_block);
         var directoryColumns = new RowColumns(ParentRow: 0,

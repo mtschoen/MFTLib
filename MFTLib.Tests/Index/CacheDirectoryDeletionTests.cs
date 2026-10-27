@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -23,18 +24,11 @@ public class CacheDirectoryDeletionTests
         Directory.Delete(_directory, recursive: true);
     }
 
-    string CreateBlock(char letter, uint serial = 1)
-    {
-        var path = Path.Combine(_directory, CacheDirectory.BlockFileName(letter, serial));
-        File.WriteAllText(path, "deliberately invalid block content");
-        return path;
-    }
-
     [TestMethod]
     public void DeleteCached_DeletesSelectedSerialsAndPreservesOtherEntries()
     {
-        var selected = new[] { CreateBlock('T'), CreateBlock('T', 2) };
-        var excluded = CreateBlock('U');
+        var selected = new[] { TestBlocks.WriteInvalidCache(_directory, 'T'), TestBlocks.WriteInvalidCache(_directory, 'T', volumeSerial: 2) };
+        var excluded = TestBlocks.WriteInvalidCache(_directory, 'U');
         var unrelated = Path.Combine(_directory, "notes.mlix");
         var retired = selected[0] + ".retired-test";
         var orphanLock = Path.Combine(_directory, "V-00000001.mlix.lock");
@@ -70,9 +64,9 @@ public class CacheDirectoryDeletionTests
     [TestMethod]
     public void DeleteCached_UnopenableLockIsInUseAndDoesNotStopOtherDeletes()
     {
-        var unavailable = CreateBlock('T');
+        var unavailable = TestBlocks.WriteInvalidCache(_directory, 'T');
         Directory.CreateDirectory(BlockOwnerLock.LockPathFor(unavailable));
-        var available = CreateBlock('U');
+        var available = TestBlocks.WriteInvalidCache(_directory, 'U');
 
         var results = CacheDirectory.DeleteCached(_directory);
 
@@ -89,7 +83,7 @@ public class CacheDirectoryDeletionTests
     [TestMethod]
     public void DeleteCached_FilesystemFailureIsReportedAndIterationContinues()
     {
-        var paths = new[] { CreateBlock('T'), CreateBlock('U'), CreateBlock('V') };
+        var paths = new[] { TestBlocks.WriteInvalidCache(_directory, 'T'), TestBlocks.WriteInvalidCache(_directory, 'U'), TestBlocks.WriteInvalidCache(_directory, 'V') };
         string? replaced = null;
         CacheDirectory.Hooks._beforeDelete = path =>
         {
@@ -122,7 +116,7 @@ public class CacheDirectoryDeletionTests
     [TestMethod]
     public void DeleteCached_AlreadyAbsentInventoryEntryIsAnIdempotentSuccess()
     {
-        var paths = new[] { CreateBlock('T'), CreateBlock('U') };
+        var paths = new[] { TestBlocks.WriteInvalidCache(_directory, 'T'), TestBlocks.WriteInvalidCache(_directory, 'U') };
         CacheDirectory.Hooks._beforeDelete = File.Delete;
 
         var results = CacheDirectory.DeleteCached(_directory);

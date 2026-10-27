@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -45,18 +46,10 @@ public class FileIndexCacheTagTests
 
     static BlockFile Build(MftBlockProduceRequest request)
     {
-        var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 16,
-            NamePoolCapacity = 1024,
-            DeleteOnClose = request.DeleteOnClose,
-            CacheTag = request.CacheTag,
-            ScanShape = request.ScanShape
-        });
+        var block = TestBlocks.Create(request.BlockPath, ProducerKind.Mft, 16, 1024,
+            volumeSerial: request.VolumeSerial, rootRow: 5,
+            deleteOnClose: request.DeleteOnClose, cacheTag: request.CacheTag,
+            scanShape: request.ScanShape);
         try
         {
             var writer = new BlockWriter(block);

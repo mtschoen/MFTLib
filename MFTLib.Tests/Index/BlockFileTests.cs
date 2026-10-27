@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -186,15 +187,7 @@ public class BlockFileTests
         var path = Path.Combine(directory, "volatile.mlix");
         try
         {
-            using (BlockFile.Create(new BlockFileCreateOptions
-            {
-                Path = path,
-                VolumeSerial = 1,
-                ProducerKind = ProducerKind.Enumeration,
-                SlotCapacity = 64,
-                NamePoolCapacity = 256,
-                DeleteOnClose = true
-            }))
+            using (TestBlocks.Create(path, namePoolCapacity: 256, volumeSerial: 1, deleteOnClose: true))
             {
                 Assert.IsTrue(File.Exists(path));
             }
@@ -371,14 +364,7 @@ public class BlockFileTests
         var path = Path.Combine(directory, "partial.mlix");
         try
         {
-            var options = new BlockFileCreateOptions
-            {
-                Path = path,
-                VolumeSerial = 0x0BADF00D,
-                ProducerKind = ProducerKind.Enumeration,
-                SlotCapacity = 64,
-                NamePoolCapacity = 4096
-            };
+            var options = TestBlocks.Options(path, namePoolCapacity: 4096);
             var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
             var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length, FileOptions.None);
 

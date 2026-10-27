@@ -152,19 +152,11 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
     static BlockFile BuildSyntheticBlockWithDeepCandidate(MftBlockProduceRequest request)
     {
         const uint totalRows = BlockLayout.MaximumPathDepth + 16u;
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(totalRows),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(totalRows * 32),
-            DeleteOnClose = request.DeleteOnClose,
-            ScanShape = request.ScanShape
-        };
-
-        using (var block = BlockFile.Create(createOptions))
+        using (var block = TestBlocks.Create(request.BlockPath, ProducerKind.Mft,
+            BlockLayout.ComputeSlotCapacity(totalRows),
+            BlockLayout.ComputeNamePoolCapacity(totalRows * 32),
+            volumeSerial: request.VolumeSerial, rootRow: 5,
+            deleteOnClose: request.DeleteOnClose, scanShape: request.ScanShape))
         {
             var writer = new BlockWriter(block);
             writer.TryWriteRow(0, "$MFT",

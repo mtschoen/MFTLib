@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -8,7 +9,7 @@ public partial class BlockWriterTests
     [TestMethod]
     public void TryRenameRow_WithTheSameName_UpdatesOnlyTheParentRowAndDoesNotGrowTheNamePool()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "Documents", RootColumns);
@@ -25,7 +26,7 @@ public partial class BlockWriterTests
     [TestMethod]
     public void TryRenameRow_AppendsTheNewNameAndSwapsTheRowOffset()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
@@ -41,7 +42,7 @@ public partial class BlockWriterTests
     [TestMethod]
     public void TryRenameRow_PublishesOffsetLengthAndFlagsAsOneDescriptorWord()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
@@ -70,7 +71,7 @@ public partial class BlockWriterTests
     [TestMethod]
     public void TryRenameRow_RowIndexAtOrPastSlotCapacity_FlagsCapacityExhaustionAndFails()
     {
-        using var block = CreateBlock(slotCapacity: 4);
+        using var block = TestBlocks.Create(_blockPath, slotCapacity: 4);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
 
@@ -82,14 +83,7 @@ public partial class BlockWriterTests
     [TestMethod]
     public void TryRenameRow_NamePoolExhausted_FailsWithoutChangingTheRow()
     {
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = _blockPath,
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = 64,
-            NamePoolCapacity = 40
-        });
+        using var block = TestBlocks.Create(_blockPath, namePoolCapacity: 40);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         // Fills the tiny name pool (40 bytes = 20 UTF-16 code units) with no room left over.

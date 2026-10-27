@@ -245,16 +245,7 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         }), hostWriter);
         var skippedByHost = hostFrames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount;
 
-        using var directBlock = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"mft-block-direct-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 256,
-            NamePoolCapacity = 4096,
-            DeleteOnClose = true
-        });
+        using var directBlock = TestBlocks.Create(Path.Combine(Path.GetTempPath(), $"mft-block-direct-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 256, 4096, volumeSerial: 123, rootRow: 5, deleteOnClose: true);
         var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), batches,
             new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
 

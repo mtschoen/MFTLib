@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -22,26 +23,6 @@ public class CacheDirectoryRejectionTests
     {
         var path = Path.Combine(_directory, name);
         File.WriteAllText(path, "foreign content");
-        return path;
-    }
-
-    string CreateBlock()
-    {
-        var path = Path.Combine(_directory, CacheDirectory.BlockFileName('T', 1));
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = path,
-            VolumeSerial = 1,
-            ProducerKind = ProducerKind.Enumeration,
-            RootRow = 0,
-            SlotCapacity = 8,
-            NamePoolCapacity = 4096
-        });
-        var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, _directory,
-            new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
-        writer.Complete(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), null);
-        block.Flush(null);
         return path;
     }
 
@@ -78,7 +59,7 @@ public class CacheDirectoryRejectionTests
     [DataRow("delete")]
     public void Inventory_ReportsRejectedPathsAndPreservesForeignFiles(string operation)
     {
-        var canonical = CreateBlock();
+        var canonical = TestBlocks.WriteCache(_directory, 'T', volumeSerial: 1);
         var foreign = new[]
         {
             WriteFile("t-invalid.mlix"),
@@ -120,7 +101,7 @@ public class CacheDirectoryRejectionTests
     [DataRow("delete", true)]
     public void Rejections_AreReportedEvenWhenCanonicalDrivesAreExcluded(string operation, bool empty)
     {
-        var canonical = CreateBlock();
+        var canonical = TestBlocks.WriteCache(_directory, 'T', volumeSerial: 1);
         var foreign = WriteFile("t-invalid.mlix");
         IReadOnlySet<char> drives = empty ? new HashSet<char>() : new HashSet<char> { 'U' };
         var rejected = new List<CachedBlockRejection>();
@@ -141,7 +122,7 @@ public class CacheDirectoryRejectionTests
     [DataRow("delete")]
     public void RejectionCallbackFailure_PropagatesBeforeCanonicalOperations(string operation)
     {
-        var canonical = CreateBlock();
+        var canonical = TestBlocks.WriteCache(_directory, 'T', volumeSerial: 1);
         var foreign = WriteFile("t-invalid.mlix");
         var expected = new IOException("observer failed");
 

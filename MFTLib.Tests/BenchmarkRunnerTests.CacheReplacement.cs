@@ -1,5 +1,6 @@
 using Benchmark;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -64,17 +65,9 @@ public partial class BenchmarkRunnerTests
         ProducerKind producer = ProducerKind.Enumeration)
     {
         var rootRow = producer == ProducerKind.Mft ? 5u : 0u;
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(directory, $"{drive}-00000001.mlix"),
-            VolumeSerial = 1,
-            ProducerKind = producer,
-            RootRow = rootRow,
-            SlotCapacity = 8,
-            NamePoolCapacity = 4096,
-            CacheTag = new CacheTag("TEST", drive),
-            ScanShape = scanShape
-        });
+        using var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-00000001.mlix"),
+            producer, 8, 4096, volumeSerial: 1, rootRow: rootRow,
+            cacheTag: new CacheTag("TEST", drive), scanShape: scanShape);
         var writer = new BlockWriter(block);
         Assert.IsTrue(writer.TryWriteRow(rootRow, producer == ProducerKind.Mft ? "" : rootDirectory,
             new RowColumns(rootRow, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0)));

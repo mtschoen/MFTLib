@@ -19,14 +19,8 @@ public sealed class CapacityExhaustionTests : IDisposable
     (BlockFile Block, BlockWriter Writer, DriveBlock[] Snapshot) BuildTinyDrive(
         uint slotCapacity, uint namePoolCapacity)
     {
-        var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(_directory.Path, "T-00000001.mlix"),
-            VolumeSerial = 1,
-            ProducerKind = ProducerKind.Mft,
-            SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity
-        });
+        // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to the returned DriveBlock snapshot, which callers release via ReleaseNowAsync
+        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-00000001.mlix"), ProducerKind.Mft, slotCapacity, namePoolCapacity, volumeSerial: 1);
 
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,

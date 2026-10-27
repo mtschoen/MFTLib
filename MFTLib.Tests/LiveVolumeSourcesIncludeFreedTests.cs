@@ -80,16 +80,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
 
         var (imagePath, freedRecord) = WriteImageWithOneFreedRecord();
         ServeImageAsVolume(imagePath);
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(TemporaryDirectoryPath, "freed.mlix"),
-            VolumeSerial = 0,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 128,
-            NamePoolCapacity = 16 * 1024,
-            DeleteOnClose = true
-        });
+        using var block = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "freed.mlix"), ProducerKind.Mft, 128, 16 * 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, _ => { }, CancellationToken.None);

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -23,15 +24,7 @@ public class CacheTagStorageTests
 
     void WriteBlock(CacheTag tag)
     {
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = BlockPath,
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = 8,
-            NamePoolCapacity = 1024,
-            CacheTag = tag
-        });
+        using var block = TestBlocks.Create(BlockPath, slotCapacity: 8, namePoolCapacity: 1024, volumeSerial: 123, cacheTag: tag);
         Assert.IsFalse(block.Header.IsComplete);
         Assert.AreEqual(tag, block.Header.CacheTag);
         var writer = new BlockWriter(block);

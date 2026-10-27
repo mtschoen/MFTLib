@@ -23,14 +23,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
         // Seed a warm-start MFT block for drive 'T' so journal mutations are supported on it.
         Directory.CreateDirectory(CacheDirectoryPath);
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
-        using (var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = blockPath,
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Mft,
-            SlotCapacity = 256,
-            NamePoolCapacity = 4096
-        }))
+        using (var block = TestBlocks.Create(blockPath, ProducerKind.Mft, 256, 4096))
         {
             var writer = new BlockWriter(block);
             writer.TryWriteRow(0, "", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks, 0));

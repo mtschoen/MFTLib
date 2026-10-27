@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Benchmark;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -254,15 +255,8 @@ public partial class BenchmarkRunnerTests
         var path = Path.Combine(directory, "T-00000001.mlix");
         try
         {
-            using (var block = BlockFile.Create(new BlockFileCreateOptions
-            {
-                Path = path,
-                VolumeSerial = 1,
-                ProducerKind = ProducerKind.Enumeration,
-                SlotCapacity = 8,
-                NamePoolCapacity = 4096,
-                ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
-            }))
+            using (var block = TestBlocks.Create(path, slotCapacity: 8, namePoolCapacity: 4096,
+                volumeSerial: 1, scanShape: SyntheticScanShape.Default(ProducerKind.Enumeration)))
             {
                 var writer = new BlockWriter(block);
                 writer.TryWriteRow(0, Path.Combine(directory, "missing-root"),
@@ -285,16 +279,9 @@ public partial class BenchmarkRunnerTests
         var drive = Path.GetPathRoot(directory)![0];
         try
         {
-            using (var block = BlockFile.Create(new BlockFileCreateOptions
-            {
-                Path = Path.Combine(directory, $"{drive}-00000001.mlix"),
-                VolumeSerial = 1,
-                ProducerKind = ProducerKind.Mft,
-                RootRow = 5,
-                SlotCapacity = 8,
-                NamePoolCapacity = 4096,
-                ScanShape = SyntheticScanShape.Default(ProducerKind.Mft)
-            }))
+            using (var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-00000001.mlix"),
+                ProducerKind.Mft, 8, 4096, volumeSerial: 1, rootRow: 5,
+                scanShape: SyntheticScanShape.Default(ProducerKind.Mft)))
             {
                 var writer = new BlockWriter(block);
                 writer.TryWriteRow(5, "", new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0));

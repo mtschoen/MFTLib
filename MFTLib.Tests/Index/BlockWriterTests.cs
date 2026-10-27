@@ -35,22 +35,10 @@ public sealed partial class BlockWriterTests : IDisposable
         return new RowColumns(parentRow, RowFlags.InUse, attributes, size, Moment.Ticks, sequenceNumber);
     }
 
-    BlockFile CreateBlock(uint slotCapacity = 64, uint namePoolCapacity = 512)
-    {
-        return BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = _blockPath,
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity
-        });
-    }
-
     [TestMethod]
     public void TryWriteRow_WritesRowAndNameAndAdvancesRowCount()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
 
         Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
@@ -136,7 +124,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void TryWriteRow_PastSlotCapacity_SetsCapacityExhaustedAndReturnsFalse()
     {
-        using var block = CreateBlock(slotCapacity: 4);
+        using var block = TestBlocks.Create(_blockPath, slotCapacity: 4);
         var writer = new BlockWriter(block);
 
         Assert.IsFalse(writer.TryWriteRow(4, "overflow.txt", FileColumns(0)));
@@ -148,7 +136,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void TryWriteRow_WithAnExhaustedNamePool_SetsCapacityExhaustedAndLeavesTheRowUntouched()
     {
-        using var block = CreateBlock(namePoolCapacity: 8);
+        using var block = TestBlocks.Create(_blockPath, namePoolCapacity: 8);
         var writer = new BlockWriter(block);
 
         Assert.IsTrue(writer.TryWriteRow(0, "abcd", FileColumns(0)));
@@ -162,7 +150,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void TryWriteRow_KeepsApplyingAfterAFailure()
     {
-        using var block = CreateBlock(slotCapacity: 8);
+        using var block = TestBlocks.Create(_blockPath, slotCapacity: 8);
         var writer = new BlockWriter(block);
 
         Assert.IsFalse(writer.TryWriteRow(99, "far.txt", FileColumns(0)));
@@ -175,7 +163,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void TryWriteRow_OverATombstonedRowInsideThePublishedRange_PublishesTheDescriptorWordLast()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "gone.tmp", FileColumns(0, size: 10, attributes: 32));
@@ -215,7 +203,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void MarkTombstone_AfterARename_KeepsTheRenamedNameIntact()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
@@ -233,7 +221,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void MarkSubtreeSkipped_SetsTheFlagAndKeepsTheName()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "Locked", FileColumns(0, attributes: 16));
@@ -248,7 +236,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void MarkSubtreeSkipped_PastSlotCapacity_SetsCapacityExhausted()
     {
-        using var block = CreateBlock(slotCapacity: 4);
+        using var block = TestBlocks.Create(_blockPath, slotCapacity: 4);
         var writer = new BlockWriter(block);
 
         writer.MarkSubtreeSkipped(9);
@@ -259,7 +247,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void MarkTombstone_KeepsTheNameAndSetsTheDeletedFlag()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "gone.tmp", FileColumns(0, size: 10, attributes: 32));
@@ -273,7 +261,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void Complete_SetsTheCompleteFlagAndTheScanTimestampLast()
     {
-        using (var block = CreateBlock())
+        using (var block = TestBlocks.Create(_blockPath))
         {
             var writer = new BlockWriter(block);
             writer.TryWriteRow(0, "", RootColumns);
@@ -291,7 +279,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void SetJournalCursor_AndBumpGeneration_WriteIntoTheHeader()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
 
         writer.SetJournalCursor(0xABCD, 5000);
@@ -306,7 +294,7 @@ public sealed partial class BlockWriterTests : IDisposable
     [TestMethod]
     public void MarkCapacityExhausted_IsVisibleInTheHeaderFlags()
     {
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.MarkCapacityExhausted();
         Assert.IsTrue(block.Header.IsCapacityExhausted);

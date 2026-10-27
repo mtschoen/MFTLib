@@ -67,7 +67,10 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
 
         var (imagePath, corruptRecord) = WriteImageWithOneCorruptFixup();
         ServeImageAsVolume(imagePath);
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(
+            Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
+            ProducerKind.Mft, slotCapacity: 128, namePoolCapacity: 16 * 1024,
+            volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         long omitted = 0;
         var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
@@ -119,7 +122,10 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         var imagePath = Path.Combine(TemporaryDirectoryPath, "clean.img");
         SyntheticNtfsImage.Write(imagePath, 64);
         ServeImageAsVolume(imagePath);
-        using var block = CreateBlock();
+        using var block = TestBlocks.Create(
+            Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
+            ProducerKind.Mft, slotCapacity: 128, namePoolCapacity: 16 * 1024,
+            volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         long omitted = 0;
         var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(1),
@@ -213,17 +219,6 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             return true;
         };
     }
-
-    BlockFile CreateBlock() => BlockFile.Create(new BlockFileCreateOptions
-    {
-        Path = Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
-        VolumeSerial = 0,
-        ProducerKind = ProducerKind.Mft,
-        RootRow = 5,
-        SlotCapacity = 128,
-        NamePoolCapacity = 16 * 1024,
-        DeleteOnClose = true
-    });
 
     sealed class QuietReporter : ISourceOperationReporter
     {

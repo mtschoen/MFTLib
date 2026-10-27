@@ -151,16 +151,7 @@ public partial class JournalBrokerHostTests
     public void RealBlockSectionWriter_WritesBlock_ClientCanReadItBack()
     {
         var sectionName = NamedBlockSection.BuildSectionName('C');
-        var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 128,
-            NamePoolCapacity = 1024,
-            DeleteOnClose = true
-        }, sectionName);
+        var (block, lifetime) = NamedBlockSection.Create(TestBlocks.Options(Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 128, 1024, volumeSerial: 123, rootRow: 5, deleteOnClose: true), sectionName);
         using (block)
         using (lifetime)
         {
@@ -187,16 +178,7 @@ public partial class JournalBrokerHostTests
     public async Task ArmAndScan_SectionHeaderRewrittenBeforeOpen_FailsTheScanWithTheRejection()
     {
         var sectionName = NamedBlockSection.BuildSectionName('C');
-        var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 128,
-            NamePoolCapacity = 1024,
-            DeleteOnClose = true
-        }, sectionName);
+        var (block, lifetime) = NamedBlockSection.Create(TestBlocks.Options(Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 128, 1024, volumeSerial: 123, rootRow: 5, deleteOnClose: true), sectionName);
         using (block)
         using (lifetime)
         {

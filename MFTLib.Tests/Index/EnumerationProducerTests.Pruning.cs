@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -159,8 +160,10 @@ public sealed partial class EnumerationProducerTests
     [TestMethod]
     public async Task Produce_StoresTheAccessDeniedCountInTheHeader()
     {
-        var created = CreateBlock();
-        using var block = created.Block;
+        using var block = TestBlocks.Create(
+            Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            slotCapacity: 4096, namePoolCapacity: 1048576, volumeSerial: 1);
+        var created = (Block: block, Writer: new BlockWriter(block));
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = TreePath("absent"),

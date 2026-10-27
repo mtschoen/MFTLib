@@ -379,16 +379,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public void Validation_NullArguments_Throw()
     {
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(TemporaryDirectoryPath, "validation.mlix"),
-            VolumeSerial = 0,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 64,
-            NamePoolCapacity = 1024,
-            DeleteOnClose = true
-        });
+        using var block = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "validation.mlix"), ProducerKind.Mft, 64, 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         var validation = new MftDumpRecordValidation(block);
 

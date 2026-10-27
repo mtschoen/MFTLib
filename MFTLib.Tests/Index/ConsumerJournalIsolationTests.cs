@@ -53,18 +53,11 @@ public class ConsumerJournalIsolationTests
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _productions);
-        using (var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256),
-            DeleteOnClose = request.DeleteOnClose,
-            CacheTag = request.CacheTag,
-            ScanShape = request.ScanShape
-        }))
+        using (var block = TestBlocks.Create(request.BlockPath, ProducerKind.Mft,
+            BlockLayout.ComputeSlotCapacity(8), BlockLayout.ComputeNamePoolCapacity(256),
+            volumeSerial: request.VolumeSerial, rootRow: 5,
+            deleteOnClose: request.DeleteOnClose, cacheTag: request.CacheTag,
+            scanShape: request.ScanShape))
         {
             var writer = new BlockWriter(block);
             Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(

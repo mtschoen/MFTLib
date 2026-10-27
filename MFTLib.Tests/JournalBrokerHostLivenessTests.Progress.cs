@@ -134,17 +134,7 @@ public partial class JournalBrokerHostLivenessTests
     {
         var liveness = new Liveness();
         var sectionName = NamedBlockSection.BuildSectionName('C');
-        var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"broker-flush-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 128,
-            // Two whole flush ranges of name pool, so the view spans three ranges.
-            NamePoolCapacity = (uint)(2 * BlockFile.FlushRangeBytes),
-            DeleteOnClose = true
-        }, sectionName);
+        var (block, lifetime) = NamedBlockSection.Create(TestBlocks.Options(Path.Combine(Path.GetTempPath(), $"broker-flush-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 128, (uint)(2 * BlockFile.FlushRangeBytes), volumeSerial: 123, rootRow: 5, deleteOnClose: true), sectionName);
         using (block)
         using (lifetime)
         {

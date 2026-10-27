@@ -110,16 +110,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
 
     (BlockFile Block, IDisposable Lifetime) CreateSection()
     {
-        return NamedBlockSection.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(_directory.Path, "T-0BADF00D.mlix"),
-            VolumeSerial = 0x0BADF00D,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = SlotCapacity,
-            NamePoolCapacity = NamePoolCapacity,
-            DeleteOnClose = true
-        }, _sectionName);
+        return NamedBlockSection.Create(TestBlocks.Options(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft, SlotCapacity, NamePoolCapacity, rootRow: 5, deleteOnClose: true), _sectionName);
     }
 
     static void RewriteBeforeOpen(ref BlockHeader header, string field)
