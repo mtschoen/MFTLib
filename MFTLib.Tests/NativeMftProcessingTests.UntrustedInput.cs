@@ -1,3 +1,4 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -78,14 +79,21 @@ public partial class NativeMftProcessingTests
 
     static void AssertParsedAs(byte[] image, ulong expectedRecords, string because)
     {
-        var outcome = ParseImage(image, image.Length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(image);
         Assert.AreEqual(string.Empty, outcome.ErrorMessage, because);
         Assert.AreEqual(expectedRecords, outcome.TotalRecords, because);
     }
 
     static void AssertRejected(byte[] image, string because, int failingRead = 0)
     {
-        var outcome = ParseImage(image, image.Length, failingRead);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        if (failingRead > 0)
+        {
+            NativeTestHooks.NativeSetReadFailCountdown(failingRead);
+        }
+
+        var outcome = NativeTestHooks.ParseImage(image);
         Assert.IsFalse(string.IsNullOrEmpty(outcome.ErrorMessage), because);
         Assert.AreEqual(0UL, outcome.UsedRecords, because);
         Assert.AreEqual(IntPtr.Zero, outcome.Entries, because);
@@ -270,7 +278,8 @@ public partial class NativeMftProcessingTests
                 break;
         }
 
-        var outcome = ParseImage(data, data.Length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(data);
         Assert.Contains("malformed attribute", outcome.ErrorMessage);
     }
 
@@ -299,7 +308,8 @@ public partial class NativeMftProcessingTests
         // countdown; if the parse stops first, the countdown is still armed and fails the next parse.
         AssertRejected(data, "the merged runs do not describe a $MFT inside the volume", failingRead: 4);
         var control = BuildMultiBatchImage();
-        var nextParse = ParseImage(control, control.Length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var nextParse = NativeTestHooks.ParseImage(control);
         Assert.IsFalse(string.IsNullOrEmpty(nextParse.ErrorMessage),
             "a rejected extension must not drive another read");
     }
@@ -339,7 +349,8 @@ public partial class NativeMftProcessingTests
 
     static void AssertInvalidExtensionInput(byte[] image, string message)
     {
-        var outcome = ParseImage(image, image.Length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(image);
         AssertParseFailedWithNoOutput(outcome);
         Assert.AreEqual(message, outcome.ErrorMessage);
     }
@@ -350,7 +361,8 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_ChunkSizeOutsideWhatTheReaderCanIssue_ParsesTheWholeMft(uint bufferSizeRecords)
     {
         var image = BuildMultiBatchImage();
-        var outcome = ParseImage(image, image.Length, bufferSizeRecords: bufferSizeRecords);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(image, bufferSizeRecords);
         Assert.AreEqual(string.Empty, outcome.ErrorMessage);
         Assert.AreEqual((ulong)BaseMftRecords, outcome.TotalRecords);
     }

@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
@@ -13,7 +11,6 @@ public partial class NativeMftProcessingTests
     [TestMethod]
     public void ParseMFTRecords_VolumeRecordSizeOverride_InvalidSize_ReturnsError()
     {
-        var path = Path.GetTempFileName();
         try
         {
             // Override with unsupported record size 1536
@@ -21,36 +18,19 @@ public partial class NativeMftProcessingTests
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
-            File.WriteAllBytes(path, data);
 
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
+            var result = NativeTestHooks.ParseImage(data);
+            Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
             NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
         }
     }
 
     [TestMethod]
     public void ParseMFTRecords_VolumeRecordSizeOverride_Supported1024_Succeeds()
     {
-        var path = Path.GetTempFileName();
         try
         {
             NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
@@ -61,37 +41,20 @@ public partial class NativeMftProcessingTests
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
 
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(string.Empty, result.ErrorMessage);
-                Assert.IsGreaterThan(0UL, result.TotalRecords);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
+            var result = NativeTestHooks.ParseImage(data);
+            Assert.AreEqual(string.Empty, result.ErrorMessage);
+            Assert.IsGreaterThan(0UL, result.TotalRecords);
         }
         finally
         {
             NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
         }
     }
 
     [TestMethod]
     public void ParseMFTRecords_VolumeRecordSizeOverride_Supported4096_Succeeds()
     {
-        var path = Path.GetTempFileName();
         try
         {
             NativeTestHooks.NativeSetVolumeRecordSizeOverride(4096);
@@ -102,37 +65,20 @@ public partial class NativeMftProcessingTests
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
 
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(string.Empty, result.ErrorMessage);
-                Assert.AreEqual(256UL, result.TotalRecords);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
+            var result = NativeTestHooks.ParseImage(data);
+            Assert.AreEqual(string.Empty, result.ErrorMessage);
+            Assert.AreEqual(256UL, result.TotalRecords);
         }
         finally
         {
             NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
         }
     }
 
     [TestMethod]
     public void ResetTestState_ClearsVolumeRecordSizeOverride()
     {
-        var path = Path.GetTempFileName();
         try
         {
             NativeTestHooks.NativeSetVolumeRecordSizeOverride(1536);
@@ -144,29 +90,13 @@ public partial class NativeMftProcessingTests
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
 
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsFalse(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
+            var result = NativeTestHooks.ParseImage(data);
+            Assert.IsFalse(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
             NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
         }
     }
 
@@ -178,7 +108,6 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_OffWindowsWithoutAnOverride_TakesTheRecordSizeFromTheBootSector(
         byte clustersPerFileRecord, bool parses)
     {
-        var path = Path.GetTempFileName();
         try
         {
             var data = BuildBootSector();
@@ -188,34 +117,21 @@ public partial class NativeMftProcessingTests
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
 
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
+            var result = NativeTestHooks.ParseImage(data);
+            if (parses)
             {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                if (parses)
-                {
-                    Assert.AreEqual(string.Empty, result.ErrorMessage);
-                    Assert.AreEqual(1024UL, result.TotalRecords);
-                }
-                else
-                {
-                    Assert.AreEqual("Failed to query volume record size or unsupported record size", result.ErrorMessage);
-                }
+                Assert.AreEqual(string.Empty, result.ErrorMessage);
+                Assert.AreEqual(1024UL, result.TotalRecords);
             }
-            finally
+            else
             {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
+                Assert.AreEqual("Failed to query volume record size or unsupported record size", result.ErrorMessage);
             }
         }
         finally
         {
             NativeTestHooks.NativeResetTestState();
-            File.Delete(path);
         }
     }
 }

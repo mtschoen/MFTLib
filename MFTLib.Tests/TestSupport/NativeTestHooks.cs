@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     and raw-handle parser coverage. Failure-injection and fixture exports are test-only
 ///     and unsupported; raw parser bindings exercise production exports.
 /// </summary>
-static class NativeTestHooks
+static partial class NativeTestHooks
 {
     const string LibraryName = "MFTLibNative";
 
@@ -104,7 +104,7 @@ static class NativeTestHooks
         IntPtr callback, IntPtr callbackContext);
 
     // Parse entry that takes a raw IntPtr handle and no progress control (for testing with invalid handles)
-    internal static IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, uint bufferSizeRecords)
+    static IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, uint bufferSizeRecords)
     {
         return NativeParseMFTRecordsWithProgressRaw(volumeHandle, 0, bufferSizeRecords, IntPtr.Zero, IntPtr.Zero,
             IntPtr.Zero);

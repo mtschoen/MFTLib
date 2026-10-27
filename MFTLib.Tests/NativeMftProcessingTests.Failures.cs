@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -14,49 +13,25 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_ReadFailDuringExtensionRecordRead()
     {
         // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension -> fail here
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096);
+        var data = BuildBootSector();
+        WriteFileRecord(data, 4096);
 
-            const int a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+        const int a1 = 4096 + 0x38;
+        var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
-            var a2 = a1 + a1Len;
-            var a2Len = WriteResidentAttributeList(data, a2, 1);
+        var a2 = a1 + a1Len;
+        var a2Len = WriteResidentAttributeList(data, a2, 1);
 
-            WriteEndMarker(data, a2 + a2Len);
-            WriteFileRecord(data, 5120, 0x0002);
-            const int ext1 = 5120 + 0x38;
-            WriteEndMarker(data, ext1); // Just end marker  -  no Data attribute on extension record
+        WriteEndMarker(data, a2 + a2Len);
+        WriteFileRecord(data, 5120, 0x0002);
+        const int ext1 = 5120 + 0x38;
+        WriteEndMarker(data, ext1); // Just end marker  -  no Data attribute on extension record
 
-            File.WriteAllBytes(path, data);
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadMFTRecord
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
-                Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(IntPtr.Zero, result.Entries);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        NativeTestHooks.NativeSetReadFailCountdown(3);
+        var result = NativeTestHooks.ParseImage(data);
+        Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+        Assert.AreEqual(0UL, result.UsedRecords);
+        Assert.AreEqual(IntPtr.Zero, result.Entries);
     }
 
     // --- VolumeReadChunk Read failure ---
@@ -65,43 +40,19 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_VolumeReadChunkFail_ReturnsZeroUsedRecords()
     {
         // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk -> fail
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096);
+        var data = BuildBootSector();
+        WriteFileRecord(data, 4096);
 
-            // Just a Data attribute, no AttributeList -> straight to VolumeReadChunk
-            const int a1 = 4096 + 0x38;
-            WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, a1 + 0x48);
+        // Just a Data attribute, no AttributeList -> straight to VolumeReadChunk
+        const int a1 = 4096 + 0x38;
+        WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+        WriteEndMarker(data, a1 + 0x48);
 
-            File.WriteAllBytes(path, data);
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = VolumeReadChunk
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(IntPtr.Zero, result.Entries);
-                Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed batch read must fail the parse");
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        NativeTestHooks.NativeSetReadFailCountdown(3);
+        var result = NativeTestHooks.ParseImage(data);
+        Assert.AreEqual(0UL, result.UsedRecords);
+        Assert.AreEqual(IntPtr.Zero, result.Entries);
+        Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed batch read must fail the parse");
     }
 
     // --- ReadNonResidentData failure ---
@@ -110,66 +61,42 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_ReadFailDuringNonResidentAttributeList()
     {
         // Record 0 has non-resident AttributeList. Read #3 targets its data -> fail.
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096);
+        var data = BuildBootSector();
+        WriteFileRecord(data, 4096);
 
-            // Attribute 1: Data (non-resident) -> clusters 1..256
-            const int a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+        // Attribute 1: Data (non-resident) -> clusters 1..256
+        const int a1 = 4096 + 0x38;
+        var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
-            // Attribute 2: Non-resident AttributeList (FormCode=1)
-            var a2 = a1 + a1Len;
-            // TypeCode = AttributeList (0x20)
-            data[a2] = 0x20;
-            // RecordLength = 72 (0x48)
-            data[a2 + 4] = 0x48;
-            // FormCode = 1 (non-resident)
-            data[a2 + 8] = 0x01;
-            // MappingPairsOffset = 0x40
-            data[a2 + 0x20] = 0x40;
-            // FileSize = 4096 (one cluster of attribute list data)
-            var attrListSize = BitConverter.GetBytes(4096L);
-            Array.Copy(attrListSize, 0, data, a2 + 0x28, 8); // AllocatedLength
-            Array.Copy(attrListSize, 0, data, a2 + 0x30, 8); // FileSize
-            Array.Copy(attrListSize, 0, data, a2 + 0x38, 8); // ValidDataLength
-            // Data run: cluster 300, 1 cluster
-            data[a2 + 0x40] = 0x21; // 1-byte length, 2-byte signed offset
-            data[a2 + 0x41] = 0x01; // 1 cluster
-            data[a2 + 0x42] = 0x80; // cluster 128
-            data[a2 + 0x43] = 0x00;
-            data[a2 + 0x44] = 0x00; // terminator
+        // Attribute 2: Non-resident AttributeList (FormCode=1)
+        var a2 = a1 + a1Len;
+        // TypeCode = AttributeList (0x20)
+        data[a2] = 0x20;
+        // RecordLength = 72 (0x48)
+        data[a2 + 4] = 0x48;
+        // FormCode = 1 (non-resident)
+        data[a2 + 8] = 0x01;
+        // MappingPairsOffset = 0x40
+        data[a2 + 0x20] = 0x40;
+        // FileSize = 4096 (one cluster of attribute list data)
+        var attrListSize = BitConverter.GetBytes(4096L);
+        Array.Copy(attrListSize, 0, data, a2 + 0x28, 8); // AllocatedLength
+        Array.Copy(attrListSize, 0, data, a2 + 0x30, 8); // FileSize
+        Array.Copy(attrListSize, 0, data, a2 + 0x38, 8); // ValidDataLength
+        // Data run: cluster 300, 1 cluster
+        data[a2 + 0x40] = 0x21; // 1-byte length, 2-byte signed offset
+        data[a2 + 0x41] = 0x01; // 1 cluster
+        data[a2 + 0x42] = 0x80; // cluster 128
+        data[a2 + 0x43] = 0x00;
+        data[a2 + 0x44] = 0x00; // terminator
 
-            WriteEndMarker(data, a2 + 0x48);
+        WriteEndMarker(data, a2 + 0x48);
 
-            File.WriteAllBytes(path, data);
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadNonResidentData
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
-                Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(IntPtr.Zero, result.Entries);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        NativeTestHooks.NativeSetReadFailCountdown(3);
+        var result = NativeTestHooks.ParseImage(data);
+        Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+        Assert.AreEqual(0UL, result.UsedRecords);
+        Assert.AreEqual(IntPtr.Zero, result.Entries);
     }
 
     // --- FreeMftResult null safety ---

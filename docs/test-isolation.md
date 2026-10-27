@@ -117,6 +117,17 @@ deletion five times before tolerating a Windows IOException from a still-locked
 file. Other deletion failures propagate. Dispose indexes, watches, enumerators,
 writers and mapped blocks before disposing their directory owners.
 
+`TempFile` owns one uniquely created temporary file; dispose its streams before
+disposing the owner. `NativeTestHooks.ParseImage(byte[] image, uint bufferSizeRecords = 256)`
+writes an image, parses it and releases its stream, native result and file before
+returning a marshalled `MftParseResult` metadata snapshot. `ParseHandle(IntPtr
+volumeHandle, uint bufferSizeRecords = 256)` borrows a caller-owned handle and returns
+a nullable metadata snapshot, preserving native result-allocation failure as null.
+Copied error strings and scalar fields survive release; `Entries` and `EntryStrings`
+are freed pointer values that may be checked for nullness but never dereferenced.
+Scenarios own geometry overrides, failure injection and cleanup resets, and their
+test classes require `[DoNotParallelize]`.
+
 `IndexTreeFixture` owns a tree and a deferred cache path. Its default tree contains
 `Documents/readme.md` with `hello`; custom-tree scenarios opt out of that seed and
 write their own data. Its `Drive` and `Options` methods retain explicit producer,

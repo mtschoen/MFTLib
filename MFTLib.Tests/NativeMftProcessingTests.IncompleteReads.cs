@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -11,8 +10,6 @@ public partial class NativeMftProcessingTests
     const int MftRunOffset = 4096;
     const int BatchBytes = 256 * 1024; // 256 records of 1024 bytes
     const int AttributeListOffset = 0x80 * 4096;
-
-    readonly record struct ParseOutcome(ulong TotalRecords, ulong UsedRecords, IntPtr Entries, string ErrorMessage);
 
     // An image whose $MFT is one 1 MiB run at cluster 1, which the parser reads in four 256-record batches.
     static byte[] BuildMultiBatchImage()
@@ -49,40 +46,7 @@ public partial class NativeMftProcessingTests
         return data;
     }
 
-    // Parses the image as a volume with 1024-byte records; failingRead is the 1-based read to fail, 0 for none.
-    static ParseOutcome ParseImage(byte[] image, int length, int failingRead = 0, uint bufferSizeRecords = 256)
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.WriteAllBytes(path, image[..length]);
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
-            if (failingRead > 0)
-            {
-                NativeTestHooks.NativeSetReadFailCountdown(failingRead);
-            }
-
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), bufferSizeRecords);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                return new ParseOutcome(result.TotalRecords, result.UsedRecords, result.Entries, result.ErrorMessage);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    static void AssertParseFailedWithNoOutput(ParseOutcome outcome)
+    static void AssertParseFailedWithNoOutput(MftParseResult outcome)
     {
         Assert.IsFalse(string.IsNullOrEmpty(outcome.ErrorMessage), "an unreadable batch must fail the parse");
         Assert.AreEqual(0UL, outcome.UsedRecords);
@@ -93,7 +57,8 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_CompleteMultiBatchImage_ReportsNoError()
     {
         var image = BuildMultiBatchImage();
-        var outcome = ParseImage(image, image.Length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(image);
         Assert.AreEqual(string.Empty, outcome.ErrorMessage);
         Assert.AreEqual(1024UL, outcome.TotalRecords);
     }
@@ -105,7 +70,9 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_BatchReadFails_FailsAndDiscardsOutput(int failingRead)
     {
         var image = BuildMultiBatchImage();
-        AssertParseFailedWithNoOutput(ParseImage(image, image.Length, failingRead));
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        NativeTestHooks.NativeSetReadFailCountdown(failingRead);
+        AssertParseFailedWithNoOutput(NativeTestHooks.ParseImage(image));
     }
 
     [TestMethod]
@@ -115,7 +82,8 @@ public partial class NativeMftProcessingTests
     [DataRow(MftRunOffset + (3 * BatchBytes) + 512, DisplayName = "last batch holds half a record")]
     public void ParseMFTRecords_ImageEndsInsideTheMft_FailsAndDiscardsOutput(int length)
     {
-        AssertParseFailedWithNoOutput(ParseImage(BuildMultiBatchImage(), length));
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        AssertParseFailedWithNoOutput(NativeTestHooks.ParseImage(BuildMultiBatchImage()[..length]));
     }
 
     [TestMethod]
@@ -123,7 +91,8 @@ public partial class NativeMftProcessingTests
     [DataRow(AttributeListOffset + 512, DisplayName = "end of file inside the run")]
     public void ParseMFTRecords_NonResidentAttributeListRunEndsEarly_FailsTheParse(int length)
     {
-        var outcome = ParseImage(BuildNonResidentAttributeListImage(), length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(BuildNonResidentAttributeListImage()[..length]);
         AssertParseFailedWithNoOutput(outcome);
         Assert.AreEqual("The volume could not be read completely.", outcome.ErrorMessage);
     }
@@ -139,7 +108,8 @@ public partial class NativeMftProcessingTests
         WriteEndMarker(image, list + WriteResidentAttributeList(image, list, 1));
         WriteFileRecord(image, 5120, 2);
         WriteEndMarker(image, 5120 + 0x38);
-        var outcome = ParseImage(image, length);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var outcome = NativeTestHooks.ParseImage(image[..length]);
         AssertParseFailedWithNoOutput(outcome);
         Assert.AreEqual("The volume could not be read completely.", outcome.ErrorMessage);
         Assert.AreEqual(0UL, outcome.TotalRecords, "reject the extension before starting the batch scan");
