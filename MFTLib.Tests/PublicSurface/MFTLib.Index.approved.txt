@@ -151,19 +151,6 @@ MFTLib.Index.DriveState :: field public const Failed : MFTLib.Index.DriveState =
 MFTLib.Index.DriveState :: field public const Offline : MFTLib.Index.DriveState = 1
 MFTLib.Index.DriveState :: field public const Ready : MFTLib.Index.DriveState = 0
 MFTLib.Index.DriveState :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.DriveStatus :: method public <Clone>$() : MFTLib.Index.DriveStatus
-MFTLib.Index.DriveStatus :: method public Equals(MFTLib.Index.DriveStatus? other) : bool
-MFTLib.Index.DriveStatus :: method public override Equals(object? obj) : bool
-MFTLib.Index.DriveStatus :: method public override GetHashCode() : int
-MFTLib.Index.DriveStatus :: method public override ToString() : string
-MFTLib.Index.DriveStatus :: method public static op_Equality(MFTLib.Index.DriveStatus? left, MFTLib.Index.DriveStatus? right) : bool
-MFTLib.Index.DriveStatus :: method public static op_Inequality(MFTLib.Index.DriveStatus? left, MFTLib.Index.DriveStatus? right) : bool
-MFTLib.Index.DriveStatus :: property public Block { get; init; } : MFTLib.Index.DriveBlockStatus?
-MFTLib.Index.DriveStatus :: property public Drive { get; init; } : MFTLib.Index.RootKey
-MFTLib.Index.DriveStatus :: property public Failure { get; init; } : MFTLib.Index.DriveFailure?
-MFTLib.Index.DriveStatus :: property public State { get; init; } : MFTLib.Index.DriveState
-MFTLib.Index.DriveStatus :: property public Watch { get; init; } : MFTLib.Index.DriveWatchStatus
-MFTLib.Index.DriveStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveStatus>
 MFTLib.Index.DriveWatchStatus :: method public <Clone>$() : MFTLib.Index.DriveWatchStatus
 MFTLib.Index.DriveWatchStatus :: method public Equals(MFTLib.Index.DriveWatchStatus? other) : bool
 MFTLib.Index.DriveWatchStatus :: method public override Equals(object? obj) : bool
@@ -228,14 +215,14 @@ MFTLib.Index.FileIndex :: method public Enumerate(MFTLib.Index.SearchQuery query
 MFTLib.Index.FileIndex :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable
 MFTLib.Index.FileIndex :: method public Find(string path, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
 MFTLib.Index.FileIndex :: method public QueryUsnJournalSettings(MFTLib.Index.VolumeKey drive) : MFTLib.UsnJournalSettings
-MFTLib.Index.FileIndex :: method public RescanAsync(System.Collections.Generic.IEnumerable<MFTLib.Index.RootKey> drives, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
-MFTLib.Index.FileIndex :: method public Root(MFTLib.Index.RootKey drive, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry
+MFTLib.Index.FileIndex :: method public RescanAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.DriveOperationResult>
+MFTLib.Index.FileIndex :: method public Root(System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry
 MFTLib.Index.FileIndex :: method public Search(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
-MFTLib.Index.FileIndex :: method public StartWatchingAsync(System.Collections.Generic.IEnumerable<MFTLib.Index.RootKey> drives, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
-MFTLib.Index.FileIndex :: method public StopWatchingAsync(System.Collections.Generic.IEnumerable<MFTLib.Index.RootKey> drives, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
-MFTLib.Index.FileIndex :: method public WaitForCatchUpAsync(System.Collections.Generic.IEnumerable<MFTLib.Index.RootKey> drives, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
+MFTLib.Index.FileIndex :: method public StartWatchingAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.DriveOperationResult>
+MFTLib.Index.FileIndex :: method public StopWatchingAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.DriveOperationResult>
+MFTLib.Index.FileIndex :: method public WaitForCatchUpAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.DriveOperationResult>
 MFTLib.Index.FileIndex :: method public static OpenAsync(MFTLib.Index.FileIndexOptions options, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.FileIndex>
-MFTLib.Index.FileIndex :: property public Drives { get; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveStatus>
+MFTLib.Index.FileIndex :: property public Status { get; } : MFTLib.Index.RootStatus
 MFTLib.Index.FileIndex :: type public sealed class : System.IAsyncDisposable
 MFTLib.Index.FileIndexOptions :: constructor public ()
 MFTLib.Index.FileIndexOptions :: method public <Clone>$() : MFTLib.Index.FileIndexOptions
@@ -250,23 +237,18 @@ MFTLib.Index.FileIndexOptions :: property public CacheMode { get; init; } : MFTL
 MFTLib.Index.FileIndexOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
 MFTLib.Index.FileIndexOptions :: property public Diagnostics { get; init; } : System.Action<string>?
 MFTLib.Index.FileIndexOptions :: property public DirectoryWalk { get; init; } : MFTLib.Index.DirectoryWalkOptions
-MFTLib.Index.FileIndexOptions :: property public DriveOpenProgress { get; init; } : System.IProgress<MFTLib.Index.IndexDriveOpened>?
-MFTLib.Index.FileIndexOptions :: property public Drives { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.IndexedDrive>
 MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?
 MFTLib.Index.FileIndexOptions :: property public RetainedFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
+MFTLib.Index.FileIndexOptions :: property public Root { get; init; } : MFTLib.Index.IndexedRoot?
 MFTLib.Index.FileIndexOptions :: property public ScanProgress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>
-MFTLib.Index.IndexDriveOpened :: method public <Clone>$() : MFTLib.Index.IndexDriveOpened
-MFTLib.Index.IndexDriveOpened :: method public Equals(MFTLib.Index.IndexDriveOpened? other) : bool
-MFTLib.Index.IndexDriveOpened :: method public override Equals(object? obj) : bool
-MFTLib.Index.IndexDriveOpened :: method public override GetHashCode() : int
-MFTLib.Index.IndexDriveOpened :: method public override ToString() : string
-MFTLib.Index.IndexDriveOpened :: method public static op_Equality(MFTLib.Index.IndexDriveOpened? left, MFTLib.Index.IndexDriveOpened? right) : bool
-MFTLib.Index.IndexDriveOpened :: method public static op_Inequality(MFTLib.Index.IndexDriveOpened? left, MFTLib.Index.IndexDriveOpened? right) : bool
-MFTLib.Index.IndexDriveOpened :: property public Drive { get; init; } : MFTLib.Index.RootKey
-MFTLib.Index.IndexDriveOpened :: property public SettledDriveCount { get; init; } : int
-MFTLib.Index.IndexDriveOpened :: property public TotalDriveCount { get; init; } : int
-MFTLib.Index.IndexDriveOpened :: type public sealed class : System.IEquatable<MFTLib.Index.IndexDriveOpened>
+MFTLib.Index.FileIndexSet :: constructor public (System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileIndex> indices)
+MFTLib.Index.FileIndexSet :: method public Enumerate(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IEnumerable<MFTLib.Index.FileEntry>
+MFTLib.Index.FileIndexSet :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable
+MFTLib.Index.FileIndexSet :: method public Find(string path, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
+MFTLib.Index.FileIndexSet :: method public Search(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
+MFTLib.Index.FileIndexSet :: property public Indices { get; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileIndex>
+MFTLib.Index.FileIndexSet :: type public sealed class
 MFTLib.Index.IndexRecordKey :: constructor public (MFTLib.Index.RootKey Drive, ulong RecordNumber, MFTLib.Index.ProducerKind ProducerKind)
 MFTLib.Index.IndexRecordKey :: method public Deconstruct(out MFTLib.Index.RootKey Drive, out ulong RecordNumber, out MFTLib.Index.ProducerKind ProducerKind) : void
 MFTLib.Index.IndexRecordKey :: method public Equals(MFTLib.Index.IndexRecordKey other) : bool
@@ -319,21 +301,21 @@ MFTLib.Index.IndexScanProgress :: property public Outcome { get; init; } : MFTLi
 MFTLib.Index.IndexScanProgress :: property public Phase { get; init; } : MFTLib.Index.IndexScanPhase
 MFTLib.Index.IndexScanProgress :: property public WrittenRowCount { get; init; } : uint
 MFTLib.Index.IndexScanProgress :: type public sealed class : System.IEquatable<MFTLib.Index.IndexScanProgress>
-MFTLib.Index.IndexedDrive :: method public <Clone>$() : MFTLib.Index.IndexedDrive
-MFTLib.Index.IndexedDrive :: method public Equals(MFTLib.Index.IndexedDrive? other) : bool
-MFTLib.Index.IndexedDrive :: method public override Equals(object? obj) : bool
-MFTLib.Index.IndexedDrive :: method public override GetHashCode() : int
-MFTLib.Index.IndexedDrive :: method public override ToString() : string
-MFTLib.Index.IndexedDrive :: method public static EnumerateWindowsVolumes() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>
-MFTLib.Index.IndexedDrive :: method public static FromDirectory(string rootDirectory) : MFTLib.Index.IndexedDrive
-MFTLib.Index.IndexedDrive :: method public static FromWindowsDrive(MFTLib.Index.VolumeKey drive) : MFTLib.Index.IndexedDrive
-MFTLib.Index.IndexedDrive :: method public static op_Equality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
-MFTLib.Index.IndexedDrive :: method public static op_Inequality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
-MFTLib.Index.IndexedDrive :: property public Drive { get; init; } : MFTLib.Index.RootKey
-MFTLib.Index.IndexedDrive :: property public Producer { get; init; } : MFTLib.Index.ProducerKind
-MFTLib.Index.IndexedDrive :: property public RootDirectory { get; init; } : string
-MFTLib.Index.IndexedDrive :: property public VolumeSerial { get; init; } : uint
-MFTLib.Index.IndexedDrive :: type public sealed class : System.IEquatable<MFTLib.Index.IndexedDrive>
+MFTLib.Index.IndexedRoot :: method public <Clone>$() : MFTLib.Index.IndexedRoot
+MFTLib.Index.IndexedRoot :: method public Equals(MFTLib.Index.IndexedRoot? other) : bool
+MFTLib.Index.IndexedRoot :: method public override Equals(object? obj) : bool
+MFTLib.Index.IndexedRoot :: method public override GetHashCode() : int
+MFTLib.Index.IndexedRoot :: method public override ToString() : string
+MFTLib.Index.IndexedRoot :: method public static EnumerateWindowsVolumes() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>
+MFTLib.Index.IndexedRoot :: method public static FromDirectory(string rootDirectory) : MFTLib.Index.IndexedRoot
+MFTLib.Index.IndexedRoot :: method public static FromWindowsDrive(MFTLib.Index.VolumeKey drive) : MFTLib.Index.IndexedRoot
+MFTLib.Index.IndexedRoot :: method public static op_Equality(MFTLib.Index.IndexedRoot? left, MFTLib.Index.IndexedRoot? right) : bool
+MFTLib.Index.IndexedRoot :: method public static op_Inequality(MFTLib.Index.IndexedRoot? left, MFTLib.Index.IndexedRoot? right) : bool
+MFTLib.Index.IndexedRoot :: property public Drive { get; init; } : MFTLib.Index.RootKey
+MFTLib.Index.IndexedRoot :: property public Producer { get; init; } : MFTLib.Index.ProducerKind
+MFTLib.Index.IndexedRoot :: property public RootDirectory { get; init; } : string
+MFTLib.Index.IndexedRoot :: property public VolumeSerial { get; init; } : uint
+MFTLib.Index.IndexedRoot :: type public sealed class : System.IEquatable<MFTLib.Index.IndexedRoot>
 MFTLib.Index.JournalCatchUpLostException :: property public IsRecoveryStopped { get; } : bool
 MFTLib.Index.JournalCatchUpLostException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
 MFTLib.Index.JournalCheckpointLoss :: method public <Clone>$() : MFTLib.Index.JournalCheckpointLoss
@@ -387,6 +369,19 @@ MFTLib.Index.RootKey :: method public static op_Implicit(MFTLib.Index.VolumeKey 
 MFTLib.Index.RootKey :: method public static op_Inequality(MFTLib.Index.RootKey left, MFTLib.Index.RootKey right) : bool
 MFTLib.Index.RootKey :: property public IsVolume { get; } : bool
 MFTLib.Index.RootKey :: type public readonly struct : System.IComparable<MFTLib.Index.RootKey>, System.IEquatable<MFTLib.Index.RootKey>
+MFTLib.Index.RootStatus :: method public <Clone>$() : MFTLib.Index.RootStatus
+MFTLib.Index.RootStatus :: method public Equals(MFTLib.Index.RootStatus? other) : bool
+MFTLib.Index.RootStatus :: method public override Equals(object? obj) : bool
+MFTLib.Index.RootStatus :: method public override GetHashCode() : int
+MFTLib.Index.RootStatus :: method public override ToString() : string
+MFTLib.Index.RootStatus :: method public static op_Equality(MFTLib.Index.RootStatus? left, MFTLib.Index.RootStatus? right) : bool
+MFTLib.Index.RootStatus :: method public static op_Inequality(MFTLib.Index.RootStatus? left, MFTLib.Index.RootStatus? right) : bool
+MFTLib.Index.RootStatus :: property public Block { get; init; } : MFTLib.Index.DriveBlockStatus?
+MFTLib.Index.RootStatus :: property public Drive { get; init; } : MFTLib.Index.RootKey
+MFTLib.Index.RootStatus :: property public Failure { get; init; } : MFTLib.Index.DriveFailure?
+MFTLib.Index.RootStatus :: property public State { get; init; } : MFTLib.Index.DriveState
+MFTLib.Index.RootStatus :: property public Watch { get; init; } : MFTLib.Index.DriveWatchStatus
+MFTLib.Index.RootStatus :: type public sealed class : System.IEquatable<MFTLib.Index.RootStatus>
 MFTLib.Index.SearchQuery :: constructor public (string? NamePattern, MFTLib.Index.NameMatchMode MatchMode = 1, bool CaseSensitive = false, MFTLib.Index.FileEntry? Subtree = default, bool? IsDirectory = default, long? SizeMinimum = default, long? SizeMaximum = default, System.DateTime? LastWriteTimeMinimum = default, System.DateTime? LastWriteTimeMaximum = default, bool IncludeDeleted = false)
 MFTLib.Index.SearchQuery :: method public <Clone>$() : MFTLib.Index.SearchQuery
 MFTLib.Index.SearchQuery :: method public Deconstruct(out string? NamePattern, out MFTLib.Index.NameMatchMode MatchMode, out bool CaseSensitive, out MFTLib.Index.FileEntry? Subtree, out bool? IsDirectory, out long? SizeMinimum, out long? SizeMaximum, out System.DateTime? LastWriteTimeMinimum, out System.DateTime? LastWriteTimeMaximum, out bool IncludeDeleted) : void

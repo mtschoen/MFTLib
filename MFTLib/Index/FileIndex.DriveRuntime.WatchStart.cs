@@ -7,7 +7,7 @@ public sealed partial class FileIndex
         /// <summary>Starts this drive for an admitted consumer request; readiness is handle publication.</summary>
         public Task StartDriveWatchingAsync(CancellationToken cancellationToken)
         {
-            if (Index.RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
+            if (FileIndex.RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
             {
                 return rejected;
             }

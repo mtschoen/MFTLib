@@ -98,7 +98,7 @@ public sealed partial class FileIndex
                     {
                         try
                         {
-                            Index.Deliver((Action<WatchStateChange>)handler, change);
+                            FileIndex.Deliver((Action<WatchStateChange>)handler, change);
                         }
                         catch (Exception exception)
                         {
@@ -126,7 +126,7 @@ public sealed partial class FileIndex
                 {
                     lock (FaultDeliveryLock)
                     {
-                        Index.DeliverToEach(subscribers, fault);
+                        FileIndex.DeliverToEach(subscribers, fault);
                     }
                 }
             }
@@ -155,7 +155,7 @@ public sealed partial class FileIndex
                 {
                     try
                     {
-                        Index.Deliver((Action<FileChange>)handler, change);
+                        FileIndex.Deliver((Action<FileChange>)handler, change);
                     }
                     catch (Exception exception)
                     {

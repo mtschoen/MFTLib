@@ -1,37 +1,32 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     A reader's claim on a snapshot of mapped drive blocks, held for the whole of a query. While
+///     A reader's claim on a mapped drive block, held for the whole of a query. While
 ///     one is outstanding, every deterministic release path waits rather than unmapping, so a scan
-///     that is partway through a block never reads freed memory. Holding the blocks themselves is
-///     also what keeps them reachable, which is why the finalizer path needs no borrow check of its
+///     that is partway through a block never reads freed memory. Holding the block itself is
+///     also what keeps it reachable, which is why the finalizer path needs no borrow check of its
 ///     own: a borrowed block cannot be collected.
 /// </summary>
 sealed class SnapshotBorrow : IDisposable
 {
     int _acquired;
 
-    internal SnapshotBorrow(IReadOnlyList<DriveBlock> driveBlocks)
+    internal SnapshotBorrow(DriveBlock? driveBlock)
     {
-        DriveBlocks = driveBlocks;
-        for (var taken = 0; taken < driveBlocks.Count; taken++)
+        if (driveBlock is not null && !driveBlock.ReleaseState.TryTakeBorrow())
         {
-            if (driveBlocks[taken].ReleaseState.TryTakeBorrow())
-            {
-                continue;
-            }
-
-            ReturnBorrows(taken);
             throw new ObjectDisposedException(nameof(DriveBlock),
                 "This drive block has been released and can no longer be read.");
         }
+
+        DriveBlock = driveBlock;
 
         // Failed construction is finalizable too; only an admitted reader owns a count.
         _acquired = 1;
     }
 
-    /// <summary>The blocks this borrow keeps mapped, for the query that took it to read through.</summary>
-    internal IReadOnlyList<DriveBlock> DriveBlocks { get; }
+    /// <summary>The block this borrow keeps mapped, for the query that took it to read through, or null when the query reads no block.</summary>
+    internal DriveBlock? DriveBlock { get; }
 
     /// <summary>Shared by value-type scope copies; independent of a block's release starting.</summary>
     internal bool IsReturned => _acquired == 0;
@@ -45,16 +40,8 @@ sealed class SnapshotBorrow : IDisposable
     {
         if (Interlocked.Exchange(ref _acquired, 0) != 0)
         {
-            ReturnBorrows(DriveBlocks.Count);
+            DriveBlock?.ReleaseState.ReturnBorrow();
             GC.SuppressFinalize(this);
-        }
-    }
-
-    void ReturnBorrows(int count)
-    {
-        for (var index = 0; index < count; index++)
-        {
-            DriveBlocks[index].ReleaseState.ReturnBorrow();
         }
     }
 

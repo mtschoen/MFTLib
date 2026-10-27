@@ -11,12 +11,11 @@ namespace MFTLib.Index;
 /// </summary>
 sealed class DriveBlock
 {
-    public DriveBlock(RootKey drive, ushort driveOrdinal, BlockFile block,
+    public DriveBlock(RootKey drive, BlockFile block,
         string? rootDirectoryPath = null, MftIndexSource? mftSource = null)
     {
         ArgumentNullException.ThrowIfNull(block);
         Drive = drive.Validated();
-        DriveOrdinal = driveOrdinal;
         Block = block;
         ReleaseState = new DriveBlockRelease(block);
         ProducerKind = block.Header.ProducerKind;
@@ -54,8 +53,6 @@ sealed class DriveBlock
     }
 
     public RootKey Drive { get; }
-
-    public ushort DriveOrdinal { get; }
 
     public BlockFile Block { get; }
 

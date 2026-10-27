@@ -20,16 +20,16 @@ public class FileIndexWatchCatchUpLinkedWaitTests
     public async Task WaitForCatchUpAsync_WithoutACallerToken_CompletesWithTheCatchUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
 
-        var wait = harness.Index.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None);
+        var wait = harness.IndexFor('T').WaitForCatchUpAsync(CancellationToken.None);
         Assert.IsFalse(wait.IsCompleted);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await wait.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -38,9 +38,9 @@ public class FileIndexWatchCatchUpLinkedWaitTests
         var harness = new WatchHarness();
         try
         {
-            await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+            await harness.IndexFor('T').StartWatchingAsync(Token);
 
-            var wait = harness.Index.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None);
+            var wait = harness.IndexFor('T').WaitForCatchUpAsync(CancellationToken.None);
             Assert.IsFalse(wait.IsCompleted);
 
             await harness.Index.DisposeAsync();

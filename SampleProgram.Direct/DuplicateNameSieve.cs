@@ -126,14 +126,5 @@ static class DuplicateNameSieve
         return true;
     }
 
-    static long LiveRowCount(FileIndex index)
-    {
-        long total = 0;
-        foreach (var drive in index.Drives)
-        {
-            total += drive.Block?.LiveRowCount ?? 0;
-        }
-
-        return total;
-    }
+    static long LiveRowCount(FileIndex index) => index.Status.Block?.LiveRowCount ?? 0;
 }

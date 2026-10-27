@@ -349,7 +349,7 @@ public sealed class WatchFirstRunTests : IDisposable
     }
 
     // Every drive roots at the fixture directory except Q, whose root is missing, so it is offline.
-    IndexedDrive FixtureDrive(string letter) =>
+    IndexedRoot FixtureDrive(string letter) =>
         new(new VolumeKey(letter[0]), letter == "Q" ? Path.Combine(TemporaryDirectoryPath, "missing-root") : TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(List<string> lines, TextReader? input = null, TimeProvider? timeProvider = null, bool? interactive = null) =>

@@ -28,15 +28,15 @@ public class FileIndexWatchRescanFaultDuringProductionTests
     {
         using var journal = LostCheckpointForT();
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('U')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        await harness.IndexFor('U').StartWatchingAsync(Token);
         var production = harness.HoldNextProduction('T');
         if (scanFails)
         {
             harness.FailNextProduction('T', new IOException("rescan producer failed"));
         }
 
-        var rescan = harness.Index.RescanAsync([new VolumeKey('T')], Token);
+        var rescan = harness.IndexFor('T').RescanAsync(Token);
         await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var handle = harness.Source.WatchFor('T');
         Assert.AreEqual(0, handle.DisposeCount);
@@ -69,8 +69,8 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
-        await harness.Index.StopWatchingAsync([new VolumeKey('U')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
+        await harness.IndexFor('U').StopWatchingAsync(Token);
     }
 
     /// <summary>

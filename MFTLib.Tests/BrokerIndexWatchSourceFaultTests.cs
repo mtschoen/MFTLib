@@ -85,17 +85,19 @@ public class BrokerIndexWatchSourceFaultTests
         var token = broker.CancellationToken;
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
-        var index = harness.Index;
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('U')], token);
+        var indexT = harness.IndexFor('T');
+        var indexU = harness.IndexFor('U');
+        await indexT.StartWatchingAsync(token);
+        await indexU.StartWatchingAsync(token);
         var runT = await broker.Watch('T').RunAsync(1);
         var runU = await broker.Watch('U').RunAsync(1);
-        await index.WaitForCatchUpAsync([new VolumeKey('U')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await Task.WhenAll(indexT.WaitForCatchUpAsync(token), indexU.WaitForCatchUpAsync(token))
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The host closes T's pipe: its watch ends without a word.
         runT.End();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-        var appliedOnU = ChangeSignal.WhenApplied(index, "u.txt");
+        var appliedOnU = ChangeSignal.WhenApplied(indexU, "u.txt");
         runU.Push(10, "u.txt", 300);
         await appliedOnU;
 
@@ -116,9 +118,10 @@ public class BrokerIndexWatchSourceFaultTests
         var token = broker.CancellationToken;
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
-        var index = harness.Index;
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('U')], token);
+        var indexT = harness.IndexFor('T');
+        var indexU = harness.IndexFor('U');
+        await indexT.StartWatchingAsync(token);
+        await indexU.StartWatchingAsync(token);
         var runU = await broker.Watch('U').RunAsync(1);
 
         (await broker.Watch('T').RunAsync(1)).Fail(new IOException("journal wrapped"));
@@ -127,7 +130,7 @@ public class BrokerIndexWatchSourceFaultTests
         Assert.IsInstanceOfType<DriveWatchFaultException>(fault.Exception);
         Assert.AreEqual('T', fault.Drive);
         Assert.AreEqual("journal wrapped", fault.Exception.Message);
-        var appliedOnU = ChangeSignal.WhenApplied(index, "u.txt");
+        var appliedOnU = ChangeSignal.WhenApplied(indexU, "u.txt");
         runU.Push(10, "u.txt", 300);
         await appliedOnU;
         Assert.IsTrue(harness.Faults.All(raised => raised.Drive == 'T'), "only T raised a fault");

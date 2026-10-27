@@ -239,7 +239,7 @@ public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
         ], Cursor);
         Assert.IsFalse(Named(index, "report.txt").IsLastWriteTimeKnown);
 
-        await index.RescanAsync([new VolumeKey('T')], Token);
+        await index.RescanAsync(Token);
 
         var rescanned = Named(index, "report.txt");
         Assert.IsTrue(rescanned.IsLastWriteTimeKnown);

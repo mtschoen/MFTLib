@@ -188,15 +188,15 @@ public partial class BenchmarkRunner
                 CacheDirectory = directory,
                 CacheMode = CacheMode.ExistingOnly,
                 CacheTag = cacheTag,
-                Drives = [new IndexedDrive(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
-                    producer)]
+                Root = new IndexedRoot(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
+                    producer)
             }, CancellationToken.None))
             {
                 using var borrow = index.BorrowCurrentSnapshot();
-                var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, candidate.File.Drive);
+                var drive = borrow.DriveBlock;
                 if (drive is null)
                 {
-                    log($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");
+                    log($"Error: Drive {candidate.File.Drive}: {index.Status.State}.");
                     exitCode = 1;
                     continue;
                 }

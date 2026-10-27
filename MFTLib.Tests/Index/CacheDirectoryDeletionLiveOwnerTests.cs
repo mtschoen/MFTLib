@@ -76,7 +76,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(unownedSecond)),
             "a lock file created while deleting an unowned block must be preserved");
 
-        Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, owner.Status.State);
         Assert.IsNotNull(owner.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken),
             "the live index keeps working after unrelated blocks are cleared out from under it");
     }
@@ -93,7 +93,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
 
         // Parks mid-rescan: the canonical file has already been renamed aside and the
         // replacement is being written back to the canonical path while the owner lock is held.
-        var rescan = owner.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+        var rescan = owner.RescanAsync(CancellationToken.None);
         await progress.Reported;
 
         try
@@ -112,7 +112,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
             await rescan;
         }
 
-        Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, owner.Status.State);
         var canonicalBytesAfterRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
         Assert.AreNotSequenceEqual(canonicalBytesBeforeRescan, canonicalBytesAfterRescan,
             "the rescan completed normally once the clear backed off from the held lock");
@@ -158,7 +158,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
 
         await using (var cacheOnlyOpen = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))
         {
-            var status = cacheOnlyOpen.Drives.Single();
+            var status = cacheOnlyOpen.Status;
             Assert.AreEqual(DriveState.Failed, status.State);
             Assert.AreEqual(DriveFailureKind.InUse, status.Failure?.Kind);
             Assert.IsTrue(File.Exists(CanonicalPath),
@@ -169,11 +169,10 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         string privateBlockPath;
         await using (var fallbackOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            var status = fallbackOpen.Drives.Single();
+            var status = fallbackOpen.Status;
             Assert.AreEqual(DriveState.Ready, status.State);
             Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
-            Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal(new VolumeKey('T'), out var ordinal));
-            privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
+            privateBlockPath = fallbackOpen.CurrentBlock!.Block.Path;
             Assert.Contains("mftlib-private-", privateBlockPath);
             Assert.AreNotEqual(CanonicalPath, privateBlockPath);
             Assert.IsNotNull(fallbackOpen.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
@@ -191,11 +190,10 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(CanonicalPath)), "the lock file itself is never deleted");
 
         await using var freshOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var freshStatus = freshOpen.Drives.Single();
+        var freshStatus = freshOpen.Status;
         Assert.AreEqual(DriveState.Ready, freshStatus.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, freshStatus.Block!.Origin);
-        Assert.IsTrue(freshOpen.TryGetDriveOrdinal(new VolumeKey('T'), out var freshOrdinal));
-        Assert.AreEqual(CanonicalPath, freshOpen.CurrentSnapshot[freshOrdinal].Block.Path,
+        Assert.AreEqual(CanonicalPath, freshOpen.CurrentBlock!.Block.Path,
             "once the clear has released the lock, a fresh open takes the slot normally");
     }
 

@@ -5,28 +5,29 @@ public sealed partial class FileIndex
     sealed partial class DriveRuntime
     {
         /// <summary>
-        ///     Settles one drive while opening: warm-starts it from its cached block or scans it into a
+        ///     Settles the root while opening: warm-starts it from its cached block or scans it into a
         ///     <see cref="PendingDriveResult" /> that nothing shared has seen yet, then adopts that result
-        ///     under <see cref="_stateLock" />, which is where the drive's ordinal is assigned. A drive
-        ///     that ends with no block is recorded by letter as blockless instead.
+        ///     under <see cref="_stateLock" />. A root that ends with no block is recorded as blockless instead.
         /// </summary>
-        public async Task<int> AddDriveAsync(OpenSettlement settlement, CancellationToken cancellationToken)
+        public async Task AddDriveAsync(CancellationToken cancellationToken)
         {
             var driveKey = Drive;
             if (DriveKind.For(Configuration.Producer, Options.MftSource).RequiresExistingRoot &&
                 !Directory.Exists(Configuration.RootDirectory))
             {
-                return RecordOfflineDrive(settlement);
+                RecordOfflineDrive();
+                return;
             }
 
             var slotOutcome = ResolveCanonicalOwnership();
             if (slotOutcome == CanonicalSlotOutcome.DeclinedInUse)
             {
-                return RecordFailedDrive(DriveFailureKind.InUse, new PendingDriveResult
+                RecordFailedDrive(DriveFailureKind.InUse, new PendingDriveResult
                 {
                     ProducerFailureMessage =
                         $"Drive {driveKey}: cache block is in use by another FileIndex and CacheMode.ExistingOnly forbids a scan."
-                }, settlement);
+                });
+                return;
             }
 
             var ownsCanonicalSlot = slotOutcome == CanonicalSlotOutcome.Owned;
@@ -42,13 +43,13 @@ public sealed partial class FileIndex
 
             if (warmStart.Block is { } warmStartedBlock)
             {
-                var (_, _, settledCount) = AdoptOpenedDrive(warmStartedBlock, opened with
+                _ = AdoptOpenedDrive(warmStartedBlock, opened with
                 {
                     Block = warmStartedBlock,
                     Origin = BlockOrigin.WarmStartedFromCache,
                     CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
-                }, settlement);
-                return settledCount ?? throw new InvalidOperationException($"Drive {driveKey} settled without its count.");
+                });
+                return;
             }
 
             if (Options.CacheMode == CacheMode.ExistingOnly)
@@ -57,94 +58,79 @@ public sealed partial class FileIndex
                     or BlockValidationResult.WrongScanShape
                     ? DriveFailureKind.CacheIdentityMismatch
                     : DriveFailureKind.CacheDeclined;
-                return RecordFailedDrive(failureKind, opened with
+                RecordFailedDrive(failureKind, opened with
                 {
                     ProducerFailureMessage =
                         $"Drive {driveKey}: no usable cache (missing, corrupt, or incompatible) and CacheMode.ExistingOnly forbids a scan."
-                }, settlement);
+                });
+                return;
             }
 
-            return await ScanOpenedDriveAsync(ownsCanonicalSlot, opened, settlement, cancellationToken).ConfigureAwait(false);
+            await ScanOpenedDriveAsync(ownsCanonicalSlot, opened, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        ///     Adopts an opened drive's settled result: assigns its ordinal (the one of
-        ///     <paramref name="replacing" />, an unpublished block an earlier attempt of the same settle
-        ///     adopted, when there is one), builds its <see cref="DriveBlock" /> over
-        ///     <paramref name="block" />, and records the result on the drive's runtime in
-        ///     one step under <see cref="_stateLock" />; the adoption that ends the drive's settle, one
-        ///     that held its catch-up or reached the limit, also claims the drive's settle count. The
-        ///     snapshot is published once every drive has settled. Returns the adopted block and the drive's count of lost catch-ups in a row.
+        ///     Adopts an opened root's settled result: builds its <see cref="DriveBlock" /> over
+        ///     <paramref name="block" /> and records the result on the runtime in one step under
+        ///     <see cref="_stateLock" />. Returns the adopted block and the count of lost catch-ups in a row.
         /// </summary>
-        (DriveBlock Adopted, int ConsecutiveLostCatchUps, int? SettledCount) AdoptOpenedDrive(
-            BlockFile block, PendingDriveResult settled, OpenSettlement settlement, DriveBlock? replacing = null)
+        (DriveBlock Adopted, int ConsecutiveLostCatchUps) AdoptOpenedDrive(
+            BlockFile block, PendingDriveResult settled, DriveBlock? replacing = null)
         {
             lock (StateLock)
             {
-                var driveOrdinal = replacing?.DriveOrdinal ?? Index.AllocateDriveOrdinalLocked();
                 if (replacing is not null)
                 {
                     new BlockWriter(block).AdvanceGenerationPast(replacing.Block.Generation);
                 }
 
-                var adopted = BuildDriveBlock(driveOrdinal, block);
+                var adopted = BuildDriveBlock(block);
                 Block = adopted;
 
                 RecordPendingResultLocked(settled, clearsCheckpointLoss: false);
-                int? settledCount = settled.CatchUpLoss is null ||
-                    _consecutiveLostCatchUps >= LostCatchUpRecoveryLimit
-                    ? settlement.ClaimLocked()
-                    : null;
-
-                return (adopted, _consecutiveLostCatchUps, settledCount);
+                return (adopted, _consecutiveLostCatchUps);
             }
         }
 
-        int RecordOfflineDrive(OpenSettlement settlement)
+        void RecordOfflineDrive()
         {
             lock (StateLock)
             {
-                var settledCount = settlement.ClaimLocked();
                 BlocklessState = DriveState.Offline;
                 Block = null;
                 _lastResult = null;
                 _failure = null;
-                return settledCount;
             }
         }
 
         /// <summary>
-        ///     Records a drive that opening left with no block, from its settled result and keyed by
-        ///     drive, since a drive that never adds a block never takes an ordinal.
+        ///     Records a root that opening left with no block.
         /// </summary>
-        int RecordFailedDrive(DriveFailureKind failureKind, PendingDriveResult settled,
-            OpenSettlement settlement)
+        void RecordFailedDrive(DriveFailureKind failureKind, PendingDriveResult settled)
         {
             lock (StateLock)
             {
-                var settledCount = settlement.ClaimLocked();
                 BlocklessState = DriveState.Failed;
                 _lastResult = settled;
                 _failure = new DriveFailure(failureKind, settled.RequireFailureMessage(Drive));
                 _checkpointLoss = settled.CheckpointLoss;
                 ReleaseCanonicalOwnershipLocked();
-                return settledCount;
             }
         }
 
-        int RecordOpenProducerFailure(PendingDriveResult failed, bool lostBlockInPlace,
-            OpenSettlement settlement)
+        void RecordOpenProducerFailure(PendingDriveResult failed, bool lostBlockInPlace)
         {
             if (lostBlockInPlace)
             {
                 lock (StateLock)
                 {
                     RecordRescanProducerFailure(failed);
-                    return settlement.ClaimLocked();
                 }
+
+                return;
             }
 
-            return RecordFailedDrive(failed.ScanFailureKind, failed, settlement);
+            RecordFailedDrive(failed.ScanFailureKind, failed);
         }
     }
 }

@@ -11,7 +11,7 @@ partial class SampleHost
             yield break;
         }
 
-        foreach (var drive in IndexedDrive.EnumerateWindowsVolumes())
+        foreach (var drive in IndexedRoot.EnumerateWindowsVolumes())
         {
             yield return drive;
         }

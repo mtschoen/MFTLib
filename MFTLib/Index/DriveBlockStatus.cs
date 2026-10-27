@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The block behind one drive's <see cref="DriveStatus" />, captured with that status. Present
+///     The block behind one drive's <see cref="RootStatus" />, captured with that status. Present
 ///     only on a <see cref="DriveState.Ready" /> drive.
 /// </summary>
 public sealed record DriveBlockStatus
@@ -18,7 +18,7 @@ public sealed record DriveBlockStatus
 
     /// <summary>
     ///     The current block's cache location, captured with this status. Read
-    ///     <see cref="FileIndex.Drives" /> again after a rescan for an updated value.
+    ///     <see cref="FileIndex.Status" /> again after a rescan for an updated value.
     ///     Null when the block is not backed by a cache location, as under <see cref="CacheMode.Disabled" />.
     ///     This does not identify another owner or promise that a private block's location
     ///     is still held elsewhere. <see cref="Origin" /> independently describes

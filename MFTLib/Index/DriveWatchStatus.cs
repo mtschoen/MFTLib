@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One drive's live-watch state within its <see cref="DriveStatus" />, captured with that
+///     One drive's live-watch state within its <see cref="RootStatus" />, captured with that
 ///     status. Recovery exhaustion and checkpoint-loss reports can remain when no watch is running.
 /// </summary>
 public sealed record DriveWatchStatus
@@ -45,7 +45,7 @@ public sealed record DriveWatchStatus
     ///     limit opens in <see cref="WatchState.Faulted" /> with version 1), and one more
     ///     with every change, each of which <see cref="FileIndex.WatchStateChanged" /> delivers in a
     ///     <see cref="WatchStateChange.Watch" /> carrying this same number. The
-    ///     <see cref="DriveStatus.Watch" /> of one <see cref="FileIndex.Drives" /> snapshot seeds a
+    ///     <see cref="RootStatus.Watch" /> of one <see cref="FileIndex.Status" /> snapshot seeds a
     ///     subscriber that joins late: an event whose <see cref="WatchStateChange.Watch" /> has a
     ///     version not larger than the one already applied for the drive is older news and is
     ///     dropped. Versions of different drives are independent.

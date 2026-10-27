@@ -6,9 +6,9 @@ using MFTLibTestExtensions;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-///     Stands one <see cref="FileIndex" /> up over synthetic MFT-shaped blocks, one per drive
-///     letter (<c>T</c>, <c>U</c> and <c>V</c> unless told otherwise), with a scripted producer
-///     and a <see cref="ScriptedWatchSource" />, and tears it down again. It collects every
+///     Stands one <see cref="FileIndex" /> per drive letter (<c>T</c>, <c>U</c> and <c>V</c> unless
+///     told otherwise) up over synthetic MFT-shaped blocks, with a scripted producer and a
+///     <see cref="ScriptedWatchSource" />, and tears them down again. It collects every
 ///     <see cref="FileIndex.Changed" /> change and every <see cref="FileIndex.WatchFaulted" /> fault.
 /// </summary>
 sealed class WatchHarness : IDisposable
@@ -20,6 +20,7 @@ sealed class WatchHarness : IDisposable
 
     readonly Dictionary<char, SyntheticBlockBuilder> _blockBuilders;
     readonly Dictionary<char, IndexWatchTarget> _cursorsByDrive;
+    readonly Dictionary<char, FileIndex> _indicesByDrive = [];
     readonly ConcurrentDictionary<char, BlockFile> _producedBlocks = [];
     readonly ConcurrentDictionary<char, Exception> _productionFailuresByDrive = [];
     readonly ConcurrentDictionary<char, TestGate> _productionHoldsByDrive = [];
@@ -39,7 +40,7 @@ sealed class WatchHarness : IDisposable
     {
     }
 
-    /// <summary>Stands the index up over <paramref name="watchSource" />, which is null for the harness's own <see cref="Source" />.</summary>
+    /// <summary>Stands the indices up over <paramref name="watchSource" />, which is null for the harness's own <see cref="Source" />.</summary>
     public WatchHarness(IIndexWatchSource? watchSource, params char[] driveLetters)
         : this(watchSource, [], driveLetters)
     {
@@ -60,18 +61,29 @@ sealed class WatchHarness : IDisposable
 
         try
         {
-            Index = FileIndex.OpenAsync(new FileIndexOptions
+            var mftSource = new MftIndexSource(Produce, watchSource ?? Source.IndexSource);
+            foreach (var (letter, builder) in _blockBuilders)
             {
-                Drives = _blockBuilders.Select(pair => SyntheticIndexedDrive.Create(new VolumeKey(pair.Key),
-                    pair.Value.DirectoryPath, pair.Value.VolumeSerial)).ToArray(),
-                CacheDirectory = CacheDirectory,
-                MftSource = new MftIndexSource(Produce, watchSource ?? Source.IndexSource)
-            }, CancellationToken.None).GetAwaiter().GetResult();
-            Index.Changed += _changes.Enqueue;
-            Index.WatchFaulted += RecordFault;
+                var index = FileIndex.OpenAsync(new FileIndexOptions
+                {
+                    Root = SyntheticIndexedDrive.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial),
+                    CacheDirectory = CacheDirectory,
+                    MftSource = mftSource
+                }, CancellationToken.None).GetAwaiter().GetResult();
+                index.Changed += _changes.Enqueue;
+                index.WatchFaulted += fault => RecordFault(index, fault);
+                _indicesByDrive[letter] = index;
+            }
+
+            Index = _indicesByDrive.Values.First();
         }
         catch
         {
+            foreach (var index in _indicesByDrive.Values)
+            {
+                index.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+
             foreach (var blockBuilder in _blockBuilders.Values)
             {
                 blockBuilder.Dispose();
@@ -83,7 +95,7 @@ sealed class WatchHarness : IDisposable
     }
 
     /// <summary>
-    ///     Stands the index up with the producer failing every scan of <paramref name="blocklessDrives" />,
+    ///     Stands the indices up with the producer failing every scan of <paramref name="blocklessDrives" />,
     ///     so those drives open <see cref="DriveState.Failed" /> with no MFT-backed block.
     /// </summary>
     public static WatchHarness WithBlocklessDrives(char[] blocklessDrives, params char[] driveLetters) =>
@@ -91,7 +103,11 @@ sealed class WatchHarness : IDisposable
 
     public FileIndex Index { get; }
 
-    /// <summary>The owned temporary directory this harness gives the index as its cache directory.</summary>
+    public IReadOnlyCollection<FileIndex> Indices => _indicesByDrive.Values;
+
+    public FileIndex IndexFor(char driveLetter) => _indicesByDrive[char.ToUpperInvariant(driveLetter)];
+
+    /// <summary>The owned temporary directory this harness gives the indices as their cache directory.</summary>
     public string CacheDirectory => _cache.Path;
 
     public ScriptedWatchSource Source { get; } = new();
@@ -111,8 +127,7 @@ sealed class WatchHarness : IDisposable
 
     public BlockFile BlockFor(char driveLetter) => _producedBlocks[char.ToUpperInvariant(driveLetter)];
 
-    public DriveStatus DriveFor(char driveLetter) =>
-        Index.Drives.Single(drive => drive.Drive == new VolumeKey(char.ToUpperInvariant(driveLetter)));
+    public RootStatus DriveFor(char driveLetter) => IndexFor(driveLetter).Status;
 
     /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive, recorded or future.</summary>
     public Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter)
@@ -197,7 +212,7 @@ sealed class WatchHarness : IDisposable
     {
         var gate = TrackGate();
         var held = 0;
-        Index.Hooks.ApplyJournalEntriesEntered = letter =>
+        IndexFor(driveLetter).Hooks.ApplyJournalEntriesEntered = letter =>
         {
             if (letter == new VolumeKey(driveLetter) && Interlocked.Exchange(ref held, 1) == 0)
             {
@@ -230,8 +245,6 @@ sealed class WatchHarness : IDisposable
 
     public void Dispose()
     {
-        // Teardown must never be the thing that wedges: a test that failed before releasing a
-        // gate would otherwise hang here instead of reporting.
         lock (_gates)
         {
             foreach (var gate in _gates)
@@ -240,7 +253,11 @@ sealed class WatchHarness : IDisposable
             }
         }
 
-        Index.DisposeAsync().AsTask().WaitAsync(HangGuard).GetAwaiter().GetResult();
+        foreach (var index in _indicesByDrive.Values)
+        {
+            index.DisposeAsync().AsTask().WaitAsync(HangGuard).GetAwaiter().GetResult();
+        }
+
         foreach (var blockBuilder in _blockBuilders.Values)
         {
             blockBuilder.Dispose();
@@ -250,8 +267,7 @@ sealed class WatchHarness : IDisposable
     }
 
     /// <summary>
-    ///     Completes when the drive's latest recovery has ended. The recovery is the one whose ticket
-    ///     existed when a fault on the drive was raised, which is how the index publishes it.
+    ///     Completes when the drive's latest recovery has ended.
     /// </summary>
     public Task WaitForRecoveryAsync(char driveLetter)
     {
@@ -265,9 +281,7 @@ sealed class WatchHarness : IDisposable
 
     /// <summary>
     ///     The drive's latest recovery's own completion, the task the index's disposal waits for,
-    ///     unwrapped. <see cref="WaitForRecoveryAsync" /> returns a task derived from it, which
-    ///     completes in a continuation queued after it, so only this one is complete as soon as
-    ///     disposal returns.
+    ///     unwrapped.
     /// </summary>
     public Task RecoveryCompletion(char driveLetter)
     {
@@ -291,13 +305,13 @@ sealed class WatchHarness : IDisposable
     }
 
     /// <summary>The status of <paramref name="driveLetter" /> at each of its lost-catch-up faults, in raise order.</summary>
-    public DriveStatus[] CatchUpLossStatuses(char driveLetter) => _faultStatuses.CatchUpLossStatuses(driveLetter);
+    public RootStatus[] CatchUpLossStatuses(char driveLetter) => _faultStatuses.CatchUpLossStatuses(driveLetter);
 
-    void RecordFault(WatchFault fault)
+    void RecordFault(FileIndex index, WatchFault fault)
     {
-        _faultStatuses.Record(Index, fault);
+        _faultStatuses.Record(index, fault);
         List<TaskCompletionSource<WatchFault>> matched = [];
-        _ = Index.TryGetRecoveryCompletionForTest(new VolumeKey((fault.Drive).Letter), out var recovery);
+        _ = index.TryGetRecoveryCompletionForTest(new VolumeKey((fault.Drive).Letter), out var recovery);
         lock (_faults)
         {
             _faults.Add(fault);
@@ -311,12 +325,12 @@ sealed class WatchHarness : IDisposable
                 }
             }
 
-            for (var index = _faultWaiters.Count - 1; index >= 0; index--)
+            for (var waiterIndex = _faultWaiters.Count - 1; waiterIndex >= 0; waiterIndex--)
             {
-                if (_faultWaiters[index].Match(fault))
+                if (_faultWaiters[waiterIndex].Match(fault))
                 {
-                    matched.Add(_faultWaiters[index].Completion);
-                    _faultWaiters.RemoveAt(index);
+                    matched.Add(_faultWaiters[waiterIndex].Completion);
+                    _faultWaiters.RemoveAt(waiterIndex);
                 }
             }
         }

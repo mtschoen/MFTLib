@@ -1,19 +1,17 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     How to open an index. For ordinary sources, an empty drive set opens an index with no
-///     drives; a dump source supplies its own virtual drive and requires an empty drive set.
+///     How to open an index for one root. For ordinary sources, <see cref="Root" /> is required;
+///     a dump source supplies its own virtual root and requires <see cref="Root" /> to be null.
 /// </summary>
 public sealed record FileIndexOptions
 {
     /// <summary>
-    ///     Drives to include in the index. <see cref="FileIndex.OpenAsync" /> materializes the
-    ///     collection once and rejects a null collection, a null or invalid element, or duplicate
-    ///     normalized <see cref="RootKey" /> entries before creating a cache directory or starting
-    ///     a scan. For ordinary sources, an empty collection opens an index with no drives; a dump
-    ///     source supplies its own virtual drive and requires an empty collection.
+    ///     The root to index. <see cref="FileIndex.OpenAsync" /> validates the root before creating a
+    ///     cache directory or starting a scan. Required for ordinary sources; a dump source supplies
+    ///     its own virtual root and requires this to be null.
     /// </summary>
-    public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
+    public IndexedRoot? Root { get; init; }
 
     /// <summary>
     ///     How the open uses the block cache. Null (the default) lets the library pick what fits the
@@ -25,31 +23,29 @@ public sealed record FileIndexOptions
 
     /// <summary>
     ///     An application-owned cache directory. Required and nonblank for
-    ///     <see cref="MFTLib.Index.CacheMode.Persistent" /> and <see cref="MFTLib.Index.CacheMode.ExistingOnly" />,
-    ///     including empty-drive opens. Missing configuration causes
-    ///     <see cref="FileIndex.OpenAsync" /> to throw <see cref="ArgumentException" />.
+    ///     <see cref="MFTLib.Index.CacheMode.Persistent" /> and <see cref="MFTLib.Index.CacheMode.ExistingOnly" />.
+    ///     Missing configuration causes <see cref="FileIndex.OpenAsync" /> to throw <see cref="ArgumentException" />.
     ///     Ignored, never resolved or created, with <see cref="MFTLib.Index.CacheMode.Disabled" />; dump sources
     ///     prohibit this option.
     /// </summary>
     public string? CacheDirectory { get; init; }
 
     /// <summary>
-    ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is legal at
+    ///     Supplies MFT-derived blocks and the root's live watch from one place. Null is legal at
     ///     admission and for warm cache adoption. An attempted MFT scan reports
     ///     <see cref="DriveFailureKind.MftSourceMissing" /> when this is null; watching reports
     ///     <see cref="DriveOperationOutcome.NotApplicable" /> without recording a watch request;
-    ///     enumeration drives ignore the source. A rescan of a watched drive stops that drive's watch
+    ///     enumeration roots ignore the source. A rescan of a watched root stops its watch
     ///     when the replacement block commits and starts a fresh one from the new block's cursor through
     ///     the same source; a rescan whose production fails or is cancelled leaves a healthy watch running.
     /// </summary>
     public MftIndexSource? MftSource { get; init; }
 
     /// <summary>
-    ///     Samples from whichever producer is building a drive's block. Each drive scan, in
+    ///     Samples from whichever producer is building the root's block. Each scan, in
     ///     <see cref="FileIndex.OpenAsync" /> and in a rescan alike, ends with exactly one
     ///     <see cref="IndexScanPhase.Finished" /> sample whose <see cref="IndexScanProgress.Outcome" />
-    ///     says whether it succeeded, failed or was cancelled. Drives scan concurrently, so
-    ///     samples of different drives interleave. A handler that throws on the Finished sample is
+    ///     says whether it succeeded, failed or was cancelled. A handler that throws on the Finished sample is
     ///     contained and reported to <see cref="Diagnostics" />, so it never replaces the scan's own
     ///     exception or result. A throw on any other sample fails that scan like any producer fault,
     ///     except a <see cref="IndexScanPhase.ParsingMft" /> sample of an in-process scan, local-volume
@@ -59,26 +55,6 @@ public sealed record FileIndexOptions
     ///     belongs to the <see cref="IProgress{T}" /> implementation.
     /// </summary>
     public IProgress<IndexScanProgress>? ScanProgress { get; init; }
-
-    /// <summary>
-    ///     Open-time per-drive progress: <see cref="FileIndex.OpenAsync" /> reports one
-    ///     <see cref="IndexDriveOpened" /> for each drive that settles, synchronously on the thread
-    ///     that settled it, whatever the outcome: warm-started, cold-scanned, declined by
-    ///     <see cref="MFTLib.Index.CacheMode.ExistingOnly" />, offline, or failed. A drive whose settle is
-    ///     cancelled does not settle and reports nothing, so a cancelled or failed open may have
-    ///     reported only some of the configured drives. Drives settle concurrently and no lock is held while a handler runs,
-    ///     so reports can overlap and can arrive out of order; a handler that blocks holds up no
-    ///     other drive. <see cref="IndexDriveOpened.SettledDriveCount" /> gives each report's place in
-    ///     settle order, so keep the report with the largest count rather than the last one
-    ///     received. A declined or failed drive still counts toward the total and still reports.
-    ///     Null (the default) reports and allocates nothing. Only the initial open reports;
-    ///     <see cref="FileIndex.RescanAsync" /> stays silent, because its caller already awaits
-    ///     the requested drives' results. Unlike <see cref="ScanProgress" />, which samples only while a
-    ///     producer runs, this fires on warm starts too. Marshalling belongs to the
-    ///     <see cref="IProgress{T}" /> implementation, the same convention <see cref="ScanProgress" />
-    ///     uses.
-    /// </summary>
-    public IProgress<IndexDriveOpened>? DriveOpenProgress { get; init; }
 
     /// <summary>
     ///     Receives human-readable lines of five kinds: block-file deletions and failed deletions,
@@ -161,32 +137,13 @@ public sealed record FileIndexOptions
         return [.. copy];
     }
 
-    internal static IndexedDrive[] ValidateDrives(FileIndexOptions options)
+    internal static IndexedRoot ValidateRoot(FileIndexOptions options)
     {
-        if (options.Drives is not { } configuredDrives)
+        if (options.Root is not { } configuredRoot)
         {
-            throw new ArgumentException("FileIndexOptions.Drives must not be null.", nameof(options));
+            throw new ArgumentException("FileIndexOptions.Root must not be null.", nameof(options));
         }
 
-        // Materialized once into a private copy so the index never re-evaluates or shares the
-        // caller's list, and validated before any cache directory or scan work begins.
-        var drives = configuredDrives.ToArray();
-        HashSet<RootKey> seen = [];
-        foreach (var drive in drives)
-        {
-            if (drive is null)
-            {
-                throw new ArgumentException("FileIndexOptions.Drives must not contain null entries.",
-                    nameof(options));
-            }
-
-            var driveKey = drive.Validated().Drive;
-            if (!seen.Add(driveKey))
-            {
-                throw new ArgumentException($"Drive {driveKey} is listed more than once.", nameof(options));
-            }
-        }
-
-        return drives;
+        return configuredRoot.Validated();
     }
 }

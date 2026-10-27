@@ -11,19 +11,16 @@ public class DirectDuplicateNameSieveTests
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
     const int UniqueNameCount = 20_000;
 
-    static async Task<FileIndex> OpenIndexAsync(params SyntheticBlockBuilder[] builders)
+    static async Task<FileIndex> OpenIndexAsync(SyntheticBlockBuilder builder)
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = builders.Select(builder => MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath,
-                builder.VolumeSerial, ProducerKind.Enumeration)).ToArray(),
-            CacheDirectory = builders[0].DirectoryPath,
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath,
+                builder.VolumeSerial, ProducerKind.Enumeration),
+            CacheDirectory = builder.DirectoryPath,
             CacheMode = CacheMode.ExistingOnly
         }, CancellationToken.None);
-        foreach (var drive in index.Drives)
-        {
-            Assert.AreEqual(DriveState.Ready, drive.State, drive.Failure?.Message);
-        }
+        Assert.AreEqual(DriveState.Ready, index.Status.State, index.Status.Failure?.Message);
 
         return index;
     }
@@ -149,17 +146,16 @@ public class DirectDuplicateNameSieveTests
     }
 
     [TestMethod]
-    public async Task Find_NameAcrossTwoDrivesIsOneGroupInEnumerationOrder()
+    public async Task Find_NameAcrossTwoDirectoriesIsOneGroupInEnumerationOrder()
     {
-        using var first = new SyntheticBlockBuilder('Z');
-        using var second = new SyntheticBlockBuilder('A');
-        AddFile(first, AddRoot(first), "shared.txt", 1);
-        AddFile(second, AddRoot(second), "SHARED.TXT", 2);
-        first.Complete(Moment);
-        second.Complete(Moment);
-        // Cache-only opens use one directory for all drives.
-        File.Copy(second.BlockPath, Path.Combine(first.DirectoryPath, Path.GetFileName(second.BlockPath)));
-        await using var index = await OpenIndexAsync(first, second);
+        using var builder = new SyntheticBlockBuilder('Z');
+        var root = AddRoot(builder);
+        var firstDirectory = builder.AddRow("first", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        var secondDirectory = builder.AddRow("second", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        AddFile(builder, firstDirectory, "shared.txt", 1);
+        AddFile(builder, secondDirectory, "SHARED.TXT", 2);
+        builder.Complete(Moment);
+        await using var index = await OpenIndexAsync(builder);
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None);
         Assert.HasCount(1, groups);
         var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.RecordKey).ToArray();
@@ -218,7 +214,7 @@ public class DirectDuplicateNameSieveTests
                 }
             }));
         Assert.AreEqual(cancelAfter, assembled);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]

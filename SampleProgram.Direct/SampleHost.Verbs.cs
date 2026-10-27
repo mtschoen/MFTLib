@@ -13,7 +13,7 @@ partial class SampleHost
     }
 
     internal async Task RunSourceAsync(DirectArguments parsed, MftIndexSource source,
-        IndexedDrive? drive, CancellationToken cancellationToken)
+        IndexedRoot? drive, CancellationToken cancellationToken)
     {
         await using var index = await OpenIndexAsync(source, drive, cancellationToken).ConfigureAwait(false);
         WriteVerb(index, parsed, cancellationToken);
@@ -21,23 +21,22 @@ partial class SampleHost
 
     void WriteVerb(FileIndex index, DirectArguments parsed, CancellationToken cancellationToken)
     {
-        var letter = char.ToUpperInvariant(parsed.Drive[0]);
         switch (parsed.Verb)
         {
             case DirectVerb.Scan:
-                WriteStatus(index.Drives.Single());
+                WriteStatus(index.Status);
                 WriteInventory(index, cancellationToken);
                 break;
             case DirectVerb.Search:
                 Search(index, parsed, cancellationToken);
                 break;
             case DirectVerb.Tree:
-                var start = parsed.Path is null ? index.Root(new VolumeKey(letter), cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
+                var start = parsed.Path is null ? index.Root(cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
                 _output.WriteLine(start.Path);
                 WriteTree(start.RecordKey.RecordNumber, ChildLookup(index.Enumerate(new SearchQuery(null), cancellationToken)), 1, parsed.Depth);
                 break;
             case DirectVerb.Children:
-                var parent = parsed.Path is null ? index.Root(new VolumeKey(letter), cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
+                var parent = parsed.Path is null ? index.Root(cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
                 WriteRows(parent.Children(cancellationToken).OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase), parsed);
                 break;
             case DirectVerb.Open:
@@ -87,14 +86,12 @@ partial class SampleHost
             counts[row.Drive] = count;
         }
 
-        foreach (var drive in index.Drives)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            counts.TryGetValue(drive.Drive, out var count);
-            _output.WriteLine($"{drive.Drive}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
-            freshness.TryGetValue(drive.Drive, out var seen);
-            _output.WriteLine($"{drive.Drive}: {seen.UnknownSize} files with unknown size, {seen.UnknownLastWrite} with unknown last-write time, {seen.Hidden} hidden, newest known last write {seen.Newest:u}");
-        }
+        var drive = index.Status;
+        cancellationToken.ThrowIfCancellationRequested();
+        counts.TryGetValue(drive.Drive, out var driveCount);
+        _output.WriteLine($"{drive.Drive}: {driveCount.Files} live files, {driveCount.Directories} live directories, {driveCount.Deleted} retained deleted rows");
+        freshness.TryGetValue(drive.Drive, out var driveSeen);
+        _output.WriteLine($"{drive.Drive}: {driveSeen.UnknownSize} files with unknown size, {driveSeen.UnknownLastWrite} with unknown last-write time, {driveSeen.Hidden} hidden, newest known last write {driveSeen.Newest:u}");
     }
 
     /// <summary>The query a search runs: every flag lands on the matching <see cref="SearchQuery" /> member.</summary>

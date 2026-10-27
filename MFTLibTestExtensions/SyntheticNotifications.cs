@@ -96,15 +96,6 @@ public static class SyntheticNotifications
         string message) =>
         new(recoveryStopped, message);
 
-    /// <summary>Builds the report that one drive settled while opening.</summary>
-    /// <param name="drive">The settled drive.</param>
-    /// <param name="settledDriveCount">The settle order of this drive, counted from 1.</param>
-    /// <param name="totalDriveCount">How many drives the open was configured with.</param>
-    /// <returns>The report.</returns>
-    public static IndexDriveOpened CreateIndexDriveOpened(RootKey drive, int settledDriveCount,
-        int totalDriveCount) =>
-        new(drive, settledDriveCount, totalDriveCount);
-
     /// <summary>
     ///     Builds the identity of one drive root. A fixture sets the readiness facts and verdict with a <c>with</c>
     ///     expression on the result.
@@ -142,8 +133,8 @@ public static class SyntheticNotifications
         };
 
     /// <summary>
-    ///     Builds one drive status from its state, block and failure. A fixture sets the watch values with a
-    ///     <c>with</c> expression on the result, nesting one for <see cref="DriveStatus.Watch" /> (for example
+    ///     Builds one root status from its state, block and failure. A fixture sets the watch values with a
+    ///     <c>with</c> expression on the result, nesting one for <see cref="RootStatus.Watch" /> (for example
     ///     <c>status with { Watch = status.Watch with { IsSupported = true } }</c>).
     /// </summary>
     /// <param name="drive">The drive.</param>
@@ -151,7 +142,7 @@ public static class SyntheticNotifications
     /// <param name="block">The block behind a <see cref="DriveState.Ready" /> drive; null otherwise.</param>
     /// <param name="failure">Why the drive failed; null for a drive that did not.</param>
     /// <returns>The status.</returns>
-    public static DriveStatus CreateDriveStatus(RootKey drive, DriveState state, DriveBlockStatus? block,
+    public static RootStatus CreateDriveStatus(RootKey drive, DriveState state, DriveBlockStatus? block,
         DriveFailure? failure) =>
         new(drive, state)
         {

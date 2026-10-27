@@ -1,20 +1,19 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     A <see cref="SearchQuery.Subtree" /> anchor resolved against the snapshot a query borrowed: the
-///     ordinal of the anchor's drive block and the anchor's row. Both query engines and the
-///     row enumerator read these two values and never the handle's private coordinates.
+///     A <see cref="SearchQuery.Subtree" /> anchor resolved against the drive block a query borrowed: the
+///     anchor's row in that block. Both query engines and the row enumerator read this value and never
+///     the handle's private coordinates.
 /// </summary>
-/// <param name="DriveOrdinal">The anchor's drive ordinal.</param>
-/// <param name="RowIndex">The anchor's row in that drive's block.</param>
-readonly record struct ResolvedSubtree(ushort DriveOrdinal, uint RowIndex);
+/// <param name="RowIndex">The anchor's row in the borrowed block.</param>
+readonly record struct ResolvedSubtree(uint RowIndex);
 
 /// <summary>
-///     The one place a subtree anchor is validated. Another index can use the same ordinals, and a rescan
+///     The one place a subtree anchor is validated. Another index can use the same row numbers, and a rescan
 ///     can replace the anchor's block so the same coordinates name a different directory. The anchor is
-///     therefore accepted only when its own <see cref="DriveBlock" /> is one of the blocks the query
+///     therefore accepted only when its own <see cref="DriveBlock" /> is the block the query
 ///     borrowed and its row slot still holds the incarnation it was minted for, so republishing any other
-///     drive never rejects it.
+///     root in a set never rejects it.
 /// </summary>
 static class SubtreeAnchor
 {
@@ -34,24 +33,24 @@ static class SubtreeAnchor
         "unrestricted query, or take an anchor from the index being queried.", parameterName);
 
     /// <summary>
-    ///     The blocks a query reads: every block when it has no anchor, otherwise only the anchor's own block
-    ///     when it is current, and none when it is not, which <see cref="Resolve" /> then rejects.
+    ///     The block a query reads: the current block when the query has no anchor, otherwise the anchor's own block
+    ///     when it is current, and null when it is not, which <see cref="Resolve" /> then rejects.
     /// </summary>
-    internal static IReadOnlyList<DriveBlock> SelectBlocks(IReadOnlyList<DriveBlock> current, SearchQuery query)
+    internal static DriveBlock? SelectBlock(DriveBlock? current, SearchQuery query)
     {
         if (query.Subtree is not { } anchor)
         {
             return current;
         }
 
-        return anchor.NamedDriveBlock is { } anchorBlock && current.Contains(anchorBlock) ? [anchorBlock] : [];
+        return anchor.NamedDriveBlock is { } anchorBlock && ReferenceEquals(current, anchorBlock) ? anchorBlock : null;
     }
 
     /// <summary>
-    ///     Resolves the query's anchor against the snapshot the query borrowed, so a publication that lands
+    ///     Resolves the query's anchor against the block the query borrowed, so a publication that lands
     ///     after admission cannot turn the validation into a check-then-use race.
     /// </summary>
-    /// <param name="borrowed">The drive blocks this query holds a borrow on.</param>
+    /// <param name="borrowed">The drive block this query holds a borrow on, or null when none matched.</param>
     /// <param name="query">The query whose anchor is resolved.</param>
     /// <returns>The resolved anchor, or null when the query has no subtree restriction.</returns>
     /// <exception cref="ArgumentException">
@@ -59,7 +58,7 @@ static class SubtreeAnchor
     ///     rescan replaced, or has been superseded by a newer file reusing its row slot.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The anchor's drive block has been released.</exception>
-    internal static ResolvedSubtree? Resolve(IReadOnlyList<DriveBlock> borrowed, SearchQuery query)
+    internal static ResolvedSubtree? Resolve(DriveBlock? borrowed, SearchQuery query)
     {
         if (query.Subtree is not { } anchor)
         {
@@ -73,13 +72,9 @@ static class SubtreeAnchor
 
         // A borrowed block stays mapped even once a disposal has started releasing it, and that disposal
         // reaches the scan as cancellation. Any other released block has been unmapped.
-        if (!borrowed.Contains(anchorBlock))
+        if (!ReferenceEquals(borrowed, anchorBlock))
         {
-            ObjectDisposedException.ThrowIf(anchorBlock.IsReleased, typeof(FileEntry));
-            throw new ArgumentException(
-                "SearchQuery.Subtree does not belong to the queried index's current block for drive " +
-                $"{anchorBlock.Drive}: it came from another index or from a block a rescan replaced. " +
-                "Take a new anchor from the index being queried.", nameof(query));
+            throw ForeignOrDisposed(anchorBlock, nameof(query));
         }
 
         if (anchor.IsSupersededWhileMapped)
@@ -89,6 +84,15 @@ static class SubtreeAnchor
                 "Take a new anchor from the index being queried.", nameof(query));
         }
 
-        return new ResolvedSubtree(anchorBlock.DriveOrdinal, anchor.RowIndex);
+        return new ResolvedSubtree(anchor.RowIndex);
+    }
+
+    internal static Exception ForeignOrDisposed(DriveBlock anchorBlock, string parameterName)
+    {
+        ObjectDisposedException.ThrowIf(anchorBlock.IsReleased, typeof(FileEntry));
+        return new ArgumentException(
+            "SearchQuery.Subtree does not belong to the queried index's current block for drive " +
+            $"{anchorBlock.Drive}: it came from another index or from a block a rescan replaced. " +
+            "Take a new anchor from the index being queried.", parameterName);
     }
 }

@@ -27,7 +27,7 @@ public class DriveAssertionStrictnessTests
         var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             DriveResultAssertions.FailureAsync<InvalidOperationException>(() => throwSynchronously
                 ? throw failure
-                : Task.FromException<IReadOnlyList<DriveOperationResult>>(failure)));
+                : Task.FromException<DriveOperationResult>(failure)));
 
         Assert.AreSame(failure, thrown);
     }

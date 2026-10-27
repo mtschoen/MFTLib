@@ -4,9 +4,9 @@ namespace MFTLib.Index;
 ///     One root to index. The key identifies a volume or normalized directory, the root directory is where an
 ///     enumeration walk starts, and the volume serial identifies the containing volume when the platform reports one.
 /// </summary>
-public sealed partial record IndexedDrive
+public sealed partial record IndexedRoot
 {
-    internal IndexedDrive(RootKey drive, string rootDirectory, uint volumeSerial,
+    internal IndexedRoot(RootKey drive, string rootDirectory, uint volumeSerial,
         ProducerKind producer = ProducerKind.Mft)
     {
         Drive = drive;
@@ -36,7 +36,7 @@ public sealed partial record IndexedDrive
     /// </summary>
     public ProducerKind Producer { get; init => field = ValidateProducer(value); }
 
-    internal IndexedDrive Validated()
+    internal IndexedRoot Validated()
     {
         _ = Drive.Validated();
         _ = ValidateRootDirectory(RootDirectory);

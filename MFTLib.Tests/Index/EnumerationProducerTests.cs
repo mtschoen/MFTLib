@@ -47,7 +47,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         using var lease = EnumerationWalkLimit.EnterAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
         producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
-        return [new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: root)];
+        return [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: root)];
     }
 
     [TestMethod]
@@ -901,7 +901,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Assert.IsFalse(observation.Visits.ContainsKey(childOfFailing), "Descendant of skipped directory must not be visited");
             Assert.IsTrue(observation.Visits.ContainsKey(healthyDir), "Healthy sibling directory must be visited");
 
-            var snapshot = new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: _treeRoot);
+            var snapshot = new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: _treeRoot);
             var healthyEntry = EnumerationLookupTestAccess.FindByPath([snapshot], Path.Combine(healthyDir, "healthy.txt"));
             Assert.IsNotNull(healthyEntry);
             Assert.IsNotNull(EnumerationLookupTestAccess.FindByPath([snapshot], childOfFailing));

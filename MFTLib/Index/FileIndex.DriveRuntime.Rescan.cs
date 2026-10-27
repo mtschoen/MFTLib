@@ -11,7 +11,7 @@ public sealed partial class FileIndex
         /// </summary>
         public async Task RescanDriveAsync(CancellationToken cancellationToken)
         {
-            if (Index.RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
+            if (FileIndex.RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
             {
                 throw rejection;
             }

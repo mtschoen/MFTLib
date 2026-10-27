@@ -39,7 +39,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         var index = await FileIndex.OpenAsync(_fixture.Options(watchSource: watchSource), CancellationToken.None);
         try
         {
-            var loss = index.Drives.Single().Watch.CheckpointLoss;
+            var loss = index.Status.Watch.CheckpointLoss;
             Assert.IsNotNull(loss, "this fixture needs a report from the open to start from");
             Assert.AreEqual(500L, loss.BytesBehind);
             return index;
@@ -63,18 +63,18 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         var source = new ScriptedWatchSource();
         await using var index = await OpenWithAnOpenTimeLossAsync(source.IndexSource);
         index.HoldEveryRecovery();
-        var openReport = index.Drives.Single().Watch.CheckpointLoss;
+        var openReport = index.Status.Watch.CheckpointLoss;
         Assert.IsNotNull(openReport);
 
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
         // now. Only the report from the open remains.
         using var journal = JournalWindows.Journal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
-        await index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await index.StartWatchingAsync(Token);
 
         await FailDriveAndWaitForFaultAsync(index, source,
             new UnauthorizedAccessException("the volume handle was revoked"));
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.IsNotNull(drive.Watch.FailureMessage, "the watch still reports that it died");
         Assert.AreEqual(WatchState.Recovering, drive.Watch.State);
 
@@ -85,7 +85,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         Assert.AreEqual(openReport, loss, "nothing about the open's report changed");
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
-            () => index.StopWatchingAsync([new VolumeKey('T')], Token));
+            () => index.StopWatchingAsync(Token));
     }
 
     /// <summary>
@@ -99,14 +99,14 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         await using var index = await OpenWithAnOpenTimeLossAsync(source.IndexSource);
         index.HoldEveryRecovery();
 
-        await index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await index.StartWatchingAsync(Token);
 
         // A window distinct from the open's, so the numbers say which detection produced them.
         using var journal = JournalWindows.Journal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
         await FailDriveAndWaitForFaultAsync(index, source,
             new IOException("USN journal entries have been deleted; full rescan needed"));
 
-        var loss = index.Drives.Single().Watch.CheckpointLoss;
+        var loss = index.Status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring,
             "the newer fact about this drive is the one a fault handler acts on");
@@ -114,7 +114,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         Assert.AreEqual(900L, loss.BytesBehind, "the watch's window, not the open's");
         Assert.AreEqual(CachedNextUsn + 8_000, loss.NextUsn);
 
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(Token));
     }
 
     /// <summary>
@@ -145,6 +145,6 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         await using var index = await OpenWithAnOpenTimeLossAsync(new ScriptedWatchSource().IndexSource);
 
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
-            index.Drives.Single().Watch.CheckpointLoss!.DetectedDuring);
+            index.Status.Watch.CheckpointLoss!.DetectedDuring);
     }
 }

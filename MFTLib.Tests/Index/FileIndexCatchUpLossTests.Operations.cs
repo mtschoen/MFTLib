@@ -33,13 +33,13 @@ public partial class FileIndexCatchUpLossTests
             _ = Task.Run(async () =>
             {
                 await handlerReturning.Task;
-                queuedRescan.TrySetResult(index.RescanAsync([new VolumeKey('T')], token));
+                queuedRescan.TrySetResult(index.RescanAsync(token));
             }, TestContext.CancellationToken);
             handlerReturning.TrySetResult();
         };
         var producedBefore = harness.ProductionCount('T');
 
-        var operation = index.RescanAsync([new VolumeKey('T')], Token);
+        var operation = index.RescanAsync(Token);
         await heldRetry.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var queued = await queuedRescan.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -61,7 +61,7 @@ public partial class FileIndexCatchUpLossTests
         cache.Losses.Enqueue(StandardCatchUpLoss('T'));
         cache.Losses.Enqueue(StandardCatchUpLoss('T'));
 
-        await index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(4, cache.Productions, "the open's scan, then two lost catch-ups and the scan that held");
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
@@ -76,13 +76,13 @@ public partial class FileIndexCatchUpLossTests
     {
         using var harness = new WatchHarness('T');
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
-        await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => harness.Index.RescanAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => harness.IndexFor('T').RescanAsync(Token));
         var heldScan = harness.HoldNextProduction('T');
         harness.SetNextProducedCursor('T', journalIdentifier: 21, nextUsn: 7700);
 
-        var rescan = harness.Index.RescanAsync([new VolumeKey('T')], Token);
+        var rescan = harness.IndexFor('T').RescanAsync(Token);
         await heldScan.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-        var start = harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        var start = harness.IndexFor('T').StartWatchingAsync(Token);
         Assert.IsFalse(start.IsCompleted, "the start waits for the rescan's lifecycle gate");
         heldScan.Release();
 
@@ -97,17 +97,17 @@ public partial class FileIndexCatchUpLossTests
     {
         using var harness = new WatchHarness('T');
         harness.FailNextProduction('T', new MessagelessException("the first scan failed", new IOException()));
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
         Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
 
         harness.FailNextProduction('T', new MessagelessException());
-        var messageless = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync([new VolumeKey('T')], Token));
+        var messageless = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
         Assert.Contains("Drive T failed without a failure message", messageless.Message);
         Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
 
         harness.FailNextProduction('T', new MessagelessException("the third scan failed"));
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
         Assert.AreEqual("the third scan failed", harness.DriveFor('T').Failure?.Message);
     }
 

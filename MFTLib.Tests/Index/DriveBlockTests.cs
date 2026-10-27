@@ -15,7 +15,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
 
         Assert.IsFalse(driveBlock.IsReleased);
         Assert.AreEqual(new VolumeKey('T'), driveBlock.Drive);
@@ -29,7 +29,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
 
         Assert.IsTrue(driveBlock.ReleaseState.ReleaseUnborrowed());
         Assert.IsFalse(driveBlock.ReleaseState.ReleaseUnborrowed());
@@ -42,7 +42,7 @@ public class DriveBlockTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     static DriveBlockRelease CreateUnrootedDriveBlock(BlockFile block, Action? releaseStarted = null)
     {
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
         driveBlock.ReleaseState.Hooks._releaseStarted = releaseStarted;
         return driveBlock.ReleaseState;
     }
@@ -72,9 +72,6 @@ public class DriveBlockTests
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        // An exception escaping a finalizer terminates the process, so reaching this
-        // assertion at all is half of the contract; the other half is that the failed
-        // release ran before the block was unmapped.
         Assert.IsTrue(release.IsReleaseStarted);
         Assert.IsGreaterThan(0, block.Rows.Length, "the block is still mapped");
         block.Dispose();
@@ -85,7 +82,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
@@ -101,17 +98,12 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
         driveBlock.ReleaseState.ScheduleDeleteAt(renamedPath);
 
-        // ReadWrite share matches the block's own still-open handle so this second handle can
-        // coexist with it; omitting FileShare.Delete is what makes Windows' delete inside
-        // Release hit a sharing violation, swallowed by Release. Unix has no mandatory
-        // share-mode locking, so the delete there succeeds even with the handle still open.
-        // Either way Release must not throw.
         using var lockingHandle =
             new FileStream(renamedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
@@ -123,7 +115,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
@@ -132,9 +124,6 @@ public class DriveBlockTests
 
         try
         {
-            // Windows treats the read-only attribute as delete-denying, swallowed by Release.
-            // Unix unlink ignores a file's own permission bits, so the delete there succeeds.
-            // Either way Release must not throw.
             driveBlock.ReleaseState.ReleaseUnborrowed();
         }
         finally

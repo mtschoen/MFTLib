@@ -1,25 +1,27 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Rejects lifecycle calls made from inside this index's <see cref="Changed" />,
-///     <see cref="WatchFaulted" /> or <see cref="WatchStateChanged" /> handlers with
-///     <see cref="InvalidOperationException" /> to prevent deadlocks between event delivery
-///     and lifecycle work. Queue lifecycle work to run after the handler returns.
+///     Rejects lifecycle calls made from inside any <see cref="FileIndex" />'s <see cref="Changed" />,
+///     <see cref="WatchFaulted" /> or <see cref="WatchStateChanged" /> handler, whichever index the call
+///     names, with <see cref="InvalidOperationException" /> to prevent deadlocks between event delivery
+///     and lifecycle work. Two indices whose handlers stop each other would otherwise block both pumps. Queue lifecycle work to run after the handler returns.
 ///     Work executing after that invocation returns is allowed, including queued work
 ///     that inherited the handler's execution context.
 /// </summary>
 public sealed partial class FileIndex
 {
-    // Every raise site uses Deliver to set an AsyncLocal marker naming this index.
-    // The marker flows into awaits and queued work; its Active flag clears when the
-    // invocation returns. The outer chain preserves nested deliveries across indexes.
+    // Every raise site uses Deliver to set an AsyncLocal marker. The marker flows into awaits
+    // and queued work; its Active flag clears when the invocation returns. The outer chain
+    // preserves nested deliveries, so a handler of one index that triggers a handler of
+    // another is still recognized as inside a handler. The static field is process-wide on purpose:
+    // indices share no state, so a per-index marker could not see a handler of a sibling index.
     static readonly AsyncLocal<DeliveryMarker?> Delivery = new();
 
-    /// <summary>Invokes one handler with this index's delivery marker set for the duration of the call.</summary>
-    void Deliver<TArgument>(Action<TArgument> handler, TArgument argument)
+    /// <summary>Invokes one handler with a delivery marker set for the duration of the call.</summary>
+    static void Deliver<TArgument>(Action<TArgument> handler, TArgument argument)
     {
         var previous = Delivery.Value;
-        var marker = new DeliveryMarker(this, previous);
+        var marker = new DeliveryMarker(previous);
         Delivery.Value = marker;
         try
         {
@@ -37,7 +39,7 @@ public sealed partial class FileIndex
     ///     inactive when that subscriber returns. A subscriber's exception stops the later ones, as
     ///     a plain multicast invocation would.
     /// </summary>
-    void DeliverToEach<TArgument>(Action<TArgument> subscribers, TArgument argument)
+    static void DeliverToEach<TArgument>(Action<TArgument> subscribers, TArgument argument)
     {
         foreach (var subscriber in subscribers.GetInvocationList())
         {
@@ -47,11 +49,11 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     The exception a lifecycle call named <paramref name="operation" /> fails with when it is
-    ///     made from inside one of this index's handlers, or null when the call is allowed.
+    ///     made from inside a handler of any index, or null when the call is allowed.
     /// </summary>
-    InvalidOperationException? RejectInsideHandler(string operation)
+    static InvalidOperationException? RejectInsideHandler(string operation)
     {
-        return IsInsideHandlerOfThisIndex()
+        return IsInsideHandler()
             ? new InvalidOperationException(
                 $"FileIndex.{operation} was called from inside a Changed, WatchFaulted or WatchStateChanged " +
                 "handler; it can wait for a watch pump that is blocked in a handler. Queue the call to run " +
@@ -60,15 +62,13 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Whether an active delivery of this index is on the execution context's chain. The chain
-    ///     keeps the outer markers, so a handler of another index that a handler of this one
-    ///     triggered synchronously is still recognized as inside this index's handler.
+    ///     Whether an active delivery of any index is on the execution context's chain.
     /// </summary>
-    bool IsInsideHandlerOfThisIndex()
+    static bool IsInsideHandler()
     {
         for (var marker = Delivery.Value; marker is not null; marker = marker.Outer)
         {
-            if (marker.Active && ReferenceEquals(marker.Owner, this))
+            if (marker.Active)
             {
                 return true;
             }
@@ -78,11 +78,11 @@ public sealed partial class FileIndex
     }
 
     /// <summary>An already faulted task for a rejected call, or null when the call is allowed.</summary>
-    Task? RejectedTask(string operation) =>
+    static Task? RejectedTask(string operation) =>
         RejectInsideHandler(operation) is { } rejection ? Task.FromException(rejection) : null;
 
     /// <summary>The typed counterpart of <see cref="RejectedTask(string)" />.</summary>
-    Task<TResult>? RejectedTask<TResult>(string operation) =>
+    static Task<TResult>? RejectedTask<TResult>(string operation) =>
         RejectInsideHandler(operation) is { } rejection ? Task.FromException<TResult>(rejection) : null;
 
     /// <summary>
@@ -126,13 +126,11 @@ public sealed partial class FileIndex
         }
     }
 
-    sealed class DeliveryMarker(FileIndex owner, DeliveryMarker? outer)
+    sealed class DeliveryMarker(DeliveryMarker? outer)
     {
         volatile bool _active = true;
 
         public DeliveryMarker? Outer { get; } = outer;
-
-        public FileIndex Owner { get; } = owner;
 
         public bool Active => _active;
 

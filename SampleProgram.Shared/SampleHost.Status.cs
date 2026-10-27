@@ -10,7 +10,7 @@ namespace SampleProgram.Direct;
 partial class SampleHost
 {
     // An offline or failed drive settles without a usable index, so a verb stops here with the reason.
-    static DriveBlockStatus RequireReadyBlock(DriveStatus status)
+    static DriveBlockStatus RequireReadyBlock(RootStatus status)
     {
         if (status is { State: DriveState.Failed, Failure: { } failure })
         {
@@ -21,7 +21,7 @@ partial class SampleHost
         return status.Block ?? throw new InvalidOperationException("The drive is offline; nothing was scanned.");
     }
 
-    void WriteStatus(DriveStatus status)
+    void WriteStatus(RootStatus status)
     {
         var block = RequireReadyBlock(status);
         _output.WriteLine($"Index holds {block.LiveRowCount} rows; {block.SkippedRecordCount} records skipped");

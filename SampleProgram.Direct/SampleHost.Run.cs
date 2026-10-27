@@ -91,7 +91,7 @@ partial class SampleHost
             : MftIndexSources.FromLocalVolumes(ScanOptions(parsed));
     }
 
-    async Task<FileIndex> OpenIndexAsync(MftIndexSource source, IndexedDrive? drive, CancellationToken cancellationToken)
+    async Task<FileIndex> OpenIndexAsync(MftIndexSource source, IndexedRoot? drive, CancellationToken cancellationToken)
     {
         var options = new FileIndexOptions
         {
@@ -103,7 +103,7 @@ partial class SampleHost
             await _output.WriteLineAsync($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.Producer}.").ConfigureAwait(false);
             options = options with
             {
-                Drives = [drive],
+                Root = drive,
                 CacheMode = CacheMode.Disabled
             };
         }
@@ -111,7 +111,7 @@ partial class SampleHost
         var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
         try
         {
-            RequireReadyBlock(index.Drives.Single());
+            RequireReadyBlock(index.Status);
             return index;
         }
         catch

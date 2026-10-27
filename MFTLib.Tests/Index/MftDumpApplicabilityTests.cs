@@ -20,7 +20,7 @@ public class MftDumpApplicabilityTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
         Assert.IsFalse(drive.Watch.IsSupported, "a dump drive does not support watching");
@@ -32,7 +32,7 @@ public class MftDumpApplicabilityTests
     {
         await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(MftDumpIndexes.Fail));
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind);
         Assert.AreEqual("The dump file cannot be opened.", drive.Failure?.Message);
@@ -53,7 +53,7 @@ public class MftDumpApplicabilityTests
 
     [TestMethod]
     [DataRow(false, DisplayName = "DumpSourceOnly")]
-    [DataRow(true, DisplayName = "DumpExplicitEmptyDrivesAndDefaultCache")]
+    [DataRow(true, DisplayName = "DumpExplicitNullRootAndDefaultCache")]
     public async Task Open_WithDefaultDriveAndCacheValues_PublishesTheVirtualDrive(bool explicitDefaults)
     {
         var options = MftDumpIndexes.Options();
@@ -61,7 +61,7 @@ public class MftDumpApplicabilityTests
         {
             options = options with
             {
-                Drives = [],
+                Root = null,
                 CacheMode = null,
                 CacheDirectory = null,
                 CacheTag = default
@@ -70,20 +70,20 @@ public class MftDumpApplicabilityTests
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.IsTrue(drive.Drive == new VolumeKey(MftDumpIndexes.DriveLetter));
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.IsNull(drive.Block!.CacheLocation, "a dump block is never backed by a cache location");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
-        Assert.IsTrue(index.Root(new VolumeKey(MftDumpIndexes.DriveLetter), TestContext.CancellationToken).IsDirectory);
+        Assert.IsTrue(index.Root(TestContext.CancellationToken).IsDirectory);
     }
 
     [TestMethod]
-    public async Task Open_WithDrivesSet_IsRejectedNamingDrives()
+    public async Task Open_WithRootSet_IsRejectedNamingRoot()
     {
-        var options = MftDumpIndexes.Options() with { Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('D'), MftDumpIndexes.Root, 0)] };
+        var options = MftDumpIndexes.Options() with { Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('D'), MftDumpIndexes.Root, 0) };
 
-        await AssertRejectedAsync(options, "FileIndexOptions.Drives");
+        await AssertRejectedAsync(options, "FileIndexOptions.Root");
     }
 
     [TestMethod]
@@ -107,21 +107,6 @@ public class MftDumpApplicabilityTests
     {
         await AssertRejectedAsync(MftDumpIndexes.Options() with { CacheTag = new CacheTag("ABCD", 1) },
             "FileIndexOptions.CacheTag");
-    }
-
-    [TestMethod]
-    public async Task Open_WithNullDrives_IsRejectedNamingDrivesWithoutProducing()
-    {
-        var producerCalls = 0;
-        var source = MftDumpIndexes.Source((request, token) =>
-        {
-            Interlocked.Increment(ref producerCalls);
-            return MftDumpIndexes.Produce(request, token);
-        });
-
-        await AssertRejectedAsync(MftDumpIndexes.Options(source) with { Drives = null! }, "FileIndexOptions.Drives");
-
-        Assert.AreEqual(0, producerCalls);
     }
 
     static async Task AssertRejectedAsync(FileIndexOptions options, string settingName)
@@ -158,7 +143,7 @@ public class MftDumpApplicabilityTests
             drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(MftDumpIndexes.Fail));
 
-        var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.ReadUsnJournalSettings('D'));
+        var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.ReadUsnJournalSettings('d'));
 
         Assert.AreEqual("Drive D: this source has no live journal settings.", failure.Message);
     }
@@ -170,8 +155,8 @@ public class MftDumpApplicabilityTests
         {
             await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(producer));
 
-            await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync([new VolumeKey('D')], CancellationToken.None));
-            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+            await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
+            Assert.IsFalse(index.Status.Watch.IsRequested);
         }
     }
 
@@ -185,9 +170,9 @@ public class MftDumpApplicabilityTests
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync([new VolumeKey('T')], CancellationToken.None));
-        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None));
-        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(CancellationToken.None));
+        Assert.IsFalse(index.Status.Watch.IsRequested);
     }
 
     [TestMethod]
@@ -195,35 +180,32 @@ public class MftDumpApplicabilityTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync([new VolumeKey('D')], CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(CancellationToken.None));
     }
 
     [TestMethod]
-    public async Task Batched_ADumpDriveIsNotApplicableWithNoFailure()
+    public async Task LifecycleVerbs_ADumpDriveIsNotApplicableWithNoFailure()
     {
         foreach (var producer in new MftBlockProducer[] { MftDumpIndexes.Produce, MftDumpIndexes.Fail })
         {
             await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(producer));
-            char[] letters = ['D'];
 
             var results = new[]
             {
-                await index.StartWatchingAsync(letters.Select(letter => (RootKey)new VolumeKey(letter)), CancellationToken.None),
-                await index.StopWatchingAsync(letters.Select(letter => (RootKey)new VolumeKey(letter)), CancellationToken.None),
-                await index.WaitForCatchUpAsync(letters.Select(letter => (RootKey)new VolumeKey(letter)), CancellationToken.None),
-                await index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive),CancellationToken.None)
+                await index.StartWatchingAsync(CancellationToken.None),
+                await index.StopWatchingAsync(CancellationToken.None),
+                await index.WaitForCatchUpAsync(CancellationToken.None)
             };
 
             foreach (var result in results)
             {
-                var only = result.Single();
-                Assert.AreEqual(new VolumeKey('D'), only.Drive);
-                Assert.AreEqual(DriveOperationOutcome.NotApplicable, only.Outcome);
-                Assert.IsNull(only.Failure);
+                Assert.AreEqual(new VolumeKey('D'), result.Drive);
+                Assert.AreEqual(DriveOperationOutcome.NotApplicable, result.Outcome);
+                Assert.IsNull(result.Failure);
             }
 
-            Assert.IsFalse(index.Drives.Single().Watch.IsSupported);
-            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+            Assert.IsFalse(index.Status.Watch.IsSupported);
+            Assert.IsFalse(index.Status.Watch.IsRequested);
         }
     }
 
@@ -232,11 +214,11 @@ public class MftDumpApplicabilityTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        await index.RescanAsync([new VolumeKey('D')], CancellationToken.None);
+        await index.RescanAsync(CancellationToken.None);
 
         Assert.AreEqual("dump:/D/documents", index.Find("dump:/D/documents", TestContext.CancellationToken)!.Value.Path);
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        AssertNoWatchStatus(index.Drives.Single());
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        AssertNoWatchStatus(index.Status);
     }
 
     [TestMethod]
@@ -254,13 +236,13 @@ public class MftDumpApplicabilityTests
                     MftSource = new MftIndexSource(MftDumpIndexes.Produce, watchSource)
                 }, CancellationToken.None);
 
-            Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
-            await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
-            Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
+            Assert.AreEqual(expected, index.Status.Watch.IsSupported);
+            await index.RescanAsync(CancellationToken.None);
+            Assert.AreEqual(expected, index.Status.Watch.IsSupported);
         }
     }
 
-    static void AssertNoWatchStatus(DriveStatus status)
+    static void AssertNoWatchStatus(RootStatus status)
     {
         Assert.IsFalse(status.Watch.IsSupported);
         Assert.IsFalse(status.Watch.IsRequested);

@@ -71,16 +71,16 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
         try
         {
             progress.Armed = true;
-            var original = index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock;
+            var original = index.Root(TestContext.CancellationToken).DriveBlock;
 
             // Parks inside the scan while holding the drive's lifecycle gate, so the call below
             // queues behind it.
-            var gateHolder = index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+            var gateHolder = index.RescanAsync(CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
 
             // Runs its own disposal check and queues on the gate while the flag is still clear.
-            var queuedRescan = index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+            var queuedRescan = index.RescanAsync(CancellationToken.None);
 
             // Sets the disposal flag and cancels the token both rescans are linked to, then waits
             // for the drive's gates.
@@ -114,11 +114,11 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
         try
         {
             progress.Armed = true;
-            var original = index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock;
-            var gateHolder = index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+            var original = index.Root(TestContext.CancellationToken).DriveBlock;
+            var gateHolder = index.RescanAsync(CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
-            var queuedRescan = index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+            var queuedRescan = index.RescanAsync(CancellationToken.None);
             var settledInTheWindow = false;
             var releaseTheScan = progress.Release;
             index.Hooks.DisposedFlagSet = () =>
@@ -160,7 +160,7 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
         await index.DisposeAsync();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => index.RescanAsync([new VolumeKey('T')], CancellationToken.None));
+            () => index.RescanAsync(CancellationToken.None));
     }
 
     [TestMethod]

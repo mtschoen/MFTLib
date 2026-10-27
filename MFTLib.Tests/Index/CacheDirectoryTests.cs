@@ -124,13 +124,10 @@ public sealed class CacheDirectoryTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow(null, false)]
-    [DataRow("", false)]
-    [DataRow(" \t", false)]
-    [DataRow(null, true)]
-    [DataRow("", true)]
-    [DataRow(" \t", true)]
-    public async Task OpenAsync_BlankCachedDirectory_RejectsConfiguration(string? directory, bool includeDrive)
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow(" \t")]
+    public async Task OpenAsync_BlankCachedDirectory_RejectsConfiguration(string? directory)
     {
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
@@ -138,7 +135,7 @@ public sealed class CacheDirectoryTests : IDisposable
                 new FileIndexOptions
                 {
                     CacheDirectory = directory,
-                    Drives = includeDrive ? [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), _root, 1)] : []
+                    Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), _root, 1)
                 },
                 CancellationToken.None);
         });
@@ -154,7 +151,12 @@ public sealed class CacheDirectoryTests : IDisposable
     public async Task OpenAsync_DisabledCacheMode_DoesNotCreateAnUnusedCacheDirectory(bool supplyDirectory)
     {
         await using var index = await FileIndex.OpenAsync(
-            new FileIndexOptions { CacheMode = CacheMode.Disabled, CacheDirectory = supplyDirectory ? _root : null },
+            new FileIndexOptions
+            {
+                Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
+                CacheMode = CacheMode.Disabled,
+                CacheDirectory = supplyDirectory ? _root : null
+            },
             CancellationToken.None);
 
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
@@ -166,11 +168,15 @@ public sealed class CacheDirectoryTests : IDisposable
     {
         Assert.IsFalse(Directory.Exists(_root));
         await using var index = await FileIndex.OpenAsync(
-            new FileIndexOptions { CacheDirectory = _root, Drives = [] },
+            new FileIndexOptions
+            {
+                Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
+                CacheDirectory = _root
+            },
             CancellationToken.None);
 
         Assert.AreEqual(_root, index.CacheDirectoryPath);
         Assert.IsTrue(Directory.Exists(_root));
-        Assert.IsEmpty(index.Drives);
+        Assert.IsNull(index.CurrentBlock);
     }
 }

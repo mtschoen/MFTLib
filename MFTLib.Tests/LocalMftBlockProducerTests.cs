@@ -134,7 +134,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
             FileIndexTestAccess.WithTimeProvider(
                 Fixture.Options(volumeSerial: 123, cacheMode: CacheMode.Disabled),
                 timeProvider), TestContext.CancellationToken);
-        Assert.AreEqual(timeProvider.GetUtcNow().UtcDateTime, enumeration.Drives.Single().Block!.ScanTimestamp);
+        Assert.AreEqual(timeProvider.GetUtcNow().UtcDateTime, enumeration.Status.Block!.ScanTimestamp);
     }
 
     [TestMethod]
@@ -180,7 +180,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
             TestContext.CancellationToken))
         {
             Assert.AreEqual(1, scanCalls);
-            var initialDrive = initialIndex.Drives.Single();
+            var initialDrive = initialIndex.Status;
             Assert.AreEqual(DriveState.Ready, initialDrive.State);
             Assert.AreEqual(BlockOrigin.ProducedByScan, initialDrive.Block!.Origin);
             Assert.IsNull(initialDrive.Watch.CheckpointLoss);
@@ -194,7 +194,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
             TestContext.CancellationToken))
         {
             Assert.AreEqual(1, scanCalls, "A cached block must not scan again on reopening.");
-            var reopenedDrive = reopenedIndex.Drives.Single();
+            var reopenedDrive = reopenedIndex.Status;
             Assert.AreEqual(DriveState.Ready, reopenedDrive.State);
             Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedDrive.Block!.Origin);
             Assert.IsNull(reopenedDrive.Watch.CheckpointLoss);
@@ -385,7 +385,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
 
         var names = index.Search(new SearchQuery("file.txt"), TestContext.CancellationToken).Select(entry => entry.Name).ToArray();
         Assert.AreSequenceEqual(["file.txt"], names);
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.IsFalse(status.Watch.IsSupported);
@@ -398,11 +398,11 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
     {
         var source = new LocalMftBlockProducer(TimeProvider.System, null, Scripted()).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
-        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync([new VolumeKey('t')], CancellationToken.None));
-        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync([new VolumeKey('t')], CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(CancellationToken.None));
 
-        Assert.IsFalse(index.Drives.Single().Watch.IsSupported);
-        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+        Assert.IsFalse(index.Status.Watch.IsSupported);
+        Assert.IsFalse(index.Status.Watch.IsRequested);
     }
 
     [TestMethod]
@@ -414,7 +414,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
 
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.Contains(message, status.Failure?.Message!);

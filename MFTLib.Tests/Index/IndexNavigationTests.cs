@@ -34,7 +34,7 @@ public partial class IndexNavigationTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        _snapshot = [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: TestDriveRoot.For('T'))];
     }
 
     [TestCleanup]
@@ -111,16 +111,16 @@ public partial class IndexNavigationTests
     public void SubtreeQueries_ExcludeOtherDrivesAndRejectDefaultAnchors()
     {
         using var harness = new WatchHarness('T', 'U');
-        var index = harness.Index;
-        var firstRoot = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
-        var secondRoot = index.Root(new VolumeKey('U'), TestContext.CancellationToken);
+        var set = new FileIndexSet([harness.IndexFor('T'), harness.IndexFor('U')]);
+        var firstRoot = harness.IndexFor('T').Root(TestContext.CancellationToken);
+        var secondRoot = harness.IndexFor('U').Root(TestContext.CancellationToken);
 
-        Assert.DoesNotContain(entry => entry.Drive == new VolumeKey('U'), index.Search(new SearchQuery(null, Subtree: firstRoot), TestContext.CancellationToken));
-        Assert.DoesNotContain(entry => entry.Drive == new VolumeKey('T'), index.Search(new SearchQuery(null, Subtree: secondRoot), TestContext.CancellationToken));
+        Assert.DoesNotContain(entry => entry.Drive == new VolumeKey('U'), set.Search(new SearchQuery(null, Subtree: firstRoot), TestContext.CancellationToken));
+        Assert.DoesNotContain(entry => entry.Drive == new VolumeKey('T'), set.Search(new SearchQuery(null, Subtree: secondRoot), TestContext.CancellationToken));
         Assert.ThrowsExactly<ArgumentException>(() =>
-            index.Search(new SearchQuery(null, Subtree: default(FileEntry)), TestContext.CancellationToken));
+            set.Search(new SearchQuery(null, Subtree: default(FileEntry)), TestContext.CancellationToken));
         Assert.ThrowsExactly<ArgumentException>(() =>
-            index.Enumerate(new SearchQuery(null, Subtree: default(FileEntry)), TestContext.CancellationToken));
+            set.Enumerate(new SearchQuery(null, Subtree: default(FileEntry)), TestContext.CancellationToken));
     }
 
     /// <summary>
@@ -142,7 +142,7 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), block, rootDirectoryPath: TestDriveRoot.For('Z'))];
         try
         {
             // The candidate sits exactly MaximumPathDepth hops below the root; the target
@@ -164,7 +164,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, block, rootDirectoryPath: TestDriveRoot.For('Y'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), block, rootDirectoryPath: TestDriveRoot.For('Y'))];
         try
         {
             var entry = FileEntry.Create(snapshot[0], deletedRow);
@@ -188,7 +188,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), 0, block, rootDirectoryPath: TestDriveRoot.For('V'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), block, rootDirectoryPath: TestDriveRoot.For('V'))];
         try
         {
             var liveFile = FileEntry.Create(snapshot[0], liveFileRow);
@@ -212,7 +212,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('U'), 0, block, rootDirectoryPath: TestDriveRoot.For('U'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('U'), block, rootDirectoryPath: TestDriveRoot.For('U'))];
         try
         {
             var children = FileEntry.Create(snapshot[0], root).Children(TestContext.CancellationToken);
@@ -236,7 +236,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('W'), 0, block, rootDirectoryPath: TestDriveRoot.For('W'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('W'), block, rootDirectoryPath: TestDriveRoot.For('W'))];
         try
         {
             // Rows 1 and 2 point at each other. The walk must stop rather than loop.
@@ -263,7 +263,7 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('X'), 0, block, rootDirectoryPath: TestDriveRoot.For('X'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('X'), block, rootDirectoryPath: TestDriveRoot.For('X'))];
         try
         {
             var path = FileEntry.Create(snapshot[0], parent).Path;
@@ -291,7 +291,7 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('X'), 0, block, rootDirectoryPath: TestDriveRoot.For('X'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('X'), block, rootDirectoryPath: TestDriveRoot.For('X'))];
         try
         {
             var exception = Assert.ThrowsExactly<InvalidDataException>(
@@ -317,7 +317,7 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), block, rootDirectoryPath: TestDriveRoot.For('Z'))];
         try
         {
             Assert.IsTrue(IndexNavigation.IsUnder(block, candidate, root));
@@ -339,7 +339,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('W'), 0, block, rootDirectoryPath: TestDriveRoot.For('W'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('W'), block, rootDirectoryPath: TestDriveRoot.For('W'))];
         try
         {
             // Rows 1 and 2 point at each other. None of these reach root.

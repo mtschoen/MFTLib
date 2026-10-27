@@ -23,24 +23,26 @@ public sealed class BrokerFileIndexRescanTests
         await using var harness = scenario.CreateHarness();
         var token = harness.CancellationToken;
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource();
-        await using var index = await scenario.OpenIndexAsync(source.Producer, source.WatchSource!, token);
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('U')], token);
+        await using var indexT = await scenario.OpenIndexAsync('T', source.Producer, source.WatchSource!, token);
+        await using var indexU = await scenario.OpenIndexAsync('U', source.Producer, source.WatchSource!, token);
+        var set = new FileIndexSet([indexT, indexU]);
+        await indexT.StartWatchingAsync(token);
+        await indexU.StartWatchingAsync(token);
         var firstT = await harness.Watch('T').RunAsync(1);
         var firstU = await harness.Watch('U').RunAsync(1);
         var scanning = scenario.HoldSecondScanOfT();
 
-        var rescan = index.RescanAsync([new VolumeKey('T')], token);
+        var rescan = indexT.RescanAsync(token);
         await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         try
         {
             Assert.IsFalse(firstT.Cancelled.IsCompleted, "T's scan and watch channels coexist during production");
-            var appliedDuringScan = ChangeSignal.WhenApplied(index, "t-during.txt");
+            var appliedDuringScan = ChangeSignal.WhenApplied(indexT, "t-during.txt");
             firstT.Push(42, "t-during.txt", 200);
             await appliedDuringScan;
-            Assert.HasCount(1, index.Search(new SearchQuery("t-during.txt", NameMatchMode.Exact), token));
-            var appliedOnU = ChangeSignal.WhenApplied(index, "during.txt");
+            Assert.HasCount(1, set.Search(new SearchQuery("t-during.txt", NameMatchMode.Exact), token));
+            var appliedOnU = ChangeSignal.WhenApplied(indexU, "during.txt");
             firstU.Push(40, "during.txt", 200);
             await appliedOnU;
             Assert.IsFalse(firstU.Cancelled.IsCompleted, "U's channel stays open through T's rescan");
@@ -57,14 +59,15 @@ public sealed class BrokerFileIndexRescanTests
         Assert.AreEqual(2, harness.Watch('T').StartedCount);
         Assert.AreEqual(1, harness.Watch('U').StartedCount, "U's channel was never reopened");
         Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip, secondT.Since, "T reopens from its fresh block's cursor");
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-2.txt", NameMatchMode.Exact), token));
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-1.txt", NameMatchMode.Exact), token), "only U's first scan is left");
-        Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-        var appliedOnT = ChangeSignal.WhenApplied(index, "after.txt");
+        Assert.HasCount(1, set.Search(new SearchQuery("scan-2.txt", NameMatchMode.Exact), token));
+        Assert.HasCount(1, set.Search(new SearchQuery("scan-1.txt", NameMatchMode.Exact), token), "only U's first scan is left");
+        Assert.IsNull(indexT.Status.Watch.FailureMessage);
+        Assert.IsNull(indexU.Status.Watch.FailureMessage);
+        var appliedOnT = ChangeSignal.WhenApplied(indexT, "after.txt");
         secondT.Push(41, "after.txt", 300);
         await appliedOnT;
-        await index.StopWatchingAsync([new VolumeKey('T')], token);
-        await index.StopWatchingAsync([new VolumeKey('U')], token);
+        await indexT.StopWatchingAsync(token);
+        await indexU.StopWatchingAsync(token);
     }
 
     [TestMethod]
@@ -84,18 +87,18 @@ public sealed class BrokerFileIndexRescanTests
         });
         try
         {
-            await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
+            await using var index = await scenario.OpenIndexAsync('T', producer.CreateIndexSource().Producer, source, token);
 
-            var start = index.StartWatchingAsync([new VolumeKey('T')], token);
+            var start = index.StartWatchingAsync(token);
             await connectGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsFalse(start.IsCompleted, "StartWatchingAsync completed before the broker connected.");
 
             connectGate.Release();
             await start.WaitAsync(HangGuard, TestContext.CancellationToken);
-            await index.RescanAsync([new VolumeKey('U')], token);
+            await index.RescanAsync(token);
 
-            Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-            await index.StopWatchingAsync([new VolumeKey('T')], token);
+            Assert.IsNull(index.Status.Watch.FailureMessage);
+            await index.StopWatchingAsync(token);
         }
         finally
         {
@@ -116,17 +119,17 @@ public sealed class BrokerFileIndexRescanTests
         var source = new BrokerIndexWatchSource(connectToken => Interlocked.Increment(ref connectAttempts) == 1
             ? Task.FromException<BrokerProcess>(connectionFailure)
             : connect(connectToken));
-        await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
+        await using var index = await scenario.OpenIndexAsync('T', producer.CreateIndexSource().Producer, source, token);
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync([new VolumeKey('T')], token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(token));
 
         Assert.AreSame(connectionFailure, failure);
-        Assert.AreEqual(WatchState.Faulted, index.Drives.Single(drive => drive.Drive == new VolumeKey('T')).Watch.State);
-        await index.StopWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.RescanAsync([new VolumeKey('T')], token);
-        Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-        await index.StopWatchingAsync([new VolumeKey('T')], token);
+        Assert.AreEqual(WatchState.Faulted, index.Status.Watch.State);
+        await index.StopWatchingAsync(token);
+        await index.StartWatchingAsync(token);
+        await index.RescanAsync(token);
+        Assert.IsNull(index.Status.Watch.FailureMessage);
+        await index.StopWatchingAsync(token);
     }
 
     [TestMethod]
@@ -151,18 +154,18 @@ public sealed class BrokerFileIndexRescanTests
         });
         try
         {
-            await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
+            await using var index = await scenario.OpenIndexAsync('T', producer.CreateIndexSource().Producer, source, token);
             using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-            var start = index.StartWatchingAsync([new VolumeKey('T')], startCancellation.Token);
+            var start = index.StartWatchingAsync(startCancellation.Token);
             await connectGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             await startCancellation.CancelAsync();
 
             await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard, TestContext.CancellationToken));
-            await index.StartWatchingAsync([new VolumeKey('T')], token);
-            await index.RescanAsync([new VolumeKey('T')], token);
-            Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-            await index.StopWatchingAsync([new VolumeKey('T')], token);
+            await index.StartWatchingAsync(token);
+            await index.RescanAsync(token);
+            Assert.IsNull(index.Status.Watch.FailureMessage);
+            await index.StopWatchingAsync(token);
         }
         finally
         {
@@ -199,12 +202,12 @@ public sealed class BrokerFileIndexRescanTests
         /// <summary>Parks T's second scan inside the host until the returned gate is released.</summary>
         public TestGate HoldSecondScanOfT() => _heldScanOfT = new TestGate();
 
-        public Task<FileIndex> OpenIndexAsync(MftBlockProducer producer, IIndexWatchSource watchSource,
+        public Task<FileIndex> OpenIndexAsync(char drive, MftBlockProducer producer, IIndexWatchSource watchSource,
             CancellationToken token)
         {
             return FileIndex.OpenAsync(new FileIndexOptions
             {
-                Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _roots.Path, 123), SyntheticIndexedDrive.Create(new VolumeKey('U'), _roots.Path, 456)],
+                Root = SyntheticIndexedDrive.Create(new VolumeKey(drive), _roots.Path, drive == 'T' ? 123u : 456u),
                 CacheDirectory = _cache.Path,
                 CacheMode = CacheMode.Disabled,
                 MftSource = new MftIndexSource(producer, watchSource)

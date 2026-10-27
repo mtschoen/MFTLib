@@ -54,8 +54,8 @@ public sealed class UnreadableBlockTests : IndexTreeTestBase
 
             await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-            Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Drives[0].Block!.Origin);
-            Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Status.Block!.Origin);
+            Assert.AreEqual(DriveState.Ready, reopened.Status.State);
             Assert.IsGreaterThanOrEqualTo(3u, reopened.HeaderOf().RowCount,
                 "the drive must be cold-scanned rather than left empty");
         }

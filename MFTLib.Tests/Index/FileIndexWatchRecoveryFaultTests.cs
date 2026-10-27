@@ -22,8 +22,8 @@ public class FileIndexWatchRecoveryFaultTests
     public async Task RecoveredDrive_StopDoesNotReportItsPreviousFault(bool applyFailure)
     {
         using var harness = new WatchHarness('C', 'D');
-        await harness.Index.StartWatchingAsync([new VolumeKey('C')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('D')], Token);
+        await harness.IndexFor('C').StartWatchingAsync(Token);
+        await harness.IndexFor('D').StartWatchingAsync(Token);
         harness.SetNextProducedCursor('C', 13, 9000);
         if (applyFailure)
         {
@@ -43,8 +43,8 @@ public class FileIndexWatchRecoveryFaultTests
         Assert.HasCount(1, harness.Source.TargetsFor('D'));
         await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 9500));
         Assert.AreEqual(9500L, harness.BlockFor('D').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync([new VolumeKey('C')], Token);
-        await harness.Index.StopWatchingAsync([new VolumeKey('D')], Token);
+        await harness.IndexFor('C').StopWatchingAsync(Token);
+        await harness.IndexFor('D').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -52,15 +52,15 @@ public class FileIndexWatchRecoveryFaultTests
     {
         using var harness = new WatchHarness('C', 'D');
         var newFailure = new IOException("new C fault");
-        await harness.Index.StartWatchingAsync([new VolumeKey('C')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('D')], Token);
+        await harness.IndexFor('C').StartWatchingAsync(Token);
+        await harness.IndexFor('D').StartWatchingAsync(Token);
         harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         await harness.WaitForRecoveryAsync('C');
         harness.Source.WatchFor('C').LoseChannel(newFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'C');
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync([new VolumeKey('C')], Token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('C').StopWatchingAsync(Token));
         Assert.AreSame(newFailure, failure);
     }
 
@@ -70,9 +70,9 @@ public class FileIndexWatchRecoveryFaultTests
         using var harness = new WatchHarness('C', 'D', 'E');
         var remainingFailure = new IOException("D remains faulted");
         var newFailure = new IOException("new C fault");
-        await harness.Index.StartWatchingAsync([new VolumeKey('C')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('D')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('E')], Token);
+        await harness.IndexFor('C').StartWatchingAsync(Token);
+        await harness.IndexFor('D').StartWatchingAsync(Token);
+        await harness.IndexFor('E').StartWatchingAsync(Token);
         harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         harness.Source.WatchFor('D').LoseChannel(remainingFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
@@ -81,13 +81,13 @@ public class FileIndexWatchRecoveryFaultTests
         harness.Source.WatchFor('C').LoseChannel(newFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'C');
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync([new VolumeKey('D')], Token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('D').StopWatchingAsync(Token));
         Assert.AreSame(remainingFailure, failure);
-        var recoveredFailure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync([new VolumeKey('C')], Token));
+        var recoveredFailure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('C').StopWatchingAsync(Token));
         Assert.AreSame(newFailure, recoveredFailure);
         Assert.HasCount(1, harness.Source.TargetsFor('D'));
         Assert.HasCount(1, harness.Source.TargetsFor('E'));
-        await harness.Index.StopWatchingAsync([new VolumeKey('E')], Token);
+        await harness.IndexFor('E').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -95,18 +95,19 @@ public class FileIndexWatchRecoveryFaultTests
     {
         using var harness = new WatchHarness('C', 'D');
         var subscriberFailure = new InvalidOperationException("subscriber remains broken");
-        harness.Index.Changed += _ => throw subscriberFailure;
-        await harness.Index.StartWatchingAsync([new VolumeKey('C')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('D')], Token);
+        harness.IndexFor('C').Changed += _ => throw subscriberFailure;
+        harness.IndexFor('D').Changed += _ => throw subscriberFailure;
+        await harness.IndexFor('C').StartWatchingAsync(Token);
+        await harness.IndexFor('D').StartWatchingAsync(Token);
         harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "subscriber.txt", nextUsn: 9000));
         await harness.WaitForRecoveryAsync('C');
 
-        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync([new VolumeKey('D')], Token));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('D').StopWatchingAsync(Token));
         Assert.AreSame(subscriberFailure, failure);
         Assert.ContainsSingle(fault => fault.Kind == WatchFaultKind.Subscriber, harness.Faults);
-        await harness.Index.StopWatchingAsync([new VolumeKey('C')], Token);
+        await harness.IndexFor('C').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -114,7 +115,7 @@ public class FileIndexWatchRecoveryFaultTests
     {
         using var harness = new WatchHarness('C', 'D');
         var restartFailure = new IOException("rearm failed");
-        await harness.Index.StartWatchingAsync([new VolumeKey('C')], Token);
+        await harness.IndexFor('C').StartWatchingAsync(Token);
         harness.Source.FailNextStart(restartFailure);
         harness.Source.WatchFor('C').FailDrive(new IOException("C never recovered"));
 

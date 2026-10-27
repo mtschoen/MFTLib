@@ -120,7 +120,7 @@ MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournal
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
-MFTLibTestExtensions.SyntheticIndexedDrive :: method public static Create(MFTLib.Index.RootKey drive, string rootDirectory, uint volumeSerial, MFTLib.Index.ProducerKind producer = 1) : MFTLib.Index.IndexedDrive
+MFTLibTestExtensions.SyntheticIndexedDrive :: method public static Create(MFTLib.Index.RootKey drive, string rootDirectory, uint volumeSerial, MFTLib.Index.ProducerKind producer = 1) : MFTLib.Index.IndexedRoot
 MFTLibTestExtensions.SyntheticIndexedDrive :: type public static class
 MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUsn)
 MFTLibTestExtensions.SyntheticJournalCursor :: method public Deconstruct(out ulong JournalIdentifier, out long NextUsn) : void
@@ -202,9 +202,8 @@ MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCached
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveBlockStatus(MFTLib.Index.BlockOrigin blockOrigin, uint liveRowCount, bool capacityExhausted, System.DateTime scanTimestamp) : MFTLib.Index.DriveBlockStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveFailure(MFTLib.Index.DriveFailureKind kind, string message) : MFTLib.Index.DriveFailure
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveOperationResult(MFTLib.Index.RootKey drive, MFTLib.Index.DriveOperationOutcome outcome, System.Exception? failure) : MFTLib.Index.DriveOperationResult
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(MFTLib.Index.RootKey drive, MFTLib.Index.DriveState state, MFTLib.Index.DriveBlockStatus? block, MFTLib.Index.DriveFailure? failure) : MFTLib.Index.DriveStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(MFTLib.Index.RootKey drive, MFTLib.Index.DriveState state, MFTLib.Index.DriveBlockStatus? block, MFTLib.Index.DriveFailure? failure) : MFTLib.Index.RootStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateFileChange(MFTLib.Index.FileChangeKind kind, MFTLib.Index.FileEntry entry, string path, System.DateTime timestamp, string? previousPath = default) : MFTLib.Index.FileChange
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexDriveOpened(MFTLib.Index.RootKey drive, int settledDriveCount, int totalDriveCount) : MFTLib.Index.IndexDriveOpened
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(MFTLib.Index.RootKey drive, MFTLib.Index.IndexScanPhase phase, uint writtenRowCount, uint? expectedRowCount = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCatchUpLostException(bool recoveryStopped, string message) : MFTLib.Index.JournalCatchUpLostException
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(MFTLib.Index.VolumeKey drive, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss

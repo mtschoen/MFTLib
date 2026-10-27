@@ -27,7 +27,7 @@ public partial class FileIndexResilienceTests
         cacheOnlyOptions = cacheOnlyOptions with { CacheMode = CacheMode.ExistingOnly };
         await using var index = await FileIndex.OpenAsync(cacheOnlyOptions, CancellationToken.None);
 
-        var failed = index.Drives.Single();
+        var failed = index.Status;
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
@@ -85,14 +85,14 @@ public partial class FileIndexResilienceTests
         var deletions = new List<string>();
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = deletions.Add
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Status.Block!.Origin);
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
         Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
         Assert.Contains(nameof(BlockValidationResult.WrongRootDirectory), line);
@@ -104,12 +104,12 @@ public partial class FileIndexResilienceTests
         var deletions = new List<string>();
         await using var index = await FileIndex.OpenAsync(Options(diagnostics: deletions.Add),
             CancellationToken.None);
-        var oldSnapshot = index.CurrentSnapshot;
+        var oldBlock = index.CurrentBlock!;
 
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+        await index.RescanAsync(CancellationToken.None);
 
-        await oldSnapshot.ReleaseNowAsync();
+        await oldBlock.ReleaseNowAsync();
 
         var line = deletions.SingleOrDefault(entry => entry.Contains(".retired-"));
         Assert.IsNotNull(line, "the superseded block's delete at release must be logged with its path");
@@ -128,7 +128,7 @@ public partial class FileIndexResilienceTests
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         progress.Armed = true;
 
-        await AssertThrowsCancellation(() => index.RescanAsync([new VolumeKey('T')], cancellationTokenSource.Token));
+        await AssertThrowsCancellation(() => index.RescanAsync(cancellationTokenSource.Token));
 
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath) && entry.Contains("partial"));

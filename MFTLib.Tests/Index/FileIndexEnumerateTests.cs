@@ -30,8 +30,8 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
     public async Task Enumerate_YieldsTheFirstEntryBeforeTheScanHasVisitedEveryRow()
     {
         await using var index = await OpenSyntheticIndexWithDeepCandidateAsync();
-        var release = index.CurrentSnapshot[0].ReleaseState;
-        var query = new SearchQuery("candidate", Subtree: index.Root(new VolumeKey('T'), TestContext.CancellationToken));
+        var release = index.CurrentBlock!.ReleaseState;
+        var query = new SearchQuery("candidate", Subtree: index.Root(TestContext.CancellationToken));
 
         // Search materializes the whole match set and fails because it visits the deep candidate up front.
         try
@@ -88,7 +88,7 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         await index.DisposeAsync();
     }
 
@@ -100,7 +100,7 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
         var getEnumerator = typeof(System.Collections.IEnumerable).GetMethod(nameof(System.Collections.IEnumerable.GetEnumerator))!;
         var enumerator = (System.Collections.IEnumerator)getEnumerator.Invoke(enumerable, null)!;
         _ = enumerator.MoveNext();
-        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         GC.KeepAlive(enumerator);
     }
 
@@ -130,7 +130,7 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>

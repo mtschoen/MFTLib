@@ -45,7 +45,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
 
     FileIndexOptions Options(bool cacheOnly, IIndexWatchSource? source = null) => new()
     {
-        Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _directory, 0xBADF00D)],
+        Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), _directory, 0xBADF00D),
         CacheDirectory = Path.Combine(_directory, "cache"),
         MftSource = new MftIndexSource(Produce, source),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
@@ -78,7 +78,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
     async Task SeedAsync()
     {
         await using var index = await FileIndex.OpenAsync(Options(false), Token);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Status.Block!.Origin);
         Assert.AreEqual(1, _productions);
     }
 
@@ -99,7 +99,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         windows['T'] = Lost(recreated);
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(cacheOnly, source.IndexSource), Token);
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? 1 : 2, _productions);
         Assert.AreEqual(cacheOnly ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan,
@@ -115,10 +115,10 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         if (cacheOnly)
         {
             var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.StartWatchingAsync([new VolumeKey('T')], Token));
+                () => index.StartWatchingAsync(Token));
             Assert.Contains("RescanAsync", refusal.Message);
             Assert.IsEmpty(source.Starts);
-            status = index.Drives.Single();
+            status = index.Status;
             Assert.IsNotNull(status.Watch.FailureMessage);
             Assert.Contains("RescanAsync", status.Watch.FailureMessage);
             Assert.AreEqual(WatchState.Faulted, status.Watch.State);
@@ -135,13 +135,13 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(true, source.IndexSource), Token);
         Assert.AreEqual(1, _productions);
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Drives.Single().Block!.Origin);
-        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
-        await index.StartWatchingAsync([new VolumeKey('T')], Token);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Status.Block!.Origin);
+        Assert.IsNull(index.Status.Watch.CheckpointLoss);
+        await index.StartWatchingAsync(Token);
         Assert.AreEqual('T', source.Starts.Single().Drive);
-        Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
-        Assert.IsNull(index.Drives.Single().Watch.FailureMessage);
-        await index.StopWatchingAsync([new VolumeKey('T')], Token);
+        Assert.AreEqual(WatchState.CatchingUp, index.Status.Watch.State);
+        Assert.IsNull(index.Status.Watch.FailureMessage);
+        await index.StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -162,7 +162,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         index.HoldEveryRecovery();
         var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += _ => announced.TrySetResult();
-        await index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await index.StartWatchingAsync(Token);
         var handle = source.WatchFor('T');
         await handle.Publish(new JournalBatch([], JournalIdentifier: 7, NextUsn: 2_000));
         windows['T'] = observation switch
@@ -173,7 +173,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         };
         handle.FailDrive(new IOException("synthetic fault"));
         await announced.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(1, _productions);
         Assert.AreEqual(WatchState.Recovering, status.Watch.State);
         Assert.IsNotNull(status.Watch.FailureMessage);
@@ -190,7 +190,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
             Assert.AreEqual(observation == 1 ? JournalCheckpointLossCause.CheckpointTrimmed
                 : JournalCheckpointLossCause.JournalRecreated, status.Watch.CheckpointLoss.Cause);
         }
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(Token));
     }
 
     [TestMethod]
@@ -204,12 +204,12 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         using (JournalIsolation.OverrideJournalWindow(_ => Lost(false)))
         {
             await using var index = await FileIndex.OpenAsync(Options(true), Token);
-            Assert.IsNotNull(index.Drives.Single().Watch.CheckpointLoss);
+            Assert.IsNotNull(index.Status.Watch.CheckpointLoss);
         }
 
         await using var restored = await FileIndex.OpenAsync(Options(true), Token);
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, restored.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, restored.Status.Block!.Origin);
         Assert.AreEqual(1, _productions);
-        Assert.IsNull(restored.Drives.Single().Watch.CheckpointLoss);
+        Assert.IsNull(restored.Status.Watch.CheckpointLoss);
     }
 }

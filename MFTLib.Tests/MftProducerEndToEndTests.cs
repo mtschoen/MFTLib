@@ -46,7 +46,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
 
         AssertReady(index);
         Assert.AreEqual(24u, index.HeaderOf('C').RowCount);
-        Assert.AreEqual(_rootDirectory, index.Root(new VolumeKey('C'), TestContext.CancellationToken).Path);
+        Assert.AreEqual(_rootDirectory, index.Root(TestContext.CancellationToken).Path);
         var notes = index.Find(At("documents", "notes.txt"), TestContext.CancellationToken)!.Value;
         Assert.AreEqual(20UL, notes.RecordKey.RecordNumber);
         Assert.AreEqual(4096L, notes.Size);
@@ -59,8 +59,8 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         Assert.HasCount(2, duplicates);
         var deleted = index.Find(At("documents", "obsolete.txt"), TestContext.CancellationToken)!.Value;
         var renamed = index.Find(At("documents", "draft.txt"), TestContext.CancellationToken)!.Value;
-        Assert.IsNull(index.Drives[0].Watch.CheckpointLoss);
-        var block = index.Root(new VolumeKey('C'), TestContext.CancellationToken).DriveBlock.Block;
+        Assert.IsNull(index.Status.Watch.CheckpointLoss);
+        var block = index.Root(TestContext.CancellationToken).DriveBlock.Block;
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(index.Find(At("documents", "created.txt"), TestContext.CancellationToken));
 
@@ -142,8 +142,8 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         Assert.IsLessThan(1_000_000u, created.Header.SlotCapacity);
         Assert.IsTrue(created.Header.IsComplete);
         Assert.IsTrue(created.Header.IsCapacityExhausted);
-        Assert.IsTrue(index.Drives[0].Block!.IsCapacityExhausted);
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+        Assert.IsTrue(index.Status.Block!.IsCapacityExhausted);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(At("beyond.txt"), TestContext.CancellationToken));
@@ -174,7 +174,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         var previousBlock = previous.DriveBlock.Block;
         var firstBlockCursor = new UsnJournalCursor(previousBlock.Header.UsnJournalIdentifier, previousBlock.Header.UsnNextUsn);
 
-        await index.StartWatchingAsync([new VolumeKey('C')], CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(ArmedCursor, firstBlockCursor);
         Assert.AreNotEqual(AdvancedCursor, firstBlockCursor, "catch-up advanced past the armed cursor");
@@ -182,11 +182,11 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         Assert.AreEqual(new ScriptedWatchStart('C', firstBlockCursor.ToSynthetic()), firstStart);
 
         Volatile.Write(ref rearmed.Value, 1);
-        await index.RescanAsync([new VolumeKey('C')], CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.RescanAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(2, scanCount.Value);
-        var replacementBlock = index.Root(new VolumeKey('C'), TestContext.CancellationToken).DriveBlock.Block;
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+        var replacementBlock = index.Root(TestContext.CancellationToken).DriveBlock.Block;
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
         Assert.AreNotSame(previousBlock, replacementBlock);
         Assert.AreEqual(RearmedCursor.NextUsn, replacementBlock.Header.UsnNextUsn);
         Assert.AreEqual(40UL, index.Find(At("replacement.txt"), TestContext.CancellationToken)!.Value.RecordKey.RecordNumber);
@@ -214,10 +214,10 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var loss = index.Drives[0].Watch.CheckpointLoss;
+        var loss = index.Status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
-        var block = index.Root(new VolumeKey('C'), TestContext.CancellationToken).DriveBlock.Block;
+        var block = index.Root(TestContext.CancellationToken).DriveBlock.Block;
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
@@ -239,18 +239,18 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
 
     FileIndexOptions Options(MftIndexSource source) => new()
     {
-        Drives = [SyntheticIndexedDrive.Create(new VolumeKey('C'), _rootDirectory, 123)],
+        Root = SyntheticIndexedDrive.Create(new VolumeKey('C'), _rootDirectory, 123),
         CacheDirectory = _cacheDirectory,
         MftSource = source
     };
 
     static void AssertReady(FileIndex index)
     {
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
-        Assert.IsTrue(index.Drives[0].Watch.IsSupported);
-        Assert.IsFalse(index.Drives[0].Block!.IsCapacityExhausted);
-        Assert.IsNull(index.Drives[0].Failure);
+        Assert.IsTrue(index.Status.Watch.IsSupported);
+        Assert.IsFalse(index.Status.Block!.IsCapacityExhausted);
+        Assert.IsNull(index.Status.Failure);
     }
 
     static IEnumerable<IReadOnlyList<MftRecord>> Records() =>

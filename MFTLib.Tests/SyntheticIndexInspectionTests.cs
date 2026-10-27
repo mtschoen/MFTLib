@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     <see cref="SyntheticIndexInspection" /> reads the header of the block an open index holds, so a
-///     consumer test can observe the producer and the slot count that <see cref="DriveStatus" /> no
+///     consumer test can observe the producer and the slot count that <see cref="RootStatus" /> no
 ///     longer reports.
 /// </summary>
 [TestClass]
@@ -27,7 +27,7 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
     FileIndexOptions Options(string root, CacheTag cacheTag = default) =>
         Fixture.Options(volumeSerial: Serial) with
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration),
             CacheTag = cacheTag
         };
 
@@ -41,7 +41,7 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
 
         Assert.IsNotNull(header);
         Assert.AreEqual(ProducerKind.Enumeration, header.ProducerKind);
-        Assert.IsGreaterThanOrEqualTo(index.Drives.Single().Block!.LiveRowCount, header.RowCount, "slots include every live row");
+        Assert.IsGreaterThanOrEqualTo(index.Status.Block!.LiveRowCount, header.RowCount, "slots include every live row");
         Assert.AreEqual(tag, header.CacheTag);
     }
 
@@ -51,7 +51,7 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(
             Options(Path.Combine(TreeRoot, "absent")), Token);
 
-        Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Offline, index.Status.State);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, new VolumeKey('T')));
     }
 

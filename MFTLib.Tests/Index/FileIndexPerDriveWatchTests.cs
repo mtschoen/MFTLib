@@ -30,7 +30,7 @@ public partial class FileIndexPerDriveWatchTests
 
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
 
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
 
         Assert.AreSequenceEqual(
             [new IndexWatchTarget(new VolumeKey('T'), WatchHarness.JournalIdentifier, WatchHarness.NextUsn)], [.. harness.Source.Targets]);
@@ -42,9 +42,9 @@ public partial class FileIndexPerDriveWatchTests
     public async Task StartWatching_AlreadyWatching_DoesNotRestart()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
 
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
 
         Assert.HasCount(1, harness.Source.Starts);
     }
@@ -56,7 +56,7 @@ public partial class FileIndexPerDriveWatchTests
         var sourceFailure = new IOException("the broker is gone");
         harness.Source.FailNextStart(sourceFailure);
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StartWatchingAsync([new VolumeKey('T')], Token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('T').StartWatchingAsync(Token));
 
         Assert.AreSame(sourceFailure, failure);
         var drive = harness.DriveFor('T');
@@ -71,18 +71,18 @@ public partial class FileIndexPerDriveWatchTests
         var held = harness.TrackGate();
         harness.Source.HoldStart(held);
         using var callerCancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
-        var start = harness.Index.StartWatchingAsync([new VolumeKey('T')], callerCancellation.Token);
+        var start = harness.IndexFor('T').StartWatchingAsync(callerCancellation.Token);
         await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await callerCancellation.CancelAsync();
         await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.HasCount(1, harness.Source.Watches);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -91,16 +91,16 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         var sourceFailure = new IOException("the broker could not be reached");
         harness.Source.FailNextStart(sourceFailure);
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(sourceFailure, failure);
 
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.HasCount(1, harness.Source.Watches);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -109,19 +109,19 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         var held = harness.TrackGate();
         harness.Source.HoldStart(held);
-        var start = harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        var start = harness.IndexFor('T').StartWatchingAsync(Token);
         await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.IndexFor('T').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsEmpty(harness.Source.Watches, "the cancelled start returned no handle, so no pump ran");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
 
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.HasCount(1, harness.Source.Watches);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
     }
 
     [TestMethod]
@@ -130,7 +130,7 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         var held = harness.TrackGate();
         harness.Source.HoldStart(held);
-        var start = harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        var start = harness.IndexFor('T').StartWatchingAsync(Token);
         await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -144,9 +144,9 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         var held = harness.TrackGate();
         harness.Source.HoldStart(held, observeToken: false);
-        var start = harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        var start = harness.IndexFor('T').StartWatchingAsync(Token);
         await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-        var stop = harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        var stop = harness.IndexFor('T').StopWatchingAsync(Token);
 
         held.Release();
 
@@ -163,12 +163,12 @@ public partial class FileIndexPerDriveWatchTests
     public async Task Batch_AppliesAndRaisesChanged()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "fresh.txt", nextUsn: 555));
 
         Assert.AreEqual(555L, harness.BlockFor('T').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
         Assert.HasCount(1, harness.Changes);
         Assert.AreEqual(FileChangeKind.Created, harness.Changes.Single().Kind);
         Assert.AreEqual("fresh.txt", harness.Changes.Single().Entry.Name);
@@ -178,8 +178,8 @@ public partial class FileIndexPerDriveWatchTests
     public async Task DriveCaughtUp_CompletesWait()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
-        var wait = harness.Index.WaitForCatchUpAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        var wait = harness.IndexFor('T').WaitForCatchUpAsync(Token);
         Assert.IsFalse(wait.IsCompleted, "nothing has caught up yet");
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
@@ -192,9 +192,9 @@ public partial class FileIndexPerDriveWatchTests
     public async Task DriveFault_RaisesDriveKindAndFaultsOnlyThatDrive()
     {
         using var harness = new WatchHarness();
-        harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('U')], Token);
+        harness.HoldEveryRecovery();
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        await harness.IndexFor('U').StartWatchingAsync(Token);
 
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
@@ -212,8 +212,8 @@ public partial class FileIndexPerDriveWatchTests
     public async Task ApplyFailure_RaisesApplyKind()
     {
         using var harness = new WatchHarness();
-        harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        harness.HoldEveryRecovery();
+        await harness.IndexFor('T').StartWatchingAsync(Token);
         var cursorBefore = harness.BlockFor('T').Header.UsnNextUsn;
 
         await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, NextUsn: 900));
@@ -229,7 +229,7 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
         harness.Index.Changed += _ => throw new InvalidOperationException("the subscriber blew up");
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
         var handle = harness.Source.WatchFor('T');
 
         await handle.Publish(WatchHarness.Batch(9, "first.txt", nextUsn: 300));
@@ -254,8 +254,8 @@ public partial class FileIndexPerDriveWatchTests
                 blocked.WaitForRelease();
             }
         };
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('U')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        await harness.IndexFor('U').StartWatchingAsync(Token);
         var tConsumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt"));
         await blocked.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -271,17 +271,17 @@ public partial class FileIndexPerDriveWatchTests
     public async Task Stop_ReportsOutstandingFaultOnceAsFailedResult()
     {
         using var harness = new WatchHarness();
-        harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        harness.HoldEveryRecovery();
+        await harness.IndexFor('T').StartWatchingAsync(Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
-        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync([new VolumeKey('T')], Token));
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.IndexFor('T').StopWatchingAsync(Token));
 
         Assert.AreSame(fault.Exception, failure);
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.NotApplicableAsync(
-            () => harness.Index.StopWatchingAsync([new VolumeKey('T')], Token),
+            () => harness.IndexFor('T').StopWatchingAsync(Token),
             "the first stop cleared the request and retired the instance, so the drive is not watching");
     }
 
@@ -290,7 +290,7 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
 
-        await DriveResultAssertions.NotApplicableAsync(() => harness.Index.StopWatchingAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.NotApplicableAsync(() => harness.IndexFor('T').StopWatchingAsync(Token));
 
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
     }
@@ -302,10 +302,10 @@ public partial class FileIndexPerDriveWatchTests
         var source = new ScriptedWatchSource();
         await using var index = await fixture.OpenAdoptingAnUnresumableBlockAsync(source, Token);
 
-        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync([new VolumeKey('T')], Token));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(Token));
 
         Assert.Contains("FileIndex.RescanAsync", failure.Message);
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(failure.Message, drive.Watch.FailureMessage);
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.IsEmpty(source.Starts, "the source is never asked to start the drive");

@@ -18,4 +18,12 @@ static class RecoveryHolds
         index.Hooks.RecoveryBeforeLifecycleGate =
             static (_, cancellationToken) => Task.Delay(Timeout.Infinite, cancellationToken);
     }
+
+    public static void HoldEveryRecovery(this WatchHarness harness)
+    {
+        foreach (var index in harness.Indices)
+        {
+            index.HoldEveryRecovery();
+        }
+    }
 }

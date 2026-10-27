@@ -4,10 +4,10 @@ namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     Records every <see cref="FileIndex.WatchStateChanged" /> state and every
-///     <see cref="FileIndex.WatchFaulted" /> fault of one index in the single order its handlers
-///     ran, so a test can assert both what changed and how states interleave with faults. Waits
-///     are settled by this recorder's own handlers, so a completed wait proves the recorder has
-///     seen the event, never by polling.
+///     <see cref="FileIndex.WatchFaulted" /> fault of one or more indices in the single order their
+///     handlers ran, so a test can assert both what changed and how states interleave with faults.
+///     Waits are settled by this recorder's own handlers, so a completed wait proves the recorder
+///     has seen the event, never by polling.
 /// </summary>
 sealed class WatchStateRecorder
 {
@@ -15,10 +15,18 @@ sealed class WatchStateRecorder
     readonly List<object> _events = [];
     readonly List<(Func<object, bool> Match, TaskCompletionSource<object> Completion)> _waiters = [];
 
-    public WatchStateRecorder(FileIndex index)
+    public WatchStateRecorder(params FileIndex[] indices)
+        : this((IEnumerable<FileIndex>)indices)
     {
-        index.WatchStateChanged += Record;
-        index.WatchFaulted += Record;
+    }
+
+    public WatchStateRecorder(IEnumerable<FileIndex> indices)
+    {
+        foreach (var index in indices)
+        {
+            index.WatchStateChanged += Record;
+            index.WatchFaulted += Record;
+        }
     }
 
     /// <summary>Every recorded <see cref="WatchStateChange" /> and <see cref="WatchFault" />, in order.</summary>

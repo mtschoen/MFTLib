@@ -179,10 +179,10 @@ See [Linux package](linux-package.md) for the build and package acceptance contr
 
 ## Smoke checks
 
-- Open an index through `BrokerSession.CreateIndexSource()`, start and catch up
-  watches on two drives, and verify `Changed` events identify each drive's changes.
-  Restart one drive with `RescanAsync(['C'], cancellationToken)` while its sibling keeps watching;
-  finish with `StopWatchingAsync(index.Drives.Select(status => status.Drive), cancellationToken)` and inspect all drive results.
+- Open two indexes through `BrokerSession.CreateIndexSource()`, start and catch up
+  their watches, and verify `Changed` events identify each drive's changes.
+  Restart one index with `RescanAsync(cancellationToken)` while its sibling keeps watching;
+  finish with `StopWatchingAsync(cancellationToken)` on each index and inspect the results.
 - Simulate broker death and confirm terminal `WatchFaultKind.Channel` faults;
   a fresh session and new indexes supply the next connection. Check recoverable
   `Drive` and `Apply` faults separately through their recovery state events.

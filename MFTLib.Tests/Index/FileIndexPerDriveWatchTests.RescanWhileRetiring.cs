@@ -1,6 +1,5 @@
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib.Index;
 
 namespace MFTLib.Tests.Index;
 
@@ -16,7 +15,7 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
         var index = harness.Index;
-        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var oldHandle = harness.Source.WatchFor('T');
         var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
@@ -25,10 +24,10 @@ public partial class FileIndexPerDriveWatchTests
         await alreadyCancelled.CancelAsync().WaitAsync(HangGuard, TestContext.CancellationToken);
         var stopToken = alreadyCancelled.Token;
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => index.StopWatchingAsync([new VolumeKey('T')], stopToken)).WaitAsync(HangGuard, TestContext.CancellationToken);
+            () => index.StopWatchingAsync(stopToken)).WaitAsync(HangGuard, TestContext.CancellationToken);
         var producedBefore = harness.ProductionCount('T');
 
-        var rescan = index.RescanAsync([new VolumeKey('T')], Token);
+        var rescan = index.RescanAsync(Token);
 
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring instance");
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'), "production precedes the drain");

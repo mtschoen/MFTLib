@@ -4,11 +4,11 @@ public sealed partial class FileIndex
 {
     sealed partial class DriveRuntime
     {
-        public DriveStatus DescribeLocked()
+        public RootStatus DescribeLocked()
         {
             if (Block is not { } driveBlock)
             {
-                return new DriveStatus(Drive, BlocklessState)
+                return new RootStatus(Drive, BlocklessState)
                 {
                     Failure = _failure,
                     Watch = new DriveWatchStatus { CheckpointLoss = _checkpointLoss }
@@ -18,7 +18,7 @@ public sealed partial class FileIndex
             var result = _lastResult ?? throw new InvalidOperationException(
                 $"Drive {Drive} has a block without its adopted result.");
             ref readonly var header = ref driveBlock.Block.Header;
-            return new DriveStatus(Drive, DriveState.Ready)
+            return new RootStatus(Drive, DriveState.Ready)
             {
                 Failure = _failure,
                 Block = new DriveBlockStatus
@@ -70,7 +70,7 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     The one builder of a drive's <see cref="DriveWatchStatus" />, shared by
-        ///     <see cref="Drives" /> and the changes <see cref="FileIndex.WatchStateChanged" /> delivers. A change is
+        ///     <see cref="Status" /> and the changes <see cref="FileIndex.WatchStateChanged" /> delivers. A change is
         ///     only ever noted for a drive with a block: a watch is requested only against a block,
         ///     and blocks are never removed. The caller holds <see cref="FileIndex._stateLock" />.
         /// </summary>

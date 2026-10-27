@@ -70,12 +70,12 @@ The retained native substitutions remain for targeted low-level testing:
 - `Kernel32.Hooks._createFile`, `_deviceIoControl`, and `_getDiskSpaceInformation`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry, disk-space and grow buffer injection.
 
 `Persistent` and `ExistingOnly` opens (null `FileIndexOptions.CacheMode` is `Persistent` for non-dump sources)
-require an explicit nonblank `FileIndexOptions.CacheDirectory`,
-including empty-drive opens. Missing configuration throws `ArgumentException`
+require an explicit nonblank `FileIndexOptions.CacheDirectory` and a non-null `FileIndexOptions.Root`.
+Missing configuration throws `ArgumentException`
 before creating a directory. Tests supply temporary directories they own. `Disabled` opens
 require no cache path and ignore supplied paths without resolving or creating
-them. A dump source supplies its own drive: validation runs first and requires a
-non-null empty `Drives` collection, null `CacheMode` and `CacheDirectory`, and
+them. A dump source supplies its own drive: validation runs first and requires
+null `Root`, `CacheMode` and `CacheDirectory`, and
 default `CacheTag`. Every non-null cache mode, including `Disabled`, is rejected.
 
 MFTLib.Tests activates journal isolation from a module initializer, through
@@ -323,7 +323,7 @@ before disposing the host harness.
 | --- | --- | --- |
 | `EnumerationWalkLimit.Hooks._walkQueued` | Process-global; reset after opens drain. | `FileIndexConcurrentOpenTests.Open_EnumerationWalks_NeverExceedTheWalkLimit` |
 | `CacheDirectory.Hooks._beforeDelete` | Process-global; runs under the owner lock, reset after deletion drains. | `CacheDirectoryDeletionLiveOwnerTests`; `CacheDirectoryDeletionTests` |
-| `IndexedDrive.Dependencies._volumeSerialReader` | Process-global; null selects the native reader. | `IndexedDriveTests`; `ReadmeWalkthroughTests` |
+| `IndexedRoot.Dependencies._volumeSerialReader` | Process-global; null selects the native reader. | `IndexedDriveTests`; `ReadmeWalkthroughTests` |
 | `FileEntry.Dependencies._openById` | Process-global; defaults to `DefaultOpenById`. | `FileEntryOpenTests`; `FileEntryIncarnationTests`; `MftDumpPathTests`; `DirectHostTests` |
 | `UsnJournalSettingsQuery.Dependencies._queryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
 | `JournalCheckpointCheck.Hooks.ObservationOverride` and one-way guard | Process-global; exclusive scope only through public `JournalIsolation`, the guard never resets. | `JournalWindowOverrideTests`; `ConsumerJournalIsolationTests`; `UsnJournalVolumeInteropTests` |

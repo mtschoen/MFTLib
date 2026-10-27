@@ -17,7 +17,7 @@ static class SyntheticIndexInspection
     {
         ArgumentNullException.ThrowIfNull(index);
         using var borrow = index.BorrowCurrentSnapshot();
-        return LookupEngine.FindDriveBlock(borrow.DriveBlocks, drive) is { } driveBlock
+        return borrow.DriveBlock is { } driveBlock && driveBlock.Drive == drive.Validated()
             ? SyntheticDriveHeader.From(driveBlock.Block)
             : null;
     }

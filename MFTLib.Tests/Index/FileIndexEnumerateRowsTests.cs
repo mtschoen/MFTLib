@@ -48,7 +48,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     {
         await using var index = await _fixture.OpenAsync();
         CreateWithoutIteration(index);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     static void CreateWithoutIteration(FileIndex index)
@@ -99,7 +99,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     {
         await using var index = await _fixture.OpenAsync();
         AssertRepeatedDispose(index);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     static void AssertRepeatedDispose(FileIndex index)
@@ -107,16 +107,16 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         using var source = new CancellationTokenSource();
         using var enumerator = index.EnumerateRows(new SearchQuery(null), source.Token).GetEnumerator();
         using var copy = enumerator;
-        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         copy.Dispose();
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         enumerator.Dispose();
         enumerator.Dispose();
         copy.Dispose();
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
 
         using var later = index.EnumerateRows(new SearchQuery(null)).GetEnumerator();
-        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         Assert.IsTrue(later.MoveNext());
     }
 }

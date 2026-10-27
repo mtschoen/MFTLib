@@ -18,7 +18,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     {
         try
         {
-            IndexedDrive.Dependencies.ResetToDefaults();
+            IndexedRoot.Dependencies.ResetToDefaults();
         }
         finally
         {
@@ -31,13 +31,13 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     [DataRow('c')]
     public void ReadWindowsVolume_NormalizesKeysToTheSameDrive(char spelling)
     {
-        IndexedDrive.Dependencies._volumeSerialReader = root =>
+        IndexedRoot.Dependencies._volumeSerialReader = root =>
         {
             Assert.AreEqual(@"C:\", root);
             return 0xDEADBEEF;
         };
 
-        var drive = IndexedDrive.ReadWindowsVolume(spelling);
+        var drive = IndexedRoot.ReadWindowsVolume(spelling);
 
         Assert.AreEqual("C", drive.Drive.ToString());
         Assert.AreEqual(@"C:\", drive.RootDirectory);
@@ -47,9 +47,9 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     [TestMethod]
     public void ReadWindowsVolume_ThrowsIOExceptionNamingTheDriveWhenTheQueryFails()
     {
-        IndexedDrive.Dependencies._volumeSerialReader = _ => null;
+        IndexedRoot.Dependencies._volumeSerialReader = _ => null;
 
-        var failure = Assert.ThrowsExactly<IOException>(() => IndexedDrive.ReadWindowsVolume('Q'));
+        var failure = Assert.ThrowsExactly<IOException>(() => IndexedRoot.ReadWindowsVolume('Q'));
 
         Assert.Contains("Q", failure.Message);
     }
@@ -57,7 +57,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     [TestMethod]
     public void ReadWindowsVolume_RejectsDefaultKey()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => IndexedDrive.ReadWindowsVolume(default));
+        Assert.ThrowsExactly<ArgumentException>(() => IndexedRoot.ReadWindowsVolume(default));
     }
 
     [TestMethod]
@@ -66,7 +66,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     public void FromWindowsDrive_ReadsARealSerialForTheSystemDrive()
     {
         var systemRoot = Path.GetPathRoot(Environment.SystemDirectory)!;
-        var drive = IndexedDrive.FromWindowsDrive(systemRoot[0]);
+        var drive = IndexedRoot.FromWindowsDrive(systemRoot[0]);
 
         Assert.AreNotEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(systemRoot, drive.RootDirectory);
@@ -76,7 +76,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public void ReadWindowsVolume_OffWindowsWithoutTheSeam_ThrowsPlatformNotSupported()
     {
-        var failure = Assert.ThrowsExactly<PlatformNotSupportedException>(() => IndexedDrive.ReadWindowsVolume('C'));
+        var failure = Assert.ThrowsExactly<PlatformNotSupportedException>(() => IndexedRoot.ReadWindowsVolume('C'));
 
         Assert.Contains("GetVolumeInformationW", failure.Message);
     }
@@ -86,13 +86,13 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     public void FromDirectory_ReadsTheContainingVolumeSerial()
     {
         Directory.CreateDirectory(TreeRoot);
-        IndexedDrive.Dependencies._volumeSerialReader = root =>
+        IndexedRoot.Dependencies._volumeSerialReader = root =>
         {
             Assert.AreEqual(Path.GetPathRoot(TreeRoot), root);
             return 0xDEADBEEF;
         };
 
-        var drive = IndexedDrive.FromDirectory(TreeRoot + Path.DirectorySeparatorChar);
+        var drive = IndexedRoot.FromDirectory(TreeRoot + Path.DirectorySeparatorChar);
 
         Assert.IsFalse(drive.Drive.IsVolume);
         Assert.AreEqual(TreeRoot, drive.Drive.ToString());
@@ -106,9 +106,9 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     public void FromDirectory_UnreadableContainingVolumeSerialMeansNone()
     {
         Directory.CreateDirectory(TreeRoot);
-        IndexedDrive.Dependencies._volumeSerialReader = _ => null;
+        IndexedRoot.Dependencies._volumeSerialReader = _ => null;
 
-        var drive = IndexedDrive.FromDirectory(TreeRoot);
+        var drive = IndexedRoot.FromDirectory(TreeRoot);
 
         Assert.AreEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(TreeRoot, drive.RootDirectory);
@@ -119,26 +119,13 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     public void FromDirectory_OffWindowsHasNoVolumeSerial()
     {
         Directory.CreateDirectory(TreeRoot);
-        IndexedDrive.Dependencies._volumeSerialReader = _ =>
+        IndexedRoot.Dependencies._volumeSerialReader = _ =>
             throw new AssertFailedException("The Windows serial reader must not run off Windows.");
 
-        var drive = IndexedDrive.FromDirectory(TreeRoot);
+        var drive = IndexedRoot.FromDirectory(TreeRoot);
 
         Assert.AreEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(TreeRoot, drive.RootDirectory);
-    }
-
-    [TestMethod]
-    public async Task OpenAsync_TwoSpellingsOfOneDirectory_AreRejectedAsDuplicates()
-    {
-        Directory.CreateDirectory(TreeRoot);
-        var first = IndexedDrive.FromDirectory(TreeRoot);
-        var second = IndexedDrive.FromDirectory(TreeRoot + Path.DirectorySeparatorChar);
-
-        var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [first, second] });
-
-        Assert.Contains("listed more than once", failure.Message);
     }
 
     [TestMethod]
@@ -148,7 +135,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
         var invalid = CreateBypassedDirectoryMftDrive(TreeRoot);
 
         var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [invalid] });
+            options => options with { Root = invalid });
 
         Assert.Contains("volume root", failure.Message);
     }
@@ -166,7 +153,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     public void ReadVolumeVerdicts_ClassifiesByTypeThenReadinessThenFormat(
         DriveType type, bool ready, string format, string? reason)
     {
-        var result = IndexedDrive.ReadVolumeVerdicts(new[] { 0 }, _ => @"X:\", _ => type,
+        var result = IndexedRoot.ReadVolumeVerdicts(new[] { 0 }, _ => @"X:\", _ => type,
             _ => type == DriveType.Fixed ? ready
                 : throw new AssertFailedException("Non-fixed readiness was read."),
             _ => type == DriveType.Fixed && ready ? format
@@ -185,7 +172,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     [TestMethod]
     public void ReadVolumeVerdicts_ReportsVanishedDriveNotReadyAndContinues()
     {
-        var result = IndexedDrive.ReadVolumeVerdicts(new[] { 0, 1 },
+        var result = IndexedRoot.ReadVolumeVerdicts(new[] { 0, 1 },
             drive => drive == 0 ? @"Q:\" : @"C:\", _ => DriveType.Fixed,
             drive => drive == 0 ? throw new IOException("device vanished") : true, _ => "NTFS");
 
@@ -252,47 +239,13 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    [DataRow('T', 'T')]
-    [DataRow('T', 't')]
-    [DataRow('t', 'T')]
-    [DataRow('t', 't')]
-    public async Task OpenAsync_RejectsDuplicateRootKeysBeforeSideEffects(char firstLetter, char secondLetter)
-    {
-        Directory.CreateDirectory(TreeRoot);
-        var absentRoot = Path.Combine(TreeRoot, "absent");
-        var first = SyntheticIndexedDrive.Create(new VolumeKey(firstLetter), TreeRoot, 1, ProducerKind.Enumeration);
-        var second = SyntheticIndexedDrive.Create(new VolumeKey(secondLetter), absentRoot, 2, ProducerKind.Enumeration);
-
-        var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [first, second] });
-
-        Assert.AreEqual("options", failure.ParamName);
-        Assert.Contains("Drive T is listed more than once.", failure.Message);
-    }
-
-    [TestMethod]
-    public async Task OpenAsync_RejectsNullDriveListBeforeSideEffects()
+    public async Task OpenAsync_RejectsNullRootBeforeSideEffects()
     {
         var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = null! });
+            options => options with { Root = null });
 
         Assert.AreEqual("options", failure.ParamName);
-        Assert.Contains("FileIndexOptions.Drives", failure.Message);
-    }
-
-    [TestMethod]
-    public async Task OpenAsync_RejectsNullDriveElementBeforeSideEffects()
-    {
-        Directory.CreateDirectory(TreeRoot);
-        var valid = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration);
-
-        var singleNull = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [null!] });
-        Assert.AreEqual("options", singleNull.ParamName);
-
-        var secondNull = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [valid, null!] });
-        Assert.AreEqual("options", secondNull.ParamName);
+        Assert.Contains("FileIndexOptions.Root", failure.Message);
     }
 
     [TestMethod]
@@ -301,11 +254,11 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     public async Task OpenAsync_RejectsBlankRootDirectoryBeforeSideEffects(string blankRoot)
     {
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), blankRoot, 1, ProducerKind.Enumeration)] });
+            options => options with { Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), blankRoot, 1, ProducerKind.Enumeration) });
 
         var bypassed = CreateBypassedDrive(new VolumeKey('T'), blankRoot, ProducerKind.Enumeration);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [bypassed] });
+            options => options with { Root = bypassed });
     }
 
     [TestMethod]
@@ -316,11 +269,11 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     {
         Directory.CreateDirectory(TreeRoot);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
-            options => options with { Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, invalidPolicy)] });
+            options => options with { Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, invalidPolicy) });
 
         var bypassed = CreateBypassedDrive(new VolumeKey('T'), TreeRoot, invalidPolicy);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
-            options => options with { Drives = [bypassed] });
+            options => options with { Root = bypassed });
     }
 
     [TestMethod]
@@ -330,39 +283,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
         var bypassed = CreateBypassedDrive(default, TreeRoot, ProducerKind.Enumeration);
 
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [bypassed] });
-    }
-
-    [TestMethod]
-    public async Task OpenAsync_AcceptsDistinctValidKeysAndMaterializesOnce()
-    {
-        var rootT = Path.Combine(TreeRoot, "T");
-        var rootU = Path.Combine(TreeRoot, "U");
-        Directory.CreateDirectory(rootT);
-        Directory.CreateDirectory(rootU);
-        await File.WriteAllTextAsync(Path.Combine(rootT, "t.txt"), "t", TestContext.CancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(rootU, "u.txt"), "u", TestContext.CancellationToken);
-
-        var sequence = new SinglePassDriveList(
-        [
-            SyntheticIndexedDrive.Create(new VolumeKey('T'), rootT, 1, ProducerKind.Enumeration),
-            SyntheticIndexedDrive.Create(new VolumeKey('u'), rootU, 2, ProducerKind.Enumeration)
-        ]);
-
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = sequence,
-            CacheMode = CacheMode.Disabled
-        }, CancellationToken.None);
-
-        Assert.AreEqual(1, sequence.EnumerationCount);
-        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U')], [.. index.Drives.Select(status => status.Drive)]);
-        Assert.IsTrue(index.Drives.All(status => status.State == DriveState.Ready));
-
-        var rescanResults = await index.RescanAsync(
-            index.Drives.Select(status => status.Drive), CancellationToken.None);
-        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U')], [.. rescanResults.Select(result => result.Drive)]);
-        Assert.IsTrue(rescanResults.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
+            options => options with { Root = bypassed });
     }
 
     [TestMethod]
@@ -375,22 +296,18 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
         var protectionBefore = ReadProtection(CacheDirectoryPath);
         var producerCalls = 0;
         var progressCalls = 0;
-        Directory.CreateDirectory(TreeRoot);
-        var first = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration);
-        var duplicate = SyntheticIndexedDrive.Create(new VolumeKey('t'), TreeRoot, 2, ProducerKind.Enumeration);
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
             CacheMode = CacheMode.Persistent,
             CacheDirectory = CacheDirectoryPath,
-            Drives = [first, duplicate],
+            Root = null,
             MftSource = new MftIndexSource((_, _) =>
             {
                 Interlocked.Increment(ref producerCalls);
                 return Task.FromException<MftBlockProduceResult>(new InvalidOperationException("producer must not run"));
             }),
-            ScanProgress = new SynchronousProgress<IndexScanProgress>(_ => Interlocked.Increment(ref progressCalls)),
-            DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(_ => Interlocked.Increment(ref progressCalls))
+            ScanProgress = new SynchronousProgress<IndexScanProgress>(_ => Interlocked.Increment(ref progressCalls))
         }, CancellationToken.None));
 
         Assert.AreEqual(0, producerCalls);
@@ -400,10 +317,10 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
         Assert.AreEqual(protectionBefore, ReadProtection(CacheDirectoryPath));
     }
 
-    static IndexedDrive CreateBypassedDirectoryMftDrive(string rootDirectory)
+    static IndexedRoot CreateBypassedDirectoryMftDrive(string rootDirectory)
     {
-        var instance = (IndexedDrive)RuntimeHelpers.GetUninitializedObject(typeof(IndexedDrive));
-        foreach (var field in typeof(IndexedDrive).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+        var instance = (IndexedRoot)RuntimeHelpers.GetUninitializedObject(typeof(IndexedRoot));
+        foreach (var field in typeof(IndexedRoot).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
         {
             if (field.FieldType == typeof(RootKey))
             {
@@ -439,7 +356,6 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     {
         var producerCalls = 0;
         var scanProgressCalls = 0;
-        var openProgressCalls = 0;
         var baseOptions = new FileIndexOptions
         {
             CacheMode = CacheMode.Persistent,
@@ -450,8 +366,7 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
                 return Task.FromException<MftBlockProduceResult>(
                     new InvalidOperationException("producer must not run"));
             }),
-            ScanProgress = new SynchronousProgress<IndexScanProgress>(_ => Interlocked.Increment(ref scanProgressCalls)),
-            DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(_ => Interlocked.Increment(ref openProgressCalls))
+            ScanProgress = new SynchronousProgress<IndexScanProgress>(_ => Interlocked.Increment(ref scanProgressCalls))
         };
 
         var exception = await Assert.ThrowsExactlyAsync<TException>(
@@ -459,15 +374,14 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
 
         Assert.AreEqual(0, producerCalls);
         Assert.AreEqual(0, scanProgressCalls);
-        Assert.AreEqual(0, openProgressCalls);
         Assert.IsFalse(Directory.Exists(CacheDirectoryPath));
         return exception;
     }
 
-    static IndexedDrive CreateBypassedDrive(RootKey drive, string? rootDirectory, ProducerKind policy)
+    static IndexedRoot CreateBypassedDrive(RootKey drive, string? rootDirectory, ProducerKind policy)
     {
-        var instance = (IndexedDrive)RuntimeHelpers.GetUninitializedObject(typeof(IndexedDrive));
-        foreach (var field in typeof(IndexedDrive).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+        var instance = (IndexedRoot)RuntimeHelpers.GetUninitializedObject(typeof(IndexedRoot));
+        foreach (var field in typeof(IndexedRoot).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
         {
             if (field.FieldType == typeof(RootKey))
             {
@@ -489,24 +403,6 @@ public sealed class IndexedDriveTests : IndexTreeTestBase
     sealed class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
     {
         public void Report(T value) => handler(value);
-    }
-
-    sealed class SinglePassDriveList(IReadOnlyList<IndexedDrive> items) : IReadOnlyList<IndexedDrive>
-    {
-        public int EnumerationCount { get; private set; }
-
-        public int Count => items.Count;
-
-        public IndexedDrive this[int index] => items[index];
-
-        public IEnumerator<IndexedDrive> GetEnumerator()
-        {
-            Assert.AreEqual(0, EnumerationCount, "FileIndexOptions.Drives must be materialized once.");
-            EnumerationCount++;
-            return items.GetEnumerator();
-        }
-
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     public TestContext TestContext { get; set; } = null!;

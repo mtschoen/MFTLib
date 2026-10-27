@@ -2,13 +2,156 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
+    /// <summary>
+    ///     Starts the root's watch from its block's journal cursor, returning when the channel
+    ///     is connected and the start request is written. An already running watch remains running.
+    ///     A source without a watch or a root without an MFT-backed block is NotApplicable and
+    ///     records no request. A refused or failed start is Failed and retains the watch request
+    ///     for rescan recovery, except when the caller cancels it.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
+    public Task<DriveOperationResult> StartWatchingAsync(CancellationToken cancellationToken)
+    {
+        if (RejectedTask<DriveOperationResult>(nameof(StartWatchingAsync)) is { } rejected)
+        {
+            return rejected;
+        }
+
+        return RunLifecycleOperationAsync(HasWatchableBlock,
+            () => _runtime.StartDriveWatchingAsync(cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    ///     Stops the root's watch and drains its teardown. An outstanding watch or subscriber
+    ///     fault is returned once as Failed. A root with no requested, current or retiring watch
+    ///     is NotApplicable. Stop wins over a concurrent rescan or recovery and prevents its restart.
+    ///     Cancellation bounds the teardown wait, while teardown continues independently.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
+    public Task<DriveOperationResult> StopWatchingAsync(CancellationToken cancellationToken)
+    {
+        if (RejectedTask<DriveOperationResult>(nameof(StopWatchingAsync)) is { } rejected)
+        {
+            return rejected;
+        }
+
+        return RunLifecycleOperationAsync(IsWatching,
+            () => _runtime.StopDriveWatchingAsync(cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    ///     Rebuilds the root and publishes its replacement block. Failed production
+    ///     retains its block and healthy watch and is reported as Failed. Publication retires the
+    ///     old watch and restarts it only while requested. A replacement watch start failure raises
+    ///     RescanRestart while the successful scan is reported as Succeeded. Exhausted catch-up
+    ///     recovery returns Failed with JournalCatchUpLostException and keeps the last block.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
+    public Task<DriveOperationResult> RescanAsync(CancellationToken cancellationToken)
+    {
+        if (RejectedTask<DriveOperationResult>(nameof(RescanAsync)) is { } rejected)
+        {
+            return rejected;
+        }
+
+        return RunLifecycleOperationAsync(applicable: null,
+            () => _runtime.RescanDriveAsync(cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    ///     Follows the root's current catch-up instance, or its pending replacement. A faulted
+    ///     or superseded instance is Failed; an unwatched root is NotApplicable. A healthy watch
+    ///     survives failed rescan production; replacement publication retires its wait. Caller
+    ///     cancellation and index disposal cancel this wait without stopping the watch.
+    ///     An unsettled wait rejects callback reentrancy; settled waits remain readable.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">A wait that is not yet settled was requested from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
+    public Task<DriveOperationResult> WaitForCatchUpAsync(CancellationToken cancellationToken)
+    {
+        Task? wait;
+        CancellationToken disposalToken;
+        try
+        {
+            ThrowIfDisposed();
+            lock (_stateLock)
+            {
+                wait = _runtime.GetCatchUpWaitLocked();
+            }
+
+            disposalToken = DisposalToken;
+        }
+        catch (ObjectDisposedException disposal) when (IsInsideHandler())
+        {
+            return Task.FromException<DriveOperationResult>(
+                RejectInsideHandler(nameof(WaitForCatchUpAsync)) ?? disposal);
+        }
+
+        if (!cancellationToken.IsCancellationRequested && wait is { IsCompleted: false } &&
+            RejectedTask<DriveOperationResult>(nameof(WaitForCatchUpAsync)) is { } rejected)
+        {
+            return rejected;
+        }
+
+        return new CatchUpWait(_runtime.Drive, wait, cancellationToken, disposalToken).Completion;
+    }
+
+    bool HasWatchableBlock()
+    {
+        lock (_stateLock)
+        {
+            return _runtime.HasWatchableBlockLocked();
+        }
+    }
+
+    bool IsWatching()
+    {
+        lock (_stateLock)
+        {
+            return _runtime.IsWatchingLocked();
+        }
+    }
+
+    async Task<DriveOperationResult> RunLifecycleOperationAsync(Func<bool>? applicable,
+        Func<Task> operation, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        DriveOperationResult result;
+        try
+        {
+            if (applicable is not null && !applicable())
+            {
+                result = new DriveOperationResult(_runtime.Drive, DriveOperationOutcome.NotApplicable, null);
+            }
+            else
+            {
+                await operation().ConfigureAwait(false);
+                result = new DriveOperationResult(_runtime.Drive, DriveOperationOutcome.Succeeded, null);
+            }
+        }
+        catch (Exception failure)
+        {
+            result = new DriveOperationResult(_runtime.Drive, DriveOperationOutcome.Failed, failure);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
     // No caller token: a direct apply has no stop of its own, and the index's disposal token would
     // let disposal turn a batch already queued for the gate into a cancellation instead of the
     // ObjectDisposedException a disposed index reports.
     internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey drive,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(entries);
         var runtime = GetDriveRuntime(drive);
         var changes = await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn,

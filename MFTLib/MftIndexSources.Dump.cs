@@ -10,8 +10,8 @@ public static partial class MftIndexSources
     ///     Supply the result through <see cref="FileIndexOptions.MftSource" />. The source supplies its
     ///     one virtual drive (the normalized upper-case <paramref name="drive" />,
     ///     root <c>"dump:/" + letter</c>, serial zero, MFT producer), which
-    ///     <see cref="FileIndex.Drives" /> and <see cref="FileIndex.Root" /> then report.
-    ///     <see cref="FileIndexOptions.Drives" /> must be a non-null empty collection;
+    ///     <see cref="FileIndex.Status" /> and <see cref="FileIndex.Root" /> then report.
+    ///     <see cref="FileIndexOptions.Root" /> must be null;
     ///     <see cref="FileIndexOptions.CacheMode" /> and <see cref="FileIndexOptions.CacheDirectory" />
     ///     must be null, and <see cref="FileIndexOptions.CacheTag" /> must be default.
     ///     Other values make <see cref="FileIndex.OpenAsync" /> throw <see cref="ArgumentException" />.

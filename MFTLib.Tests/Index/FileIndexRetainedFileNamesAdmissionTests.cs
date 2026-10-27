@@ -46,7 +46,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
     }
 
     [TestMethod]

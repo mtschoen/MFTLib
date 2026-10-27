@@ -9,8 +9,8 @@ public sealed partial class FileIndex
         ///     <see cref="DriveBlock.ReleaseState" /> (see its own summary), not through
         ///     <see cref="IDisposable" />.
         /// </summary>
-        DriveBlock BuildDriveBlock(ushort driveOrdinal, BlockFile block) =>
-            new(Drive, driveOrdinal, block, rootDirectoryPath: Configuration.RootDirectory,
+        DriveBlock BuildDriveBlock(BlockFile block) =>
+            new(Drive, block, rootDirectoryPath: Configuration.RootDirectory,
                 mftSource: Options.MftSource);
 
         /// <summary>
@@ -71,14 +71,13 @@ public sealed partial class FileIndex
                 {
                     Index.ThrowIfCancelledByDisposal(cancellationToken);
                     var replaced = Block;
-                    var driveOrdinal = replaced?.DriveOrdinal ?? Index.AllocateDriveOrdinalLocked();
 
                     if (replaced is not null)
                     {
                         new BlockWriter(block).AdvanceGenerationPast(replaced.Block.Generation);
                     }
 
-                    var driveBlock = BuildDriveBlock(driveOrdinal, block);
+                    var driveBlock = BuildDriveBlock(block);
                     var handoff = RetireWatchAtCommitLocked();
                     if (recovery is null)
                     {
@@ -92,7 +91,6 @@ public sealed partial class FileIndex
 
                     Block = driveBlock;
                     RecordPendingResultLocked(produced, clearsCheckpointLoss);
-                    Index.PublishSnapshotLocked();
                     NoteWatchStateLocked();
                     return (_consecutiveLostCatchUps, handoff);
                 }

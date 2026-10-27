@@ -24,7 +24,7 @@ public sealed partial class FileIndex
             Directory.EnumerateFiles;
 
         /// <summary>
-        ///     Invoked by the <see cref="Drives" /> getter before state-lock acquisition; no lifecycle/write/state lock held.
+        ///     Invoked by the <see cref="Status" /> getter before state-lock acquisition; no lifecycle/write/state lock held.
         ///     The caller can hold an outer lock, so a hold must not wait on one.
         /// </summary>
         internal Action? DrivesReadBeforeLock { get; set; }

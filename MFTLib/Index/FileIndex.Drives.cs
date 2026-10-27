@@ -5,17 +5,15 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     One entry per configured drive, keyed by upper-case drive letter, created with the index
-    ///     and kept until it is disposed. Every watch and rescan operation on a drive acts on that
-    ///     drive's entry only. The dictionary itself is never modified after construction.
+    ///     The runtime for this index's configured root, created with the index and kept until it is disposed.
     /// </summary>
-    readonly Dictionary<RootKey, DriveRuntime> _driveRuntimes = [];
+    readonly DriveRuntime _runtime;
 
-    /// <summary>The drive's runtime, or <see cref="ArgumentException" /> for a drive not in this index.</summary>
+    /// <summary>The root's runtime, or <see cref="ArgumentException" /> for a root not in this index.</summary>
     DriveRuntime GetDriveRuntime(RootKey drive)
     {
-        return _driveRuntimes.TryGetValue(drive.Validated(), out var runtime)
-            ? runtime
+        return _runtime.Drive == drive.Validated()
+            ? _runtime
             : throw new ArgumentException($"Drive {drive} is not part of this index.", nameof(drive));
     }
 
@@ -64,6 +62,5 @@ public sealed partial class FileIndex
     }
 
     /// <summary>A test seam: how many deliveries waited for another thread delivering the same drive.</summary>
-    internal long ContendedWatchStateDeliveriesForTest =>
-        _driveRuntimes.Values.Sum(runtime => runtime.ContendedWatchStateDeliveries);
+    internal long ContendedWatchStateDeliveriesForTest => _runtime.ContendedWatchStateDeliveries;
 }

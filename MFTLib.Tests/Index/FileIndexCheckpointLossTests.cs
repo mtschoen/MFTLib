@@ -38,7 +38,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
             watchCapable ? new ScriptedWatchSource().IndexSource : null);
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var drive = reopened.Drives.Single();
+        var drive = reopened.Status;
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
         Assert.IsNull(drive.Watch.CheckpointLoss);
     }
@@ -54,7 +54,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
-        var drive = reopened.Drives.Single();
+        var drive = reopened.Status;
         Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin,
             "an unresumable checkpoint must cold-scan rather than warm-start");
         Assert.AreEqual(DriveState.Ready, drive.State);
@@ -79,7 +79,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
-        var drive = reopened.Drives.Single();
+        var drive = reopened.Status;
         Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
 
         var loss = drive.Watch.CheckpointLoss;
@@ -97,7 +97,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
-        var drive = reopened.Drives.Single();
+        var drive = reopened.Status;
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin,
             "a volume that cannot answer is not evidence against the cached block");
         Assert.IsNull(drive.Watch.CheckpointLoss);
@@ -112,7 +112,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     {
         var enumerationOptions = new FileIndexOptions
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration),
             CacheDirectory = _fixture.CacheDirectory
         };
         await using (await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None))
@@ -128,8 +128,8 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None);
 
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block!.Origin);
-        Assert.IsNull(reopened.Drives.Single().Watch.CheckpointLoss);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block!.Origin);
+        Assert.IsNull(reopened.Status.Watch.CheckpointLoss);
         Assert.AreEqual(0, checkedDrives);
     }
 
@@ -159,7 +159,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(1, scanCount);
-        var drive = reopened.Drives.Single();
+        var drive = reopened.Status;
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
         var loss = drive.Watch.CheckpointLoss;
@@ -192,14 +192,14 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var drive = reopened.Drives.Single();
+        var drive = reopened.Status;
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
         Assert.IsNull(drive.Failure);
         Assert.IsNotNull(drive.Watch.CheckpointLoss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.Watch.CheckpointLoss.Cause);
         Assert.IsNull(drive.Watch.CheckpointLoss.SizeThatWouldHaveRetained);
-        Assert.IsTrue(reopened.Root(new VolumeKey('T'), TestContext.CancellationToken).IsValid, "the adopted block must still answer queries");
+        Assert.IsTrue(reopened.Root(TestContext.CancellationToken).IsValid, "the adopted block must still answer queries");
     }
 
     [TestMethod]

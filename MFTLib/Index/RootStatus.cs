@@ -10,18 +10,18 @@ namespace MFTLib.Index;
 ///         <item><description><see cref="DriveState.Failed" /> with a failure and no block.</description></item>
 ///     </list>
 /// </summary>
-public sealed record DriveStatus
+public sealed record RootStatus
 {
-    /// <summary>Creates a status with the values every drive has, whether or not it has a block or a watch.</summary>
-    /// <param name="drive">The drive.</param>
-    /// <param name="state">Whether the drive has a queryable block, is offline, or failed without a block.</param>
-    internal DriveStatus(RootKey drive, DriveState state)
+    /// <summary>Creates a status with the values every root has, whether or not it has a block or a watch.</summary>
+    /// <param name="drive">The root identity.</param>
+    /// <param name="state">Whether the root has a queryable block, is offline, or failed without a block.</param>
+    internal RootStatus(RootKey drive, DriveState state)
     {
         Drive = drive;
         State = state;
     }
 
-    /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
+    /// <summary>Identifies the root of this <see cref="FileIndex" />, including when it is failed or offline.</summary>
     public RootKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>Whether the drive has a queryable block, is offline, or failed without a block. Capacity exhaustion is reported independently by <see cref="DriveBlockStatus.IsCapacityExhausted" />.</summary>

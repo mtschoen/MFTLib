@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     One change of a drive's watch state, as <see cref="FileIndex.WatchStateChanged" /> delivers
 ///     it. <see cref="Watch" /> is the same <see cref="DriveWatchStatus" /> a consumer reads
-///     from <see cref="DriveStatus.Watch" />, captured at the change: its
+///     from <see cref="RootStatus.Watch" />, captured at the change: its
 ///     <see cref="DriveWatchStatus.State" /> is the new state and its
 ///     <see cref="DriveWatchStatus.StateVersion" /> increases by one with every change of that
 ///     drive's state, independently of every other drive, so of two snapshots of one drive the
@@ -31,7 +31,7 @@ public sealed record WatchStateChange
     /// <summary>Identifies the watch whose state changed; default keys are rejected.</summary>
     public VolumeKey Drive { get; init => field = value.Validated(); }
 
-    /// <summary>The drive's <see cref="DriveStatus.Watch" /> after the change.</summary>
+    /// <summary>The drive's <see cref="RootStatus.Watch" /> after the change.</summary>
     public DriveWatchStatus Watch { get; init; }
 
     /// <summary>The fault that caused the change, or null when there is none.</summary>

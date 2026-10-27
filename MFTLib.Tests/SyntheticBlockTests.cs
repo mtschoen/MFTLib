@@ -108,7 +108,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
@@ -190,7 +190,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(4u, index.Drives.Single().Block!.LiveRowCount);
+        Assert.AreEqual(4u, index.Status.Block!.LiveRowCount);
     }
 
     [TestMethod]
@@ -201,7 +201,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.IsTrue(drive.Block!.IsCapacityExhausted);
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.HasCount(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken));
@@ -220,7 +220,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using (var index = await FileIndex.OpenAsync(CacheOnly(), Token))
         {
-            Assert.AreEqual(later, index.Drives.Single().Block!.ScanTimestamp);
+            Assert.AreEqual(later, index.Status.Block!.ScanTimestamp);
         }
 
         using var block = BlockFile.Open(path, Serial, out _)!;
@@ -239,7 +239,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
         Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, status.Validation);
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
     }
 
@@ -340,7 +340,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using (var index = await FileIndex.OpenAsync(Scanning(producer, tag), Token))
         {
-            var drive = index.Drives.Single();
+            var drive = index.Status;
             Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
             Assert.AreEqual(3, drive.Block.SkippedRecordCount);
             Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
@@ -361,7 +361,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
         Assert.AreSequenceEqual(['T'], [.. producer.ProducedDrives]);
 
-        await index.RescanAsync([new VolumeKey('T')], Token);
+        await index.RescanAsync(Token);
 
         Assert.AreSequenceEqual(['T', 'T'], [.. producer.ProducedDrives]);
     }
@@ -385,7 +385,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
         Assert.HasCount(1, producer.ProducedDrives, "a held production is already counted");
         release.SetResult();
         await using var index = await opening;
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -399,7 +399,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
             var throwing = SampleProducer(
                 _ => throw new InvalidOperationException("catch-up evaluation failed"));
             await using var failedIndex = await FileIndex.OpenAsync(Scanning(throwing), Token);
-            var failedDrive = failedIndex.Drives.Single();
+            var failedDrive = failedIndex.Status;
             Assert.AreEqual(DriveState.Failed, failedDrive.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
             Assert.Contains("catch-up evaluation failed", failedDrive.Failure?.Message!);
@@ -411,7 +411,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(loss, drive.Watch.CheckpointLoss);
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.HasCount(2, producer.ProducedDrives, "the lost catch-up is scanned again");

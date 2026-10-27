@@ -34,7 +34,7 @@ public class FileEntryTests
         _builder.Complete(ScanMoment);
 
         var block = _builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey(_builder.Drive), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey(_builder.Drive), block);
         _snapshot = [driveBlock];
     }
 
@@ -107,7 +107,7 @@ public class FileEntryTests
         builder.Complete(ScanMoment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), block)];
         try
         {
             var entry = FileEntry.Create(snapshot[0], row);
@@ -155,7 +155,7 @@ public class FileEntryTests
         builder.MutateHeader((ref header) => header.ProducerKind = ProducerKind.Mft);
 
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey(builder.Drive), 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey(builder.Drive), block);
         DriveBlock[] snapshot = [driveBlock];
         try
         {

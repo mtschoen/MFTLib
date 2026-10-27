@@ -1,7 +1,7 @@
 # Query and writer lifetime
 
 - Index contracts:
-    - **Query lifetime**: the six query operations (`Find`, `Search`, `Enumerate`, `EnumerateRows`, `Root`, and `FileEntry.Children`) accept an optional CancellationToken and hold a borrow on every block they read for the operation's duration, and on no other. The block set is chosen under the index state lock when the query is admitted: `Find` borrows the one block whose indexed root is the longest prefix of the path (none when no root matches), `Root` borrows the one block of its drive (none when the drive has no block), `Search`, `Enumerate` and `EnumerateRows` with a `Subtree` anchor borrow only the anchor's block (none when the anchor is not current, which the query then rejects), and an unscoped `Search`, `Enumerate` or `EnumerateRows` borrows every current block. A query held on one drive therefore never delays the finalization, unmapping or aside-file deletion of another drive's retired block. `Children` borrows only its own handle's block. They observe cancellation before the first row read. Operations that scan rows check at least every 4096 scanned rows, including rejected rows; Root resolves its one root row directly. RowScanner supplies the cadence for Find, Search, EnumerateRows and Children; Enumerate implements the same cadence in its streaming loop. Children observes only its caller's token because a handle holds no index reference; disposal waits for that listing rather than cancelling it.
+    - **Query lifetime**: the six query operations (`Find`, `Search`, `Enumerate`, `EnumerateRows`, `Root`, and `FileEntry.Children`) accept an optional CancellationToken and hold a borrow on every block they read for the operation's duration, and on no other. Each `FileIndex` owns one root; `FileIndexSet` coordinates read-only queries (`Find`, `Search`, `Enumerate`, `EnumerateRows`) across a fixed ordered list of `FileIndex` instances, while `Root(CancellationToken = default)` lives on each `FileIndex`. On a single `FileIndex`, the block is chosen under the index state lock when the query is admitted: `Find` borrows the index's block when the root is a prefix of the path (none otherwise), `Root` borrows the index's block (throwing `InvalidOperationException` naming the root and its `DriveState` when the index has no block), and `Search`, `Enumerate` and `EnumerateRows` borrow the index's block (validating any `Subtree` anchor against it). On a `FileIndexSet`, each member's borrow is taken one member at a time, never across two members at once: `Find` resolves the member whose root is the longest matching prefix of the path and delegates to that member; a `Subtree`-anchored `Search`, `Enumerate` or `EnumerateRows` validates the anchor against the member blocks and borrows only the matching member's block; and an unscoped `Search`, `Enumerate` or `EnumerateRows` visits members in `Indices` order, borrowing and releasing one member's block at a time. A query held on one index therefore never delays the finalization, unmapping or aside-file deletion of another index's retired block. `Children` borrows only its own handle's block. They observe cancellation before the first row read. Operations that scan rows check at least every 4096 scanned rows, including rejected rows; Root resolves its one root row directly. RowScanner supplies the cadence for Find, Search, EnumerateRows and Children; Enumerate implements the same cadence in its streaming loop. Children observes only its caller's token because a handle holds no index reference; disposal waits for that listing rather than cancelling it.
       Row-backed `FileEntry` reads take no borrow and retain the per-access `IsReleased`
       check; `Drive` and `RecordKey` are also release-checked. Equality, hashing,
       `IsValid` and `IsDisposed` use stored identity/state and remain available after
@@ -15,18 +15,18 @@
       return the borrow. Dispose enumerators promptly; collection timing is not guaranteed. The 4096-row checkpoint
       bound applies to active scanning, not time spent suspended. Scanning on one thread while another
       disposes is therefore safe. The drive block finalizer path
-      is unaffected: a borrow holds its blocks, so a borrowed block is never collected.
+      is unaffected: a borrow holds its block, so a borrowed block is never collected.
 
-    - **Handle lifetime**: a retained `FileEntry` holds its own `DriveBlock` and no other drive's, so it keeps
-      only that block mapped. A rescan retires only the rescanned drive's block; once no handle or borrow reaches
-      a retired block its finalizer unmaps it while the index lives, whatever handles other drives hold. Index
-      disposal releases every current and retired block regardless of held handles. Each drive owner retains retired release states, not retired DriveBlock objects. Disposal stops all drives, takes every lifecycle gate and then every write gate in drive-letter order, drains retired releases, and atomically detaches all current blocks with aggregate snapshot unpublication before releasing their mappings outside the state lock.
+    - **Handle lifetime**: a retained `FileEntry` holds its own `DriveBlock` and no other index's, so it keeps
+      only that block mapped. A rescan retires the index's previous block; once no handle or borrow reaches
+      a retired block its finalizer unmaps it while the index lives. Index
+      disposal releases the current and retired blocks regardless of held handles. Each runtime retains retired release states, not retired DriveBlock objects. Disposal stops the watch, takes the lifecycle gate and then the write gate, drains retired releases, and atomically detaches the current block before releasing its mapping outside the state lock.
 
-    - **Row enumeration**: `FileIndex.EnumerateRows` takes its snapshot borrow when `foreach` begins
+    - **Row enumeration**: `FileIndex.EnumerateRows` and `FileIndexSet.EnumerateRows` take a snapshot borrow when `foreach` begins
       (`GetEnumerator()`), and `foreach` releases it on completion, `break`, an exception or cancellation.
       `IndexRow.Drive` and retained handles' `FileEntry.Drive` are `RootKey` values;
       `FileEntry.Drive` equals `RecordKey.Drive` and uses the same per-access release check.
-      `Root` takes a `RootKey` and rejects its invalid default value.
+      `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index.
       The token is observed before the first row and at least every 4096 scanned rows, including rows
       rejected by the query. The result (`IndexRowEnumerable`), its enumerator (`IndexRowEnumerator`) and
       each `IndexRow` are ref structs: holding one across an `await`, capturing it in a lambda or storing

@@ -40,7 +40,7 @@ public sealed partial class FileIndex
     ///         <see cref="InvalidOperationException" />, because each can wait for a pump that is itself
     ///         blocked in a handler. The rejection also covers work the handler starts and that runs
     ///         before the handler returns. Queue such a call to run after the handler returns, for
-    ///         example with <see cref="Task.Run(Action)" />. Queries, <see cref="Drives" />, and a wait
+    ///         example with <see cref="Task.Run(Action)" />. Queries, <see cref="Status" />, and a wait
     ///         that has already settled are allowed.
     ///     </para>
     /// </summary>
@@ -48,24 +48,24 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Raised once for every change of a drive's <see cref="DriveWatchStatus.State" />, with
-    ///     the drive's <see cref="DriveStatus.Watch" /> after the change, whose
+    ///     the drive's <see cref="RootStatus.Watch" /> after the change, whose
     ///     <see cref="DriveWatchStatus.StateVersion" /> is the change's version: a start,
     ///     a catch-up, a fault, a recovery being queued, finishing (the restarted watch reads
     ///     <see cref="WatchState.CatchingUp" />, then <see cref="WatchState.CaughtUp" />)
     ///     or failing, a rescan retiring and replacing the watch, a lost catch-up, a refused start,
     ///     a stop, and disposal. Every version of a drive is delivered exactly once, after the change
-    ///     is visible in <see cref="Drives" />, by a thread that changed the drive's state: a drive's
+    ///     is visible in <see cref="Status" />, by a thread that changed the drive's state: a drive's
     ///     pump, a scan or recovery holding the drive's lifecycle gate, or the caller of a lifecycle
     ///     method, including <see cref="DisposeAsync" />, which delivers it before that method
     ///     returns. No state lock or write gate is held during delivery. A change a fault caused is
     ///     delivered before <see cref="WatchFaulted" /> reports that fault. Once
-    ///     <see cref="DisposeAsync" /> has begun, <see cref="Drives" /> throws
+    ///     <see cref="DisposeAsync" /> has begun, <see cref="Status" /> throws
     ///     <see cref="ObjectDisposedException" />, so a handler of a disposal change reads the event
     ///     itself.
     ///     <para>
     ///         One drive's changes are delivered one at a time, in version order; different drives'
     ///         changes can be delivered concurrently. A handler must therefore not block waiting for
-    ///         another change of the same drive. A consumer that also reads <see cref="Drives" />,
+    ///         another change of the same drive. A consumer that also reads <see cref="Status" />,
     ///         for example to seed a subscription made after the index opened, applies an event only
     ///         when its <see cref="DriveWatchStatus.StateVersion" /> is larger than the last one it applied
     ///         for that drive, since its read can be newer than an event still being delivered. A

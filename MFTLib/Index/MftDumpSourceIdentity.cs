@@ -24,7 +24,7 @@ sealed record MftDumpSourceIdentity
     internal string Root => MftDumpPaths.CanonicalRoot(Drive);
 
     /// <summary>The one virtual drive the index files this dump under: the dump root, serial zero, MFT producer.</summary>
-    internal IndexedDrive VirtualDrive => new(Drive, Root, 0);
+    internal IndexedRoot VirtualDrive => new(Drive, Root, 0);
 
     /// <summary>
     ///     Checks that the options leave every drive and cache fact to the dump source, before any
@@ -34,9 +34,9 @@ sealed record MftDumpSourceIdentity
     internal static void ValidateOptions(FileIndexOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        if (options.Drives is not { Count: 0 })
+        if (options.Root is not null)
         {
-            throw new ArgumentException("A dump source supplies its own drive, so FileIndexOptions.Drives must be empty.",
+            throw new ArgumentException("A dump source supplies its own drive, so FileIndexOptions.Root must be unset.",
                 nameof(options));
         }
 

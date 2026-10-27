@@ -84,17 +84,17 @@ sealed class DriveKind
             MftDumpSourceIdentity.ValidateOptions(options);
             return options with
             {
-                Drives = [identity.VirtualDrive],
+                Root = identity.VirtualDrive,
                 CacheMode = CacheMode.Disabled,
                 RetainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options),
                 DirectoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk)
             };
         }
 
-        var drives = FileIndexOptions.ValidateDrives(options);
+        var root = FileIndexOptions.ValidateRoot(options);
         var retainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options);
         var directoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk);
-        if (retainedFileNames is not null && drives.Any(drive => drive.Producer == ProducerKind.Mft))
+        if (retainedFileNames is not null && root.Producer == ProducerKind.Mft)
         {
             options.MftSource?.ValidateRetainedFileNames?.Invoke(retainedFileNames);
         }
@@ -106,7 +106,7 @@ sealed class DriveKind
 
         return options with
         {
-            Drives = drives,
+            Root = root,
             CacheMode = options.CacheMode ?? CacheMode.Persistent,
             RetainedFileNames = retainedFileNames,
             DirectoryWalk = directoryWalk

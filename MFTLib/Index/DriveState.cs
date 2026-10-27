@@ -19,7 +19,7 @@ public enum DriveState
     /// <summary>
     ///     The drive has no block: its MFT producer failed, a cache-only open found no usable
     ///     cache, the cache tag did not match, or the cache block's owner lock could not be acquired.
-    ///     <see cref="DriveStatus.Failure" /> says which and carries the detail.
+    ///     <see cref="RootStatus.Failure" /> says which and carries the detail.
     /// </summary>
     Failed
 }

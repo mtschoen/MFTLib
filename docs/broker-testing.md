@@ -30,7 +30,7 @@ fault or failure. Read the records' properties instead of positional
 deconstruction.
 
 Production applications receive events from `FileIndex.WatchStateChanged` and
-results from index operations. Seed watch history directly from `DriveStatus.Watch`
+results from index operations. Seed watch history directly from `RootStatus.Watch`
 using the shared version check in [broker integration](broker-integration.md#5-handle-faults-and-recovery);
 an application-owned refusal stays in the application's own error path.
 
@@ -185,7 +185,7 @@ counted. A test that needs both drives started awaits one call per drive. Starts
 scripted per source:
 
 - `CatchUpOnStart` queues the caught-up marker the moment each watch starts, for a
-  test that only needs every drive to settle;
+  test that only needs the watch to settle;
 - `StartFailure` is consulted on every start and throws whatever it returns; and
 - a start for a drive whose previous watch has not been disposed throws
   `InvalidOperationException`, because the index disposes a watch before it
@@ -250,8 +250,8 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
   then flushes and closes it. The editor sets attributes, marks sizes unknown
   (`MarkSizesUnknown` for every matching row, returning how many) or capacity exhausted,
-  and sets the scan timestamp through `Complete`. Read `status.Block!.ScanTimestamp`
-  from `index.Drives` to preserve the timestamp for a later edit after disposal.
+  and sets the scan timestamp through `Complete`. Read `index.Status.Block!.ScanTimestamp`
+  to preserve the timestamp for a later edit after disposal.
   `SetProducerKind(ProducerKind.Mft)` turns a block
   written by an enumeration scan into one an index warm-starts without a producer and
   whose rows accept `FileIndexTestAccess.ApplyJournalEntriesAsync`.
@@ -302,8 +302,8 @@ static class TestIsolation
 }
 ```
 
-Cached opens require an explicit nonblank `FileIndexOptions.CacheDirectory`,
-including empty-drive tests. Supply a temporary directory the test owns.
+Cached opens require an explicit nonblank `FileIndexOptions.CacheDirectory`.
+Supply a temporary directory the test owns.
 Missing configuration throws `ArgumentException`. `CacheMode.Disabled` needs no path and ignores any supplied
 path without creating it. Dump sources prohibit every cache option.
 

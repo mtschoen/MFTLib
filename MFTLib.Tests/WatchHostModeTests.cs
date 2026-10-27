@@ -201,7 +201,7 @@ public sealed class WatchHostModeTests : IDisposable
         return scanner;
     }
 
-    IndexedDrive ResolveDrive(string letter)
+    IndexedRoot ResolveDrive(string letter)
     {
         var driveLetter = char.ToUpperInvariant(letter[0]);
         return SyntheticIndexedDrive.Create(new VolumeKey(driveLetter), _directory, 4242);

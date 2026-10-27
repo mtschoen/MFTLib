@@ -15,7 +15,7 @@ partial class SampleHost
     }
 
     // A cached open adds where the block came from, the watch state and any lost checkpoint to the status line.
-    void WriteDriveDetail(DriveStatus status)
+    void WriteDriveDetail(RootStatus status)
     {
         WriteStatus(status);
         var block = RequireReadyBlock(status);

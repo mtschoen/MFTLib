@@ -53,7 +53,7 @@ public sealed class MftIndexSourceTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             _fixture.Options(cacheMode: cacheMode) with { MftSource = null }, Token);
 
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.IsNull(status.Block);
         if (cacheMode == CacheMode.ExistingOnly)
@@ -70,8 +70,8 @@ public sealed class MftIndexSourceTests : IDisposable
         for (var attempt = 0; attempt < 2; attempt++)
         {
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.RescanAsync([new VolumeKey('T')], Token));
-            status = index.Drives.Single();
+                () => index.RescanAsync(Token));
+            status = index.Status;
             Assert.AreEqual(DriveState.Failed, status.State);
             Assert.IsNull(status.Block);
             Assert.AreEqual(DriveFailureKind.MftSourceMissing, status.Failure?.Kind);
@@ -85,8 +85,8 @@ public sealed class MftIndexSourceTests : IDisposable
         }
 
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync([new VolumeKey('T')], Token));
-        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+            () => index.StartWatchingAsync(Token));
+        Assert.IsFalse(index.Status.Watch.IsRequested);
     }
 
     [TestMethod]
@@ -102,19 +102,19 @@ public sealed class MftIndexSourceTests : IDisposable
         var options = _fixture.Options(cacheMode: cacheMode) with { MftSource = null };
         await using (var index = await FileIndex.OpenAsync(options, Token))
         {
-            var before = index.Drives.Single();
+            var before = index.Status;
             Assert.AreEqual(DriveState.Ready, before.State);
             Assert.IsNull(before.Failure);
             Assert.IsNotNull(before.Block);
             Assert.AreEqual(BlockOrigin.WarmStartedFromCache, before.Block.Origin);
-            var root = index.Root(new VolumeKey('T'), TestContext.CancellationToken).RecordKey;
+            var root = index.Root(TestContext.CancellationToken).RecordKey;
             await DriveResultAssertions.NotApplicableAsync(
-                () => index.StartWatchingAsync([new VolumeKey('T')], Token));
-            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+                () => index.StartWatchingAsync(Token));
+            Assert.IsFalse(index.Status.Watch.IsRequested);
 
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.RescanAsync([new VolumeKey('T')], Token));
-            var after = index.Drives.Single();
+                () => index.RescanAsync(Token));
+            var after = index.Status;
             Assert.AreEqual(DriveState.Ready, after.State);
             Assert.AreEqual(DriveFailureKind.MftSourceMissing, after.Failure?.Kind);
             Assert.AreEqual("Drive T: no MFT source is available to scan this drive.",
@@ -123,14 +123,14 @@ public sealed class MftIndexSourceTests : IDisposable
             Assert.AreEqual(before.Block.Origin, after.Block.Origin);
             Assert.AreEqual(before.Block.CacheLocation, after.Block.CacheLocation);
             Assert.AreEqual(before.Block.LiveRowCount, after.Block.LiveRowCount);
-            Assert.AreEqual(root, index.Root(new VolumeKey('T'), TestContext.CancellationToken).RecordKey);
+            Assert.AreEqual(root, index.Root(TestContext.CancellationToken).RecordKey);
             Assert.IsFalse(after.Watch.IsRequested);
         }
 
         await using var reopened = await FileIndex.OpenAsync(options, Token);
-        Assert.AreEqual(DriveState.Ready, reopened.Drives.Single().State);
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block?.Origin);
-        Assert.IsNull(reopened.Drives.Single().Failure);
+        Assert.AreEqual(DriveState.Ready, reopened.Status.State);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block?.Origin);
+        Assert.IsNull(reopened.Status.Failure);
     }
 
     [TestMethod]
@@ -141,9 +141,9 @@ public sealed class MftIndexSourceTests : IDisposable
         await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock) }, Token);
 
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync([new VolumeKey('T')], Token));
+            () => index.StartWatchingAsync(Token));
 
-        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+        Assert.IsFalse(index.Status.Watch.IsRequested);
     }
 
     [TestMethod]
@@ -155,7 +155,7 @@ public sealed class MftIndexSourceTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             _fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource) }, Token);
 
-        await index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await index.StartWatchingAsync(Token);
 
         Assert.HasCount(1, watchSource.Starts);
         Assert.AreEqual('T', watchSource.Starts[0].Drive);

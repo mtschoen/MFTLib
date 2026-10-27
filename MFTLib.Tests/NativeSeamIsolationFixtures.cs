@@ -17,7 +17,7 @@ static class DeletionHooksReferenceFixture
 
 static class VolumeDependenciesReferenceFixture
 {
-    public static void Reference() => IndexedDrive.Dependencies._volumeSerialReader = null;
+    public static void Reference() => IndexedRoot.Dependencies._volumeSerialReader = null;
 }
 
 static class OpenDependenciesReferenceFixture

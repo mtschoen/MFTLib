@@ -19,7 +19,7 @@ public partial class FileIndexResilienceTests
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
         Assert.IsFalse(File.Exists(staleRetiredPath));
     }
 
@@ -41,7 +41,7 @@ public partial class FileIndexResilienceTests
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -60,7 +60,7 @@ public partial class FileIndexResilienceTests
             // Either way the open itself must not fail.
             await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-            Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+            Assert.AreEqual(DriveState.Ready, index.Status.State);
         }
         finally
         {
@@ -101,7 +101,7 @@ public partial class FileIndexResilienceTests
         try
         {
             Assert.AreSequenceEqual([CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*"], listings);
-            Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+            Assert.AreEqual(DriveState.Ready, index.Status.State);
             Assert.IsTrue(File.Exists(staleRetiredPath), "the sweep that could not list deleted nothing");
         }
         finally

@@ -8,14 +8,14 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 [SuppressMessage("Design", "CA1001",
     Justification = "Cleanup is [TestCleanup], the MSTest-idiomatic disposal path this test project uses " +
-                     "throughout rather than IDisposable on the test class itself.")]
+                    "throughout rather than IDisposable on the test class itself.")]
 public class SearchEngineTests
 {
     static readonly DateTime Older = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     static readonly DateTime Newer = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    DriveBlock[] _snapshot = null!;
+    DriveBlock _driveBlock = null!;
     uint _documentsRow;
     uint _picturesRow;
 
@@ -33,13 +33,13 @@ public class SearchEngineTests
         _builder.Complete(Newer);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock(new VolumeKey('T'), 0, block)];
+        _driveBlock = new DriveBlock(new VolumeKey('T'), block);
     }
 
     [TestCleanup]
     public async Task Cleanup()
     {
-        await _snapshot.ReleaseNowAsync();
+        await _driveBlock.ReleaseNowAsync();
         _builder.Dispose();
     }
 
@@ -51,28 +51,28 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_SubstringIsCaseInsensitiveByDefault()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report"), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery("report"), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Report.docx", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_CaseSensitiveNarrowsTheResult()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", CaseSensitive: true), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery("report", CaseSensitive: true), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_GlobPatternMatchesTheWholeName()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf", NameMatchMode.Glob), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery("*.pdf", NameMatchMode.Glob), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_NullPatternMatchesEveryLiveRow()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery(null), TestContext.CancellationToken);
         // Root, two directories, and three live files. The tombstoned row is excluded.
         Assert.HasCount(6, results);
     }
@@ -80,28 +80,28 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_ExcludesTombstonedRows()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("deleted"), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery("deleted"), TestContext.CancellationToken);
         Assert.IsEmpty(results);
     }
 
     [TestMethod]
     public void Search_DirectoriesTrueReturnsOnlyDirectories()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: true), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery(null, IsDirectory: true), TestContext.CancellationToken);
         Assert.IsTrue(results.All(entry => entry.IsDirectory));
     }
 
     [TestMethod]
     public void Search_DirectoriesFalseReturnsOnlyFiles()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Report.docx", "holiday.jpg", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_SizeBoundsAreInclusive()
     {
-        var results = SearchEngine.Search(_snapshot,
+        var results = SearchEngine.Search(_driveBlock,
             new SearchQuery(null, IsDirectory: false, SizeMinimum: 100, SizeMaximum: 4096), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Report.docx", "report.pdf"], NamesOf(results));
     }
@@ -117,20 +117,20 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('S'), 0, block)];
+        var driveBlock = new DriveBlock(new VolumeKey('S'), block);
         try
         {
-            var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0), TestContext.CancellationToken);
+            var resultsMin = SearchEngine.Search(driveBlock, new SearchQuery(null, SizeMinimum: 0), TestContext.CancellationToken);
             Assert.Contains(entry => entry.Name == "known-zero.txt", resultsMin);
             Assert.DoesNotContain(entry => entry.Name == "unknown-size.txt", resultsMin);
 
-            var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMaximum: 100), TestContext.CancellationToken);
+            var resultsMax = SearchEngine.Search(driveBlock, new SearchQuery(null, SizeMaximum: 100), TestContext.CancellationToken);
             Assert.Contains(entry => entry.Name == "known-zero.txt", resultsMax);
             Assert.DoesNotContain(entry => entry.Name == "unknown-size.txt", resultsMax);
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 
@@ -139,7 +139,7 @@ public class SearchEngineTests
     [DataRow(false, new[] { "Report.docx" })]
     public void Search_LastWriteTimeBoundsAreInclusive(bool isLowerBound, string[] expectedNames)
     {
-        var results = SearchEngine.Search(_snapshot,
+        var results = SearchEngine.Search(_driveBlock,
             new SearchQuery(null, IsDirectory: false,
                 LastWriteTimeMinimum: isLowerBound ? Newer : null,
                 LastWriteTimeMaximum: isLowerBound ? null : Older), TestContext.CancellationToken);
@@ -149,16 +149,16 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_SubtreeRestrictsToTheEntryAndBelow()
     {
-        var documents = FileEntry.Create(_snapshot[0], _documentsRow);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents), TestContext.CancellationToken);
+        var documents = FileEntry.Create(_driveBlock, _documentsRow);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery(null, Subtree: documents), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Documents", "Report.docx", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_UnderADifferentSubtreeExcludesSiblings()
     {
-        var pictures = FileEntry.Create(_snapshot[0], _picturesRow);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Subtree: pictures), TestContext.CancellationToken);
+        var pictures = FileEntry.Create(_driveBlock, _picturesRow);
+        var results = SearchEngine.Search(_driveBlock, new SearchQuery("report", Subtree: pictures), TestContext.CancellationToken);
         Assert.IsEmpty(results);
     }
 
@@ -167,7 +167,7 @@ public class SearchEngineTests
     {
         var invalidAncestor = default(FileEntry);
         Assert.ThrowsExactly<ArgumentException>(
-            () => SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor), TestContext.CancellationToken));
+            () => SearchEngine.Search(_driveBlock, new SearchQuery(null, Subtree: invalidAncestor), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -179,7 +179,7 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(() =>
-            SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor), token));
+            SearchEngine.Search(_driveBlock, new SearchQuery(null, Subtree: invalidAncestor), token));
     }
 
     [TestMethod]
@@ -196,17 +196,17 @@ public class SearchEngineTests
         builder.AddRow("needle.txt", parent, RowFlags.InUse, 1, Newer, sequenceNumber: 0);
         builder.Complete(Newer);
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), 0, block)];
+        var driveBlock = new DriveBlock(new VolumeKey('Z'), block);
         try
         {
-            var ancestor = FileEntry.Create(snapshot[0], root);
+            var ancestor = FileEntry.Create(driveBlock, root);
             var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
-                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor), TestContext.CancellationToken));
+                SearchEngine.Search(driveBlock, new SearchQuery("needle.txt", Subtree: ancestor), TestContext.CancellationToken));
             Assert.Contains(BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture), exception.Message);
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 
@@ -224,17 +224,17 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), 0, block)];
+        var driveBlock = new DriveBlock(new VolumeKey('Z'), block);
         try
         {
-            var ancestor = FileEntry.Create(snapshot[0], root);
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor), TestContext.CancellationToken);
+            var ancestor = FileEntry.Create(driveBlock, root);
+            var results = SearchEngine.Search(driveBlock, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor), TestContext.CancellationToken);
             Assert.HasCount(1, results);
             Assert.AreEqual("valid.txt", results[0].Name);
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 
@@ -252,22 +252,18 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, block)];
+        var driveBlock = new DriveBlock(new VolumeKey('Y'), block);
         try
         {
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob), TestContext.CancellationToken);
+            var results = SearchEngine.Search(driveBlock, new SearchQuery("*.dat", NameMatchMode.Glob), TestContext.CancellationToken);
             Assert.HasCount(fileCount, results);
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 
-    /// <summary>
-    ///     Cancellation is checked at entry, throwing OperationCanceledException
-    ///     before any work begins.
-    /// </summary>
     [TestMethod]
     public void Search_WithACancelledToken_ThrowsOperationCanceled()
     {
@@ -276,38 +272,34 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(
-            () => SearchEngine.Search(_snapshot, new SearchQuery("*.dat", NameMatchMode.Glob), token));
+            () => SearchEngine.Search(_driveBlock, new SearchQuery("*.dat", NameMatchMode.Glob), token));
     }
 
     [TestMethod]
     public void Search_Under_WithCancelledToken_ThrowsOperationCanceled()
     {
-        var documents = FileEntry.Create(_snapshot[0], _documentsRow);
+        var documents = FileEntry.Create(_driveBlock, _documentsRow);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(() =>
-            SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents), token));
+            SearchEngine.Search(_driveBlock, new SearchQuery(null, Subtree: documents), token));
     }
 
-    /// <summary>
-    ///     A block whose producer wrote no rows at all partitions to no ranges, so the
-    ///     search completes empty without starting the parallel machinery.
-    /// </summary>
     [TestMethod]
     public async Task Search_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, builder.OpenForWriting())];
+        var driveBlock = new DriveBlock(new VolumeKey('Y'), builder.OpenForWriting());
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery(null), TestContext.CancellationToken));
+            Assert.IsEmpty(SearchEngine.Search(driveBlock, new SearchQuery(null), TestContext.CancellationToken));
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 

@@ -3,11 +3,11 @@
 ## Preparing the cache directory
 
 `CacheMode.Persistent` (the default for a non-dump source) and `ExistingOnly`
-require a nonblank `FileIndexOptions.CacheDirectory`, even with no drives.
+require a nonblank `FileIndexOptions.CacheDirectory` and a non-null `FileIndexOptions.Root`.
 Missing configuration throws `ArgumentException` before directory creation.
 `CacheMode.Disabled` needs no directory and ignores a supplied path without
 resolving or creating it. Dump sources validate first and supply their own drive:
-`Drives` must be a non-null empty collection, `CacheMode` and `CacheDirectory`
+`Root`, `CacheMode` and `CacheDirectory`
 must be null, and `CacheTag` must be default. Other values throw
 `ArgumentException` naming the option, including every non-null cache mode.
 A dump is never cached.
@@ -78,7 +78,7 @@ ownership; block operations still follow the locks described below.
       `PrivateFallback` for a private fallback block, and null for
       a `CacheMode.Disabled` block (a blockless drive has no `Block` at all). It is independent of
       `BlockOrigin`: both canonical and private scans report `ProducedByScan`.
-      The status is captured under the state lock; reread `FileIndex.Drives` after
+      The status is captured under the state lock; reread `FileIndex.Status` after
       a rescan. Taking a lock for an in-flight rescan does not change the old
       private block's status; only publishing the replacement does. A failed or
       cancelled scan that leaves the old block in place leaves its backing status

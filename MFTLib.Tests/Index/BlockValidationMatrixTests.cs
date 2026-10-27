@@ -31,8 +31,8 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
             CancellationToken.None);
         Assert.Contains(line => line.Contains($"cache validation failed: {expectedRejection}"), diagnostics,
             $"the rejection reason {expectedRejection} is logged");
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Status.Block!.Origin);
         Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
     }
 
@@ -142,7 +142,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
         await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello", TestContext.CancellationToken);
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath
         };
 

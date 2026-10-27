@@ -22,7 +22,7 @@ public class FileIndexWatchRescanCacheTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), directory.Path, 1)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), directory.Path, 1),
             CacheDirectory = directory.Path,
             MftSource = new MftIndexSource(async (request, cancellationToken) =>
             {
@@ -39,13 +39,13 @@ public class FileIndexWatchRescanCacheTests
         }, token);
         try
         {
-            await index.StartWatchingAsync([new VolumeKey('T')], token);
-            var original = index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock;
+            await index.StartWatchingAsync(token);
+            var original = index.Root(TestContext.CancellationToken).DriveBlock;
             var handle = source.WatchFor('T');
-            var catchUp = index.WaitForCatchUpAsync([new VolumeKey('T')], token);
+            var catchUp = index.WaitForCatchUpAsync(token);
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             rescanRequested.SetResult();
-            var rescan = index.RescanAsync([new VolumeKey('T')], cancellation.Token);
+            var rescan = index.RescanAsync(cancellation.Token);
             await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.AreEqual(0, handle.DisposeCount);
             Assert.HasCount(1, Directory.GetFiles(directory.Path, "*.retired-*"));
@@ -61,7 +61,7 @@ public class FileIndexWatchRescanCacheTests
                 await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
             }
 
-            Assert.AreSame(original, index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock);
+            Assert.AreSame(original, index.Root(TestContext.CancellationToken).DriveBlock);
             Assert.AreSame(handle, source.WatchFor('T'));
             Assert.HasCount(1, source.TargetsFor('T'));
             Assert.IsFalse(catchUp.IsCompleted);
@@ -72,7 +72,7 @@ public class FileIndexWatchRescanCacheTests
             Assert.AreEqual(700L, restored.Header.UsnNextUsn);
             await handle.Publish(new DriveCaughtUp());
             await catchUp.WaitAsync(HangGuard, TestContext.CancellationToken);
-            await index.StopWatchingAsync([new VolumeKey('T')], token);
+            await index.StopWatchingAsync(token);
         }
         finally
         {

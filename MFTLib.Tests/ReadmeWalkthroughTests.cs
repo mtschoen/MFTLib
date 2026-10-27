@@ -33,7 +33,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
-        IndexedDrive.Dependencies.ResetToDefaults();
+        IndexedRoot.Dependencies.ResetToDefaults();
         _tempDirectory.Dispose();
     }
 
@@ -51,7 +51,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         FileEntry retainedEntry = default;
         await using (var index = await FileIndex.OpenAsync(options, cancellationToken))
         {
-            var status = index.Drives.Single();
+            var status = index.Status;
             if (status.State != DriveState.Ready)
             {
                 throw new InvalidOperationException(
@@ -92,7 +92,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             };
 
             await using var index = await FileIndex.OpenAsync(options, cancellationToken);
-            var status = index.Drives.Single();
+            var status = index.Status;
 
             Assert.AreEqual(DriveState.Failed, status.State, filePath);
             Assert.IsNull(status.Block, filePath);
@@ -114,17 +114,17 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [TestMethod]
     public async Task LocalOneShotWalkthrough_CompilesPublicRecipeAndRunsMultipleQueriesOverOneScan()
     {
-        IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
+        IndexedRoot.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
 
         var cancellationToken = TestContext.CancellationToken;
-        var drive = IndexedDrive.ReadWindowsVolume('C');
+        var drive = IndexedRoot.ReadWindowsVolume('C');
         var productionOptions = new FileIndexOptions
         {
-            Drives = [drive],
+            Root = drive,
             CacheMode = CacheMode.Disabled,
             MftSource = MftIndexSources.FromLocalVolumes()
         };
-        Assert.AreEqual(new VolumeKey('C'), productionOptions.Drives.Single().Drive);
+        Assert.AreEqual(new VolumeKey('C'), productionOptions.Root!.Drive);
         Assert.AreEqual(CacheMode.Disabled, productionOptions.CacheMode);
         Assert.IsNotNull(productionOptions.MftSource);
 
@@ -150,7 +150,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         var ignoredCachePath = Path.Combine(TemporaryDirectoryPath, "never-created-cache");
         var options = productionOptions with
         {
-            Drives = [drive],
+            Root = drive,
             CacheDirectory = ignoredCachePath,
             MftSource = SyntheticIndexSource.Create(syntheticProducer)
         };
@@ -159,7 +159,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         FileEntry retainedEntry = default;
         await using (var index = await FileIndex.OpenAsync(options, cancellationToken))
         {
-            var status = index.Drives.Single();
+            var status = index.Status;
             if (status.State != DriveState.Ready)
             {
                 throw new InvalidOperationException(
@@ -198,12 +198,12 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [TestMethod]
     public async Task LocalOneShotWalkthrough_FailedAndCancelledOperations_SurfaceExpectedOutcomes()
     {
-        IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
-        var drive = IndexedDrive.ReadWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
+        IndexedRoot.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
+        var drive = IndexedRoot.ReadWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
 
         var failingOptions = new FileIndexOptions
         {
-            Drives = [drive],
+            Root = drive,
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(
                 new SyntheticMftProducer(_ => throw new InvalidOperationException("Access to the volume was denied.")))
@@ -211,7 +211,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
 
         await using (var failedIndex = await FileIndex.OpenAsync(failingOptions, TestContext.CancellationToken))
         {
-            var status = failedIndex.Drives.Single();
+            var status = failedIndex.Status;
             Assert.AreEqual(DriveState.Failed, status.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
 

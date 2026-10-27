@@ -41,11 +41,11 @@ public class DirectLargestFilesTests
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration),
             CacheDirectory = builder.DirectoryPath,
             CacheMode = CacheMode.ExistingOnly
         }, CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State, index.Drives.Single().Failure?.Message);
+        Assert.AreEqual(DriveState.Ready, index.Status.State, index.Status.Failure?.Message);
         return index;
     }
 
@@ -91,7 +91,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_RespectsTheSubtreeRestriction()
     {
-        var documents = FileEntry.Create(_index.CurrentSnapshot[0], _documentsRow);
+        var documents = FileEntry.Create(_index.CurrentBlock!, _documentsRow);
         var results = LargestFiles.Find(_index, 5, documents, CancellationToken.None);
         Assert.AreSequenceEqual(
             ["huge.bin", "large.bin", "readme.md"], [.. results.Select(entry => entry.Name)]);
@@ -138,7 +138,7 @@ public class DirectLargestFilesTests
                 }
             }));
         Assert.AreEqual(cancelAfter, assembled);
-        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, _index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -168,7 +168,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_Under_WithCancelledToken_ThrowsOperationCanceled()
     {
-        var documents = FileEntry.Create(_index.CurrentSnapshot[0], _documentsRow);
+        var documents = FileEntry.Create(_index.CurrentBlock!, _documentsRow);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;

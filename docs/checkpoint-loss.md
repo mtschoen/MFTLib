@@ -48,7 +48,7 @@
       protocol carries them, report equality covers them, and `BytesBehind` and
       `SizeThatWouldHaveRetained` derive from them. `JournalCatchUpLostException` carries only
        `IsRecoveryStopped` and its message; the drive is the fault's `WatchFault.Drive`, and the
-      recovery-stopped flag and the report are the drive's `DriveStatus.Watch` values, which a
+      recovery-stopped flag and the report are the drive's `RootStatus.Watch` values, which a
       `WatchFaulted` handler reads when the fault is raised.
       A stopped-loss message with a retained-size suggestion names the public
       `BrokerSession.GrowUsnJournalAsync` remedy, followed by `FileIndex.RescanAsync`.

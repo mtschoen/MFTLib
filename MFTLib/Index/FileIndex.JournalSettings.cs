@@ -34,9 +34,9 @@ public sealed partial class FileIndex
 
     VolumeKey RequireConfiguredDrive(VolumeKey drive)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         var validatedDrive = drive.Validated();
-        if (_options.Drives.All(configuredDrive => configuredDrive.Drive != validatedDrive))
+        if (_runtime.Drive != validatedDrive)
         {
             throw new ArgumentException($"Drive {validatedDrive} is not part of this index.", nameof(drive));
         }

@@ -7,14 +7,13 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 [SuppressMessage("Design", "CA1001",
     Justification = "Cleanup is [TestCleanup], the MSTest-idiomatic disposal path this test project uses " +
-                     "throughout rather than IDisposable on the test class itself.")]
+                    "throughout rather than IDisposable on the test class itself.")]
 public class LookupEngineTests
 {
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _firstBuilder = null!;
-    SyntheticBlockBuilder _secondBuilder = null!;
-    DriveBlock[] _snapshot = null!;
+    DriveBlock _driveBlock = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -26,35 +25,24 @@ public class LookupEngineTests
         _firstBuilder.AddRow("readme.md", documents, RowFlags.InUse, 12, Moment, sequenceNumber: 0);
         _firstBuilder.Complete(Moment);
 
-        _secondBuilder = new SyntheticBlockBuilder('U');
-        var secondRoot = _secondBuilder.AddRoot();
-        _secondBuilder.AddRow("readme.md", secondRoot, RowFlags.InUse, 15, Moment, sequenceNumber: 0);
-        _secondBuilder.Complete(Moment);
-
         var firstBlock = _firstBuilder.OpenForReading(out _)!;
-        var secondBlock = _secondBuilder.OpenForReading(out _)!;
-        _snapshot = [
-            new DriveBlock(new VolumeKey('T'), 0, firstBlock, rootDirectoryPath: TestDriveRoot.For('T')),
-            new DriveBlock(new VolumeKey('U'), 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))
-        ];
+        _driveBlock = new DriveBlock(new VolumeKey('T'), firstBlock, rootDirectoryPath: TestDriveRoot.For('T'));
     }
 
     [TestCleanup]
     public async Task Cleanup()
     {
-        await _snapshot.ReleaseNowAsync();
+        await _driveBlock.ReleaseNowAsync();
         _firstBuilder.Dispose();
-        _secondBuilder.Dispose();
     }
-
 
     [TestMethod]
     public void Find_RoundTripsWhateverPathEmits()
     {
-        var report = LookupEngine.Find(_snapshot,
+        var report = LookupEngine.Find(_driveBlock,
             Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"), TestContext.CancellationToken)!.Value;
 
-        var roundTripped = LookupEngine.Find(_snapshot, report.Path, TestContext.CancellationToken);
+        var roundTripped = LookupEngine.Find(_driveBlock, report.Path, TestContext.CancellationToken);
 
         Assert.IsTrue(roundTripped.HasValue);
         Assert.AreEqual(report.Path, roundTripped.GetValueOrDefault().Path);
@@ -64,16 +52,16 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_APathUnderNoIndexedRootReturnsNull()
     {
-        Assert.IsNull(LookupEngine.Find(_snapshot,
+        Assert.IsNull(LookupEngine.Find(_driveBlock,
             Path.Combine(TestDriveRoot.For('Z'), "Documents", "report.pdf"), TestContext.CancellationToken));
-        Assert.IsNull(LookupEngine.Find(_snapshot, "not-a-path", TestContext.CancellationToken));
-        Assert.IsNull(LookupEngine.Find(_snapshot, "", TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(_driveBlock, "not-a-path", TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(_driveBlock, "", TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Find_TheRootDirectoryItselfReturnsTheRootRow()
     {
-        var entry = LookupEngine.Find(_snapshot, TestDriveRoot.For('T'), TestContext.CancellationToken);
+        var entry = LookupEngine.Find(_driveBlock, TestDriveRoot.For('T'), TestContext.CancellationToken);
 
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual(TestDriveRoot.For('T'), entry.GetValueOrDefault().Path);
@@ -82,7 +70,7 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_ResolvesAFullPathToItsEntry()
     {
-        var entry = LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"), TestContext.CancellationToken);
+        var entry = LookupEngine.Find(_driveBlock, Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"), TestContext.CancellationToken);
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
         Assert.AreEqual(4096L, entry.GetValueOrDefault().Size);
@@ -91,38 +79,22 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_MissingSegmentReturnsNull()
     {
-        Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "nothing.txt"), TestContext.CancellationToken));
-        Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Nowhere", "report.pdf"), TestContext.CancellationToken));
-    }
-
-
-    [TestMethod]
-    public void SearchExact_SpansEveryDriveInTheSnapshot()
-    {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken);
-        Assert.HasCount(2, results);
-        Assert.AreSequenceEqual(["T", "U"], [.. results.Select(entry => entry.RecordKey.Drive.ToString())], SequenceOrder.InAnyOrder);
+        Assert.IsNull(LookupEngine.Find(_driveBlock, Path.Combine(TestDriveRoot.For('T'), "Documents", "nothing.txt"), TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(_driveBlock, Path.Combine(TestDriveRoot.For('T'), "Nowhere", "report.pdf"), TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void SearchExact_IsAnExactNameMatchNotASubstring()
     {
-        Assert.IsEmpty(SearchEngine.Search(_snapshot, new SearchQuery("readme", NameMatchMode.Exact), TestContext.CancellationToken));
-        Assert.HasCount(2, SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact), TestContext.CancellationToken));
-        Assert.IsEmpty(SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true), TestContext.CancellationToken));
+        Assert.IsEmpty(SearchEngine.Search(_driveBlock, new SearchQuery("readme", NameMatchMode.Exact), TestContext.CancellationToken));
+        Assert.HasCount(1, SearchEngine.Search(_driveBlock, new SearchQuery("README.MD", NameMatchMode.Exact), TestContext.CancellationToken));
+        Assert.IsEmpty(SearchEngine.Search(_driveBlock, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true), TestContext.CancellationToken));
     }
 
     [TestMethod]
-    public void Root_ReturnsTheDriveRootForEachDrive()
+    public void Root_ReturnsTheDriveRoot()
     {
-        Assert.AreEqual(TestDriveRoot.For('T'), LookupEngine.Root(_snapshot, new VolumeKey('T'), TestContext.CancellationToken).Path);
-        Assert.AreEqual(TestDriveRoot.For('U'), LookupEngine.Root(_snapshot, new VolumeKey('u'), TestContext.CancellationToken).Path);
-    }
-
-    [TestMethod]
-    public void Root_UnknownDriveThrows()
-    {
-        Assert.ThrowsExactly<ArgumentException>(() => LookupEngine.Root(_snapshot, new VolumeKey('Z'), TestContext.CancellationToken));
+        Assert.AreEqual(TestDriveRoot.For('T'), LookupEngine.Root(_driveBlock, TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
@@ -143,17 +115,17 @@ public class LookupEngineTests
 
         var block = builder.OpenForReading(out var validation)!;
         Assert.IsNull(validation);
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), 0, block, rootDirectoryPath: TestDriveRoot.For('V'))];
+        var driveBlock = new DriveBlock(new VolumeKey('V'), block, rootDirectoryPath: TestDriveRoot.For('V'));
         try
         {
-            Assert.AreEqual(rootRow, LookupEngine.Root(snapshot, new VolumeKey('V'), TestContext.CancellationToken).RowIndex);
-            var entry = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('V'), "Documents", "report.pdf"), TestContext.CancellationToken);
+            Assert.AreEqual(rootRow, LookupEngine.Root(driveBlock, TestContext.CancellationToken).RowIndex);
+            var entry = LookupEngine.Find(driveBlock, Path.Combine(TestDriveRoot.For('V'), "Documents", "report.pdf"), TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 
@@ -163,10 +135,9 @@ public class LookupEngineTests
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out var validation)!;
         Assert.IsNull(validation);
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
-        DriveBlock[] snapshot = [driveBlock];
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: TestDriveRoot.For('T'));
 
-        var root = LookupEngine.Root(snapshot, new VolumeKey('T'), TestContext.CancellationToken);
+        var root = LookupEngine.Root(driveBlock, TestContext.CancellationToken);
 
         Assert.AreEqual(5u, root.RowIndex);
     }
@@ -176,10 +147,9 @@ public class LookupEngineTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
-        DriveBlock[] snapshot = [driveBlock];
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: TestDriveRoot.For('T'));
 
-        var found = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), TestContext.CancellationToken);
+        var found = LookupEngine.Find(driveBlock, Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), TestContext.CancellationToken);
 
         Assert.IsNotNull(found);
         Assert.AreEqual("notes.txt", found.Value.Name);
@@ -187,24 +157,19 @@ public class LookupEngineTests
     }
 
     /// <summary>
-    ///     The sequential reference the partitioned scan is held to: one drive at a time in
-    ///     snapshot order, rows ascending within each drive.
+    ///     The sequential reference the partitioned scan is held to: rows ascending within the block.
     /// </summary>
-    static List<FileEntry> SequentialExactName(DriveBlock[] snapshot, string name, bool caseSensitive)
+    static List<FileEntry> SequentialExactName(DriveBlock driveBlock, string name, bool caseSensitive)
     {
         var reference = new List<FileEntry>();
-        foreach (var driveBlock in snapshot)
+        var scanner = new RowScanner(driveBlock);
+        while (scanner.MoveNext())
         {
-            var scanner = new RowScanner(driveBlock);
-            while (scanner.MoveNext())
+            ref readonly var row = ref scanner.Current;
+            if (row.IsInUse && !row.IsDeleted &&
+                NameMatching.EqualsName(scanner.CurrentName, name, caseSensitive))
             {
-                ref readonly var row = ref scanner.Current;
-                if (row.IsInUse && !row.IsDeleted &&
-                    NameMatching.EqualsName(scanner.CurrentName, name, caseSensitive))
-                {
-                    reference.Add(FileEntry.Create(snapshot[driveBlock.DriveOrdinal],
-                        scanner.CurrentRowIndex));
-                }
+                reference.Add(FileEntry.Create(driveBlock, scanner.CurrentRowIndex));
             }
         }
 
@@ -212,66 +177,44 @@ public class LookupEngineTests
     }
 
     [TestMethod]
-    public async Task SearchExact_OverPartitionedBlocks_MatchesTheSequentialScanExactly()
+    public async Task SearchExact_OverPartitionedBlock_MatchesTheSequentialScanExactly()
     {
         const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
-        using var firstBuilder = new SyntheticBlockBuilder(slotCapacity: (uint)fileCount + 8,
+        using var builder = new SyntheticBlockBuilder(slotCapacity: (uint)fileCount + 8,
             namePoolCapacity: (uint)fileCount * 32);
-        using var secondBuilder = new SyntheticBlockBuilder('U', slotCapacity: (uint)fileCount + 8,
-            namePoolCapacity: (uint)fileCount * 32);
-        var firstRoot = firstBuilder.AddRoot();
-        var secondRoot = secondBuilder.AddRoot();
+        var root = builder.AddRoot();
         for (var index = 0; index < fileCount; index++)
         {
-            firstBuilder.AddRow($"file{index}.dat", firstRoot, RowFlags.InUse, index, Moment,
-                sequenceNumber: 0);
-            secondBuilder.AddRow($"file{index}.dat", secondRoot, RowFlags.InUse, index, Moment,
+            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Moment,
                 sequenceNumber: 0);
         }
 
-        // One matching name planted at rows spread across both blocks, so it lands in several
-        // blocks and in several partitions within each block.
         foreach (var needleRow in new[] { 100u, 16000u, 33000u })
         {
-            firstBuilder.AddRowAt(needleRow, "needle.txt",
-                new RowColumns(firstRoot, RowFlags.InUse, 0, 1, Moment.Ticks, SequenceNumber: 0));
+            builder.AddRowAt(needleRow, "needle.txt",
+                new RowColumns(root, RowFlags.InUse, 0, 1, Moment.Ticks, SequenceNumber: 0));
         }
 
-        foreach (var needleRow in new[] { 42u, 20000u })
-        {
-            secondBuilder.AddRowAt(needleRow, "needle.txt",
-                new RowColumns(secondRoot, RowFlags.InUse, 0, 1, Moment.Ticks, SequenceNumber: 0));
-        }
-
-        firstBuilder.Complete(Moment);
-        secondBuilder.Complete(Moment);
-        var firstBlock = firstBuilder.OpenForReading(out _)!;
-        var secondBlock = secondBuilder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [
-            new DriveBlock(new VolumeKey('T'), 0, firstBlock),
-            new DriveBlock(new VolumeKey('U'), 1, secondBlock)
-        ];
+        builder.Complete(Moment);
+        var block = builder.OpenForReading(out _)!;
+        var driveBlock = new DriveBlock(new VolumeKey('T'), block);
         try
         {
-            var partitioned = SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact), TestContext.CancellationToken);
-            var reference = SequentialExactName(snapshot, "needle.txt", caseSensitive: false);
+            var partitioned = SearchEngine.Search(driveBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), TestContext.CancellationToken);
+            var reference = SequentialExactName(driveBlock, "needle.txt", caseSensitive: false);
 
-            Assert.HasCount(5, partitioned);
+            Assert.HasCount(3, partitioned);
             Assert.AreSequenceEqual(
-                [("T", 100u), ("T", 16000u), ("T", 33000u), ("U", 42u), ("U", 20000u)], [.. partitioned.Select(entry => (entry.RecordKey.Drive.ToString(), entry.RowIndex))]);
+                [("T", 100u), ("T", 16000u), ("T", 33000u)], [.. partitioned.Select(entry => (entry.RecordKey.Drive.ToString(), entry.RowIndex))]);
             Assert.AreSequenceEqual(
                 [.. reference.Select(entry => (entry.RecordKey.Drive, entry.RowIndex))], [.. partitioned.Select(entry => (entry.RecordKey.Drive, entry.RowIndex))]);
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 
-    /// <summary>
-    ///     Cancellation is checked at entry, throwing OperationCanceledException
-    ///     before any work begins.
-    /// </summary>
     [TestMethod]
     public void SearchExact_WithACancelledToken_ThrowsOperationCanceled()
     {
@@ -280,27 +223,22 @@ public class LookupEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(
-            () => SearchEngine.Search(_snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact), token));
+            () => SearchEngine.Search(_driveBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), token));
     }
 
-    /// <summary>
-    ///     A block whose producer wrote no rows at all has a zero row count, so the
-    ///     partitioner returns no ranges and the scan completes empty rather than
-    ///     touching the partition machinery.
-    /// </summary>
     [TestMethod]
     public async Task SearchExact_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, builder.OpenForWriting())];
+        var driveBlock = new DriveBlock(new VolumeKey('Y'), builder.OpenForWriting());
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact), TestContext.CancellationToken));
+            Assert.IsEmpty(SearchEngine.Search(driveBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), TestContext.CancellationToken));
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 

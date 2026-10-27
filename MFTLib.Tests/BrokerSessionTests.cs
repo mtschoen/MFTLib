@@ -673,14 +673,14 @@ public partial class BrokerSessionTests
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('X'), roots.Path, 123)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('X'), roots.Path, 123),
             CacheDirectory = cache.Path,
             CacheMode = CacheMode.Disabled,
             MftSource = session.CreateIndexSource()
         }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(1, launches);
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
     }
 
     [TestMethod]

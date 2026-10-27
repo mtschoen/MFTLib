@@ -36,7 +36,7 @@ sealed class CheckpointLossFixture : IDisposable
 
     public string CacheDirectory => _trees.First().Value.CacheDirectory;
 
-    public IndexedDrive Drive(char driveLetter = 'T')
+    public IndexedRoot Drive(char driveLetter = 'T')
     {
         var key = new VolumeKey(char.ToUpperInvariant(driveLetter));
         var fixture = _trees[key];
@@ -46,11 +46,11 @@ sealed class CheckpointLossFixture : IDisposable
 
     public FileIndexOptions Options(MftBlockProducer? producer = null,
         IIndexWatchSource? watchSource = null, CacheMode cacheMode = CacheMode.Persistent,
-        IReadOnlyList<IndexedDrive>? drives = null)
+        IndexedRoot? root = null, char driveLetter = 'T')
     {
         return new FileIndexOptions
         {
-            Drives = drives ?? _trees.Keys.Select(key => Drive(key.Letter)).ToArray(),
+            Root = root ?? Drive(driveLetter),
             CacheDirectory = CacheDirectory,
             CacheMode = cacheMode,
             MftSource = new MftIndexSource(producer ?? ProduceMftShapedBlock, watchSource)
@@ -62,15 +62,18 @@ sealed class CheckpointLossFixture : IDisposable
 
     public async Task Seed(FileIndexOptions? options = null, CancellationToken cancellationToken = default)
     {
-        options ??= Options();
-        var drives = options.Drives.ToArray();
+        var roots = options?.Root is { } explicitRoot
+            ? [explicitRoot]
+            : _trees.Keys.Select(key => Drive(key.Letter)).ToArray();
+        var baseOptions = options ?? Options();
         using var journals = JournalWindows.ForDrives(
-            drives.ToDictionary(drive => VolumeOf(drive.Drive), _ => HealthyWindow));
-        await using var index = await FileIndex.OpenAsync(options with { Drives = drives }, cancellationToken);
-        foreach (var drive in index.Drives)
+            roots.ToDictionary(drive => VolumeOf(drive.Drive), _ => HealthyWindow));
+        foreach (var root in roots)
         {
-            Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
-            Assert.IsNull(drive.Watch.CheckpointLoss);
+            await using var index = await FileIndex.OpenAsync(baseOptions with { Root = root }, cancellationToken);
+            var status = index.Status;
+            Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
+            Assert.IsNull(status.Watch.CheckpointLoss);
         }
     }
 

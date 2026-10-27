@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One Windows drive root with the facts <see cref="IndexedDrive.EnumerateWindowsVolumes" /> read and its
+///     One Windows drive root with the facts <see cref="IndexedRoot.EnumerateWindowsVolumes" /> read and its
 ///     verdict. A consumer branches on the fields and renders its own words.
 /// </summary>
 public sealed record WindowsVolume

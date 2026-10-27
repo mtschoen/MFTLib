@@ -73,7 +73,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -150,8 +150,8 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
         names.Clear();
         patterns.Clear();
 
-        var rescan = await index.RescanAsync(index.Drives.Select(status => status.Drive), TestContext.CancellationToken);
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, rescan.Single().Outcome);
+        var rescan = await index.RescanAsync(TestContext.CancellationToken);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, rescan.Outcome);
 
         Assert.IsNotNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));

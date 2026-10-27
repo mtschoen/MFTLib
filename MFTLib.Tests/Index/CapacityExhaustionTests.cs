@@ -26,7 +26,7 @@ public sealed class CapacityExhaustionTests : IDisposable
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,
             RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks, SequenceNumber: 0));
         writer.Complete(Moment, null);
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: TestDriveRoot.For('T'))];
         return (block, writer, snapshot);
     }
 
@@ -106,9 +106,9 @@ public sealed class CapacityExhaustionTests : IDisposable
             mutator.Apply(snapshot[0], [Create(1, "survivor.txt"), Create(900, "lost.txt")],
                 journalIdentifier: 1, nextUsn: 30);
 
-            var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"), TestContext.CancellationToken);
+            var results = SearchEngine.Search(snapshot[0], new SearchQuery("survivor"), TestContext.CancellationToken);
             Assert.HasCount(1, results);
-            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery("lost"), TestContext.CancellationToken));
+            Assert.IsEmpty(SearchEngine.Search(snapshot[0], new SearchQuery("lost"), TestContext.CancellationToken));
         }
         finally
         {

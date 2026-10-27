@@ -31,15 +31,16 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var journal = new ScriptedCatchUp();
         using var window = JournalIsolation.OverrideJournalWindow(drive => drive == 'T' ? TrimmedWindow : null);
         await using var scenario = await CrossDriveScenario.OpenAsync(journal.ReadJournal);
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
+        var indexU = scenario.IndexFor('U');
         var token = scenario.Token;
         var hostClockAtStart = scenario.HostClock.GetUtcNow();
         var clientClockAtStart = scenario.ClientClock.GetUtcNow();
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
-        var rescanOfT = index.RescanAsync([new VolumeKey('T')], token);
-        var rescanOfU = index.RescanAsync([new VolumeKey('U')], token);
+        var rescanOfT = indexT.RescanAsync(token);
+        var rescanOfU = indexU.RescanAsync(token);
         await rescanOfU.WaitAsync(HangGuard, TestContext.CancellationToken);
         var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard, TestContext.CancellationToken));
 
@@ -55,8 +56,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         var drive = scenario.DriveOf('T');
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-T-4.txt", NameMatchMode.Exact), token), "T keeps its third block, the fourth scan");
-        Assert.IsEmpty(index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token));
+        Assert.HasCount(1, indexT.Search(new SearchQuery("scan-T-4.txt", NameMatchMode.Exact), token), "T keeps its third block, the fourth scan");
+        Assert.IsEmpty(indexT.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token));
         var report = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(report);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, report.DetectedDuring);
@@ -65,20 +66,20 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(JournalSizeArithmetic.SizeThatWouldHaveRetained(ArmedCursor.NextUsn, TrimmedWindow.NextUsn,
             TrimmedWindow.AllocationDelta), report.SizeThatWouldHaveRetained);
         Assert.AreEqual(report, statusesAtLoss[^1].Watch.CheckpointLoss);
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync([new VolumeKey('T')], token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => indexT.StartWatchingAsync(token));
 
         // U completed normally in the same run.
         Assert.AreEqual(2, scenario.ScansOf('U'));
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-U-2.txt", NameMatchMode.Exact), token));
+        Assert.HasCount(1, indexU.Search(new SearchQuery("scan-U-2.txt", NameMatchMode.Exact), token));
         Assert.IsEmpty(scenario.FaultsOf('U'));
         Assert.AreEqual(0, scenario.DriveOf('U').Watch.ConsecutiveLostCatchUps);
         Assert.IsNull(scenario.DriveOf('U').Watch.CheckpointLoss);
 
         // The source is fixed: a manual rescan succeeds, the count resets and a start is accepted.
         journal.Fix();
-        await index.RescanAsync([new VolumeKey('T')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await indexT.RescanAsync(token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, scenario.DriveOf('T').Watch.ConsecutiveLostCatchUps);
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
+        await indexT.StartWatchingAsync(token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since);
         Assert.AreEqual(hostClockAtStart, scenario.HostClock.GetUtcNow(), "no time passed on the host");
         Assert.AreEqual(clientClockAtStart, scenario.ClientClock.GetUtcNow(), "no time passed on the client");
@@ -96,12 +97,12 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var journal = new ScriptedCatchUp();
         using var window = JournalIsolation.OverrideJournalWindow(drive => drive == 'T' ? TrimmedWindow : null);
         await using var scenario = await CrossDriveScenario.OpenAsync(journal.ReadJournal);
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
         var token = scenario.Token;
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailNextReads(1);
 
-        await index.RescanAsync([new VolumeKey('T')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await indexT.RescanAsync(token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(2, scenario.ChannelsOpenedFor('T') - channelsBefore, "the lost scan and the one that held");
         var fault = scenario.FaultsOf('T').Single();
@@ -113,9 +114,9 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, drive.Watch.CheckpointLoss?.DetectedDuring,
             "the report the lost scan produced is kept");
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token), "T's block is the second scan's");
-        Assert.IsEmpty(index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token));
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
+        Assert.HasCount(1, indexT.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token), "T's block is the second scan's");
+        Assert.IsEmpty(indexT.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token));
+        await indexT.StartWatchingAsync(token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since,
             "the watch starts from the second block's cursor");
     }
@@ -131,13 +132,13 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var journal = new ScriptedCatchUp();
         using var window = JournalIsolation.OverrideJournalWindow(drive => drive == 'T' ? RetainingWindow : null);
         await using var scenario = await CrossDriveScenario.OpenAsync(journal.ReadJournal);
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
         var token = scenario.Token;
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync([new VolumeKey('T')], token).WaitAsync(HangGuard, TestContext.CancellationToken));
+            () => indexT.RescanAsync(token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains(ScriptedCatchUp.FailureMessage, failure.Message);
         Assert.AreEqual(1, scenario.ChannelsOpenedFor('T') - channelsBefore, "one scan channel, no retry");
@@ -146,7 +147,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.Watch.CheckpointLoss);
         Assert.IsEmpty(scenario.Faults, "no CatchUpLost fault");
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token), "the open's block stays");
+        Assert.HasCount(1, indexT.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token), "the open's block stays");
     }
 
     /// <summary>The host's catch-up source: T's reads throw as scripted, U's hold at the cursor they are given.</summary>

@@ -23,7 +23,7 @@ public sealed class RowScanningContractTests
         yield return ["Search", (QueryCall)((index, _, _, token) => index.Search(new SearchQuery("readme"), token).Count), 2];
         yield return ["Enumerate", (QueryCall)((index, _, _, token) => index.Enumerate(new SearchQuery("readme"), token).Count()), 2];
         yield return ["EnumerateRows", (QueryCall)((index, _, _, token) => CountRows(index, new SearchQuery("readme"), token)), 2];
-        yield return ["Root", (QueryCall)((index, _, _, token) => index.Root(new VolumeKey('T'), token).IsValid ? 1 : 0), 1];
+        yield return ["Root", (QueryCall)((index, _, _, token) => index.Root(token).IsValid ? 1 : 0), 1];
         yield return ["Children", (QueryCall)((_, root, _, token) => root.Children(token).Count), 2];
     }
 
@@ -131,7 +131,7 @@ public sealed class RowScanningContractTests
     static void RecordVisit(FileIndex index, bool throwFromBody, BodyRecord record)
     {
         record.Visits++;
-        record.Borrows = [.. index.CurrentSnapshot.Select(block => block.ReleaseState.Hooks.OutstandingBorrowCount)];
+        record.Borrows = index.CurrentBlock is { } block ? [block.ReleaseState.Hooks.OutstandingBorrowCount] : [];
         if (throwFromBody)
         {
             throw new InvalidOperationException(BodyFailureMessage);
@@ -142,7 +142,7 @@ public sealed class RowScanningContractTests
         Func<uint, uint>? parentFactory = null) =>
         FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1),
             CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(
@@ -190,15 +190,15 @@ public sealed class RowScanningContractTests
     }
 
     static int BorrowCount(FileIndex index) =>
-        index.CurrentSnapshot.Sum(block => block.ReleaseState.Hooks.OutstandingBorrowCount);
+        index.CurrentBlock is { } block ? block.ReleaseState.Hooks.OutstandingBorrowCount : 0;
 
     [TestMethod]
     public async Task StreamingResults_MatchSearchAcrossAMultiDriveIndex()
     {
         using var tree = new TwoDriveQueryFixture();
-        await using var index = await tree.OpenAsync();
-        var documents = index.Find(Path.Combine(tree.FirstRoot, "Documents"), TestContext.CancellationToken)!.Value;
-        var pictures = index.Find(Path.Combine(tree.SecondRoot, "Pictures"), TestContext.CancellationToken)!.Value;
+        var set = await tree.OpenSetAsync();
+        var documents = set.Find(Path.Combine(tree.FirstRoot, "Documents"), TestContext.CancellationToken)!.Value;
+        var pictures = set.Find(Path.Combine(tree.SecondRoot, "Pictures"), TestContext.CancellationToken)!.Value;
 
         SearchQuery[] queries =
         [
@@ -209,10 +209,10 @@ public sealed class RowScanningContractTests
         ];
         foreach (var query in queries)
         {
-            var expected = index.Search(query, TestContext.CancellationToken).Select(entry => entry.RecordKey).ToArray();
-            Assert.AreSequenceEqual(expected, [.. index.Enumerate(query, TestContext.CancellationToken).Select(entry => entry.RecordKey)], query.ToString());
+            var expected = set.Search(query, TestContext.CancellationToken).Select(entry => entry.RecordKey).ToArray();
+            Assert.AreSequenceEqual(expected, [.. set.Enumerate(query, TestContext.CancellationToken).Select(entry => entry.RecordKey)], query.ToString());
             var rows = new List<IndexRecordKey>();
-            foreach (var row in index.EnumerateRows(query, TestContext.CancellationToken))
+            foreach (var row in set.EnumerateRows(query, TestContext.CancellationToken))
             {
                 rows.Add(row.ToEntry().RecordKey);
             }
@@ -253,7 +253,7 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
 
         Assert.AreEqual(typeof(OperationCanceledException),
-            ThrownBy(call, index, index.Root(new VolumeKey('T'), TestContext.CancellationToken), Path.Combine(tree.FirstRoot, "Documents", "readme.md"), Cancelled), api);
+            ThrownBy(call, index, index.Root(TestContext.CancellationToken), Path.Combine(tree.FirstRoot, "Documents", "readme.md"), Cancelled), api);
         Assert.AreEqual(0, BorrowCount(index), api);
     }
 
@@ -263,13 +263,13 @@ public sealed class RowScanningContractTests
     {
         using var tree = new TwoDriveQueryFixture();
         var index = await tree.OpenAsync();
-        var root = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
+        var root = index.Root(TestContext.CancellationToken);
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
-        var blocks = index.CurrentSnapshot.ToArray();
+        var block = index.CurrentBlock!;
         await index.DisposeAsync();
 
         Assert.AreEqual(typeof(ObjectDisposedException), ThrownBy(call, index, root, path, CancellationToken.None), api);
-        Assert.AreEqual(0, blocks.Sum(block => block.ReleaseState.Hooks.OutstandingBorrowCount), api);
+        Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount, api);
     }
 
     [TestMethod]
@@ -280,7 +280,7 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
 
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
-        Assert.AreEqual(expectedCount, call(index, index.Root(new VolumeKey('T'), TestContext.CancellationToken), path, CancellationToken.None), api);
+        Assert.AreEqual(expectedCount, call(index, index.Root(TestContext.CancellationToken), path, CancellationToken.None), api);
         Assert.AreEqual(0, BorrowCount(index), api);
     }
 
@@ -332,9 +332,9 @@ public sealed class RowScanningContractTests
 
         Assert.AreEqual(throwFromBody, failed);
         Assert.AreEqual(1, record.Visits);
-        Assert.HasCount(index.CurrentSnapshot.Count, record.Borrows);
-        Assert.AreSequenceEqual([.. Enumerable.Repeat(1, record.Borrows.Length)], record.Borrows);
-        Assert.IsTrue(index.CurrentSnapshot.All(block => block.ReleaseState.Hooks.OutstandingBorrowCount == 0));
+        Assert.HasCount(1, record.Borrows);
+        Assert.AreSequenceEqual([1], record.Borrows);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     // RowScanner has no per-yield check, so the rows yielded before the exception bound its checkpoint cadence.
@@ -366,7 +366,7 @@ public sealed class RowScanningContractTests
             row => row == sentinel ? chainEnd : row is > 6 and <= chainEnd ? row - 1 : 5);
         using var cancellation = new CancellationTokenSource();
 
-        var query = new SearchQuery("needle", Subtree: index.Root(new VolumeKey('T'), TestContext.CancellationToken));
+        var query = new SearchQuery("needle", Subtree: index.Root(TestContext.CancellationToken));
         var visited = VisitUntilCancelled(index, rows, query, 1, cancellation, out var cancelled);
 
         Assert.IsTrue(cancelled);

@@ -11,7 +11,7 @@ namespace MFTLib.Tests.TestSupport;
 sealed class FaultStatusLog
 {
     readonly Lock _gate = new();
-    readonly List<DriveStatus> _catchUpLossStatuses = [];
+    readonly List<RootStatus> _catchUpLossStatuses = [];
 
     /// <summary>Records the status of the fault's drive when <paramref name="fault" /> is a lost catch-up.</summary>
     internal void Record(FileIndex index, WatchFault fault)
@@ -21,7 +21,7 @@ sealed class FaultStatusLog
             return;
         }
 
-        var status = index.Drives.Single(drive => drive.Drive == new VolumeKey(char.ToUpperInvariant((fault.Drive).Letter)));
+        var status = index.Status;
         lock (_gate)
         {
             _catchUpLossStatuses.Add(status);
@@ -29,7 +29,7 @@ sealed class FaultStatusLog
     }
 
     /// <summary>The status of <paramref name="driveLetter" /> at each of its lost-catch-up faults, in raise order.</summary>
-    internal DriveStatus[] CatchUpLossStatuses(char driveLetter)
+    internal RootStatus[] CatchUpLossStatuses(char driveLetter)
     {
         lock (_gate)
         {

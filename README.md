@@ -60,7 +60,8 @@ tests exercise the production code paths without elevation or a real volume.
 | Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
 | Saved MFT image on Windows or Linux | `MftIndexSources.FromMftDumpFile` as the only option set |
 | Unelevated app, one UAC prompt, live changes | `BrokerSession.CreateIndexSource`, then `StartWatchingAsync` and `Changed` |
-| Any directory tree on any filesystem | `IndexedDrive` with `ProducerKind.Enumeration`; refresh by rescanning |
+| Any directory tree on any filesystem | `IndexedRoot.FromDirectory` with `ProducerKind.Enumeration`; refresh by rescanning |
+| Query across several open indexes | `FileIndexSet` over one `FileIndex` per root |
 | Warm start across runs | A persistent `CacheDirectory`; each cached block records its journal position |
 
 ## Quick start: query a live volume once
@@ -73,16 +74,16 @@ using MFTLib;
 using MFTLib.Index;
 
 var cancellationToken = CancellationToken.None;
-var drive = IndexedDrive.FromWindowsDrive('C');
+var drive = IndexedRoot.FromWindowsDrive('C');
 var options = new FileIndexOptions
 {
-    Drives = [drive],
+    Root = drive,
     CacheMode = CacheMode.Disabled,
     MftSource = MftIndexSources.FromLocalVolumes()
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
-var status = index.Drives.Single();
+var status = index.Status;
 if (status.State != DriveState.Ready)
 {
     throw new InvalidOperationException(
@@ -99,9 +100,9 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 }
 ```
 
-- `IndexedDrive.FromWindowsDrive('C')` reads the volume serial from Windows and throws
+- `IndexedRoot.FromWindowsDrive('C')` reads the volume serial from Windows and throws
   `IOException` when Windows cannot report it.
-- Check `DriveStatus.State` before treating zero results as an empty drive. An unelevated
+- Check `RootStatus.State` before treating zero results as an empty drive. An unelevated
   process settles the drive `Failed` with `DriveFailureKind.ProducerFailed` rather than throwing.
 - One open is one scan. Run as many queries as you like against it, and finish every
   enumeration inside the `await using` scope. Sizes and times are what the scan observed.
@@ -111,9 +112,8 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 The dump source loads one saved `$MFT` file as a virtual drive, in process, on Windows or
 Linux, with no elevation. You choose the drive letter; entries render paths under `dump:/D`.
 The source supplies its own drive and is never cached. Supply the source through
-`MftSource`; `Drives` must be a non-null empty collection, `CacheMode` and
-`CacheDirectory` must be null, and `CacheTag` must be default. Other values throw
-`ArgumentException`. Explicit empty/default values are accepted.
+`MftSource`; `Root`, `CacheMode` and `CacheDirectory` must be null, and `CacheTag` must
+be default. Other values throw `ArgumentException`.
 
 ```csharp
 using MFTLib;
@@ -127,7 +127,7 @@ var options = new FileIndexOptions
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
-var status = index.Drives.Single();
+var status = index.Status;
 if (status.State != DriveState.Ready)
 {
     throw new InvalidOperationException(
@@ -143,7 +143,7 @@ foreach (var entry in index.Enumerate(query, cancellationToken))
 ```
 
 A dump is untrusted input. A missing, empty or malformed file settles the drive `Failed`
-with the reason in `DriveStatus.Failure.Message`. A dump holds metadata only, so
+with the reason in `RootStatus.Failure.Message`. A dump holds metadata only, so
 `FileEntry.Open` throws `InvalidOperationException` for its entries.
 
 ## Quick start: watch a volume through the broker
@@ -168,7 +168,7 @@ var cacheDirectory = Path.Combine(
 await using var session = new BrokerSession();
 var options = new FileIndexOptions
 {
-    Drives = [IndexedDrive.FromWindowsDrive('C')],
+    Root = IndexedRoot.FromWindowsDrive('C'),
     CacheDirectory = cacheDirectory,
     MftSource = session.CreateIndexSource()
 };
@@ -178,16 +178,13 @@ index.Changed += change => Console.WriteLine($"{change.Kind}: {change.Path}");
 index.WatchFaulted += fault => Console.Error.WriteLine(
     $"Drive {fault.Drive}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
 
-var drives = index.Drives.Select(status => status.Drive).ToArray();
-foreach (var result in await index.StartWatchingAsync(drives, cancellationToken))
+var startResult = await index.StartWatchingAsync(cancellationToken);
+if (startResult.Outcome == DriveOperationOutcome.Failed)
 {
-    if (result.Outcome == DriveOperationOutcome.Failed)
-    {
-        Console.Error.WriteLine($"Drive {result.Drive} did not start: {result.Failure}");
-    }
+    Console.Error.WriteLine($"Drive {startResult.Drive} did not start: {startResult.Failure}");
 }
 
-await index.WaitForCatchUpAsync(drives, cancellationToken);
+await index.WaitForCatchUpAsync(cancellationToken);
 Console.WriteLine("Watching. Press Enter to stop.");
 Console.ReadLine();
 ```
@@ -210,17 +207,15 @@ Console.ReadLine();
 
 ## Failure channels
 
-- **`DriveStatus.Failure`** reports why opening or scanning a drive failed: `CacheDeclined`,
-  `CacheIdentityMismatch`, `InUse`, `ProducerFailed` or `MftSourceMissing`. A failed drive accepts
+- **`RootStatus.Failure`** reports why opening or scanning a root failed: `CacheDeclined`,
+  `CacheIdentityMismatch`, `InUse`, `ProducerFailed` or `MftSourceMissing`. A failed root accepts
   `RescanAsync`, except that `MftSourceMissing` stays failed while `FileIndexOptions.MftSource` is null.
-- **`DriveOperationResult.Failure`** carries per-drive failures of the four lifecycle verbs.
-  Each verb returns one result per requested drive, in request order, and one failure never
-  discards the others. `StopWatchingAsync` returns an outstanding watch fault once as a
-  `Failed` result.
+- **`DriveOperationResult.Failure`** carries the failure of the four lifecycle verbs on `FileIndex`.
+  `StopWatchingAsync` returns an outstanding watch fault once as a `Failed` result.
 - **`FileIndex.WatchFaulted`** reports live watch faults. `WatchFault.IsRecovering` says
-  whether the drive is rescanning itself, and `FileIndex.WatchStateChanged` reports each
+  whether the root is rescanning itself, and `FileIndex.WatchStateChanged` reports each
   state change until it is `CaughtUp` again.
-- **Exceptions** are for caller errors: invalid options, unknown or duplicate drive keys,
+- **Exceptions** are for caller errors: invalid options, duplicate roots in `FileIndexSet`,
   a lifecycle call from inside an index event handler, cancellation and use after disposal.
 
 ## Samples

@@ -76,7 +76,9 @@ public sealed partial class WatchVerbTests : IDisposable
         Assert.Contains(line => line.StartsWith("Saw 1 changes in 30 seconds;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.Contains("Broker: connected.", lines);
         Assert.Contains("  start X: Succeeded", lines, string.Join(Environment.NewLine, lines));
-        Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines)); Assert.Contains(line => line.StartsWith("Find resolved ", StringComparison.Ordinal) && !line.EndsWith(" to nothing", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Search found ", StringComparison.Ordinal) && line.EndsWith(" directories", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("EnumerateRows totalled ", StringComparison.Ordinal) && line.EndsWith(" bytes", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -308,7 +310,7 @@ clearing, string.Join(Environment.NewLine, clearing));
     }
 
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
-    IndexedDrive FixtureDrive(string letter) =>
+    IndexedRoot FixtureDrive(string letter) =>
         SyntheticIndexedDrive.Create(new VolumeKey(letter[0]), TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(Action<string> writeLine, TimeProvider? timeProvider = null)

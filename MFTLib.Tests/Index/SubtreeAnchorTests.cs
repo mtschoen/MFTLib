@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     A <see cref="SearchQuery.Subtree" /> anchor belongs to the queried index's current block for the
-///     anchor's drive. All three query forms validate it against the snapshot they borrowed.
+///     anchor's drive. All three query forms validate it against the block they borrowed.
 /// </summary>
 [TestClass]
 public class SubtreeAnchorTests
@@ -107,7 +107,7 @@ public class SubtreeAnchorTests
         var query = new SearchQuery(null, Subtree: default(FileEntry));
 
         var admissions = new int[1];
-        var snapshot = harness.Index.CurrentSnapshot;
+        var block = harness.Index.CurrentBlock!;
         harness.Index.Hooks.ReaderAdmitted = () => Interlocked.Increment(ref admissions[0]);
         ArgumentException exception;
         try
@@ -121,13 +121,13 @@ public class SubtreeAnchorTests
 
         Assert.Contains("default FileEntry", exception.Message);
         Assert.AreEqual(0, admissions[0], "The call was refused before any query was admitted.");
-        Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]
-    [DataRow(QueryForm.Search, 'T', 'U', DisplayName = "Search, foreign index with equal ordinals")]
-    [DataRow(QueryForm.Enumerate, 'T', 'U', DisplayName = "Enumerate, foreign index with equal ordinals")]
-    [DataRow(QueryForm.EnumerateRows, 'T', 'U', DisplayName = "EnumerateRows, foreign index with equal ordinals")]
+    [DataRow(QueryForm.Search, 'T', 'U', DisplayName = "Search, foreign index with different drive key")]
+    [DataRow(QueryForm.Enumerate, 'T', 'U', DisplayName = "Enumerate, foreign index with different drive key")]
+    [DataRow(QueryForm.EnumerateRows, 'T', 'U', DisplayName = "EnumerateRows, foreign index with different drive key")]
     [DataRow(QueryForm.Search, 'T', 'T', DisplayName = "Search, foreign index with the same drive key")]
     [DataRow(QueryForm.Enumerate, 'T', 'T', DisplayName = "Enumerate, foreign index with the same drive key")]
     [DataRow(QueryForm.EnumerateRows, 'T', 'T', DisplayName = "EnumerateRows, foreign index with the same drive key")]
@@ -135,11 +135,11 @@ public class SubtreeAnchorTests
     {
         using var anchorOwner = new WatchHarness(anchorDrive);
         using var queried = new WatchHarness(queriedDrive);
-        var anchor = anchorOwner.Index.Root(new VolumeKey(anchorDrive), TestContext.CancellationToken);
+        var anchor = anchorOwner.IndexFor(anchorDrive).Root(TestContext.CancellationToken);
 
         Rejected<ArgumentException>(queried.Index, form, Under(anchor));
 
-        Assert.AreEqual(0, queried.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, queried.Index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         Assert.IsNotEmpty(Run(queried.Index, form, new SearchQuery(null)), "The queried index still answers.");
     }
 
@@ -149,8 +149,8 @@ public class SubtreeAnchorTests
         using var first = new WatchHarness('T');
         using var second = new WatchHarness('T');
         var firstIndex = first.Index;
-        var ownRoot = firstIndex.Root(new VolumeKey('T'), TestContext.CancellationToken);
-        var foreignRoot = second.Index.Root(new VolumeKey('T'), TestContext.CancellationToken);
+        var ownRoot = firstIndex.Root(TestContext.CancellationToken);
+        var foreignRoot = second.IndexFor('T').Root(TestContext.CancellationToken);
 
         Assert.ThrowsExactly<ArgumentException>(() =>
             firstIndex.Search(new SearchQuery(null, Subtree: foreignRoot), TestContext.CancellationToken));
@@ -168,12 +168,12 @@ public class SubtreeAnchorTests
         FileEntry anchor;
         using (var anchorOwner = new WatchHarness('T'))
         {
-            anchor = anchorOwner.Index.Root(new VolumeKey('T'), TestContext.CancellationToken);
+            anchor = anchorOwner.IndexFor('T').Root(TestContext.CancellationToken);
         }
 
         Assert.IsTrue(anchor.IsDisposed);
         Rejected<ObjectDisposedException>(queried.Index, form, Under(anchor));
-        Assert.AreEqual(0, queried.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, queried.Index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -185,10 +185,10 @@ public class SubtreeAnchorTests
         using var harness = new WatchHarness('T');
         var anchor = Documents(harness.Index);
 
-        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+        await harness.IndexFor('T').RescanAsync(Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
-        Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, harness.Index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         Assert.AreEqual("documents", anchor.Name, "A retained handle stays readable against its original block.");
         Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
     }
@@ -200,12 +200,12 @@ public class SubtreeAnchorTests
     public async Task RescanningAnotherDrive_KeepsTheAnchorValid(QueryForm form)
     {
         using var harness = new WatchHarness('T', 'U');
-        var anchor = harness.Index.Search(new SearchQuery("documents", NameMatchMode.Exact), TestContext.CancellationToken)
-            .Single(entry => entry.Drive == new VolumeKey('T'));
+        var anchor = harness.IndexFor('T').Search(new SearchQuery("documents", NameMatchMode.Exact), TestContext.CancellationToken)
+            .Single();
 
-        await harness.Index.RescanAsync([new VolumeKey('U')], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+        await harness.IndexFor('U').RescanAsync(Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
-        Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.Index, form, Under(anchor)));
+        Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.IndexFor('T'), form, Under(anchor)));
     }
 
     [TestMethod]
@@ -223,7 +223,7 @@ public class SubtreeAnchorTests
 
         Assert.IsTrue(anchor.IsDeleted);
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
-        Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.AreEqual(0, harness.Index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         Assert.AreSequenceEqual(["replacement", "notes.txt"], Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
     }
 
@@ -235,7 +235,7 @@ public class SubtreeAnchorTests
     {
         using var harness = new WatchHarness('T');
         var anchor = Documents(harness.Index);
-        var snapshot = harness.Index.CurrentSnapshot;
+        var block = harness.Index.CurrentBlock!;
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         harness.Index.Hooks.ReaderAdmitted = () =>
@@ -248,10 +248,10 @@ public class SubtreeAnchorTests
         {
             var query = RunOnThreadPool(harness.Index, form, Under(anchor), Token);
             await admitted.Task.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
-            Assert.AreEqual(1, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
+            Assert.AreEqual(1, block.ReleaseState.Hooks.OutstandingBorrowCount);
 
-            await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
-            Assert.AreNotSame(snapshot, harness.Index.CurrentSnapshot, "The rescan published a new snapshot.");
+            await harness.IndexFor('T').RescanAsync(Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            Assert.AreNotSame(block, harness.Index.CurrentBlock, "The rescan published a new block.");
             proceed.TrySetResult();
             names = await query.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
         }
@@ -261,7 +261,7 @@ public class SubtreeAnchorTests
             harness.Index.Hooks.ReaderAdmitted = null;
         }
 
-        Assert.AreSequenceEqual(DocumentsSubtree, names, "The anchor is validated against the snapshot the query borrowed, where its block is still current.");
+        Assert.AreSequenceEqual(DocumentsSubtree, names, "The anchor is validated against the block the query borrowed, where its block is still current.");
         Rejected<ArgumentException>(harness.Index, form, Under(anchor),
             "A query admitted after the rescan sees the replacement block and rejects the old anchor.");
     }

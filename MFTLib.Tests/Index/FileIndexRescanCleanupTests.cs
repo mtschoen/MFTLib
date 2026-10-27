@@ -29,7 +29,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var producerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1),
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -53,7 +53,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
-            var rescan = index.RescanAsync([new VolumeKey('T')], rescanCancellation.Token);
+            var rescan = index.RescanAsync(rescanCancellation.Token);
 
             // The rescan has produced its replacement block and is parked at the write gate.
             await producerReturned.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -67,7 +67,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
             Assert.IsTrue(File.Exists(canonicalPath), "the renamed-aside file was moved back");
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"),
                 "no retired sibling is left behind");
-            Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+            Assert.AreEqual(DriveState.Ready, index.Status.State);
         }
         finally
         {
@@ -87,7 +87,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var lockedReplacement = new ExclusiveFileLock();
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1),
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -112,10 +112,10 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         {
             failTheScan.Value = true;
             var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.RescanAsync([new VolumeKey('T')], Token));
+                () => index.RescanAsync(Token));
 
             Assert.AreSame(producerFailure, failure.InnerException);
-            var drive = index.Drives.Single();
+            var drive = index.Status;
             Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
             Assert.AreEqual(DriveState.Ready, drive.State,
                 "the drive keeps its previous block when its rescan's producer fails");
@@ -138,7 +138,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var failTheScan = new System.Runtime.CompilerServices.StrongBox<bool>(false);
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1),
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = _ =>
             {
@@ -171,11 +171,11 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
             try
             {
                 var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                    () => index.RescanAsync([new VolumeKey('T')], Token));
+                    () => index.RescanAsync(Token));
 
                 Assert.AreSame(producerFailure, failure.InnerException,
                     "the scan's own failure is reported, not the callback's exception");
-                Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+                Assert.AreEqual(DriveState.Ready, index.Status.State);
                 Assert.IsTrue(File.Exists(canonicalPath), "the renamed-aside previous block was moved back");
                 CollectionAssert.AreEqual(previousBlockBytes, await ReadSharedAsync(canonicalPath));
                 Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"),
@@ -200,7 +200,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         // is reported through Diagnostics; a throwing callback must not escape the release.
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1),
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = line =>
             {
@@ -220,9 +220,9 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var index = await FileIndex.OpenAsync(options, Token);
         try
         {
-            var results = await index.RescanAsync([new VolumeKey('T')], Token);
+            var result = await index.RescanAsync(Token);
 
-            Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single().Outcome);
+            Assert.AreEqual(DriveOperationOutcome.Succeeded, result.Outcome);
         }
         finally
         {
@@ -264,7 +264,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var producerMayReturn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1),
             CacheDirectory = CacheDirectoryPath,
             CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource(async (request, cancellationToken) =>
@@ -278,7 +278,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
             })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
-        var declined = index.Drives.Single();
+        var declined = index.Status;
         Assert.AreEqual(DriveState.Failed, declined.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.Failure?.Kind);
 
@@ -286,7 +286,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
-            var rescan = index.RescanAsync([new VolumeKey('T')], rescanCancellation.Token);
+            var rescan = index.RescanAsync(rescanCancellation.Token);
 
             await producerEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
             // Cancel before the producer returns: the scan completes normally, and the
@@ -296,7 +296,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
 
             await Assert.ThrowsAsync<OperationCanceledException>(() => rescan);
 
-            var drive = index.Drives.Single();
+            var drive = index.Status;
             Assert.AreEqual(DriveState.Failed, drive.State);
             Assert.AreEqual(DriveFailureKind.CacheDeclined, drive.Failure?.Kind,
                 "the rolled-back adoption leaves the drive blockless");
@@ -323,14 +323,14 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
     public async Task RescanAsync_AfterTheSourceEndedWithoutAStop_ClearsTheStaleFaultedCatchUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StartWatchingAsync(Token);
         harness.Source.WatchFor('T').End();
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').RescanAsync(Token);
 
         var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);

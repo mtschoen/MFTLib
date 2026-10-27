@@ -81,8 +81,8 @@ public sealed partial class FileIndex
         ///     no block leaves the drive blockless; a retry that produces none leaves the lost block in
         ///     place with the producer's failure.
         /// </summary>
-        async Task<int> ScanOpenedDriveAsync(bool ownsCanonicalSlot, PendingDriveResult opened,
-            OpenSettlement settlement, CancellationToken cancellationToken)
+        async Task ScanOpenedDriveAsync(bool ownsCanonicalSlot, PendingDriveResult opened,
+            CancellationToken cancellationToken)
         {
             DriveBlock? adopted = null;
             while (true)
@@ -109,18 +109,19 @@ public sealed partial class FileIndex
                 if (settled.Block is not { } block)
                 {
                     DiscardUnproducedTarget(target, retired);
-                    return RecordOpenProducerFailure(settled, lostBlockInPlace: adopted is not null, settlement);
+                    RecordOpenProducerFailure(settled, lostBlockInPlace: adopted is not null);
+                    return;
                 }
 
-                var (newlyAdopted, consecutiveLostCatchUps, settledCount) = AdoptOpenedDrive(
-                    block, settled, settlement, replacing: adopted);
+                var (newlyAdopted, consecutiveLostCatchUps) = AdoptOpenedDrive(
+                    block, settled, replacing: adopted);
                 // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
                 adopted?.ReleaseState.ReleaseUnborrowed();
                 adopted = newlyAdopted;
                 if (settled.CatchUpLoss is not { } catchUpLoss ||
                     RecordLostCatchUp(catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)
                 {
-                    return settledCount ?? throw new InvalidOperationException($"Drive {Drive} settled without its count.");
+                    return;
                 }
 
                 opened = opened with { CheckpointLoss = catchUpLoss };

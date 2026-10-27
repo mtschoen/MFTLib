@@ -81,7 +81,7 @@ public sealed class LocalMftBlockProducerCursorTests : IndexTreeTestBase
         {
             MftSource = source
         }, TestContext.CancellationToken);
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(cacheDisabled ? 0 : 1, queries);
         Assert.AreEqual(cacheDisabled ? 1 : 0, scans);
         Assert.AreEqual(cacheDisabled ? DriveState.Ready : DriveState.Failed, status.State);

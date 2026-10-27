@@ -6,11 +6,10 @@ using MFTLibTestExtensions;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     A set of MFT drives over one owned tree and cache directory whose producer parks on a
+///     A set of MFT roots over one owned tree and cache directory whose producer parks on a
 ///     per-drive <see cref="TestGate" /> when the test holds one, throws the failure set for its
 ///     drive, and otherwise writes a real block at the requested path with the next queued catch-up
-///     loss attached. Every report <see cref="FileIndexOptions.DriveOpenProgress" /> delivers is kept
-///     and signalled, so a test orders itself against a drive settling without sleeping.
+///     loss attached.
 /// </summary>
 sealed class OpenScenario : IDisposable
 {
@@ -19,8 +18,6 @@ sealed class OpenScenario : IDisposable
     readonly ConcurrentDictionary<char, Exception> _failures = [];
     readonly ConcurrentDictionary<char, ConcurrentQueue<JournalCheckpointLoss>> _losses = [];
     readonly ConcurrentDictionary<char, int> _productions = [];
-    readonly ConcurrentQueue<IndexDriveOpened> _reports = [];
-    readonly SemaphoreSlim _reportSignal = new(0);
     readonly IndexTreeFixture _fixture = new(seedDocuments: false);
     string TreeRoot => _fixture.TreeRoot;
     int _activeProducers;
@@ -31,11 +28,6 @@ sealed class OpenScenario : IDisposable
 
     /// <summary>Producers currently between entering and leaving, so a test can prove none is left running.</summary>
     public int ActiveProducers => Volatile.Read(ref _activeProducers);
-
-    public IReadOnlyCollection<IndexDriveOpened> Reports => _reports;
-
-    /// <summary>Runs inside the progress callback after the report is kept and signalled; may park or throw.</summary>
-    public Action<IndexDriveOpened>? OnReport { get; set; }
 
     /// <summary>Parks every production of the drive until the returned gate is released.</summary>
     public TestGate Hold(char driveLetter)
@@ -57,27 +49,6 @@ sealed class OpenScenario : IDisposable
 
     public int ProductionsOf(char driveLetter) => _productions.GetValueOrDefault(driveLetter);
 
-    public IEnumerable<IndexDriveOpened> ReportsFor(char driveLetter) =>
-        _reports.Where(report => report.Drive == new VolumeKey(driveLetter));
-
-    /// <summary>Forgets every report so far, for a test that opens the index more than once.</summary>
-    public void ResetReports()
-    {
-        _reports.Clear();
-        while (_reportSignal.Wait(0))
-        {
-        }
-    }
-
-    /// <summary>Completes when one more report has arrived than this method has already consumed.</summary>
-    public async Task WaitForReportAsync()
-    {
-        if (!await _reportSignal.WaitAsync(HangGuard))
-        {
-            throw new TimeoutException("No further DriveOpenProgress report arrived.");
-        }
-    }
-
     /// <summary>The names of the cache directory's block files, without their owner-lock siblings.</summary>
     public string[] BlockFileNames() => !Directory.Exists(CacheDirectory)
         ? []
@@ -90,18 +61,12 @@ sealed class OpenScenario : IDisposable
 
     public string CanonicalBlockPath(char driveLetter) => Path.Combine(CacheDirectory, CanonicalBlockName(driveLetter));
 
-    public FileIndexOptions Options(string driveLetters, bool cacheOnly = false) => new()
+    public FileIndexOptions Options(char driveLetter, bool cacheOnly = false) => new()
     {
-        Drives = driveLetters.Select(letter => SyntheticIndexedDrive.Create(new VolumeKey(letter), TreeRoot, SerialOf(letter))).ToArray(),
+        Root = SyntheticIndexedDrive.Create(new VolumeKey(driveLetter), TreeRoot, SerialOf(driveLetter)),
         CacheDirectory = CacheDirectory,
         MftSource = new MftIndexSource(ProduceAsync, Source.IndexSource),
-        CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
-        DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(report =>
-        {
-            _reports.Enqueue(report);
-            _reportSignal.Release();
-            OnReport?.Invoke(report);
-        })
+        CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
     };
 
     public void Dispose() => _fixture.Dispose();

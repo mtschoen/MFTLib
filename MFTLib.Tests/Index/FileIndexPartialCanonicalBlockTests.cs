@@ -61,7 +61,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         var diagnostics = new List<string>();
         var options = new FileIndexOptions
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, VolumeSerial, ProducerKind.Enumeration)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, VolumeSerial, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath,
             ScanProgress = new CancelingProgress(cancellation),
             Diagnostics = diagnostics.Add
@@ -102,7 +102,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
         Assert.IsFalse(File.Exists(_canonicalPath));
@@ -117,7 +117,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Failed, index.Status.State);
         Assert.AreEqual(0, diagnostics.Count(entry => entry.Contains(_canonicalPath)),
             "no file existed, so no delete is reported");
     }
@@ -135,7 +135,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        Assert.AreEqual("the producer lost the volume", index.Drives.Single().Failure?.Message);
+        Assert.AreEqual("the producer lost the volume", index.Status.Failure?.Message);
         var line = diagnostics.SingleOrDefault(entry => entry.Contains(_canonicalPath));
         Assert.IsNotNull(line, "the failed delete is reported through Diagnostics");
         Assert.IsTrue(line.StartsWith("Could not delete block file", StringComparison.Ordinal), line);
@@ -151,9 +151,9 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
             throw new IOException("the producer lost the volume");
         }, diagnostics, cacheOnly: true);
         await using var index = await FileIndex.OpenAsync(options, Token);
-        Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Failed, index.Status.State);
 
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(Token));
 
         Assert.IsFalse(File.Exists(_canonicalPath));
         AssertPartialDeleteLogged(diagnostics);
@@ -170,7 +170,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         }, diagnostics, cacheOnly: true);
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => index.RescanAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => index.RescanAsync(Token));
 
         Assert.IsFalse(File.Exists(_canonicalPath));
         AssertPartialDeleteLogged(diagnostics);
@@ -194,9 +194,9 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(options, Token);
         var rowCount = index.HeaderOf().RowCount;
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => index.RescanAsync([new VolumeKey('T')], Token));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => index.RescanAsync(Token));
 
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        Assert.AreEqual(DriveState.Ready, index.Status.State);
         Assert.AreEqual(rowCount, index.HeaderOf().RowCount);
         Assert.IsGreaterThan(3, new FileInfo(_canonicalPath).Length,
             "the slot holds the complete previous block, not the partial replacement");
@@ -224,14 +224,14 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 
         await using (var index = await FileIndex.OpenAsync(options, Token))
         {
-            Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+            Assert.AreEqual(DriveState.Failed, index.Status.State);
         }
 
         Assert.IsFalse(File.Exists(_canonicalPath));
 
         deletable.Value = false;
         await using var second = await FileIndex.OpenAsync(options, Token);
-        Assert.AreEqual("the producer lost the volume", second.Drives.Single().Failure?.Message,
+        Assert.AreEqual("the producer lost the volume", second.Status.Failure?.Message,
             "a delete that fails with no Diagnostics callback still leaves the scan's failure intact");
     }
 
@@ -247,7 +247,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        Assert.AreEqual("the producer lost the volume", index.Drives.Single().Failure?.Message);
+        Assert.AreEqual("the producer lost the volume", index.Status.Failure?.Message);
         Assert.IsFalse(File.Exists(_canonicalPath));
     }
 
@@ -301,7 +301,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
             diagnostics, async opening =>
             {
                 await using var index = await opening;
-                Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+                Assert.AreEqual(DriveState.Failed, index.Status.State);
             });
 
         Assert.AreSequenceEqual(seededBytes, await File.ReadAllBytesAsync(_canonicalPath, Token), "a scan that never wrote leaves the cached block it did not touch");
@@ -319,7 +319,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
             }, diagnostics, async opening =>
             {
                 await using var index = await opening;
-                Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+                Assert.AreEqual(DriveState.Failed, index.Status.State);
             });
 
         Assert.IsFalse(File.Exists(_canonicalPath), "the failed scan's partial replacement is deleted");

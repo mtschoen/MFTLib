@@ -4,7 +4,7 @@ using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
 
-public sealed partial record IndexedDrive
+public sealed partial record IndexedRoot
 {
     internal static readonly VolumeDependencies Dependencies = new();
 
@@ -26,20 +26,20 @@ public sealed partial record IndexedDrive
     /// <exception cref="IOException">The volume serial could not be read.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadWindowsVolume; the target is covered.")]
-    public static IndexedDrive FromWindowsDrive(VolumeKey drive) => ReadWindowsVolume(drive);
+    public static IndexedRoot FromWindowsDrive(VolumeKey drive) => ReadWindowsVolume(drive);
 
     /// <summary>
     ///     The logic behind <see cref="FromWindowsDrive" />. The test seam answers when set; otherwise the serial
     ///     comes from <c>GetVolumeInformationW</c>, and the read throws <see cref="PlatformNotSupportedException" />
     ///     off Windows.
     /// </summary>
-    internal static IndexedDrive ReadWindowsVolume(VolumeKey drive)
+    internal static IndexedRoot ReadWindowsVolume(VolumeKey drive)
     {
         var rootDirectory = drive.Letter + @":\";
         var reader = Dependencies._volumeSerialReader ?? ReadVolumeSerial;
         var serial = reader(rootDirectory) ?? throw new IOException(
             $"Could not read the volume serial for drive {drive}.");
-        return new IndexedDrive(drive, rootDirectory, serial);
+        return new IndexedRoot(drive, rootDirectory, serial);
     }
 
     static uint? ReadVolumeSerial(string rootDirectory)

@@ -67,7 +67,7 @@ public sealed partial class FileIndex
     ///     <see cref="WatchFaultKind.RescanRestart" /> after a failed restart holds the drive's
     ///     lifecycle gate.
     /// </remarks>
-    sealed partial class DriveRuntime(FileIndex index, IndexedDrive configuration)
+    sealed partial class DriveRuntime(FileIndex index, IndexedRoot configuration)
     {
         FileIndex Index { get; } = index;
 
@@ -78,7 +78,7 @@ public sealed partial class FileIndex
         bool IsDisposed => Index._disposed;
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
-        IndexedDrive Configuration { get; } = configuration;
+        IndexedRoot Configuration { get; } = configuration;
         public RootKey Drive => Configuration.Drive;
         public VolumeKey Volume => Drive.TryGetVolume(out var volume)
             ? volume

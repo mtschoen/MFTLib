@@ -41,14 +41,14 @@ sealed class IndexTreeFixture : IDisposable
         }
     }
 
-    public IndexedDrive Drive(char drive = 'T', uint volumeSerial = 0x0BADF00D,
+    public IndexedRoot Drive(char drive = 'T', uint volumeSerial = 0x0BADF00D,
         ProducerKind producer = ProducerKind.Enumeration) =>
         new(new VolumeKey(drive), TreeRoot, volumeSerial, producer);
 
     public FileIndexOptions Options(char drive = 'T', uint volumeSerial = 0x0BADF00D,
         ProducerKind producer = ProducerKind.Enumeration, CacheMode? cacheMode = null) => new()
         {
-            Drives = [Drive(drive, volumeSerial, producer)],
+            Root = Drive(drive, volumeSerial, producer),
             CacheDirectory = CacheDirectory,
             CacheMode = cacheMode
         };

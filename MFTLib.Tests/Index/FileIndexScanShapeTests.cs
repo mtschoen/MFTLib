@@ -56,11 +56,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
     FileIndexOptions EnumerationOptions(List<string> diagnostics, CacheMode mode = CacheMode.Persistent) => new()
     {
-        Drives =
-        [
-            SyntheticIndexedDrive.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration),
-            SyntheticIndexedDrive.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration)
-        ],
+        Root = SyntheticIndexedDrive.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration),
         CacheDirectory = Cache,
         CacheMode = mode,
         Diagnostics = line =>
@@ -72,8 +68,10 @@ public sealed class FileIndexScanShapeTests : IDisposable
         }
     };
 
-    static BlockOrigin? OriginOf(FileIndex index, VolumeKey drive) =>
-        index.Drives.Single(status => status.Drive == drive).Block?.Origin;
+    FileIndexOptions ForB(FileIndexOptions baseOptions) => baseOptions with
+    {
+        Root = SyntheticIndexedDrive.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration)
+    };
 
     static bool RecordedWrongScanShape(List<string> diagnostics)
     {
@@ -85,8 +83,10 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
     async Task OpenOnce(FileIndexOptions options)
     {
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
-        Assert.IsTrue(index.Drives.All(status => status.State == DriveState.Ready));
+        await using var indexA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
+        await using var indexB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
+        Assert.AreEqual(DriveState.Ready, indexA.Status.State);
+        Assert.AreEqual(DriveState.Ready, indexB.Status.State);
     }
 
     FileIndexOptions Changed(string option, List<string> diagnostics)
@@ -131,11 +131,12 @@ public sealed class FileIndexScanShapeTests : IDisposable
         await OpenOnce(EnumerationOptions(diagnostics));
 
         var reopenedOptions = Changed(label, diagnostics);
-        await using var reopened = await FileIndex.OpenAsync(reopenedOptions, TestContext.CancellationToken);
+        await using var reopenedA = await FileIndex.OpenAsync(reopenedOptions, TestContext.CancellationToken);
+        await using var reopenedB = await FileIndex.OpenAsync(ForB(reopenedOptions), TestContext.CancellationToken);
 
         Assert.IsTrue(RecordedWrongScanShape(diagnostics), label);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'A'), label);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'B'), label);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedA.Status.Block?.Origin, label);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedB.Status.Block?.Origin, label);
     }
 
     [TestMethod]
@@ -150,17 +151,19 @@ public sealed class FileIndexScanShapeTests : IDisposable
             }
         });
 
-        await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics) with
+        var options = EnumerationOptions(diagnostics) with
         {
             DirectoryWalk = new DirectoryWalkOptions
             {
                 PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.IgnoreCase)]
             }
-        }, TestContext.CancellationToken);
+        };
+        await using var reopenedA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
+        await using var reopenedB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
 
         Assert.IsTrue(RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'A'));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'B'));
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedA.Status.Block?.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedB.Status.Block?.Origin);
     }
 
     [TestMethod]
@@ -209,10 +212,10 @@ public sealed class FileIndexScanShapeTests : IDisposable
         await OpenOnce(withReplacement);
 
         var withoutReplacement = EnumerationOptions(diagnostics) with { RetainedFileNames = ["app.dll"] };
-        await using var reopened = await FileIndex.OpenAsync(withoutReplacement, TestContext.CancellationToken);
+        await using var reopenedA = await FileIndex.OpenAsync(withoutReplacement, TestContext.CancellationToken);
 
         Assert.IsTrue(RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'A'));
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedA.Status.Block?.Origin);
     }
 
     [TestMethod]
@@ -243,12 +246,13 @@ public sealed class FileIndexScanShapeTests : IDisposable
             ],
             PrunedDirectoryPaths = [Path.Combine(RootB, ".git") + Path.DirectorySeparatorChar]
         };
-        await using var reopened = await FileIndex.OpenAsync(
-            EnumerationOptions(diagnostics) with { DirectoryWalk = respelled }, TestContext.CancellationToken);
+        var options = EnumerationOptions(diagnostics) with { DirectoryWalk = respelled };
+        await using var reopenedA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
+        await using var reopenedB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
 
         Assert.IsFalse(RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, OriginOf(reopened, 'A'));
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, OriginOf(reopened, 'B'));
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedA.Status.Block?.Origin);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedB.Status.Block?.Origin);
     }
 
     [TestMethod]
@@ -257,15 +261,14 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var diagnostics = new List<string>();
         await OpenOnce(EnumerationOptions(diagnostics) with { RetainedFileNames = ["app.dll"] });
 
-        await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics) with
-        {
-            RetainedFileNames = ["APP.DLL"]
-        }, TestContext.CancellationToken);
+        var options = EnumerationOptions(diagnostics) with { RetainedFileNames = ["APP.DLL"] };
+        await using var reopenedA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
+        await using var reopenedB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
 
         var expectedOrigin = OperatingSystem.IsWindows() ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan;
         Assert.AreEqual(!OperatingSystem.IsWindows(), RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(expectedOrigin, OriginOf(reopened, 'A'));
-        Assert.AreEqual(expectedOrigin, OriginOf(reopened, 'B'));
+        Assert.AreEqual(expectedOrigin, reopenedA.Status.Block?.Origin);
+        Assert.AreEqual(expectedOrigin, reopenedB.Status.Block?.Origin);
     }
 
     [TestMethod]
@@ -277,15 +280,17 @@ public sealed class FileIndexScanShapeTests : IDisposable
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(RootB, "build")] }
         });
 
-        await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics) with
+        var options = EnumerationOptions(diagnostics) with
         {
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(RootB, ".git")] }
-        }, TestContext.CancellationToken);
+        };
+        await using var reopenedA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
+        await using var reopenedB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
 
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, OriginOf(reopened, 'A'));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'B'));
-        Assert.IsNotNull(reopened.Find(Path.Combine(RootB, "build", "output", "app.dll"), TestContext.CancellationToken));
-        Assert.IsNotNull(reopened.Find(Path.Combine(RootA, "build", "output", "app.dll"), TestContext.CancellationToken),
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedA.Status.Block?.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedB.Status.Block?.Origin);
+        Assert.IsNotNull(reopenedB.Find(Path.Combine(RootB, "build", "output", "app.dll"), TestContext.CancellationToken));
+        Assert.IsNotNull(reopenedA.Find(Path.Combine(RootA, "build", "output", "app.dll"), TestContext.CancellationToken),
             "drive A's warm block still holds its rows");
     }
 
@@ -295,15 +300,17 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var diagnostics = new List<string>();
         await OpenOnce(EnumerationOptions(diagnostics));
 
-        await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics, CacheMode.ExistingOnly) with
+        var options = EnumerationOptions(diagnostics, CacheMode.ExistingOnly) with
         {
             DirectoryWalk = new DirectoryWalkOptions
             {
                 PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.IgnoreCase)]
             }
-        }, TestContext.CancellationToken);
+        };
+        await using var reopenedA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
+        await using var reopenedB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
 
-        foreach (var status in reopened.Drives)
+        foreach (var status in new[] { reopenedA.Status, reopenedB.Status })
         {
             Assert.AreEqual(DriveState.Failed, status.State);
             Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
@@ -316,7 +323,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     FileIndexOptions MftOptions(bool includeFreed, IReadOnlyCollection<string>? retained, List<string> diagnostics,
         CacheMode mode = CacheMode.Persistent) => new()
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), RootA, 123)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), RootA, 123),
             CacheDirectory = Cache,
             CacheMode = mode,
             RetainedFileNames = retained,
@@ -357,7 +364,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var diagnostics = new List<string>();
         await using (var first = await FileIndex.OpenAsync(MftOptions(false, null, diagnostics), TestContext.CancellationToken))
         {
-            Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
+            Assert.AreEqual(DriveState.Ready, first.Status.State);
         }
 
         IReadOnlyCollection<string>? retained = retainedName is null ? null : [retainedName];
@@ -365,7 +372,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
             TestContext.CancellationToken);
 
         Assert.IsTrue(RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'T'));
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Status.Block?.Origin);
         Assert.AreEqual(2, _mftProductions);
     }
 
@@ -375,7 +382,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var diagnostics = new List<string>();
         await using (var first = await FileIndex.OpenAsync(MftOptions(false, ["head"], diagnostics), TestContext.CancellationToken))
         {
-            Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
+            Assert.AreEqual(DriveState.Ready, first.Status.State);
         }
 
         // MFT retention compares ignoring case, so another spelling of the same name is the same shape.
@@ -390,7 +397,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         }, TestContext.CancellationToken);
 
         Assert.IsFalse(RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, OriginOf(reopened, 'T'));
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block?.Origin);
         Assert.AreEqual(1, _mftProductions);
     }
 
@@ -405,7 +412,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        var status = index.Drives.Single();
+        var status = index.Status;
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.Contains("scan shape", status.Failure?.Message!);
     }

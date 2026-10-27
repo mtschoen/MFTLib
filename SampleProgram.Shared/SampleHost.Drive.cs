@@ -8,10 +8,10 @@ namespace SampleProgram.Direct;
 
 partial class SampleHost
 {
-    static IndexedDrive ResolveDriveNative(string letter)
+    static IndexedRoot ResolveDriveNative(string letter)
     {
         return OperatingSystem.IsWindows()
-            ? IndexedDrive.FromWindowsDrive(new VolumeKey(letter[0]))
+            ? IndexedRoot.FromWindowsDrive(new VolumeKey(letter[0]))
             : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
     }
 }

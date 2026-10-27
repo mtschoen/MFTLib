@@ -172,10 +172,10 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
         var released = new TaskCompletionSource();
         Task? disposal = null;
         Task<TResult>? reader = null;
-        var initialBlock = index.CurrentSnapshot.Count > 0 ? index.CurrentSnapshot[0] : null;
+        var initialBlock = index.CurrentBlock;
         try
         {
-            var root = index.Root(new VolumeKey('T'), token);
+            var root = index.Root(token);
             var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var holdTheReader = () =>

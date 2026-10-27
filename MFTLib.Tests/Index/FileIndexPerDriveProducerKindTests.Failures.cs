@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -16,24 +15,31 @@ public partial class FileIndexPerDriveProducerKindTests
         EnumerationWalkTestSupport.GenerateBranchingTree(Fixture.TreeRoot, 2, 2, 2);
         var samples = new ConcurrentQueue<IndexScanProgress>();
         var failure = new IOException("enumeration progress failed");
-        var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
+        var progress = new SynchronousProgress<IndexScanProgress>(sample =>
+        {
+            samples.Enqueue(sample);
+            if (sample.Drive == new VolumeKey('U') && sample.Phase != IndexScanPhase.Finished)
+            {
+                throw failure;
+            }
+        });
+        var optionsT = Options(Drive('T', ProducerKind.Mft)) with
         {
             CacheMode = cacheMode,
-            ScanProgress = new SynchronousProgress<IndexScanProgress>(sample =>
-            {
-                samples.Enqueue(sample);
-                if (sample.Drive == new VolumeKey('U') && sample.Phase != IndexScanPhase.Finished)
-                {
-                    throw failure;
-                }
-            })
+            ScanProgress = progress
+        };
+        var optionsU = Options(Drive('U', ProducerKind.Enumeration)) with
+        {
+            CacheMode = cacheMode,
+            ScanProgress = progress
         };
 
-        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+        await using var indexT = await FileIndex.OpenAsync(optionsT, CancellationToken.None);
+        await using var indexU = await FileIndex.OpenAsync(optionsU, CancellationToken.None);
 
-        AssertDrive(index, 'T', ProducerKind.Mft);
-        Assert.AreEqual(new VolumeKey('T'), index.Search(new SearchQuery("scanned.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
-        var failed = index.Drives.Single(drive => drive.Drive == new VolumeKey('U'));
+        AssertDrive(indexT, 'T', ProducerKind.Mft);
+        Assert.AreEqual(new VolumeKey('T'), indexT.Search(new SearchQuery("scanned.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
+        var failed = indexU.Status;
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.AreEqual(failure.Message, failed.Failure?.Message);
@@ -57,18 +63,18 @@ public partial class FileIndexPerDriveProducerKindTests
             ScanProgress = progress
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        var previousBlock = index.CurrentSnapshot.Single().Block;
-        var previousStatus = index.Drives.Single().Block;
+        var previousBlock = index.CurrentBlock!.Block;
+        var previousStatus = index.Status.Block;
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 123));
         var previousBytes = cacheMode == CacheMode.Persistent ? ReadSharedBlock(canonicalPath) : null;
 
         progress.Failure = failure;
         var reported = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync([new VolumeKey('T')], CancellationToken.None));
+            () => index.RescanAsync(CancellationToken.None));
 
         Assert.AreSame(failure, reported.InnerException);
-        Assert.AreSame(previousBlock, index.CurrentSnapshot.Single().Block);
-        var status = index.Drives.Single();
+        Assert.AreSame(previousBlock, index.CurrentBlock!.Block);
+        var status = index.Status;
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(previousStatus, status.Block);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
@@ -81,40 +87,22 @@ public partial class FileIndexPerDriveProducerKindTests
         }
 
         progress.Failure = null;
-        var recovered = await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, recovered.Single().Outcome);
-        Assert.IsNull(index.Drives.Single().Failure);
+        var recovered = await index.RescanAsync(CancellationToken.None);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, recovered.Outcome);
+        Assert.IsNull(index.Status.Failure);
     }
 
     [TestMethod]
     [DataRow(CacheMode.Persistent)]
     [DataRow(CacheMode.Disabled)]
-    public async Task MixedOpen_EnumerationCancellationReleasesAlreadyAdoptedSibling(CacheMode cacheMode)
+    public async Task Open_EnumerationCancellationReleasesNoBlock(CacheMode cacheMode)
     {
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
-        var siblingSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        BlockFile? siblingBlock = null;
-        string? siblingPath = null;
-        var producer = Producer();
-        var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
+        var options = Options(Drive('U', ProducerKind.Enumeration)) with
         {
             CacheMode = cacheMode,
-            MftSource = new MftIndexSource(async (request, producerToken) =>
-            {
-                var produced = await producer.Producer(request, producerToken);
-                siblingBlock = produced.Block;
-                siblingPath = request.BlockPath;
-                return produced;
-            }),
-            DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(opened =>
-            {
-                if (opened.Drive == new VolumeKey('T'))
-                {
-                    siblingSettled.TrySetResult();
-                }
-            }),
-            ScanProgress = new CancelEnumerationAfterSiblingSettles(cancellation, siblingSettled.Task)
+            ScanProgress = new CancelEnumerationProgress(cancellation)
         };
 
         var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
@@ -123,24 +111,14 @@ public partial class FileIndexPerDriveProducerKindTests
         });
 
         Assert.AreEqual(token, thrown.CancellationToken);
-        Assert.IsNotNull(siblingBlock);
-        Assert.IsNotNull(siblingPath);
-        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = siblingBlock.Header);
-        BlockFileHoldAssertions.AssertNotHeld(siblingPath);
-        if (cacheMode == CacheMode.Disabled)
-        {
-            Assert.IsFalse(File.Exists(siblingPath));
-        }
-
         Assert.IsFalse(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('U'), 123))));
         await using var reopened = await FileIndex.OpenAsync(options with
         {
-            ScanProgress = null,
-            DriveOpenProgress = null
+            ScanProgress = null
         }, CancellationToken.None);
         AssertDrive(reopened, 'U', ProducerKind.Enumeration);
         Assert.AreEqual(cacheMode == CacheMode.Persistent ? CacheLocation.OwnedCanonical : null,
-            reopened.Drives.Single(drive => drive.Drive == new VolumeKey('U')).Block?.CacheLocation);
+            reopened.Status.Block?.CacheLocation);
     }
 
     static byte[] ReadSharedBlock(string path)
@@ -165,14 +143,13 @@ public partial class FileIndexPerDriveProducerKindTests
         }
     }
 
-    sealed class CancelEnumerationAfterSiblingSettles(CancellationTokenSource cancellation, Task siblingSettled)
+    sealed class CancelEnumerationProgress(CancellationTokenSource cancellation)
         : IProgress<IndexScanProgress>
     {
         public void Report(IndexScanProgress value)
         {
             if (value.Drive == new VolumeKey('U') && value.Phase != IndexScanPhase.Finished)
             {
-                TestGate.WaitSynchronously(siblingSettled);
                 cancellation.Cancel();
                 cancellation.Token.ThrowIfCancellationRequested();
             }

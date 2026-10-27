@@ -175,7 +175,7 @@ public sealed partial class FileIndex
         ///     for a <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" /> fault,
         ///     the recovery ticket that makes the drive read <see cref="WatchState.Recovering" />,
         ///     then the catch-up waiter's fault, then <see cref="WatchFaulted" />, so a waiter or a
-        ///     handler that reads <see cref="Drives" /> already sees why the drive stopped and that it
+        ///     handler that reads <see cref="Status" /> already sees why the drive stopped and that it
         ///     is recovering, and only then the recovery itself.
         ///     A <see cref="WatchFaultKind.Channel" /> fault never recovers. A watch a recovery
         ///     restarted that faults before it first catches up queues no further recovery: its

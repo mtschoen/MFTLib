@@ -9,7 +9,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-///     An in-process <see cref="FileIndex" /> over drives <c>T</c> and <c>U</c> served by a real
+///     In-process <see cref="FileIndex" /> instances for drives <c>T</c> and <c>U</c> served by a real
 ///     <see cref="BrokerProcess" /> and an in-process <see cref="JournalBrokerHost" />, with a
 ///     <see cref="FakeTimeProvider" /> on the host (<see cref="HostClock" />) and another on the
 ///     client (<see cref="ClientClock" />). Nothing is mocked: each drive scans and watches through
@@ -36,8 +36,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
     readonly FaultStatusLog _faultStatuses = new();
     readonly List<(WatchFaultKind Kind, char Drive, int Occurrence, TaskCompletionSource<WatchFault> Signal)> _waiters = [];
     readonly Dictionary<string, Cadence> _tracked = new(StringComparer.Ordinal);
-
-    FileIndex? _index;
+    readonly Dictionary<char, FileIndex> _indices = [];
 
     CrossDriveScenario(Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal)
     {
@@ -57,11 +56,18 @@ sealed class CrossDriveScenario : IAsyncDisposable
 
     public ScriptedWatchBrokerHarness Broker { get; }
 
-    public FileIndex Index => _index ?? throw new InvalidOperationException("The index is not open yet.");
+    public FileIndex IndexOf(char driveLetter) =>
+        _indices.TryGetValue(char.ToUpperInvariant(driveLetter), out var index)
+            ? index
+            : throw new InvalidOperationException($"The index for drive {driveLetter} is not open yet.");
+
+    public FileIndex IndexFor(char driveLetter) => IndexOf(driveLetter);
+
+    public IReadOnlyCollection<FileIndex> Indices => _indices.Values;
 
     public CancellationToken Token => Broker.CancellationToken;
 
-    /// <summary>Every fault the index has raised, in order.</summary>
+    /// <summary>Every fault the indices have raised, in order.</summary>
     public IReadOnlyList<WatchFault> Faults
     {
         get
@@ -74,7 +80,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Opens the index: each drive's first scan lists <c>scan-{drive}-1.txt</c>, and every later
+    ///     Opens the indices: each drive's first scan lists <c>scan-{drive}-1.txt</c>, and every later
     ///     scan of a drive names its own number, so a test can tell which scan produced a block.
     /// </summary>
     /// <param name="readJournal">The host's catch-up source; null reads nothing and holds at the armed cursor.</param>
@@ -84,7 +90,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
         var scenario = new CrossDriveScenario(readJournal);
         try
         {
-            await scenario.OpenIndexAsync();
+            await scenario.OpenIndicesAsync();
         }
         catch
         {
@@ -107,7 +113,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
         }
     }
 
-    public DriveStatus DriveOf(char driveLetter) => Index.Drives.Single(drive => drive.Drive == new VolumeKey(driveLetter));
+    public RootStatus DriveOf(char driveLetter) => IndexOf(driveLetter).Status;
 
     /// <summary>
     ///     Holds every write the host makes to <paramref name="driveLetter" />'s pipes from now on,
@@ -157,9 +163,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
     /// <summary>
     ///     Moves the host's clock one heartbeat interval, waits for the heartbeat sender's visit, waits
     ///     until the client has read every heartbeat that visit wrote to a measured pipe, and only
-    ///     then moves the client's clock the same interval. The sender heartbeats a pipe that wrote no
-    ///     frame since its last visit, so a pipe that carried frames in the meantime is expected to
-    ///     skip this one. The pipes of <paramref name="silentDrives" /> are expected to carry nothing.
+    ///     then moves the client's clock the same interval.
     /// </summary>
     public async Task AdvanceIntervalAsync(params char[] silentDrives)
     {
@@ -204,9 +208,9 @@ sealed class CrossDriveScenario : IAsyncDisposable
         _thaw.TrySetResult();
         try
         {
-            if (_index is not null)
+            foreach (var index in _indices.Values)
             {
-                await _index.DisposeAsync().AsTask().WaitAsync(HangGuard, CancellationToken.None);
+                await index.DisposeAsync().AsTask().WaitAsync(HangGuard, CancellationToken.None);
             }
         }
         finally
@@ -229,18 +233,23 @@ sealed class CrossDriveScenario : IAsyncDisposable
         }
     }
 
-    async Task OpenIndexAsync()
+    async Task OpenIndicesAsync()
     {
         Directory.CreateDirectory(_roots.Path);
         var producer = new BrokerMftBlockProducer(Broker.ConnectAsync);
-        _index = await FileIndex.OpenAsync(new FileIndexOptions
+        var source = producer.CreateIndexSource();
+        foreach (var (letter, serial) in new[] { ('T', 123u), ('U', 456u) })
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _roots.Path, 123), SyntheticIndexedDrive.Create(new VolumeKey('U'), _roots.Path, 456)],
-            CacheDirectory = _cache.Path,
-            CacheMode = CacheMode.Disabled,
-            MftSource = producer.CreateIndexSource()
-        }, Token);
-        _index.WatchFaulted += RecordFault;
+            var index = await FileIndex.OpenAsync(new FileIndexOptions
+            {
+                Root = SyntheticIndexedDrive.Create(new VolumeKey(letter), _roots.Path, serial),
+                CacheDirectory = _cache.Path,
+                CacheMode = CacheMode.Disabled,
+                MftSource = source
+            }, Token);
+            index.WatchFaulted += fault => RecordFault(index, fault);
+            _indices[letter] = index;
+        }
     }
 
     IEnumerable<IReadOnlyList<MftRecord>> Scan(VolumeKey drive, ParseThreadAllowance parseThreads,
@@ -267,8 +276,6 @@ sealed class CrossDriveScenario : IAsyncDisposable
         return pipeName == ControlPipeName ? new OpenChannelObserverStream(wrapped, _pipeDrives) : wrapped;
     }
 
-    // Measures from zero: no visit has happened yet on this pipe, so the sender's first one skips a
-    // pipe that has carried any frame.
     void Track(string key)
     {
         ReadCounter reads;
@@ -283,11 +290,11 @@ sealed class CrossDriveScenario : IAsyncDisposable
     }
 
     /// <summary>The status of <paramref name="driveLetter" /> at each of its lost-catch-up faults, in raise order.</summary>
-    public DriveStatus[] CatchUpLossStatuses(char driveLetter) => _faultStatuses.CatchUpLossStatuses(driveLetter);
+    public RootStatus[] CatchUpLossStatuses(char driveLetter) => _faultStatuses.CatchUpLossStatuses(driveLetter);
 
-    void RecordFault(WatchFault fault)
+    void RecordFault(FileIndex index, WatchFault fault)
     {
-        _faultStatuses.Record(Index, fault);
+        _faultStatuses.Record(index, fault);
         lock (_gate)
         {
             _faults.Add(fault);

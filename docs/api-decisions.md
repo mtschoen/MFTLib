@@ -102,7 +102,7 @@ across block replacement.
 
 ## One producer enum, selection and observation
 
-**Decision:** `IndexedDrive.Producer` selects a `ProducerKind` per drive for initial scans and
+**Decision:** `IndexedRoot.Producer` selects a `ProducerKind` per root for initial scans and
 rescans, defaulting to `ProducerKind.Mft`. The same enum identifies the producer in `IndexRecordKey.ProducerKind`,
 `CachedBlockStatus.ProducerKind` and the block header. Its underlying type is `uint`, with `Mft = 1` and
 `Enumeration = 2`. Construction, init setters and `FileIndex.OpenAsync` admission reject the default and every
@@ -110,46 +110,44 @@ undefined value before filesystem side effects. Warm adoption compares the selec
 stored value; a mismatch cold-scans, or reports `CacheDeclined` for `CacheMode.ExistingOnly` and leaves the block in place.
 
 **Reason:** selection and observation describe the same producer. One enum gives consumers one vocabulary and
-lets a cache inspection value select a drive's producer directly, while preserving block bytes and per-drive
+lets a cache inspection value select a root's producer directly, while preserving block bytes and per-root
 choice. An MFT failure never selects a directory walk; enumeration ignores `MftSource` and runs only by request.
 
 **Revisit only if:** producer selection needs a choice that cannot identify a block's actual producer.
 
-## OpenAsync validates drive keys and producer choices before filesystem side effects
+## OpenAsync validates root keys and producer choices before filesystem side effects
 
 **Decision:**
-`IndexedDrive` validates `Drive`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `Producer`
+`IndexedRoot` validates `Drive`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `Producer`
 (`Enum.IsDefined`, throwing `ArgumentOutOfRangeException`) on construction and in its `init` setters.
-`FileIndex.OpenAsync` materializes `FileIndexOptions.Drives` once and validates it up front, before creating
-`CacheDirectory` or running any producer: a null `Drives` collection, a null or invalid element, or duplicate
-normalized `RootKey` entries throw `ArgumentException`, and an undefined `ProducerKind` value throws
+`FileIndex.OpenAsync` validates `FileIndexOptions.Root` up front, before creating
+`CacheDirectory` or running any producer: a null `Root` on a non-dump open throws `ArgumentException`, and an undefined `ProducerKind` value throws
 `ArgumentOutOfRangeException`.
 
-**Reason:** `OpenAsync` is a dictionary-keyed, per-drive API (`Drives`, `Root(RootKey)`), so duplicate drive
-keys, blank roots, and undefined enum values are caller configuration bugs that must fail fast with no filesystem
+**Reason:** blank roots, missing roots, and undefined enum values are caller configuration bugs that must fail fast with no filesystem
 side effects.
 
 **Revisit only if:** never; configuration validation before side effects is a baseline contract.
 
-## Cold production failures settle per drive across both producers
+## Cold production failures settle per root across both producers
 
 **Decision:**
-a cold-production failure on a `ProducerKind.Enumeration` drive settles that drive as `DriveState.Failed` with
-`DriveFailureKind.ProducerFailed` while healthy sibling drives remain usable, matching `ProducerKind.Mft` and
-`RescanAsync`. A failed rescan preserves the previous block and reports `DriveStatus.Failure` with
-`DriveFailureKind.ProducerFailed`. Argument validation performed at admission (null options, an undefined
-`CacheMode`, a missing cache directory, dump-source option conflicts) throws before any drive is produced. A drive
+a cold-production failure on a `ProducerKind.Enumeration` root settles that root as `DriveState.Failed` with
+`DriveFailureKind.ProducerFailed`, matching `ProducerKind.Mft` and
+`RescanAsync`. A failed rescan preserves the previous block and reports `RootStatus.Failure` with
+`DriveFailureKind.ProducerFailed`. Argument validation performed at admission (null options, null `Root` on a non-dump open, an undefined
+`CacheMode`, a missing cache directory, dump-source option conflicts) throws before any root is produced. A root
 whose production cannot start or fails for an operational reason settles as `DriveState.Failed` with
-`DriveFailureKind.ProducerFailed` while sibling drives remain usable. An MFT drive that needs a scan when
-`FileIndexOptions.MftSource` is null settles as `DriveState.Failed` with `DriveFailureKind.MftSourceMissing` instead. Caller cancellation (`OperationCanceledException`) aborts the whole operation, and a
-cancelled `OpenAsync` releases every adopted block.
+`DriveFailureKind.ProducerFailed`. An MFT root that needs a scan when
+`FileIndexOptions.MftSource` is null settles as `DriveState.Failed` with `DriveFailureKind.MftSourceMissing` instead. Caller cancellation (`OperationCanceledException`) aborts the operation, and a
+cancelled `OpenAsync` releases its adopted block.
 
-**Reason:** `IndexedDrive.Producer` is configured per drive so one index can mix MFT-scanned and directory-walked
-drives. An operational production failure must have the same per-drive isolation regardless of the selected
-producer, both during initial open and during rescan. Missing drives settle Offline, and enumeration skips
+**Reason:** `IndexedRoot.Producer` is configured per root so an application can open indexes over MFT-scanned and directory-walked
+roots alike. An operational production failure must have the same status reporting regardless of the selected
+producer, both during initial open and during rescan. Missing roots settle Offline, and enumeration skips
 missing or inaccessible subtrees; neither is an operational producer failure by itself.
 
-**Revisit only if:** a consumer explicitly asks for an all-or-nothing open mode across all drives.
+**Revisit only if:** a consumer explicitly asks for a throwing open mode on operational producer failures.
 
 ## A retained FileEntry keeps only its own drive block mapped
 
@@ -348,11 +346,9 @@ of disabling the cache while requiring an open to use only cached blocks.
 **Decision (API review finding F10):** a dump source is fully self-describing.
 The caller supplies `FileIndexOptions.MftSource`; the source supplies its one
 virtual drive (letter, root, serial zero, `ProducerKind.Mft`), which
-`FileIndex.OpenAsync` adds to the index. `Drives` must be a non-null empty
-collection, `CacheMode` and `CacheDirectory` must be null, and `CacheTag` must
+`FileIndex.OpenAsync` configures on the index. `Root`, `CacheMode` and `CacheDirectory` must be null, and `CacheTag` must
 be default. Other values throw `ArgumentException` naming the option; every
-non-null cache mode, including `Disabled`, is rejected. Explicit empty/default
-values are accepted.
+non-null cache mode, including `Disabled`, is rejected.
 `MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftScanOptions.IncludeFreed`
 are public, sample-reached features.
 
@@ -364,7 +360,7 @@ one way is not a setting.
 
 ## Two key types: VolumeKey and RootKey, one method per lifecycle verb
 
-**Decision (owner ruling 2026-10-27, issue 806; API review findings F7 and F8):** two structs name what an index
+**Decision (owner ruling 2026-10-27, issue 806; API review findings F7 and F8; updated for issue 829):** two structs name what an index
 holds. `VolumeKey` identifies an NTFS volume by one ASCII letter: it normalizes case once, converts implicitly from
 `char` and never from `string`, and its default value is invalid. `RootKey` identifies any indexed root, either a
 `VolumeKey` or a normalized directory path: it converts implicitly from `VolumeKey`, exposes `IsVolume`,
@@ -373,12 +369,12 @@ has no `Letter`. Directory keys compare under the platform case policy and the d
 Volume-only APIs take `VolumeKey`: `MFTUtilities.GetVolumePath`, `MftVolume` opens, `FromWindowsDrive`,
 `FileIndex.QueryUsnJournalSettings`, `BrokerSession.GrowUsnJournalAsync`, `MftIndexSources.FromMftDumpFile`, every
 broker frame, and the watch notifications `WatchFault.Drive`, `WatchStateChange.Drive` and `JournalCheckpointLoss.Drive`.
-Any-root APIs take or carry `RootKey`: `FileEntry`, `IndexRow`, `IndexRecordKey`, `DriveStatus`,
-`DriveOperationResult`, `IndexScanProgress`, `IndexDriveOpened`, `CachedBlockFile`, `CacheDirectory.DeleteCached`
-and `InspectCached`, `FileIndex.Root` and `RescanAsync`, and `IndexedDrive.Drive`. Each lifecycle verb of `FileIndex`
-(start watching, stop watching, wait for catch-up, rescan) is one method taking `IEnumerable<RootKey>` and returning one
-`DriveOperationResult` per requested drive, with no overloads; a root that cannot be watched answers `NotApplicable`.
-The library derives the key and serial of a walked folder: `IndexedDrive.FromDirectory(rootDirectory)` returns a root
+Any-root APIs take or carry `RootKey`: `FileEntry`, `IndexRow`, `IndexRecordKey`, `RootStatus`,
+`DriveOperationResult`, `IndexScanProgress`, `CachedBlockFile`, `CacheDirectory.DeleteCached`
+and `InspectCached`, and `IndexedRoot.Drive`. Each lifecycle verb of `FileIndex`
+(start watching, stop watching, wait for catch-up, rescan) is one method taking an optional `CancellationToken` and returning one
+`DriveOperationResult`, with no overloads; a root that cannot be watched answers `NotApplicable`.
+The library derives the key and serial of a walked folder: `IndexedRoot.FromDirectory(rootDirectory)` returns a root
 whose `Drive` is `RootKey.FromDirectory(rootDirectory)` and whose `VolumeSerial` is the serial of the volume that
 contains the path, or zero when the platform does not report one. The public record constructor for an arbitrary key
 and serial does not exist; test code gets one from `MFTLibTestExtensions.SyntheticIndexedDrive`. A directory key can
@@ -397,9 +393,7 @@ containing volume's serial or zero, and the library owns that derivation.
 
 **Implementation note:** the default value of either struct is invalid; `Letter`, `ToString` and public key-accepting
 operations reject it with `ArgumentException`. Key-bearing record constructors and `Drive` init accessors validate it
-too. Members carrying keys are named `Drive`. Lifecycle requests are materialized once, reject duplicates before work
-starts and preserve request order, matching the list contract. Empty sequences succeed with no results unless
-cancelled. A directory key whose normalized text exceeds 1,983 UTF-16 code units is rejected by
+too. Members carrying keys are named `Drive`. A directory key whose normalized text exceeds 1,983 UTF-16 code units is rejected by
 `RootKey.FromDirectory`, the limit of the key text stored in each cache block (see [index format](index-format.md)).
 These choices keep identity and admission in one owner without adding a string conversion.
 
@@ -463,7 +457,7 @@ the rule.
 
 **Decision:** `SyntheticIndexInspection` and `SyntheticDriveHeader` are internal to
 `MFTLibTestExtensions`, available to `MFTLib.Tests` through its existing friend-assembly access.
-Consumer tests read `index.Root(drive).RecordKey.ProducerKind` for the producer and
+Consumer tests read `index.Root().RecordKey.ProducerKind` for the producer and
 `status.Block!.LiveRowCount` for live inventory. `DriveBlockStatus.ScanTimestamp` supplies the stored scan time.
 
 **Reason:** the only consumer uses are two git-wizard assertions already answered by the index.
@@ -500,15 +494,14 @@ promises a quick attempt that reports failure by returning false, which does not
 
 **Revisit only if:** the method stops blocking for the broker's lifetime.
 
-## Names of the two index progress options, and what stays as it is
+## Name of the index scan-progress option, and what stays as it is
 
-**Decision (API review finding F21):** `FileIndexOptions.ScanProgress` reports scan
-progress samples only while a scan runs; `FileIndexOptions.DriveOpenProgress` reports one
-`IndexDriveOpened` per drive that settles during open, warm starts included. `BrokerSession.Connecting`
+**Decision (API review finding F21; updated for issue 829):** `FileIndexOptions.ScanProgress` reports scan
+progress samples while a scan runs. `BrokerSession.Connecting`
 stays an event. The mix of events, `IProgress` options and the `Diagnostics` callback stays, because each style
 follows what it reports.
 
-**Reason:** each option's name identifies the operation it reports.
+**Reason:** the option's name identifies the operation it reports.
 `BrokerSession.Connecting` stays because git-wizard production
 (`GitWizard/Discovery/RepositoryDiscoveryCoordinator.Watch.cs`) and the Watch sample use it.
 
@@ -528,19 +521,6 @@ cannot hold a snapshot borrow open, so each of the three serves a caller the oth
 **Revisit only if:** `EnumerateRows` stops being a `ref struct`, or a consumer needs elevation behavior the
 current provider types cannot express.
 
-## Open progress counts settle order and total
-
-**Decision (API review finding F13):** `IndexDriveOpened` keeps both `SettledDriveCount` and
-`TotalDriveCount`. The Watch sample prints one line per settled drive, so the notification has a sample
-caller.
-
-**Reason:** the notification was built to order for file-wizard's "drive k of N" display during warm starts. Drives settle
-concurrently, so the settle counter is what lets a handler order overlapping reports, and the total keeps each
-report self-describing. A single consumer is the design, not drift. The gap the review found was that no sample
-showed it.
-
-**Revisit only if:** file-wizard stops rendering open progress.
-
 ## A state enum plus a nullable reason
 
 **Decision (API review finding F14):** a state enum is the field callers branch
@@ -552,7 +532,7 @@ nullable `CacheLocation`, null when the block is not backed by a cache location,
 
 **Reason:** two fields stating one fact can contradict each other, and both consumers branch on the state enum
 and only print the reason. Six of the eight state-plus-reason pairs on the public surface already had this
-shape: `DriveStatus.Failure`, `WatchStateChange.Fault`, `DriveOperationResult.Failure`,
+shape: `RootStatus.Failure`, `WatchStateChange.Fault`, `DriveOperationResult.Failure`,
 `CachedBlockDeletionResult.FailureMessage`, `IndexScanProgress.Outcome` and `DriveWatchStatus.FailureMessage`.
 
 **Revisit only if:** a consumer needs to distinguish "checked and valid" from "not checked" on a row it cannot
@@ -619,15 +599,14 @@ deletion results cannot express.
 
 ## File entries expose their drive and keep distinct state questions
 
-**Decision (API review finding F24):** `FileEntry.Drive` is a
+**Decision (API review finding F24; updated for issue 829):** `FileEntry.Drive` is a
 `RootKey` equal to `RecordKey.Drive`, with the same default-value and disposal
-behavior as the entry's other data properties. `FileIndex.Drives` keeps its name.
+behavior as the entry's other data properties. `FileIndex.Status` reports the single root's `RootStatus`.
 `FileEntry.IsValid` and `IsDisposed` stay separate.
 
 **Reason:** `IndexRow` already exposes `Drive`, while both consumers repeatedly
 read `FileEntry.RecordKey.Drive`. Direct access removes that repeated two-hop
-read. The collection remains `Drives` under the owner's no-change ruling.
-The entry's state properties answer different questions: `IsValid` says whether
+read. The entry's state properties answer different questions: `IsValid` says whether
 the handle references a drive block, `IsDisposed` says whether that block has
 been released, and `IsDeleted` identifies a retained tombstone. A disposed handle
 can still be valid; a default handle is neither valid nor disposed.
@@ -703,32 +682,32 @@ with one meaning supplies both notification and a completion flag without observ
 
 **Revisit only if:** a consumer needs to await its own session's disposal through the same task.
 
-## One failure value and a nullable block on DriveStatus
+## One failure value and a nullable block on RootStatus
 
-**Decision (API review finding F2):**
-`DriveStatus.Failure` is a `DriveFailure` (`Kind`, non-null `Message`), non-null exactly when the drive is
+**Decision (API review finding F2; updated for issue 829):**
+`RootStatus.Failure` is a `DriveFailure` (`Kind`, non-null `Message`), non-null exactly when the root is
 `Failed`, or `Ready` retaining a block after a failed `RescanAsync` or a failed catch-up retry scan during
 `OpenAsync` (kind `ProducerFailed`, the producer's message). A successful scan publication clears it and an
-`Offline` drive has none. `DriveStatus.Block` is null unless `State` is `Ready`.
+`Offline` root has none. `RootStatus.Block` is null unless `State` is `Ready`.
 `DriveFailureKind` contains failure reasons and `BlockOrigin` identifies an actual origin;
 absence is represented by the nullable containing value. A failure message is required
 where it is produced; there is no empty-string fallback.
 
-**Reason:** "did this drive fail, and why" took three fields whose combinations were not independent: a `Ready`
-drive could carry a rescan failure message with kind `None`. A blockless drive exposed a block of zeros that
+**Reason:** "did this root fail, and why" took three fields whose combinations were not independent: a `Ready`
+root could carry a rescan failure message with kind `None`. A blockless root exposed a block of zeros that
 git-wizard detected by testing `ScanTimestamp == default`, and both consumers recombined the fields with their own
 fallback text. This is the first instance of the state-plus-nullable-reason rule above.
 
-**Revisit only if:** a consumer needs a failure that is not tied to one drive.
+**Revisit only if:** a consumer needs a failure that is not tied to one root.
 
 ## One watch snapshot type, named for what it holds
 
-**Decision (API review finding F3):**
+**Decision (API review finding F3; updated for issue 829):**
 the enum is `WatchState`; its members `NotStarted`, `Recovering` and `Faulted`
 describe the watch lifecycle, and `DriveWatchStatus.State` is its property. `FileIndex.WatchStateChanged` is an
 `Action<WatchStateChange>`; `WatchStateChange` carries `VolumeKey Drive`, the same
-`DriveWatchStatus` snapshot that `DriveStatus.Watch` reports (`Watch`), and the optional `Fault`. One builder produces
-the snapshot for both `Drives` and the event, so they cannot diverge.
+`DriveWatchStatus` snapshot that `RootStatus.Watch` reports (`Watch`), and the optional `Fault`. One builder produces
+the snapshot for both `Status` and the event, so they cannot diverge.
 
 **Reason:** snapshots and events report the same state and version, so consumers can seed
 their history without converting between shapes. Names distinguish the snapshot, event and enum.
@@ -859,22 +838,18 @@ and `SearchQuery.IncludeDeleted`; the Direct sample exercises them.
 
 ## Public XML comments name public members, and Root says why it refused
 
-**Decision (API review findings F17 and F18):**
+**Decision (API review findings F17 and F18; updated for issue 829):**
 a public XML comment refers only to public members and states the contract the code has. `MftIndexSource` names
 `BrokerSession.CreateIndexSource` and `MftIndexSources`, `JournalCheckpointLoss.SizeThatWouldHaveRetained` states that
 the library reports the size and the consumer owns the growth decision, and
 `BrokerDiagnostics` documents the public diagnostics configuration. A broker failure
-does not fall back to a direct scan. `FileIndex.Root` documents its
-`ArgumentException`, `Find` documents that null means no entry, and `Search` and `Enumerate` document
-`ArgumentNullException` for a null query. `FileIndex.Root` throws `ArgumentException` with "Drive X has no block
-(state: Offline)." (the drive's current `DriveState`) for a configured drive without a block, and keeps
-"Drive X is not part of this index." for an unconfigured drive.
+does not fall back to a direct scan. `FileIndex.Root(CancellationToken = default)` documents its
+`InvalidOperationException`, `Find` documents that null means no entry, and `Search` and `Enumerate` document
+`ArgumentNullException` for a null query. `FileIndex.Root` throws `InvalidOperationException` with `"Drive X has no block (state: Offline)."` (the root's current `DriveState`) when the root has no block.
 
-**Reason:** a reader following public documentation landed on types they cannot see, and the "not part of this
-index" message was false for a drive configured in `FileIndexOptions.Drives` but `Offline` or `Failed`, hiding the
-state the caller needs. Both git-wizard `Root` call sites can meet such a drive.
+**Reason:** a reader following public documentation landed on types they cannot see, and a root configured in `FileIndexOptions.Root` that settled `Offline` or `Failed` needs a state-bearing refusal message. Both git-wizard `Root` call sites can meet such a root.
 
-**Revisit only if:** `Root` gains a non-throwing form for a drive without a block.
+**Revisit only if:** `Root` gains a non-throwing form for a root without a block.
 
 ## A drive watch's pump owns fault attribution
 
@@ -890,7 +865,7 @@ exception informed nobody.
 
 ## Windows volume discovery reports every drive with an MFT verdict
 
-**Decision (owner, 2026-10-16; record 2026-10-18):** `IndexedDrive.EnumerateWindowsVolumes()` returns every
+**Decision (owner, 2026-10-16; record 2026-10-18; updated for issue 829):** `IndexedRoot.EnumerateWindowsVolumes()` returns every
 root from `DriveInfo.GetDrives()` as `IReadOnlyList<WindowsVolume>`. `WindowsVolume` is a public sealed record
 of `VolumeKey Drive`, `string RootDirectory`, `DriveType DriveType`, `bool IsReady`, `string? Format`,
 `bool IsIndexable` and `string? Reason`. Only ready fixed NTFS drives are indexable; NTFS compares with
@@ -942,17 +917,16 @@ overflow-then-rescan into a rescan loop.
 
 ## Windows-only annotations sit on the member that reaches Windows
 
-**Decision (2026-10-26):** `[SupportedOSPlatform("windows")]` sits on the narrowest member that reaches a
+**Decision (2026-10-26; updated for issue 829):** `[SupportedOSPlatform("windows")]` sits on the narrowest member that reaches a
 Windows-only API (a Windows P/Invoke, WMI, a named memory-mapped section, a Windows access-control list, UAC
 elevation), never on a whole type or assembly. Platform-neutral logic and test seams carry no annotation.
 A public Windows-only member whose behavior wraps logic is a one-line entry point over an internal
 platform-neutral member that tests call on every platform: `BrokerLauncher.Launch` over `StartElevated`,
-`IndexedDrive.FromWindowsDrive` over `ReadWindowsVolume`, `FileIndex.QueryUsnJournalSettings` over
+`IndexedRoot.FromWindowsDrive` over `ReadWindowsVolume`, `FileIndex.QueryUsnJournalSettings` over
 `ReadUsnJournalSettings`, and both launcher `BrokerSession` constructors over an internal constructor that takes
 the block section factory (production passes the Windows-only named-section factory). Internal members that
 guard with `OperatingSystem.IsWindows()` and throw `PlatformNotSupportedException` off Windows, such as
-`UsnJournalSettingsQuery.Query`, stay unannotated so their refusal is testable on Linux. No public member was
-added, removed or reshaped.
+`UsnJournalSettingsQuery.Query`, stay unannotated so their refusal is testable on Linux.
 
 **Reason:** a type- or assembly-wide annotation forced cross-platform tests (broker, index and Benchmark logic
 run on Linux through faked OS calls) to claim Windows-only to compile, which MSTest's MSTEST0084 flags. Suppressing
@@ -963,14 +937,14 @@ make the internal member a public one.
 
 ## Windows drive construction is named for its volume key
 
-**Decision (owner ruling B6, 2026-10-26):** `IndexedDrive.FromWindowsDrive(VolumeKey drive)` is the sole public
-name for the Windows-only factory that reads the volume's serial and returns an MFT `IndexedDrive`. Because the
+**Decision (owner ruling B6, 2026-10-26; updated for issue 829):** `IndexedRoot.FromWindowsDrive(VolumeKey drive)` is the sole public
+name for the Windows-only factory that reads the volume's serial and returns an MFT `IndexedRoot`. Because the
 parameter is a `VolumeKey`, the drive is a letter by type and the factory has no letter validation of its own.
 
 **Reason:** the factory takes a `VolumeKey`, not a `WindowsVolume`. Naming it for the Windows drive avoids
 suggesting that callers must first construct or supply a `WindowsVolume`.
 
-**Revisit only if:** the factory changes the identity it accepts or no longer constructs a drive from a Windows
+**Revisit only if:** the factory changes the identity it accepts or no longer constructs a root from a Windows
 volume key.
 
 ## Journal application is asynchronous end to end
@@ -988,22 +962,18 @@ synchronous shape.
 
 **Revisit only if:** a consumer needs to apply journal entries from a context that cannot await.
 
-## The Watch sample opens one index over one cache folder
+## The Watch sample keeps every cached block in one cache folder
 
-**Decision (2026-10-26):**
-(B3) The Watch sample keeps every drive's cached block in the one cache directory. Its per-policy
+**Decision (2026-10-26; updated for issue 829):**
+(B3) The Watch sample keeps every root's cached block in the one cache directory. Its per-policy
 subfolders, the retention fingerprint behind them and the `cache` verb's per-folder loop are deleted;
 the library's scan-shape comparison rebuilds a block when row-shaping flags change.
-(B5) One `FileIndex` over several drives is a deliberate feature: one handle answers cross-drive
-queries. The Watch sample therefore opens one `FileIndex` over all named drives instead of one per drive,
-so open progress reports real "n of m" progress. No earlier ruling existed; this ratifies the multi-drive open.
 (B7) `BrokerSession(launchBroker, connectTimeout)` stays public because a future consumer may set its own
 wait. The Watch sample passes `--connect-timeout <seconds>` to it, which replaces the constructor's
 exemption in `PublicMemberCallerTests`.
 
 **Reason:** the library already compares the scan shape, so a consumer-side folder per policy duplicated a
-library responsibility and left stale folders behind. A per-drive index in the sample hid the multi-drive
-open that consumers use and made its progress meaningless. The connect timeout is a real operator choice
+library responsibility and left stale folders behind. The connect timeout is a real operator choice
 that a sample can show.
 
 **Revisit only if:** a consumer needs the cache split by policy outside the library's scan-shape
@@ -1147,3 +1117,36 @@ strict prefix-and-hex validation the broker would connect to or map caller-suppl
 own naming scheme.
 
 **Revisit only if:** a consumer workload on large volumes requires a journal maximum above 8 GiB or 5% of the volume.
+
+## One root per FileIndex, and FileIndexSet for multi-index queries
+
+**Decision (owner rulings 2026-10-27, [issue 775](/schoen/MFTLib/issues/775) and [issue 829](/schoen/MFTLib/issues/829)):**
+Each `FileIndex` coordinates one root: `FileIndexOptions.Root` (`IndexedRoot?`) replaces `FileIndexOptions.Drives`,
+`FileIndex.Status` (`RootStatus`) replaces `FileIndex.Drives`, and `FileIndex.StartWatchingAsync`,
+`StopWatchingAsync`, `WaitForCatchUpAsync`, and `RescanAsync` take only `(CancellationToken = default)` and return
+`Task<DriveOperationResult>`. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index
+and throws `InvalidOperationException` (`"Drive {drive} has no block (state: {state})."`) when the index has no block.
+`FileIndexOptions.DriveOpenProgress` and `IndexDriveOpened` are deleted. `IndexedDrive` is renamed to `IndexedRoot`,
+`DriveStatus` to `RootStatus`, while `SyntheticIndexedDrive` and `SyntheticNotifications.CreateDriveStatus` return `IndexedRoot` and `RootStatus`.
+
+`FileIndexSet` is a public sealed read-only query coordinator over a fixed ordered list of distinct-root `FileIndex`
+instances (`new FileIndexSet(IReadOnlyList<FileIndex> indices)`, which rejects null entries and repeated `RootKey`s). It exposes `Indices`, `Find`, `Search`, `Enumerate`,
+and `EnumerateRows`; it has no `Root` method (`Root` stays on each `FileIndex`), no lifecycle methods, no events, and
+does not implement `IAsyncDisposable` or `IDisposable`. `FileIndexSet` borrows one member's block at a time in `Indices`
+order (or the single longest-prefix member for `Find`, or the single matching member for a `Subtree` anchor) and never
+holds borrows across two members at once.
+
+Callback reentrancy is one process-wide rule, not a per-index one: a lifecycle call (`StartWatchingAsync`, `StopWatchingAsync`,
+`RescanAsync`, `DisposeAsync`, an unsettled `WaitForCatchUpAsync`) from inside a `Changed`, `WatchFaulted` or
+`WatchStateChanged` handler of any `FileIndex` throws `InvalidOperationException`, whichever index the call names, because separated indices
+whose handlers stop each other would otherwise deadlock both pumps ([contract](watch-lifetime.md)).
+
+**Reason:** every per-root runtime (`DriveRuntime`), block (`DriveBlock`), cache lock, broker channel, and watch pump
+was already independent, while `FileIndex` carried an internal multi-root dictionary, snapshot array, ordinal
+assignment, batched verb fan-out, and settle-all open gate. Meanwhile, git-wizard already opened one `FileIndex` per
+repository root so warm roots could be queried before cold roots finished scanning, and file-wizard wanted each volume
+to become queryable as soon as its own open settled. Making `FileIndex` single-root lets each root open, watch, rescan,
+and dispose independently while `FileIndexSet` provides the cross-index read queries (`Find`, `Search`, `Enumerate`,
+`EnumerateRows`) that file-wizard and the Watch sample need.
+
+**Revisit only if:** a consumer requires a cross-index atomic snapshot borrow across multiple roots at once.

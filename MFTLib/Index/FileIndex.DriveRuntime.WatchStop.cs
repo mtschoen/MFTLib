@@ -9,7 +9,7 @@ public sealed partial class FileIndex
         /// <summary>Withdraws this drive's request and drains its watch without taking the lifecycle gate.</summary>
         public async Task StopDriveWatchingAsync(CancellationToken cancellationToken)
         {
-            if (Index.RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
+            if (FileIndex.RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
             {
                 throw rejection;
             }

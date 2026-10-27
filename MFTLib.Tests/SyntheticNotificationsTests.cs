@@ -224,17 +224,6 @@ public class SyntheticNotificationsTests
     }
 
     [TestMethod]
-    public void CreateIndexDriveOpened_ForwardsEveryValue()
-    {
-        var opened = SyntheticNotifications.CreateIndexDriveOpened(new VolumeKey('T'), 2, 5);
-
-        Assert.AreEqual(new IndexDriveOpened(new VolumeKey('T'), 2, 5), opened);
-        Assert.AreEqual(new VolumeKey('T'), opened.Drive);
-        Assert.AreEqual(2, opened.SettledDriveCount);
-        Assert.AreEqual(5, opened.TotalDriveCount);
-    }
-
-    [TestMethod]
     public void CreateWindowsVolume_ForwardsEveryValue()
     {
         var volume = SyntheticNotifications.CreateWindowsVolume('t', @"T:\", DriveType.Fixed);
@@ -281,7 +270,7 @@ public class SyntheticNotificationsTests
         status = status with { Watch = status.Watch with { IsSupported = true } };
 
         Assert.AreEqual(
-            new DriveStatus(new VolumeKey('T'), DriveState.Ready)
+            new RootStatus(new VolumeKey('T'), DriveState.Ready)
             {
                 Block = new DriveBlockStatus
                 {

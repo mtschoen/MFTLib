@@ -44,26 +44,29 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
 
     public TestContext TestContext { get; set; } = null!;
 
-    FileIndexOptions TwoDriveOptions() => new()
+    FileIndexOptions FirstDriveOptions() => new()
     {
-        Drives = [
-            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
-            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), _secondTree!.Path, _secondSerial, ProducerKind.Enumeration)
-        ],
+        Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
+        CacheDirectory = CacheDirectoryPath
+    };
+
+    FileIndexOptions SecondDriveOptions() => new()
+    {
+        Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), _secondTree!.Path, _secondSerial, ProducerKind.Enumeration),
         CacheDirectory = CacheDirectoryPath
     };
 
     string ReadmePath => Path.Combine(TreeRoot, "Documents", "readme.md");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    static DriveBlockRelease ReleaseStateOf(FileIndex index, char drive) =>
-        LookupEngine.FindDriveBlock(index.CurrentSnapshot, new VolumeKey(drive))!.ReleaseState;
+    static DriveBlockRelease ReleaseStateOf(FileIndex index) =>
+        index.CurrentBlock!.ReleaseState;
 
-    async Task RescanSecondDriveAsync(FileIndex index)
+    async Task RescanSecondDriveAsync(FileIndex secondIndex)
     {
         await File.WriteAllTextAsync(Path.Combine(_secondTree!.Path, $"added-{++_rescanCount}.md"), "added",
             TestContext.CancellationToken);
-        await index.RescanAsync([new VolumeKey('U')], TestContext.CancellationToken);
+        await secondIndex.RescanAsync(TestContext.CancellationToken);
     }
 
     /// <summary>Collects until the release completes or the pass limit is reached; no sleeping or timing.</summary>
@@ -79,16 +82,16 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     }
 
     /// <summary>
-    ///     Runs <paramref name="query" /> on a pool thread parked once its borrow is counted, rescans drive U and
-    ///     collects from this thread, then lets the query finish. Returns whether U's retired block was released
-    ///     while the query still held its borrow.
+    ///     Runs <paramref name="query" /> on a pool thread parked once its borrow on <paramref name="firstIndex" /> is counted,
+    ///     rescans drive U and collects from this thread, then lets the query finish. Returns whether U's retired block was
+    ///     released while the query still held its borrow.
     /// </summary>
-    async Task<bool> RescanWhileQueryHeldAsync(FileIndex index, DriveBlockRelease retired, Action query,
+    async Task<bool> RescanWhileQueryHeldAsync(FileIndex firstIndex, FileIndex secondIndex, DriveBlockRelease retired, Action query,
         int passes = CollectionPassLimit, Action? onAdmitted = null)
     {
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.Hooks.ReaderAdmitted = () =>
+        firstIndex.Hooks.ReaderAdmitted = () =>
         {
             onAdmitted?.Invoke();
             admitted.TrySetResult();
@@ -98,7 +101,7 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
         try
         {
             await admitted.Task.WaitAsync(TestContext.CancellationToken);
-            await RescanSecondDriveAsync(index);
+            await RescanSecondDriveAsync(secondIndex);
             return CollectUntilReleased(retired, passes);
         }
         finally
@@ -108,24 +111,27 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
         }
     }
 
-    async Task<(FileIndex Index, FileEntry FirstRoot)> OpenAsync()
+    async Task<(FileIndex FirstIndex, FileIndex SecondIndex, FileIndexSet Set, FileEntry FirstRoot)> OpenAsync()
     {
-        var index = await FileIndex.OpenAsync(TwoDriveOptions(), TestContext.CancellationToken);
-        return (index, index.Root(new VolumeKey('T'), TestContext.CancellationToken));
+        var firstIndex = await FileIndex.OpenAsync(FirstDriveOptions(), TestContext.CancellationToken);
+        var secondIndex = await FileIndex.OpenAsync(SecondDriveOptions(), TestContext.CancellationToken);
+        var set = new FileIndexSet([firstIndex, secondIndex]);
+        return (firstIndex, secondIndex, set, firstIndex.Root(TestContext.CancellationToken));
     }
 
     /// <summary>A suspended Enumerate anchored on drive T does not delay drive U's retired block.</summary>
     [TestMethod]
     public async Task Enumerate_AnchoredOnOneDrive_DoesNotKeepAnotherDrivesRetiredBlockMapped()
     {
-        var (index, root) = await OpenAsync();
-        await using var disposable = index;
-        var retired = ReleaseStateOf(index, 'U');
-        using var enumerator = index.Enumerate(new SearchQuery("", Subtree: root), TestContext.CancellationToken)
+        var (firstIndex, secondIndex, set, root) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var retired = ReleaseStateOf(secondIndex);
+        using var enumerator = set.Enumerate(new SearchQuery("", Subtree: root), TestContext.CancellationToken)
             .GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());
 
-        await RescanSecondDriveAsync(index);
+        await RescanSecondDriveAsync(secondIndex);
 
         Assert.IsTrue(CollectUntilReleased(retired), "an Enumerate on drive T kept drive U's retired block mapped");
         Assert.AreEqual(0, retired.Hooks.OutstandingBorrowCount);
@@ -136,13 +142,14 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     [TestMethod]
     public async Task EnumerateRows_AnchoredOnOneDrive_DoesNotKeepAnotherDrivesRetiredBlockMapped()
     {
-        var (index, root) = await OpenAsync();
-        await using var disposable = index;
-        var retired = ReleaseStateOf(index, 'U');
+        var (firstIndex, secondIndex, set, root) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var retired = ReleaseStateOf(secondIndex);
 
-        var released = await RescanWhileQueryHeldAsync(index, retired, () =>
+        var released = await RescanWhileQueryHeldAsync(firstIndex, secondIndex, retired, () =>
         {
-            foreach (var row in index.EnumerateRows(new SearchQuery("", Subtree: root), TestContext.CancellationToken))
+            foreach (var row in set.EnumerateRows(new SearchQuery("", Subtree: root), TestContext.CancellationToken))
             {
                 _ = row.Name.Length;
             }
@@ -155,12 +162,13 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     [TestMethod]
     public async Task Find_OnOneDrive_DoesNotKeepAnotherDrivesRetiredBlockMapped()
     {
-        var (index, _) = await OpenAsync();
-        await using var disposable = index;
-        var retired = ReleaseStateOf(index, 'U');
+        var (firstIndex, secondIndex, set, _) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var retired = ReleaseStateOf(secondIndex);
 
-        var released = await RescanWhileQueryHeldAsync(index, retired,
-            () => _ = index.Find(ReadmePath, TestContext.CancellationToken));
+        var released = await RescanWhileQueryHeldAsync(firstIndex, secondIndex, retired,
+            () => _ = set.Find(ReadmePath, TestContext.CancellationToken));
 
         Assert.IsTrue(released, "a Find on drive T kept drive U's retired block mapped");
     }
@@ -169,12 +177,13 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     [TestMethod]
     public async Task Root_OfOneDrive_DoesNotKeepAnotherDrivesRetiredBlockMapped()
     {
-        var (index, _) = await OpenAsync();
-        await using var disposable = index;
-        var retired = ReleaseStateOf(index, 'U');
+        var (firstIndex, secondIndex, _, _) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var retired = ReleaseStateOf(secondIndex);
 
-        var released = await RescanWhileQueryHeldAsync(index, retired,
-            () => _ = index.Root(new VolumeKey('T'), TestContext.CancellationToken));
+        var released = await RescanWhileQueryHeldAsync(firstIndex, secondIndex, retired,
+            () => _ = firstIndex.Root(TestContext.CancellationToken));
 
         Assert.IsTrue(released, "a Root on drive T kept drive U's retired block mapped");
     }
@@ -183,12 +192,13 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     [TestMethod]
     public async Task Search_AnchoredOnOneDrive_DoesNotKeepAnotherDrivesRetiredBlockMapped()
     {
-        var (index, root) = await OpenAsync();
-        await using var disposable = index;
-        var retired = ReleaseStateOf(index, 'U');
+        var (firstIndex, secondIndex, set, root) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var retired = ReleaseStateOf(secondIndex);
 
-        var released = await RescanWhileQueryHeldAsync(index, retired,
-            () => _ = index.Search(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken));
+        var released = await RescanWhileQueryHeldAsync(firstIndex, secondIndex, retired,
+            () => _ = set.Search(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken));
 
         Assert.IsTrue(released, "a Search anchored on drive T kept drive U's retired block mapped");
     }
@@ -197,19 +207,20 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     [TestMethod]
     public async Task ScopedQueries_BorrowOnlyTheBlockTheyRead()
     {
-        var (index, root) = await OpenAsync();
-        await using var disposable = index;
-        var firstRelease = ReleaseStateOf(index, 'T');
-        var secondRelease = ReleaseStateOf(index, 'U');
+        var (firstIndex, secondIndex, set, root) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var firstRelease = ReleaseStateOf(firstIndex);
+        var secondRelease = ReleaseStateOf(secondIndex);
         var observed = new List<(int First, int Second)>();
-        index.Hooks.ReaderAdmitted = () =>
+        firstIndex.Hooks.ReaderAdmitted = () =>
             observed.Add((firstRelease.Hooks.OutstandingBorrowCount, secondRelease.Hooks.OutstandingBorrowCount));
 
-        _ = index.Find(ReadmePath, TestContext.CancellationToken);
-        _ = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
-        _ = index.Search(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken);
-        _ = index.Enumerate(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken).ToList();
-        foreach (var row in index.EnumerateRows(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken))
+        _ = set.Find(ReadmePath, TestContext.CancellationToken);
+        _ = firstIndex.Root(TestContext.CancellationToken);
+        _ = set.Search(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken);
+        _ = set.Enumerate(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken).ToList();
+        foreach (var row in set.EnumerateRows(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken))
         {
             _ = row.Name.Length;
         }
@@ -218,23 +229,23 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
         CollectionAssert.AreEqual(Enumerable.Repeat((1, 0), 5).ToList(), observed);
     }
 
-    /// <summary>An unscoped query borrows every current block, so a retired block stays mapped until it ends.</summary>
+    /// <summary>An unscoped query borrows one member at a time, so another member's retired block can release while the first is scanned.</summary>
     [TestMethod]
-    public async Task UnscopedSearch_BorrowsEveryCurrentBlock()
+    public async Task UnscopedSearch_BorrowsOnlyTheActiveMemberBlock()
     {
-        var (index, _) = await OpenAsync();
-        await using var disposable = index;
-        var firstRelease = ReleaseStateOf(index, 'T');
-        var secondRelease = ReleaseStateOf(index, 'U');
+        var (firstIndex, secondIndex, set, _) = await OpenAsync();
+        await using var disposableFirst = firstIndex;
+        await using var disposableSecond = secondIndex;
+        var firstRelease = ReleaseStateOf(firstIndex);
+        var secondRelease = ReleaseStateOf(secondIndex);
         (int First, int Second) observed = default;
 
-        var released = await RescanWhileQueryHeldAsync(index, secondRelease,
-            () => _ = index.Search(new SearchQuery("readme"), TestContext.CancellationToken), passes: 3,
+        var released = await RescanWhileQueryHeldAsync(firstIndex, secondIndex, secondRelease,
+            () => _ = set.Search(new SearchQuery("readme"), TestContext.CancellationToken), passes: 3,
             onAdmitted: () => observed = (firstRelease.Hooks.OutstandingBorrowCount,
                 secondRelease.Hooks.OutstandingBorrowCount));
 
-        Assert.AreEqual((1, 1), observed);
-        Assert.IsFalse(released, "an unscoped Search must keep every block it scans mapped");
-        Assert.IsTrue(CollectUntilReleased(secondRelease), "the retired block never released after the query ended");
+        Assert.AreEqual((1, 0), observed);
+        Assert.IsTrue(released, "an unscoped Search on FileIndexSet must borrow one member at a time");
     }
 }

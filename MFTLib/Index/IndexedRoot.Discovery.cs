@@ -2,7 +2,7 @@ using System.Runtime.Versioning;
 
 namespace MFTLib.Index;
 
-public sealed partial record IndexedDrive
+public sealed partial record IndexedRoot
 {
     /// <summary>
     ///     Reports every drive root with an <c>IsIndexable</c> flag and, when false, a display reason.

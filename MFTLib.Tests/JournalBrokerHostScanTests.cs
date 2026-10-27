@@ -744,7 +744,7 @@ public class JournalBrokerHostScanTests
         Assert.AreEqual(31u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
         var rootPath = Path.Combine(Path.GetDirectoryName(block.Path)!, "scan-oracle");
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('C'), 0, block, rootPath)];
+        var driveBlock = new DriveBlock(new VolumeKey('C'), block, rootPath);
         try
         {
             (string RelativePath, uint Row, string Name, uint Parent, RowFlags Flags)[] expected =
@@ -756,7 +756,7 @@ public class JournalBrokerHostScanTests
             ];
             foreach (var row in expected)
             {
-                var entry = LookupEngine.Find(snapshot, Path.Combine(rootPath, row.RelativePath));
+                var entry = LookupEngine.Find(driveBlock, Path.Combine(rootPath, row.RelativePath));
                 Assert.IsNotNull(entry, $"Expected lookup for {row.RelativePath}");
                 Assert.AreEqual(row.Row, entry.Value.RowIndex);
                 Assert.AreEqual(row.Name, entry.Value.Name);
@@ -764,11 +764,11 @@ public class JournalBrokerHostScanTests
                 Assert.AreEqual(row.Flags, entry.Value.Row.Flags);
             }
 
-            Assert.IsNull(LookupEngine.Find(snapshot, Path.Combine(rootPath, "huge")));
+            Assert.IsNull(LookupEngine.Find(driveBlock, Path.Combine(rootPath, "huge")));
         }
         finally
         {
-            await snapshot.ReleaseNowAsync();
+            await driveBlock.ReleaseNowAsync();
         }
     }
 

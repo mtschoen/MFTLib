@@ -25,57 +25,56 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
         JournalCursor = new SyntheticJournalCursor(7, 4096)
     };
 
-    IndexedDrive Drive(char letter, ProducerKind policy) =>
+    IndexedRoot Drive(char letter, ProducerKind policy) =>
         SyntheticIndexedDrive.Create(new VolumeKey(letter), Fixture.TreeRoot, 123, policy);
 
-    FileIndexOptions Options(params IndexedDrive[] drives) => new()
+    FileIndexOptions Options(IndexedRoot root) => new()
     {
-        Drives = drives,
+        Root = root,
         CacheDirectory = Fixture.CacheDirectory,
         MftSource = SyntheticIndexSource.Create(Producer())
     };
 
     [TestMethod]
-    public async Task MixedOpen_EachDriveUsesItsProducerAndQueriesCombineTheirRows()
+    public async Task MixedOpen_EachDriveUsesItsProducerAndSetQueriesCombineTheirRows()
     {
-        await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)), CancellationToken.None);
+        await using var indexT = await FileIndex.OpenAsync(Options(Drive('T', ProducerKind.Mft)), CancellationToken.None);
+        await using var indexU = await FileIndex.OpenAsync(Options(Drive('U', ProducerKind.Enumeration)), CancellationToken.None);
+        var set = new FileIndexSet([indexT, indexU]);
 
-        AssertDrive(index, 'T', ProducerKind.Mft);
-        AssertDrive(index, 'U', ProducerKind.Enumeration);
-        var rows = index.Search(new SearchQuery(".txt"), TestContext.CancellationToken);
+        AssertDrive(indexT, 'T', ProducerKind.Mft);
+        AssertDrive(indexU, 'U', ProducerKind.Enumeration);
+        var rows = set.Search(new SearchQuery(".txt"), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["scanned.txt", "walked.txt"], [.. rows.Select(row => row.Name)], SequenceOrder.InAnyOrder);
         Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U')], [.. rows.Select(row => row.RecordKey.Drive)], SequenceOrder.InAnyOrder);
 
-        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
-        await index.RescanAsync([new VolumeKey('U')], CancellationToken.None);
-        AssertDrive(index, 'T', ProducerKind.Mft);
-        AssertDrive(index, 'U', ProducerKind.Enumeration);
+        await indexT.RescanAsync(CancellationToken.None);
+        await indexU.RescanAsync(CancellationToken.None);
+        AssertDrive(indexT, 'T', ProducerKind.Mft);
+        AssertDrive(indexU, 'U', ProducerKind.Enumeration);
     }
 
     [TestMethod]
     public async Task MixedOpen_MftFailureNeverWalksItsTreeAndEnumerationSiblingIsReady()
     {
-        var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
-        {
-            MftSource = null
-        };
-        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+        await using var indexT = await FileIndex.OpenAsync(Options(Drive('T', ProducerKind.Mft)) with { MftSource = null }, CancellationToken.None);
+        await using var indexU = await FileIndex.OpenAsync(Options(Drive('U', ProducerKind.Enumeration)) with { MftSource = null }, CancellationToken.None);
+        var set = new FileIndexSet([indexT, indexU]);
 
-        var failed = index.Drives.Single(drive => drive.Drive == new VolumeKey('T'));
+        var failed = indexT.Status;
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.MftSourceMissing, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
-        AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(new VolumeKey('U'), index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
+        AssertDrive(indexU, 'U', ProducerKind.Enumeration);
+        Assert.AreEqual(new VolumeKey('U'), set.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
 
-        var results = await index.RescanAsync([new VolumeKey('T'), new VolumeKey('U')], CancellationToken.None);
-        Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, results[1].Outcome);
-        Assert.AreEqual(DriveFailureKind.MftSourceMissing,
-            index.Drives.Single(drive => drive.Drive == new VolumeKey('T')).Failure?.Kind);
-        AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(new VolumeKey('U'), index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Drive);
+        var resultT = await indexT.RescanAsync(CancellationToken.None);
+        var resultU = await indexU.RescanAsync(CancellationToken.None);
+        Assert.AreEqual(DriveOperationOutcome.Failed, resultT.Outcome);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, resultU.Outcome);
+        Assert.AreEqual(DriveFailureKind.MftSourceMissing, indexT.Status.Failure?.Kind);
+        AssertDrive(indexU, 'U', ProducerKind.Enumeration);
+        Assert.AreEqual(new VolumeKey('U'), set.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Drive);
     }
 
     [TestMethod]
@@ -84,23 +83,21 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
     public async Task EnumerationOnly_IgnoresMftSource(bool configured)
     {
         var invocationCount = 0;
-        var options = Options(Drive('T', ProducerKind.Enumeration), Drive('U', ProducerKind.Enumeration)) with
+        var mftSource = configured ? new MftIndexSource((_, _) =>
         {
-            MftSource = configured ? new MftIndexSource((_, _) =>
-            {
-                Interlocked.Increment(ref invocationCount);
-                throw new InvalidOperationException("the MFT producer must not be called");
-            }) : null
-        };
-        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        AssertDrive(index, 'T', ProducerKind.Enumeration);
-        AssertDrive(index, 'U', ProducerKind.Enumeration);
-        foreach (var status in index.Drives)
-        {
-            Assert.IsNull(status.Failure);
-        }
+            Interlocked.Increment(ref invocationCount);
+            throw new InvalidOperationException("the MFT producer must not be called");
+        }) : null;
+        await using var indexT = await FileIndex.OpenAsync(Options(Drive('T', ProducerKind.Enumeration)) with { MftSource = mftSource }, CancellationToken.None);
+        await using var indexU = await FileIndex.OpenAsync(Options(Drive('U', ProducerKind.Enumeration)) with { MftSource = mftSource }, CancellationToken.None);
+        var set = new FileIndexSet([indexT, indexU]);
 
-        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U')], [.. index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Select(entry => entry.Drive)], SequenceOrder.InAnyOrder);
+        AssertDrive(indexT, 'T', ProducerKind.Enumeration);
+        AssertDrive(indexU, 'U', ProducerKind.Enumeration);
+        Assert.IsNull(indexT.Status.Failure);
+        Assert.IsNull(indexU.Status.Failure);
+
+        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U')], [.. set.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Select(entry => entry.Drive)], SequenceOrder.InAnyOrder);
         Assert.AreEqual(0, invocationCount);
     }
 
@@ -108,19 +105,17 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
     [TestMethod]
     public async Task MixedOpen_NullMftSourceFailsOnlyTheDriveNeedingAScan()
     {
-        await using var index = await FileIndex.OpenAsync(Options(
-            SyntheticIndexedDrive.Create(new VolumeKey('T'), Fixture.TreeRoot, 123), Drive('U', ProducerKind.Enumeration)) with
-        {
-            MftSource = null
-        }, CancellationToken.None);
+        await using var indexT = await FileIndex.OpenAsync(Options(SyntheticIndexedDrive.Create(new VolumeKey('T'), Fixture.TreeRoot, 123)) with { MftSource = null }, CancellationToken.None);
+        await using var indexU = await FileIndex.OpenAsync(Options(Drive('U', ProducerKind.Enumeration)) with { MftSource = null }, CancellationToken.None);
+        var set = new FileIndexSet([indexT, indexU]);
 
-        var failed = index.Drives.Single(drive => drive.Drive == new VolumeKey('T'));
+        var failed = indexT.Status;
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.MftSourceMissing, failed.Failure?.Kind);
         Assert.AreEqual("Drive T: no MFT source is available to scan this drive.", failed.Failure?.Message);
         Assert.IsNull(failed.Block);
-        AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(new VolumeKey('U'), index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Drive);
+        AssertDrive(indexU, 'U', ProducerKind.Enumeration);
+        Assert.AreEqual(new VolumeKey('U'), set.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Drive);
     }
 
     [TestMethod]
@@ -135,8 +130,8 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
         await using var index = await FileIndex.OpenAsync(options with { MftSource = null }, CancellationToken.None);
         AssertDrive(index, 'T', ProducerKind.Mft, BlockOrigin.WarmStartedFromCache);
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync([new VolumeKey('T')], CancellationToken.None));
-        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
+            () => index.StartWatchingAsync(CancellationToken.None));
+        Assert.IsFalse(index.Status.Watch.IsRequested);
     }
 
     [TestMethod]
@@ -156,7 +151,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
         var diagnostics = new List<string>();
         await using var index = await FileIndex.OpenAsync(options with
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), Fixture.TreeRoot, 123, producer: requested)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), Fixture.TreeRoot, 123, producer: requested),
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = requested == ProducerKind.Enumeration ? null : options.MftSource,
             Diagnostics = diagnostics.Add
@@ -164,7 +159,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
 
         if (cacheOnly)
         {
-            var failed = index.Drives.Single();
+            var failed = index.Status;
             Assert.AreEqual(DriveState.Failed, failed.State);
             Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
             Assert.IsNull(failed.Block);
@@ -190,30 +185,28 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBa
     public async Task MixedWatch_EnumerationIsUnsupportedWhileMftSiblingStartsAndCatchesUp()
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };
-        await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
-        {
-            MftSource = SyntheticIndexSource.Create(Producer(), watches)
-        }, CancellationToken.None);
+        var source = SyntheticIndexSource.Create(Producer(), watches);
+        await using var indexT = await FileIndex.OpenAsync(Options(Drive('T', ProducerKind.Mft)) with { MftSource = source }, CancellationToken.None);
+        await using var indexU = await FileIndex.OpenAsync(Options(Drive('U', ProducerKind.Enumeration)) with { MftSource = source }, CancellationToken.None);
 
-        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == new VolumeKey('U')).Watch.IsSupported);
+        Assert.IsFalse(indexU.Status.Watch.IsSupported);
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync([new VolumeKey('U')], CancellationToken.None));
-        var results = await index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive), CancellationToken.None);
-        Assert.AreEqual(DriveOperationOutcome.NotApplicable, results.Single(result => result.Drive == new VolumeKey('U')).Outcome);
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single(result => result.Drive == new VolumeKey('T')).Outcome);
-        await index.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None);
-        Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.Drive == new VolumeKey('T')).Watch.State);
+            () => indexU.StartWatchingAsync(CancellationToken.None));
+        var resultT = await indexT.StartWatchingAsync(CancellationToken.None);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, resultT.Outcome);
+        await indexT.WaitForCatchUpAsync(CancellationToken.None);
+        Assert.AreEqual(WatchState.CaughtUp, indexT.Status.Watch.State);
         Assert.AreEqual(new VolumeKey('T'), watches.Starts.Single().Drive);
-        await index.RescanAsync([new VolumeKey('U')], CancellationToken.None);
-        Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.Drive == new VolumeKey('T')).Watch.State);
-        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == new VolumeKey('U')).Watch.IsSupported);
+        await indexU.RescanAsync(CancellationToken.None);
+        Assert.AreEqual(WatchState.CaughtUp, indexT.Status.Watch.State);
+        Assert.IsFalse(indexU.Status.Watch.IsSupported);
     }
 
     static void AssertDrive(FileIndex index, char letter, ProducerKind kind,
         BlockOrigin origin = BlockOrigin.ProducedByScan)
     {
-        var status = index.Drives.Single(drive => drive.Drive == new VolumeKey(letter));
+        var status = index.Status;
+        Assert.AreEqual(new VolumeKey(letter), status.Drive);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.IsNotNull(status.Block);
         Assert.AreEqual(origin, status.Block.Origin);

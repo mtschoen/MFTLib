@@ -159,8 +159,7 @@ public class RootKeyTests
     {
         var settings = new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 };
         var cachedBlockFile = new CachedBlockFile(new VolumeKey('C'), 1, "unused", 0, DateTime.UnixEpoch);
-        var driveStatus = new DriveStatus(new VolumeKey('C'), DriveState.Offline);
-        var driveOpened = new IndexDriveOpened(new VolumeKey('C'), 1, 1);
+        var driveStatus = new RootStatus(new VolumeKey('C'), DriveState.Offline);
         var scanProgress = new IndexScanProgress(new VolumeKey('C'), IndexScanPhase.Finished, 0);
         var checkpointLoss = new JournalCheckpointLoss(new VolumeKey('C'), JournalCheckpointLossDetection.LiveWatch,
             JournalCheckpointLossCause.CheckpointTrimmed, settings);
@@ -168,7 +167,6 @@ public class RootKeyTests
         var windowsVolume = SyntheticNotifications.CreateWindowsVolume(new VolumeKey('C'), "C:\\", DriveType.Fixed);
         Assert.ThrowsExactly<ArgumentException>(() => cachedBlockFile with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => driveStatus with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => driveOpened with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => scanProgress with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => checkpointLoss with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => watchFault with { Drive = default });

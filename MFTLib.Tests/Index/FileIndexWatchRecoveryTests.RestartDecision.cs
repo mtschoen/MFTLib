@@ -16,13 +16,13 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Task? stop = null;
         index.Hooks.RestartRequested = letter =>
         {
             if (letter == new VolumeKey('T') && stop is null)
             {
-                stop = index.StopWatchingAsync([new VolumeKey('T')], Token);
+                stop = index.StopWatchingAsync(Token);
             }
         };
         var registrationsReached = 0;
@@ -32,7 +32,7 @@ public partial class FileIndexWatchRecoveryTests
             return Task.CompletedTask;
         };
 
-        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.IndexFor('T').RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsNotNull(stop, "the restart read the watch as still requested");
         await stop.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -40,6 +40,6 @@ public partial class FileIndexWatchRecoveryTests
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StopWatchingAsync([new VolumeKey('T')], Token), "the stop's cleared request stands").WaitAsync(HangGuard, TestContext.CancellationToken);
+            () => index.StopWatchingAsync(Token), "the stop's cleared request stands").WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 }

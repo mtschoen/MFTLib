@@ -34,9 +34,9 @@ public class FileIndexWatchRescanCheckpointLossTests
                     NextUsn: WatchHarness.NextUsn + 4_000, AllocationDelta, MaximumSize)
                 : null);
         using var harness = new WatchHarness('T', 'U');
-        harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
-        await harness.Index.StartWatchingAsync([new VolumeKey('U')], Token);
+        harness.HoldEveryRecovery();
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        await harness.IndexFor('U').StartWatchingAsync(Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         harness.Source.WatchFor('U').FailDrive(
             new IOException("USN journal entries have been deleted; full rescan needed"));
@@ -48,7 +48,7 @@ public class FileIndexWatchRescanCheckpointLossTests
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, lostBefore.DetectedDuring);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').RescanAsync(Token);
 
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
@@ -62,8 +62,8 @@ public class FileIndexWatchRescanCheckpointLossTests
 
         // U's own fault is still outstanding, so its stop reports it.
         var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync([new VolumeKey('U')], Token));
+            () => harness.IndexFor('U').StopWatchingAsync(Token));
         Assert.AreSame(uFault.Exception, failure);
-        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
+        await harness.IndexFor('T').StopWatchingAsync(Token);
     }
 }

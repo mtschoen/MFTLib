@@ -8,7 +8,7 @@ that read and write it (`BlockFile`, `BlockWriter`, `BlockHeader`, `BlockLayout`
 write blocks through `MFTLibTestExtensions`. A block is rebuildable from the filesystem, so there is no migration
 code: incompatible format, identity, serial, or completeness means reject the
 cache and rescan on a normal open. The stored producer kind must also match
-`IndexedDrive.Producer`: warm adoption rejects a mismatch before cache-tag,
+`IndexedRoot.Producer`: warm adoption rejects a mismatch before cache-tag,
 scan-shape, root and journal checks, closes the mapping and best-effort deletes the file under
 the owner lock. A normal open scans with the requested producer; a cache-only open
 reports `DriveState.Failed` with `DriveFailureKind.CacheDeclined`. A cache-only open never
@@ -94,20 +94,20 @@ is re-locked in place.
 
 ### Observing a drive's backing
 
-Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheLocation`:
+Read `FileIndex.Status` and inspect `DriveBlockStatus.CacheLocation`:
 
 | Value | Meaning |
 | --- | --- |
 | `CacheLocation.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
 | `CacheLocation.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
-| null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline drive has no `DriveStatus.Block` to inspect. |
+| null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline drive has no `RootStatus.Block` to inspect. |
 
 Ready blocks retain their backing classification, including when capacity is exhausted. This is
 separate from `DriveBlockStatus.Origin`: a canonical cold scan and a private
 fallback scan both read `ProducedByScan`; a canonical warm start reads
 `WarmStartedFromCache`.
 
-A returned status is a point-in-time value. Reread `index.Drives` after a
+A returned status is a point-in-time value. Reread `index.Status` after a
 rescan. If the previous owner exits, an existing private block stays private
 until a successful rescan publishes a canonical replacement. Acquiring the
 slot while that scan runs does not relabel the old private block. A failed
@@ -514,11 +514,9 @@ is the inner exception. Stop returns the fault once as `Failed`. Across a succes
 events can arrive after publication and repeat during the new watch's catch-up; queries can
 lag until it reports `CaughtUp`.
 
-`WaitForCatchUpAsync(IEnumerable<RootKey>, CancellationToken)` returns one
-`DriveOperationResult` per requested drive in request order after every drive has settled.
-A failed drive has `DriveOperationOutcome.Failed` and carries the exception in `Failure`;
-it does not end the waits for other drives. A drive with no watch is `NotApplicable`. The
-caller passes `index.Drives.Select(status => status.Drive)` to wait for every drive.
+`WaitForCatchUpAsync(CancellationToken)` returns one `DriveOperationResult` for the index's
+root after its watch settles. A failed watch has `DriveOperationOutcome.Failed` and carries the
+exception in `Failure`. A root with no watch is `NotApplicable`.
 Caller cancellation cancels the call; disposal cancels it through the
 index's disposal token.
 

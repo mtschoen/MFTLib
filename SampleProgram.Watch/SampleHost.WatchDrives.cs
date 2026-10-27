@@ -2,21 +2,22 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// The watch mode: one index over every drive is watched together, so one wait covers the whole machine.
+// The watch mode: one FileIndex per drive is watched, and a FileIndexSet over all of them counts entries across the machine.
 partial class SampleHost
 {
     // Returns how many drive operations failed.
-    async Task<int> WatchIndexAsync(FileIndex index, WatchArguments parsed, CancellationToken cancellationToken)
+    async Task<int> WatchIndexAsync(FileIndexSet indexSet, WatchArguments parsed, CancellationToken cancellationToken)
     {
         var failureCount = 0;
-        var ready = new List<RootKey>();
-        foreach (var status in index.Drives)
+        var ready = new List<FileIndex>();
+        foreach (var index in indexSet.Indices)
         {
+            var status = index.Status;
             await _output.WriteLineAsync($"=== Drive {status.Drive}: ===").ConfigureAwait(false);
             try
             {
                 ReportDrive(parsed, status);
-                ready.Add(status.Drive);
+                ready.Add(index);
             }
             catch (Exception exception)
             {
@@ -32,17 +33,38 @@ partial class SampleHost
             return failureCount;
         }
 
-        var counter = ReportChanges(index);
+        var counter = ReportChanges(ready);
         var operations = new List<DriveOperationResult>();
-        operations.AddRange(Report("start", await index.StartWatchingAsync(ready, cancellationToken).ConfigureAwait(false)));
-        operations.AddRange(Report("catch-up", await index.WaitForCatchUpAsync(ready, cancellationToken).ConfigureAwait(false)));
+        operations.AddRange(Report("start", await Task.WhenAll(ready.Select(index => index.StartWatchingAsync(cancellationToken))).ConfigureAwait(false)));
+        operations.AddRange(Report("catch-up", await Task.WhenAll(ready.Select(index => index.WaitForCatchUpAsync(cancellationToken))).ConfigureAwait(false)));
 
-        var waited = await WaitWhileWatchingAsync(parsed, ready.Select(drive => drive.ToString()), cancellationToken).ConfigureAwait(false);
-        operations.AddRange(Report("stop", await index.StopWatchingAsync(ready, cancellationToken).ConfigureAwait(false)));
-        var rows = index.Enumerate(new SearchQuery(null), cancellationToken).Count();
+        var waited = await WaitWhileWatchingAsync(parsed, ready.Select(index => index.Status.Drive.ToString()), cancellationToken).ConfigureAwait(false);
+        operations.AddRange(Report("stop", await Task.WhenAll(ready.Select(index => index.StopWatchingAsync(cancellationToken))).ConfigureAwait(false)));
+        var rows = indexSet.Enumerate(new SearchQuery(null), cancellationToken).Count();
         await _output.WriteLineAsync($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries").ConfigureAwait(false);
+        await ReportSetQueriesAsync(indexSet, ready[0], cancellationToken).ConfigureAwait(false);
 
         return failureCount + operations.Count(result => result.Outcome is DriveOperationOutcome.Failed);
+    }
+
+    // Queries every index through the set: Find routes the first ready root's own path back to its index, Search
+    // materializes the directories, and EnumerateRows totals file sizes without allocating an entry per row.
+    async Task ReportSetQueriesAsync(FileIndexSet indexSet, FileIndex selected, CancellationToken cancellationToken)
+    {
+        var rootPath = selected.Root(cancellationToken).Path;
+        var resolved = indexSet.Find(rootPath, cancellationToken);
+        await _output.WriteLineAsync($"Find resolved {rootPath} to {(resolved is { } entry ? entry.Path : "nothing")}").ConfigureAwait(false);
+        var directories = indexSet.Search(new SearchQuery(null, IsDirectory: true), cancellationToken).Count;
+        await _output.WriteLineAsync($"Search found {directories} directories").ConfigureAwait(false);
+        long fileCount = 0;
+        long fileBytes = 0;
+        foreach (var row in indexSet.EnumerateRows(new SearchQuery(null, IsDirectory: false), cancellationToken))
+        {
+            fileCount++;
+            fileBytes += row.IsSizeKnown ? row.Size : 0;
+        }
+
+        await _output.WriteLineAsync($"EnumerateRows totalled {fileCount} files, {fileBytes} bytes").ConfigureAwait(false);
     }
 
     bool IsInteractive => _interactive ?? !Console.IsInputRedirected;
@@ -94,9 +116,19 @@ partial class SampleHost
     }
 
     // Prints the watch states, faults and each change as they happen, and counts the changes.
-    DriveChangeCounter ReportChanges(FileIndex index)
+    DriveChangeCounter ReportChanges(IEnumerable<FileIndex> indices)
     {
         var counter = new DriveChangeCounter();
+        foreach (var index in indices)
+        {
+            ReportIndexChanges(index, counter);
+        }
+
+        return counter;
+    }
+
+    void ReportIndexChanges(FileIndex index, DriveChangeCounter counter)
+    {
         index.WatchStateChanged += state => _output.WriteLine($"  watch {state.Drive}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
         index.WatchFaulted += fault => _output.WriteLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
@@ -106,7 +138,6 @@ partial class SampleHost
             // the change's own path is the fact of this event.
             _output.WriteLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}{(isSameFile ? ", same file as the previous change" : string.Empty)}, file id {change.Entry.GetHashCode():x8}, drive {change.Entry.Drive}, entry {Path.GetFileName(change.Path)}");
         };
-        return counter;
     }
 
     List<DriveOperationResult> Report(string operation, IEnumerable<DriveOperationResult> results)

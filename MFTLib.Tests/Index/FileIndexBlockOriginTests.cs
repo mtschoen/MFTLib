@@ -21,7 +21,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Status.Block!.Origin);
     }
 
     [TestMethod]
@@ -33,7 +33,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block!.Origin);
     }
 
     [TestMethod]
@@ -44,11 +44,11 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block!.Origin);
 
-        await reopened.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+        await reopened.RescanAsync(CancellationToken.None);
 
-        Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Status.Block!.Origin);
     }
 
     [TestMethod]
@@ -56,14 +56,14 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration)],
+            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
-        Assert.IsNull(index.Drives.Single().Block);
+        Assert.AreEqual(DriveState.Offline, index.Status.State);
+        Assert.IsNull(index.Status.Block);
     }
 
     /// <summary>
@@ -84,28 +84,27 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
 
         static async Task RebuildWarmStartedDrivesAsync(FileIndex index)
         {
-            foreach (var status in index.Drives.Where(
-                         drive => drive.Block!.Origin == BlockOrigin.WarmStartedFromCache).ToArray())
+            if (index.Status.Block?.Origin == BlockOrigin.WarmStartedFromCache)
             {
-                await index.RescanAsync([status.Drive], CancellationToken.None);
+                await index.RescanAsync(CancellationToken.None);
             }
         }
 
         await using (var firstOpen = await FileIndex.OpenAsync(Options(ProducerKind.Mft, CountingProducer),
                          CancellationToken.None))
         {
-            Assert.AreEqual(BlockOrigin.ProducedByScan, firstOpen.Drives.Single().Block!.Origin);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, firstOpen.Status.Block!.Origin);
             await RebuildWarmStartedDrivesAsync(firstOpen);
             Assert.AreEqual(1, invocationCount, "the open already scanned this drive, so the loop must skip it");
         }
 
         await using var secondOpen = await FileIndex.OpenAsync(Options(ProducerKind.Mft, CountingProducer),
             CancellationToken.None);
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, secondOpen.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, secondOpen.Status.Block!.Origin);
 
         await RebuildWarmStartedDrivesAsync(secondOpen);
 
         Assert.AreEqual(2, invocationCount, "a warm-started drive is the one the loop must rescan");
-        Assert.AreEqual(BlockOrigin.ProducedByScan, secondOpen.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, secondOpen.Status.Block!.Origin);
     }
 }

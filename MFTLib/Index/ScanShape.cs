@@ -20,7 +20,7 @@ static class ScanShape
     /// <param name="drive">The drive's configuration, which names its producer and root.</param>
     /// <param name="options">The admitted index options.</param>
     /// <returns>The expected scan shape.</returns>
-    public static ulong For(IndexedDrive drive, FileIndexOptions options) =>
+    public static ulong For(IndexedRoot drive, FileIndexOptions options) =>
         drive.Producer == ProducerKind.Enumeration
             ? ForEnumeration(options.RetainedFileNames, options.DirectoryWalk, drive.RootDirectory)
             : ForMft(options.RetainedFileNames, options.MftSource?.IncludeFreed ?? false);

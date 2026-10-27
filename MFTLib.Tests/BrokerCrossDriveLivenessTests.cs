@@ -31,13 +31,14 @@ public sealed partial class BrokerCrossDriveLivenessTests
     public async Task OneDriveStallsWhileOthersFlow()
     {
         await using var scenario = await CrossDriveScenario.OpenAsync();
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
+        var indexU = scenario.IndexFor('U');
         var token = scenario.Token;
         var tipOfU = new UsnJournalCursor(WatchHarness.JournalIdentifier, ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         scenario.Broker.SetTip('U', tipOfU);
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('U')], token);
-        await index.WaitForCatchUpAsync([new VolumeKey('T')], token);
+        await indexT.StartWatchingAsync(token);
+        await indexU.StartWatchingAsync(token);
+        await indexT.WaitForCatchUpAsync(token);
         var runOfT = await scenario.Broker.Watch('T').RunAsync(1);
         var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
         Assert.AreEqual(WatchState.CatchingUp, scenario.DriveOf('U').Watch.State, "U has a backlog to read");
@@ -45,10 +46,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
         scenario.FreezeHostWrites('T');
 
         // U delivers its backlog and catches up while T's pipe is stuck.
-        var backlogApplied = ChangeSignal.WhenApplied(index, "backlog.txt");
+        var backlogApplied = ChangeSignal.WhenApplied(indexU, "backlog.txt");
         runOfU.Push(40, "backlog.txt", tipOfU.NextUsn);
         await backlogApplied;
-        await index.WaitForCatchUpAsync([new VolumeKey('U')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await indexU.WaitForCatchUpAsync(token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('U').Watch.State);
 
         // One tick less than the limit on the client's clock: T has heard nothing for 25 seconds.
@@ -78,7 +79,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             await scenario.AdvanceIntervalAsync();
         }
 
-        var afterApplied = ChangeSignal.WhenApplied(index, "after.txt");
+        var afterApplied = ChangeSignal.WhenApplied(indexU, "after.txt");
         runOfU.Push(41, "after.txt", tipOfU.NextUsn + 100);
         await afterApplied;
         Assert.IsEmpty(scenario.FaultsOf('U'));
@@ -100,16 +101,17 @@ public sealed partial class BrokerCrossDriveLivenessTests
     public async Task HostWatchdogNamesWedgedLoop_FaultsChannelWithHostMessage_NoRecovery()
     {
         await using var scenario = await CrossDriveScenario.OpenAsync();
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
+        var indexU = scenario.IndexFor('U');
         var token = scenario.Token;
         var wedged = new TestGate();
         try
         {
             scenario.Broker.Watch('T').WedgeNextRunInProcessing("wedged loop", wedged);
-            await index.StartWatchingAsync([new VolumeKey('T')], token);
-            await index.StartWatchingAsync([new VolumeKey('U')], token);
-            await index.WaitForCatchUpAsync([new VolumeKey('T')], token);
-            await index.WaitForCatchUpAsync([new VolumeKey('U')], token);
+            await indexT.StartWatchingAsync(token);
+            await indexU.StartWatchingAsync(token);
+            await indexT.WaitForCatchUpAsync(token);
+            await indexU.WaitForCatchUpAsync(token);
             await wedged.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
             scenario.BeginCadence('T', 'U');
@@ -141,7 +143,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
                 await scenario.AdvanceIntervalAsync();
             }
 
-            var applied = ChangeSignal.WhenApplied(index, "u-after.txt");
+            var applied = ChangeSignal.WhenApplied(indexU, "u-after.txt");
             runOfU.Push(40, "u-after.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
             await applied;
             Assert.IsEmpty(scenario.FaultsOf('U'));
@@ -163,12 +165,13 @@ public sealed partial class BrokerCrossDriveLivenessTests
     public async Task IdleWatchOverBroker_StaysAliveUnderFakeClock()
     {
         await using var scenario = await CrossDriveScenario.OpenAsync();
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
+        var indexU = scenario.IndexFor('U');
         var token = scenario.Token;
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('U')], token);
-        await index.WaitForCatchUpAsync([new VolumeKey('T')], token);
-        await index.WaitForCatchUpAsync([new VolumeKey('U')], token);
+        await indexT.StartWatchingAsync(token);
+        await indexU.StartWatchingAsync(token);
+        await indexT.WaitForCatchUpAsync(token);
+        await indexU.WaitForCatchUpAsync(token);
         var runOfT = await scenario.Broker.Watch('T').RunAsync(1);
         scenario.BeginCadence('T', 'U');
 
@@ -179,8 +182,9 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         Assert.IsEmpty(scenario.Faults);
         Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted);
-        Assert.IsTrue(index.Drives.All(drive => drive.Watch.State == WatchState.CaughtUp));
-        var applied = ChangeSignal.WhenApplied(index, "late.txt");
+        Assert.AreEqual(WatchState.CaughtUp, indexT.Status.Watch.State);
+        Assert.AreEqual(WatchState.CaughtUp, indexU.Status.Watch.State);
+        var applied = ChangeSignal.WhenApplied(indexT, "late.txt");
         runOfT.Push(40, "late.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         await applied;
         Assert.IsFalse(runOfT.Cancelled.IsCompleted);
@@ -220,12 +224,13 @@ public sealed partial class BrokerCrossDriveLivenessTests
     public async Task HostErrorOverBroker_RecoversByRescan()
     {
         await using var scenario = await CrossDriveScenario.OpenAsync();
-        var index = scenario.Index;
+        var indexT = scenario.IndexFor('T');
+        var indexU = scenario.IndexFor('U');
         var token = scenario.Token;
-        await index.StartWatchingAsync([new VolumeKey('T')], token);
-        await index.StartWatchingAsync([new VolumeKey('U')], token);
-        await index.WaitForCatchUpAsync([new VolumeKey('T')], token);
-        await index.WaitForCatchUpAsync([new VolumeKey('U')], token);
+        await indexT.StartWatchingAsync(token);
+        await indexU.StartWatchingAsync(token);
+        await indexT.WaitForCatchUpAsync(token);
+        await indexU.WaitForCatchUpAsync(token);
         var firstRunOfT = await scenario.Broker.Watch('T').RunAsync(1);
         var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
 
@@ -237,15 +242,15 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip, secondRunOfT.Since,
             "the recovered watch starts from the new block's cursor");
         Assert.AreEqual(2, scenario.ScansOf('T'), "the open's scan and the recovery's one scan");
-        var applied = ChangeSignal.WhenApplied(index, "recovered.txt");
+        var applied = ChangeSignal.WhenApplied(indexT, "recovered.txt");
         secondRunOfT.Push(41, "recovered.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         await applied;
 
         Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('T').Watch.State);
         Assert.IsNull(scenario.DriveOf('T').Watch.FailureMessage);
         Assert.AreSequenceEqual([WatchFaultKind.Drive], [.. scenario.FaultsOf('T').Select(other => other.Kind)], "recovered: no Recovery fault");
-        Assert.HasCount(1, index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token), "T's block is the recovery's");
-        Assert.IsEmpty(index.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token));
+        Assert.HasCount(1, indexT.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token), "T's block is the recovery's");
+        Assert.IsEmpty(indexT.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token));
         Assert.AreEqual(1, scenario.ScansOf('U'), "U was not rescanned");
         Assert.AreEqual(1, scenario.Broker.Watch('U').StartedCount, "U's pipe was not reopened");
         Assert.IsFalse(runOfU.Cancelled.IsCompleted);

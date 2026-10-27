@@ -20,22 +20,25 @@ public class FileIndexDisposalOrderTests
     public async Task Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates()
     {
         using var harness = new WatchHarness('T', 'U', 'V');
-        await harness.Index.StartWatchingAsync([new VolumeKey('V')], Token);
+        await harness.IndexFor('V').StartWatchingAsync(Token);
         var watchOfV = harness.Source.WatchFor('V');
         var heldT = harness.HoldNextProduction('T');
         var heldU = harness.HoldNextProduction('U');
-        var rescanT = harness.Index.RescanAsync([new VolumeKey('T')], Token);
-        var rescanU = harness.Index.RescanAsync([new VolumeKey('U')], Token);
+        var rescanT = harness.IndexFor('T').RescanAsync(Token);
+        var rescanU = harness.IndexFor('U').RescanAsync(Token);
         await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await Task.WhenAll(
+            harness.IndexFor('T').DisposeAsync().AsTask(),
+            harness.IndexFor('U').DisposeAsync().AsTask(),
+            harness.IndexFor('V').DisposeAsync().AsTask()).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, watchOfV.DisposeCount, "disposal awaited V's pump, which disposed its handle");
         foreach (var driveLetter in "TUV")
         {
-            Assert.IsTrue(harness.Index.AreDriveGatesFreeForTest(new VolumeKey(driveLetter)),
+            Assert.IsTrue(harness.IndexFor(driveLetter).AreDriveGatesFreeForTest(new VolumeKey(driveLetter)),
                 $"a gate of {driveLetter} is still held");
         }
     }
@@ -45,7 +48,7 @@ public class FileIndexDisposalOrderTests
     {
         using var harness = new WatchHarness('T');
         var held = harness.HoldNextProduction('T');
-        var rescan = harness.Index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+        var rescan = harness.IndexFor('T').RescanAsync(CancellationToken.None);
         await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var disposal = harness.Index.DisposeAsync().AsTask();
@@ -77,7 +80,7 @@ public class FileIndexDisposalOrderTests
         var disposal = index.DisposeAsync().AsTask();
         await lifecycleGatesTaken.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.IsFalse(index.AreDriveGatesFreeForTest(new VolumeKey('U')), "disposal holds every lifecycle gate");
+        Assert.IsFalse(index.AreDriveGatesFreeForTest(new VolumeKey('T')), "disposal holds every lifecycle gate");
         Assert.IsFalse(disposal.IsCompleted, "disposal waits for the batch that holds T's write gate");
         batch.Release();
         var changes = await apply.WaitAsync(HangGuard, TestContext.CancellationToken);

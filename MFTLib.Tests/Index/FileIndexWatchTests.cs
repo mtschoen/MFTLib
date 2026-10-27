@@ -14,6 +14,8 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
     TempDirectory? _enumerationDir;
     string EnumerationRoot => _enumerationDir!.Path;
     FileIndex? _index;
+    FileIndex? _enumIndex;
+    FileIndex? _offlineIndex;
 
     [TestInitialize]
     public async Task Initialize()
@@ -32,22 +34,31 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
             writer.Complete(ChangeMoment, null);
         }
 
+        var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+        [
+            new SyntheticRow(5, ".", 5) { IsDirectory = true },
+            new SyntheticRow(6, "Documents", 5) { IsDirectory = true },
+            new SyntheticRow(7, "readme.md", 6)
+        ])
+        { ScanTimestamp = ChangeMoment });
+
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives =
-            [
-                SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
-                SyntheticIndexedDrive.Create(new VolumeKey('E'), EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
-                SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration)
-            ],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
             CacheDirectory = CacheDirectoryPath,
-            MftSource = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
-            [
-                new SyntheticRow(5, ".", 5) { IsDirectory = true },
-                new SyntheticRow(6, "Documents", 5) { IsDirectory = true },
-                new SyntheticRow(7, "readme.md", 6)
-            ])
-            { ScanTimestamp = ChangeMoment })
+            MftSource = source
+        }, CancellationToken.None);
+        _enumIndex = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('E'), EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
+            CacheDirectory = CacheDirectoryPath,
+            MftSource = source
+        }, CancellationToken.None);
+        _offlineIndex = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration),
+            CacheDirectory = CacheDirectoryPath,
+            MftSource = source
         }, CancellationToken.None);
     }
 
@@ -58,6 +69,16 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
             if (_index is not null)
             {
                 await _index.DisposeAsync();
+            }
+
+            if (_enumIndex is not null)
+            {
+                await _enumIndex.DisposeAsync();
+            }
+
+            if (_offlineIndex is not null)
+            {
+                await _offlineIndex.DisposeAsync();
             }
         }
         finally
@@ -91,10 +112,12 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
     [TestMethod]
     public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ReportsNotApplicable()
     {
-        Assert.IsFalse(_index!.Drives[1].Watch.IsSupported);
-        Assert.IsFalse(_index!.Drives[0].Watch.IsSupported, "no source offers a watch source");
+        Assert.IsFalse(_enumIndex!.Status.Watch.IsSupported);
+        Assert.IsFalse(_index!.Status.Watch.IsSupported, "no source offers a watch source");
         await DriveResultAssertions.NotApplicableAsync(
-            () => _index!.StartWatchingAsync([new VolumeKey('T')], CancellationToken.None));
+            () => _index!.StartWatchingAsync(CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(
+            () => _enumIndex!.StartWatchingAsync(CancellationToken.None));
     }
 
     [TestMethod]
@@ -104,13 +127,13 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('E'), TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration)],
+            Root = SyntheticIndexedDrive.Create(new VolumeKey('E'), TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
             CacheDirectory = Path.Combine(CacheDirectoryPath, "enumeration-only"),
             MftSource = TestMftSources.WatchOnly(source)
         }, CancellationToken.None);
 
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync([new VolumeKey('E')], CancellationToken.None));
+            () => index.StartWatchingAsync(CancellationToken.None));
 
         Assert.IsFalse(source.WasCalled);
     }
@@ -119,7 +142,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
     public async Task ApplyJournalEntries_OnEnumerationDrive_ThrowsInvalidOperation()
     {
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => _index!.ApplyJournalEntriesAsync('E', [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], 5, 100));
+            () => _enumIndex!.ApplyJournalEntriesAsync('E', [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], 5, 100));
 
         Assert.Contains("enumeration producer", exception.Message);
     }
@@ -156,7 +179,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
         Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
         Assert.AreEqual("injected.txt", observed[0].Entry.Name);
         Assert.AreEqual(observed[0], applied[0]);
-        var root = _index!.Root(new VolumeKey('T'), TestContext.CancellationToken);
+        var root = _index!.Root(TestContext.CancellationToken);
         Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(100L, root.DriveBlock.Block.Header.UsnNextUsn);
         Assert.HasCount(1, _index!.Search(new SearchQuery("injected"), TestContext.CancellationToken));
@@ -281,13 +304,13 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
             [Entry(50_000_000, 0, "far.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 300);
 
-        Assert.AreEqual(DriveState.Ready, _index!.Drives[0].State);
-        Assert.IsTrue(_index!.Drives[0].Block!.IsCapacityExhausted);
+        Assert.AreEqual(DriveState.Ready, _index!.Status.State);
+        Assert.IsTrue(_index!.Status.Block!.IsCapacityExhausted);
         Assert.IsNotNull(_index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
 
-        await _index!.RescanAsync([new VolumeKey('T')], CancellationToken.None);
+        await _index!.RescanAsync(CancellationToken.None);
 
-        var replaced = _index!.Drives.Single(drive => drive.Drive == new VolumeKey('T'));
+        var replaced = _index!.Status;
         Assert.AreEqual(DriveState.Ready, replaced.State);
         Assert.IsFalse(replaced.Block!.IsCapacityExhausted);
         Assert.IsNotNull(_index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
@@ -303,7 +326,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
     public async Task ApplyJournalEntries_ConfiguredButOfflineDriveThrowsInvalidOperation()
     {
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => _index!.ApplyJournalEntriesAsync('Z', [], 0, 0));
+            () => _offlineIndex!.ApplyJournalEntriesAsync('Z', [], 0, 0));
 
         Assert.Contains("offline", exception.Message);
     }

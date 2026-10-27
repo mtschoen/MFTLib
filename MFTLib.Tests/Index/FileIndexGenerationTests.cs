@@ -13,7 +13,7 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
 {
     public TestContext TestContext { get; set; } = null!;
 
-    static ulong GenerationOf(FileIndex index) => index.Drives.Single().Block!.Generation;
+    static ulong GenerationOf(FileIndex index) => index.Status.Block!.Generation;
 
     [TestMethod]
     public async Task OpenAsync_ColdScanWithNoPreviousBlock_StartsAtOne()
@@ -28,10 +28,10 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken);
 
-        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
+        await index.RescanAsync(TestContext.CancellationToken);
         Assert.AreEqual(2ul, GenerationOf(index));
 
-        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
+        await index.RescanAsync(TestContext.CancellationToken);
         Assert.AreEqual(3ul, GenerationOf(index));
     }
 
@@ -40,13 +40,13 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
     {
         await using (var first = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken))
         {
-            await first.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
+            await first.RescanAsync(TestContext.CancellationToken);
             Assert.AreEqual(2ul, GenerationOf(first));
         }
 
         await using var warm = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken);
 
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, warm.Drives.Single().Block!.Origin);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, warm.Status.Block!.Origin);
         Assert.AreEqual(2ul, GenerationOf(warm));
     }
 
@@ -60,12 +60,12 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
         await index.ApplyJournalEntriesAsync('T', [WatchHarness.Create(9, "first.txt")],
             WatchHarness.JournalIdentifier, 600);
         observed.Add(GenerationOf(index));
-        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
+        await index.RescanAsync(TestContext.CancellationToken);
         observed.Add(GenerationOf(index));
         await index.ApplyJournalEntriesAsync('T', [WatchHarness.Create(10, "second.txt")],
             WatchHarness.JournalIdentifier, 700);
         observed.Add(GenerationOf(index));
-        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
+        await index.RescanAsync(TestContext.CancellationToken);
         observed.Add(GenerationOf(index));
 
         var message = string.Join(",", observed);

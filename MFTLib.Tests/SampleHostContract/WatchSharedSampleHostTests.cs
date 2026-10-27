@@ -16,12 +16,12 @@ public sealed class WatchSharedSampleHostTests : SharedSampleHostTests
     public void DriveOpenedReporter_PrintsOneSelfDescribingLinePerReport()
     {
         using var output = new StringWriter();
-        var reporter = new SampleProgram.Watch.SampleHost.DriveOpenedReporter(output);
+        var reporter = new SampleProgram.Watch.SampleHost.DriveOpenedReporter(output, 3);
 
-        reporter.Report(new IndexDriveOpened(new VolumeKey('D'), 2, 3));
-        reporter.Report(new IndexDriveOpened(new VolumeKey('C'), 1, 3));
+        reporter.Report(new VolumeKey('D'));
+        reporter.Report(new VolumeKey('C'));
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        Assert.AreSequenceEqual(["D: opened (2 of 3 drives)", "C: opened (1 of 3 drives)"], lines);
+        Assert.AreSequenceEqual(["D: opened (1 of 3 drives)", "C: opened (2 of 3 drives)"], lines);
     }
 }

@@ -1,11 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The client surface over one or more mapped drive blocks. Opening picks a producer per
-///     drive, warm-starts from a valid block or cold-scans, and publishes a snapshot. A rescan
+///     The client surface over one mapped root block. Opening picks a producer for the configured
+///     root, warm-starts from a valid block or cold-scans, and publishes the block. A rescan
 ///     writes a new block beside the old one and swaps it in; handles minted from the old
-///     snapshot keep the old block mapped until they are collected, so a held handle never
-///     dangles across a rescan.
+///     block keep it mapped until they are collected, so a held handle never dangles across a rescan.
 /// </summary>
 public sealed partial class FileIndex : IAsyncDisposable
 {
@@ -15,7 +14,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     Cancelled by <see cref="DisposeAsync" /> before it waits for anything. Every query's
     ///     effective token is linked to this one, so a scan in flight is told to stop rather than
     ///     holding disposal open for the rest of a whole-drive pass. Every rescan's token is linked
-    ///     to it as well. Deliberately not disposed, for the same reason as the drives' gates: a
+    ///     to it as well. Deliberately not disposed, for the same reason as the runtime's gates: a
     ///     query that raced the disposal still reads this token, and a disposed source would
     ///     answer it with an exception naming the source rather than the index.
     /// </summary>
@@ -28,40 +27,44 @@ public sealed partial class FileIndex : IAsyncDisposable
     internal CancellationToken DisposalToken => _disposalCancellation.Token;
 
     /// <summary>
-    ///     Guards every drive's runtime state, and is the one step
-    ///     that publishes a snapshot: a commit of a drive's block, the new snapshot, and the
-    ///     retirement of the replaced block all happen under it, so a reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
-    ///     <see cref="TryGetDriveOrdinal" />) never observes a partial swap. It is innermost in the
+    ///     Guards the root's runtime state, and is the one step
+    ///     that publishes a block: a commit of the root's block and the
+    ///     retirement of the replaced block happen under it, so a reader (<see cref="Status" />,
+    ///     <see cref="CurrentBlock" />) never observes a partial swap. It is innermost in the
     ///     lock order (see <see cref="DriveRuntime" />) and never held across an <c>await</c>.
     /// </summary>
     readonly Lock _stateLock = new();
 
-    /// <summary>
-    ///     The published drive blocks queries borrow: an immutable array of active blocks
-    ///     replaced on every publication, or null once disposal has unpublished it.
-    /// </summary>
-    DriveBlock[]? _snapshot = [];
     bool _disposed;
-    ushort _nextDriveOrdinal;
 
     /// <summary>
-    ///     How many scans of one drive in a row may lose their journal catch-up before a scan
-    ///     operation stops rescanning the drive by itself.
+    ///     How many scans of the root in a row may lose their journal catch-up before a scan
+    ///     operation stops rescanning the root by itself.
     /// </summary>
     internal const int LostCatchUpRecoveryLimit = 3;
-
-    ushort AllocateDriveOrdinalLocked() => _nextDriveOrdinal++;
-
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath, IndexHooks hooks)
     {
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         Hooks = hooks;
-        foreach (var configuredDrive in _options.Drives)
+        var configuredRoot = _options.Root ?? throw new InvalidOperationException("Prepared options must have a Root.");
+        _runtime = new DriveRuntime(this, configuredRoot);
+        Kind = DriveKind.For(configuredRoot.Producer, _options.MftSource);
+        MatchableRootDirectoryPath = Kind.ToMatchablePrefix(Kind.NormalizeRoot(configuredRoot.RootDirectory));
+    }
+
+    internal RootKey RootKey => _runtime.Drive;
+
+    internal DriveKind Kind { get; }
+
+    internal string? MatchableRootDirectoryPath { get; }
+
+    internal void ThrowIfDisposed()
+    {
+        lock (_stateLock)
         {
-            var drive = configuredDrive.Drive.Validated();
-            _driveRuntimes.Add(drive, new DriveRuntime(this, configuredDrive));
+            ObjectDisposedException.ThrowIf(_disposed, this);
         }
     }
 
@@ -71,10 +74,9 @@ public sealed partial class FileIndex : IAsyncDisposable
     internal string CacheDirectoryPath { get; }
 
     /// <summary>
-    ///     Recomputed from the block headers on every read, so it reflects the latest mutation.
-    ///     Ordered to follow <see cref="FileIndexOptions.Drives" />, including blockless drives.
+    ///     Recomputed from the block header on every read, so it reflects the latest mutation.
     /// </summary>
-    public IReadOnlyList<DriveStatus> Drives
+    public RootStatus Status
     {
         get
         {
@@ -82,55 +84,46 @@ public sealed partial class FileIndex : IAsyncDisposable
             lock (_stateLock)
             {
                 // Checked under the lock: disposal sets the flag under it before it unpublishes
-                // any block, so a read that sees the flag clear sees every block still published.
+                // the block, so a read that sees the flag clear sees the block still published.
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                var statuses = new List<DriveStatus>(_options.Drives.Count);
-                foreach (var configured in _options.Drives)
-                {
-                    statuses.Add(GetDriveRuntime(configured.Drive).DescribeLocked());
-                }
-
-                return statuses;
+                return _runtime.DescribeLocked();
             }
         }
     }
 
-    internal IReadOnlyList<DriveBlock> CurrentSnapshot
+    internal DriveBlock? CurrentBlock
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
             lock (_stateLock)
             {
-                return _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _runtime.Block;
             }
         }
     }
 
     /// <summary>
-    ///     Opens an index over the configured drives, adopting a valid cached block for each or
-    ///     producing a fresh one. The returned task completes once every drive has settled. A
-    ///     missing drive settles as <see cref="DriveState.Offline" />, and an operational scan
-    ///     failure settles as <see cref="DriveState.Failed" /> in <see cref="Drives" /> without
-    ///     failing the open, for both MFT and enumeration producers; this includes an MFT drive that needs
-    ///     a scan when <see cref="FileIndexOptions.MftSource" /> is null. Argument validation performed
-    ///     before any drive is produced throws. Caller cancellation fails the whole open and releases
-    ///     every adopted block.
+    ///     Opens an index over the configured root, adopting a valid cached block or
+    ///     producing a fresh one. A missing root settles as <see cref="DriveState.Offline" />, and an
+    ///     operational scan failure settles as <see cref="DriveState.Failed" /> in <see cref="Status" />
+    ///     without failing the open, for both MFT and enumeration producers; this includes an MFT root
+    ///     that needs a scan when <see cref="FileIndexOptions.MftSource" /> is null. Argument validation
+    ///     performed before production throws. Caller cancellation fails the open and releases any adopted block.
     /// </summary>
-    /// <param name="options">The drives to index and the cache, progress and producer settings.</param>
+    /// <param name="options">The root to index and the cache, progress and producer settings.</param>
     /// <param name="cancellationToken">
-    ///     Cancels the open. Every drive's settle finishes first, and blocks already adopted are
-    ///     released before the cancellation is thrown.
+    ///     Cancels the open. Any adopted block is released before the cancellation is thrown.
     /// </param>
     /// <returns>The opened index, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" /> or a drive
-    ///     specifies an undefined <see cref="IndexedDrive.Producer" />.
+    ///     <paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" /> or the root
+    ///     specifies an undefined <see cref="IndexedRoot.Producer" />.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     Cache configuration is missing, dump options are invalid, or <see cref="FileIndexOptions.Drives" /> is null,
-    ///     contains a null or invalid drive, or lists a drive more than once.
+    ///     Cache configuration is missing, dump options are invalid, or <see cref="FileIndexOptions.Root" /> is null
+    ///     or invalid.
     /// </exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
     public static Task<FileIndex> OpenAsync(FileIndexOptions options,
@@ -164,49 +157,14 @@ public sealed partial class FileIndex : IAsyncDisposable
         var index = new FileIndex(options, cacheDirectoryPath, hooks);
         try
         {
-            await index.SettleDrivesAsync(cancellationToken).ConfigureAwait(false);
+            await index.SettleDriveAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            // Every drive's settle has finished by now, so a failure or a cancellation must not
-            // leak the mappings (and, for a no-cache block, the temp file) that the drives that
-            // did settle already adopted.
             index.ReleaseUnpublishedBlocks();
             throw;
         }
 
-        lock (index._stateLock)
-        {
-            index.PublishSnapshotLocked();
-        }
-
         return index;
-    }
-
-    internal bool TryGetDriveOrdinal(RootKey drive, out ushort driveOrdinal)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        lock (_stateLock)
-        {
-            return TryGetDriveOrdinalLocked(drive, out driveOrdinal);
-        }
-    }
-
-    /// <summary>
-    ///     The same lookup without the disposal check, for the watch paths that run while an index
-    ///     is being torn down: recording a drive's failure or clearing it on an index that is going
-    ///     away has nothing to do, not a different exception to raise over the one already in
-    ///     flight. The caller holds <see cref="_stateLock" />.
-    /// </summary>
-    bool TryGetDriveOrdinalLocked(RootKey drive, out ushort driveOrdinal)
-    {
-        if (_driveRuntimes.TryGetValue(drive.Validated(), out var runtime) && runtime.Block is { } block)
-        {
-            driveOrdinal = block.DriveOrdinal;
-            return true;
-        }
-
-        driveOrdinal = 0;
-        return false;
     }
 }

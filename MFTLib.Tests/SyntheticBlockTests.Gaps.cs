@@ -31,7 +31,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         Assert.IsEmpty(index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact), TestContext.CancellationToken));
-        Assert.AreEqual(5u, index.Drives.Single().Block!.LiveRowCount, "the tombstone and the free slot are not live");
+        Assert.AreEqual(5u, index.Status.Block!.LiveRowCount, "the tombstone and the free slot are not live");
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public partial class SyntheticBlockTests
                 Reason = SyntheticJournalReason.FileDelete | SyntheticJournalReason.Close
             }], new SyntheticJournalCursor(0, 0));
 
-        Assert.IsFalse(index.Drives.Single().Watch.IsSupported, "a cache-only open has no watch source");
+        Assert.IsFalse(index.Status.Watch.IsSupported, "a cache-only open has no watch source");
         Assert.IsTrue(zebra.IsDeleted);
         Assert.IsEmpty(index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact), TestContext.CancellationToken));
         Assert.HasCount(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact), TestContext.CancellationToken));
@@ -148,7 +148,7 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(Moment, SyntheticBlock.ReadHeader(path, Serial).ScanTimestamp);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        Assert.AreEqual(Moment, index.Drives.Single().Block!.ScanTimestamp);
+        Assert.AreEqual(Moment, index.Status.Block!.ScanTimestamp);
     }
 
     [TestMethod]
@@ -187,7 +187,7 @@ public partial class SyntheticBlockTests
 
         await using var index = await FileIndex.OpenAsync(
             CacheOnly(enumeration) with { CacheTag = originalTag }, Token);
-        var drive = index.Drives.Single();
+        var drive = index.Status;
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, drive.Failure?.Kind);
         Assert.IsNull(drive.Block);

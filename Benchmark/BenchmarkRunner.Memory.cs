@@ -87,10 +87,10 @@ public partial class BenchmarkRunner
             CacheDirectory = request.InputPath,
             CacheMode = CacheMode.ExistingOnly,
             CacheTag = tag,
-            Drives = [new IndexedDrive(rootKey, input.RootDirectory, input.VolumeSerial, input.Producer)]
+            Root = new IndexedRoot(rootKey, input.RootDirectory, input.VolumeSerial, input.Producer)
         }, CancellationToken.None).ConfigureAwait(false);
         using var borrow = index.BorrowCurrentSnapshot();
-        var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, rootKey);
+        var drive = borrow.DriveBlock;
         if (drive is null || drive.Block.Header.ScanShape != input.ScanShape)
         {
             throw new InvalidOperationException($"Drive {input.Drive}: unavailable or replaced during memory measurement.");

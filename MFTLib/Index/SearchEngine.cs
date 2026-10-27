@@ -4,27 +4,22 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     The parallel column scan behind every name search. There are no secondary indexes in v1,
-///     so a search reads the name, flags, size, and modified columns of every live row on every
+///     so a search reads the name, flags, size, and modified columns of every live row on the
 ///     current drive block and materializes the whole match set. Callers page by slicing.
 /// </summary>
 static class SearchEngine
 {
-    internal static List<FileEntry> Search(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
+    internal static List<FileEntry> Search(DriveBlock? driveBlock, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
         NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var subtree = SubtreeAnchor.Resolve(snapshot, query);
+        var subtree = SubtreeAnchor.Resolve(driveBlock, query);
         var results = new List<FileEntry>();
-        foreach (var driveBlock in snapshot)
+        if (driveBlock is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
-            {
-                continue;
-            }
-
             SearchOneDrive(new DriveScan(driveBlock, query, subtree?.RowIndex), results, cancellationToken);
         }
 
@@ -33,27 +28,21 @@ static class SearchEngine
     }
 
     /// <summary>
-    ///     The streaming half of <see cref="Search" />: the same drives in the same order and
-    ///     the same rows in ascending row order within each, so the entries produced are
-    ///     exactly the ones <see cref="Search" /> would return, without the list. Single
-    ///     threaded where <see cref="Search" /> partitions: the caller pulls rows one at a
+    ///     The streaming half of <see cref="Search" />: the same rows in ascending row order, so the
+    ///     entries produced are exactly the ones <see cref="Search" /> would return, without the list.
+    ///     Single threaded where <see cref="Search" /> partitions: the caller pulls rows one at a
     ///     time, and the borrow <see cref="FileIndex.Enumerate" /> takes is what keeps the
-    ///     blocks mapped while it does.
+    ///     block mapped while it does.
     /// </summary>
-    internal static IEnumerable<FileEntry> Enumerate(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
+    internal static IEnumerable<FileEntry> Enumerate(DriveBlock? driveBlock, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var subtree = SubtreeAnchor.Resolve(snapshot, query);
-        foreach (var driveBlock in snapshot)
+        var subtree = SubtreeAnchor.Resolve(driveBlock, query);
+        if (driveBlock is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
-            {
-                continue;
-            }
-
             var scan = new DriveScan(driveBlock, query, subtree?.RowIndex);
             foreach (var entry in EnumerateDrive(scan, cancellationToken))
             {
