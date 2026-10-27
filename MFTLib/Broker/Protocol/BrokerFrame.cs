@@ -78,17 +78,54 @@ readonly record struct BrokerFrame
 
     internal BrokerCatchUpLoss? CatchUpLoss { get; private init; }
 
+    internal const string PipeNamePrefix = "mftlib-broker-";
+    const int PipeNameLength = 14 + 32;
+
     public DriveKey RequireDrive() =>
         Drive ?? throw new InvalidDataException($"{Kind} frame is missing its drive field");
 
     public string RequirePipeName()
     {
-        return PipeName ?? throw new InvalidDataException($"{Kind} frame is missing its pipe name field");
+        var pipeName = PipeName ?? throw new InvalidDataException($"{Kind} frame is missing its pipe name field");
+        if (!IsValidPipeName(pipeName))
+        {
+            throw new InvalidDataException(
+                $"{Kind} frame carries an invalid pipe name '{pipeName}'; expected '{PipeNamePrefix}<32 hex digits>'.");
+        }
+
+        return pipeName;
     }
 
-    public string RequireSectionName()
+    public string RequireSectionName(DriveKey drive)
     {
-        return SectionName ?? throw new InvalidDataException($"{Kind} frame is missing its section name field");
+        drive = drive.Validated();
+        var sectionName = SectionName ?? throw new InvalidDataException($"{Kind} frame is missing its section name field");
+        if (!BlockSectionNaming.IsValid(sectionName, drive))
+        {
+            throw new InvalidDataException(
+                $"{Kind} frame carries an invalid section name '{sectionName}' for drive {drive}; expected '{BlockSectionNaming.Prefix}{drive}-<32 hex digits>'.");
+        }
+
+        return sectionName;
+    }
+
+    static bool IsValidPipeName(string pipeName)
+    {
+        if (pipeName.Length != PipeNameLength ||
+            !pipeName.StartsWith(PipeNamePrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        foreach (var character in pipeName.AsSpan(PipeNamePrefix.Length))
+        {
+            if (!char.IsAsciiHexDigit(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public string RequireMessage()

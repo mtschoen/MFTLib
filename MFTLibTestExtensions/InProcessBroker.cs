@@ -41,12 +41,10 @@ sealed class TestBlockSections : IDisposable
     readonly ConcurrentDictionary<string, (BlockFile Block, RecordingLifetime Lifetime)> _sections =
         new(StringComparer.Ordinal);
 
-    int _next;
-
     public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(DriveKey drive,
         BlockFileCreateOptions options)
     {
-        var sectionName = $"section-{drive}-{Interlocked.Increment(ref _next)}";
+        var sectionName = NamedBlockSection.BuildSectionName(drive);
         var block = BlockFile.Create(options);
         var lifetime = new RecordingLifetime();
         _sections[sectionName] = (block, lifetime);
@@ -68,7 +66,9 @@ sealed class TestBlockSections : IDisposable
     /// <summary>The one section created so far for <paramref name="drive" />.</summary>
     public (string SectionName, BlockFile Block, RecordingLifetime Lifetime) ForDrive(DriveKey drive)
     {
-        var (sectionName, section) = _sections.Single(pair => pair.Key.StartsWith($"section-{drive}-", StringComparison.Ordinal));
+        drive = drive.Validated();
+        var (sectionName, section) = _sections.Single(pair =>
+            pair.Key.StartsWith($"{BlockSectionNaming.Prefix}{drive}-", StringComparison.Ordinal));
         return (sectionName, section.Block, section.Lifetime);
     }
 

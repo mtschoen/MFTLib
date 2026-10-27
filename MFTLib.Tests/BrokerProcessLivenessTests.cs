@@ -340,13 +340,13 @@ public class BrokerProcessLivenessTests
     // A ScriptedBroker on a fake clock whose control pipe and drive pipes count what the client has read.
     sealed class LivenessSession : IAsyncDisposable
     {
-        readonly ConcurrentDictionary<char, ReadCounter> _driveReads = new();
+        readonly ConcurrentDictionary<string, ReadCounter> _driveReads = new(StringComparer.Ordinal);
         long _controlSent;
 
         public LivenessSession(TimeProvider clock)
         {
             Broker = new ScriptedBroker(clock, ControlReads.Wrap,
-                (pipeName, stream) => DriveReads(pipeName.Split('-')[^2][0]).Wrap(stream));
+                (pipeName, stream) => DriveReads(pipeName).Wrap(stream));
         }
 
         public ScriptedBroker Broker { get; }
@@ -355,7 +355,7 @@ public class BrokerProcessLivenessTests
 
         public ReadCounter ControlReads { get; } = new();
 
-        ReadCounter DriveReads(char letter) => _driveReads.GetOrAdd(letter, _ => new ReadCounter());
+        ReadCounter DriveReads(string pipeName) => _driveReads.GetOrAdd(pipeName, _ => new ReadCounter());
 
         public Task SendControlAsync(Action<IBufferWriter<byte>> write)
         {
@@ -382,11 +382,12 @@ public class BrokerProcessLivenessTests
             await AnswerQueryVolumeAsync(Volume);
             var open = await Broker.ReadRequestAsync();
             Assert.AreEqual(BrokerFrameKind.OpenChannel, open.Kind);
-            var pipe = await Broker.Pipes.ConnectAsync(open.RequirePipeName(), CancellationToken.None)
+            var pipeName = open.RequirePipeName();
+            var pipe = await Broker.Pipes.ConnectAsync(pipeName, CancellationToken.None)
                 .WaitAsync(HangGuard);
             await SendControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, open.RequestId));
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(pipe).WaitAsync(HangGuard))?.Kind);
-            var scripted = new StubbedScan(pipe, DriveReads(letter), scan);
+            var scripted = new StubbedScan(pipe, DriveReads(pipeName), scan);
             await scripted.SendAsync(writer => BrokerProtocol.WriteCursor(writer, new UsnJournalCursor(7, 1000)));
             await scripted.SettledAsync();
             return scripted;

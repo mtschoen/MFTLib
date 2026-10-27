@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using MFTLib.Index;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -191,7 +192,7 @@ public class DefaultElevatedEntryRunnerTests
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
             await HostChannelHarness.WriteFrameAsync(drive,
-                writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-runner-scan-C"));
+                writer => BrokerProtocol.WriteArmAndScan(writer, NamedBlockSection.BuildSectionName('C')));
 
             // Reach the cursor query before taking the client ends away, so the reply that
             // follows is written to a pipe that is already broken for certain. A scan that has
@@ -297,7 +298,7 @@ public class DefaultElevatedEntryRunnerTests
     (NamedPipeServerStream Control, NamedPipeServerStream Drive, Task RunTask) StartRunnerWithDrivePipe(Action<int> exitProcess)
     {
         var controlName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
-        _drivePipeName = "mftlib-runner-drive-" + Guid.NewGuid().ToString("N");
+        _drivePipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
         var control = BrokerPipeAccess.CreateServer(controlName);
         var drive = BrokerPipeAccess.CreateServer(_drivePipeName);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess, BrokerLiveness.ElevatedConnectTimeout).RunBroker(controlName), TestContext.CancellationToken);

@@ -93,7 +93,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void RequireSectionName_NullSectionName_ThrowsInvalidDataException()
     {
-        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireSectionName());
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireSectionName('C'));
     }
 
     [TestMethod]

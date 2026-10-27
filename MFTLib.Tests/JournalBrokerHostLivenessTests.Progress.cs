@@ -225,6 +225,6 @@ public partial class JournalBrokerHostLivenessTests
     static HostChannelHarness HarnessHoldingWritesTo(char drive, JournalBrokerHost host, HeldWrites held)
     {
         return new HostChannelHarness(host, wrapDrivePipe: (pipeName, hostEnd) =>
-            pipeName.StartsWith($"harness-{drive}-", StringComparison.Ordinal) ? held.Wrap(hostEnd) : hostEnd);
+            pipeName.StartsWith(HostChannelHarness.PipePrefix(drive), StringComparison.Ordinal) ? held.Wrap(hostEnd) : hostEnd);
     }
 }

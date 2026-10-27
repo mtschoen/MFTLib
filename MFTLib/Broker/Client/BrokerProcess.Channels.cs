@@ -15,8 +15,7 @@ sealed partial class BrokerProcess
         Action<ArrayBufferWriter<byte>> writeFirstRequest, CancellationToken cancellationToken)
     {
         drive = drive.Validated();
-        var sequence = Interlocked.Increment(ref _channelSequence);
-        var pipe = _pipes.Listen($"{_controlPipeName}-{drive}-{sequence}");
+        var pipe = _pipes.Listen(BrokerFrame.PipeNamePrefix + Guid.NewGuid().ToString("N"));
         using var connectCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,
             _lifetime.Token);
         var connection = pipe.WaitForConnectionAsync(connectCancellation.Token);

@@ -1096,3 +1096,22 @@ is skipped and is not a failure (B2). `DriveKey.TryParse(string? text, out Drive
 **Reason:** normal production sets the cache tag fields at block creation (`BlockFile.Create`); the internal writer method had no production caller and existed only so the test package's synthetic editor could rewrite a tag on an existing block.
 
 **Revisit only if:** a concrete production consumer requirement needs in-place cache-tag mutation outside block creation and replacement rescans.
+
+## GrowUsnJournal caps the requested maximum at 8 GiB and 5% of volume total size
+
+**Decision (owner ruling, 2026-10-27, [issue 778](/schoen/MFTLib/issues/778)):** `UsnJournalVolume.GrowUsnJournal`
+(and therefore `BrokerSession.GrowUsnJournalAsync`) caps the requested `MaximumSize` at the smaller of 8 GiB
+(`8,589,934,592` bytes) and 5% of the volume's total size (`totalBytes / 20`), queried at request time through
+`GetDiskSpaceInformationW` (`ActualTotalAllocationUnits * SectorsPerAllocationUnit * BytesPerSector`) with no caching
+and ignoring caller quota or free-space fields. A request above that cap is refused before querying or modifying the
+journal (`ArgumentOutOfRangeException` on `UsnJournalVolume.GrowUsnJournal`, surfaced as a request-id-correlated
+`InvalidOperationException` on `BrokerSession.GrowUsnJournalAsync` without ending the broker session). Broker channel
+pipe names must match `mftlib-broker-` plus 32 ASCII hex digits, and scan section names must match
+`mftlib-block-<drive>-` plus 32 ASCII hex digits for the channel's drive letter.
+
+**Reason:** an elevated broker serves any same-user client process; without a volume-relative and absolute cap, a
+client request could ask `FSCTL_CREATE_USN_JOURNAL` to reserve an arbitrary journal maximum on the volume, and without
+strict prefix-and-hex validation the broker would connect to or map caller-supplied kernel object names outside MFTLib's
+own naming scheme.
+
+**Revisit only if:** a consumer workload on large volumes requires a journal maximum above 8 GiB or 5% of the volume.

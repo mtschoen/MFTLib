@@ -115,7 +115,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task OpenChannel_ConnectsNamedPipeAndReplies()
     {
-        var pipeName = "mftlib-channel-test-" + Guid.NewGuid().ToString("N");
+        var pipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
         await using var server = BrokerPipeAccess.CreateServer(pipeName);
         var host = BrokerHostFactory.Create(new()
         {
@@ -158,7 +158,7 @@ public partial class JournalBrokerHostChannelTests
             return connection.Task;
         });
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 12, 'C', "never"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 12, 'C', harness.NextPipeName('C')));
         var reply = harness.ReadControlAsync();
         await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.ChannelConnectTimeout, 1, reply);
 
@@ -207,7 +207,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: (_, _) => throw new IOException("pipe not found"));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 77, 'C', "missing"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 77, 'C', harness.NextPipeName('C')));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -289,7 +289,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: (_, _) => Task.FromCanceled<Stream>(new CancellationToken(true)));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, 'C', "cancelled"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, 'C', harness.NextPipeName('C')));
         var reply = await harness.ReadControlAsync();
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 22, 'C'));
         var next = await harness.ReadControlAsync();
@@ -297,6 +297,72 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
         Assert.AreEqual(21u, reply.RequestId);
         Assert.AreEqual(22u, next.RequestId);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("other-broker-0123456789abcdef0123456789abcdef")]
+    [DataRow("MFTLIB-BROKER-0123456789abcdef0123456789abcdef")]
+    [DataRow(@"mftlib-broker-0123456789abcdef\123456789abcdef")]
+    [DataRow(@"Global\mftlib-broker-0123456789abcdef0123456789abcdef")]
+    [DataRow(@"Local\mftlib-broker-0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-broker-0123456789abcdef0123456789abcde")]
+    [DataRow("mftlib-broker-0123456789abcdef0123456789abcdef0")]
+    [DataRow("mftlib-broker-0123456789abcdef0123456789abcdeg")]
+    [DataRow("mftlib-broker-0123456789abcdef0123456789abcdef-C-1")]
+    public async Task OpenChannel_InvalidPipeName_RepliesErrorWithoutConnectingAndControlContinues(string invalidPipeName)
+    {
+        var connectorCalls = 0;
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = _ => Volume
+        });
+        await using var harness = new HostChannelHarness(host,
+            connectChannel: (_, _) =>
+            {
+                Interlocked.Increment(ref connectorCalls);
+                return Task.FromException<Stream>(new InvalidOperationException("Connector should not be called."));
+            });
+
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 31, 'C', invalidPipeName));
+        var reply = await harness.ReadControlAsync();
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 32, 'C'));
+        var next = await harness.ReadControlAsync();
+
+        Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
+        Assert.AreEqual(31u, reply.RequestId);
+        Assert.Contains("invalid pipe name", reply.Message!);
+        Assert.AreEqual(0, connectorCalls);
+        Assert.AreEqual(BrokerFrameKind.VolumeInfo, next.Kind);
+        Assert.AreEqual(32u, next.RequestId);
+    }
+
+    [TestMethod]
+    [DataRow("mftlib-broker-0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-broker-ABCDEF0123456789ABCDEF0123456789")]
+    [DataRow("mftlib-broker-0123456789abcdefABCDEF0123456789")]
+    public async Task OpenChannel_ValidHexPipeNames_ConnectAndReplyChannelOpened(string validPipeName)
+    {
+        var connectedNames = new List<string>();
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            WatchDrive = IdleWatch
+        });
+        await using var harness = new HostChannelHarness(host, wrapDrivePipe: (pipeName, stream) =>
+        {
+            connectedNames.Add(pipeName);
+            return stream;
+        });
+
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 45, 'C', validPipeName));
+        var reply = await harness.ReadControlAsync();
+
+        Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind);
+        Assert.AreEqual(45u, reply.RequestId);
+        Assert.AreSequenceEqual([validPipeName], connectedNames);
     }
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> IdleWatch(
         DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,

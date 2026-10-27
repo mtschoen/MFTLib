@@ -29,19 +29,21 @@ sealed partial class JournalBrokerHost
             return;
         }
 
-        // A closed pipe cancels the wait and takes the scan out of the queue; its source never runs.
-        channel.Pipe.Queued();
-        var registration = await ParseThreads.AdmitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _ = request.RequireSectionName(channel.Drive);
+
+            // A closed pipe cancels the wait and takes the scan out of the queue; its source never runs.
+            channel.Pipe.Queued();
+            var registration = await ParseThreads.AdmitAsync(cancellationToken).ConfigureAwait(false);
             ScanOutput output;
             // The scan's share of the budget is returned only once the pipeline below has
             // returned, and the pipeline returns only after the native parse has: the volume and
             // the section are released inside it, then the registration here.
             using (registration)
             {
-                output = await ProduceBlockAsync(channel, request, blockSectionWriter, registration.Allowance,
-                    cancellationToken).ConfigureAwait(false);
+                output = await ProduceBlockAsync(channel, request, blockSectionWriter,
+                    registration.Allowance, cancellationToken).ConfigureAwait(false);
             }
 
             await EmitScanCompletionFramesAsync(channel, output, cancellationToken)
@@ -111,7 +113,7 @@ sealed partial class JournalBrokerHost
                 _volumeAccess.ScanDriveRecordBatches(channel.Drive, parseThreads, reporting, scanOptions,
                     count => recordsOmitted += count, cancellationToken),
                 channel.Pipe);
-            var result = blockSectionWriter.Write(request.RequireSectionName(), cursor, batches,
+            var result = blockSectionWriter.Write(request.RequireSectionName(channel.Drive), cursor, batches,
                 new MftRowSelection(scanOptions, request.RetainedFileNames), reporting, cancellationToken);
             return progressState.Complete(cursor,
                 result with { SkippedRecordCount = result.SkippedRecordCount + recordsOmitted });

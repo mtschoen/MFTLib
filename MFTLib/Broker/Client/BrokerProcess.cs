@@ -14,7 +14,6 @@ sealed partial class BrokerProcess : IAsyncDisposable
     readonly IBrokerPipeFactory _pipes;
     readonly BrokerBlockSectionFactory _createBlockSection;
     readonly TimeProvider _timeProvider;
-    readonly string _controlPipeName;
 
     // Cancelled when the process ends or is disposed; stops the control reader and bounds every
     // control write. It is never linked and never given a timer, so it holds nothing to release,
@@ -23,7 +22,6 @@ sealed partial class BrokerProcess : IAsyncDisposable
     readonly Lock _gate = new();
     readonly HashSet<BrokerDriveChannel> _channels = [];
     readonly Task _controlReader;
-    int _channelSequence;
     int _disposed;
 
     // Why the process is ending, recorded before _lifetime is cancelled so the control reader
@@ -39,18 +37,11 @@ sealed partial class BrokerProcess : IAsyncDisposable
     /// <param name="timeProvider">The clock of every client write and reply timeout.</param>
     internal BrokerProcess(Stream control, IBrokerPipeFactory pipes, BrokerBlockSectionFactory createBlockSection,
         TimeProvider timeProvider)
-        : this(control, pipes, createBlockSection, timeProvider, "mftlib-broker-" + Guid.NewGuid().ToString("N"))
-    {
-    }
-
-    BrokerProcess(Stream control, IBrokerPipeFactory pipes, BrokerBlockSectionFactory createBlockSection,
-        TimeProvider timeProvider, string controlPipeName)
     {
         _control = control;
         _pipes = pipes;
         _createBlockSection = createBlockSection;
         _timeProvider = timeProvider;
-        _controlPipeName = controlPipeName;
         Hooks = new ProcessHooks(this);
         _controlReader = Task.Run(ReadControlAsync, CancellationToken.None);
     }

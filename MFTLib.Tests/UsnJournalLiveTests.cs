@@ -152,6 +152,14 @@ public class UsnJournalLiveTests
         }
 
         var targetMaximum = before.MaximumSize + before.AllocationDelta;
+        var volumeAllowedCap = Math.Min(UsnJournalVolume.MaximumAllowedGrowthBytes, new DriveInfo("C").TotalSize / 20L);
+        if (targetMaximum > volumeAllowedCap)
+        {
+            Assert.Inconclusive(
+                $"Target journal size {targetMaximum} bytes exceeds volume C: cap {volumeAllowedCap} bytes.");
+            return;
+        }
+
         var grown = volume.Journal.GrowUsnJournal(targetMaximum, before.AllocationDelta);
 
         Assert.IsGreaterThanOrEqualTo(targetMaximum, grown.MaximumSize,

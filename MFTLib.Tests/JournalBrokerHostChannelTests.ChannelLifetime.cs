@@ -81,7 +81,7 @@ breakableControl: true);
         // frame to land on the dead control pipe, after the host connected the drive pipe.
         harness.BreakableControl!.BreakPipe();
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, 'C', "pipe"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, 'C', harness.NextPipeName('C')));
 
         await connected.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -105,7 +105,7 @@ breakableControl: true);
         await using var late = new InMemoryPipePair();
         await using var lateStream = new DisposalRecordingStream(late.Host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, 'C', "slow"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, 'C', harness.NextPipeName('C')));
         await connecting.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.CloseControlAsync();
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -185,7 +185,8 @@ breakableControl: true);
             CancellationToken.None);
 
         // The ChannelOpened reply passed the session's end check and is held mid-write.
-        await HostChannelHarness.WriteFrameAsync(client, writer => BrokerProtocol.WriteOpenChannel(writer, 3, 'C', "late"));
+        await HostChannelHarness.WriteFrameAsync(client, writer =>
+            BrokerProtocol.WriteOpenChannel(writer, 3, 'C', "mftlib-broker-" + Guid.NewGuid().ToString("N")));
         await heldReply.Started.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The client goes away: the session ends and its drain starts (the drain's grace timer is

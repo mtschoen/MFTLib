@@ -343,7 +343,7 @@ public partial class JournalBrokerHostTests
             ]);
         await using var harness = new HostChannelHarness(host, blockWriter);
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-progress-C");
+        var frames = await ScanFramesAsync(harness);
 
         Assert.IsGreaterThanOrEqualTo(3, frames.Count, "Expected at least Cursor, ScanProgress, and ScanReady frames.");
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
@@ -381,7 +381,7 @@ public partial class JournalBrokerHostTests
             timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, blockWriter);
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-throttle-C");
+        var frames = await ScanFramesAsync(harness);
 
         var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
         // Frozen time admits the first report, at most one completion flush of the

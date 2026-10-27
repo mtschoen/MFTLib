@@ -149,6 +149,6 @@ public partial class JournalBrokerHostLivenessTests
         }
     }
 
-    [GeneratedRegex(@":harness-C-1\]  frame write kind=(?<kind>\d+)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@":mftlib-broker-43000000000000000000000000000001\]  frame write kind=(?<kind>\d+)", RegexOptions.CultureInvariant)]
     private static partial Regex MyRegex();
 }

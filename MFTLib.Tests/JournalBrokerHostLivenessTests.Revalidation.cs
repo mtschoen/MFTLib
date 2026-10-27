@@ -122,7 +122,7 @@ public partial class JournalBrokerHostLivenessTests
 
         ObservedWriteStream Wrap(string pipeName, Stream hostEnd)
         {
-            if (pipeName.StartsWith("harness-Z-", StringComparison.Ordinal))
+            if (pipeName.StartsWith(HostChannelHarness.PipePrefix('Z'), StringComparison.Ordinal))
             {
                 return new ObservedWriteStream(hostEnd, kind =>
                 {

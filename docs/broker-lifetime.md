@@ -133,16 +133,24 @@ source failure.
 
 `ArmAndScan` encodes the section name, a 32-bit include-freed flag (0 or 1), then
 a signed 32-bit name count: -1 for full retention, 0 for directories only, or the
-number of following UTF-16 names. Counts below -1 or beyond the remaining payload,
-truncated fields, invalid flags and trailing data are malformed requests.
+number of following UTF-16 names. The section name must match `mftlib-block-<drive>-`
+followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`) for the scan channel's drive
+letter (47 UTF-16 units); any other section name, counts below -1 or beyond the
+remaining payload, truncated fields, invalid flags and trailing data are malformed
+requests and write an `Error` frame on the scan channel before the host touches the
+volume or opens the named section.
 
 ## Control requests
 
-`OpenChannel`, `QueryVolume`, and `GrowUsnJournal` carry the request id followed by one uppercase ASCII drive character in two little-endian UTF-16 bytes, without a string-length prefix. `OpenChannel` then carries the length-prefixed pipe name; `GrowUsnJournal` then carries the two signed 64-bit sizes. Invalid or noncanonical characters, truncated fields, and trailing request payload bytes are malformed control frames and end the session before a volume source or channel connector runs. Application character inputs normalize through `DriveKey` before encoding. Progress frames inherit identity from their channel.
+`OpenChannel`, `QueryVolume`, and `GrowUsnJournal` carry the request id followed by one uppercase ASCII drive character in two little-endian UTF-16 bytes, without a string-length prefix. `OpenChannel` then carries the length-prefixed pipe name, which must match `mftlib-broker-` followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`, 46 UTF-16 units); `GrowUsnJournal` then carries the two signed 64-bit sizes. Invalid or noncanonical drive characters, truncated fields, and trailing request payload bytes are malformed control frames and end the session before a volume source or channel connector runs; an `OpenChannel` pipe name that fails the `mftlib-broker-<32hex>` check replies with a request-id-correlated `Error` frame on the control pipe without connecting to the named pipe while the control session continues. Application character inputs normalize through `DriveKey` before encoding. Progress frames inherit identity from their channel.
 
 `BrokerSession.GrowUsnJournalAsync` is a control request, like the internal volume
 query. It grows a journal in place, never shrinks it, refuses a maximum at or below
-the current size and returns settings read back from the volume.
+the current size or above `min(8 GiB, 5% of the volume's total size)` queried at
+request time through `GetDiskSpaceInformationW` (`ActualTotalAllocationUnits *
+SectorsPerAllocationUnit * BytesPerSector`), and returns settings read back from the
+volume. A cap refusal replies with a request-id-correlated `Error` frame before
+querying or growing the journal and leaves the broker session alive.
 
 Cancellation before a request starts writing sends nothing. Once writing begins,
 the process completes the frame to avoid corrupting the control stream with a

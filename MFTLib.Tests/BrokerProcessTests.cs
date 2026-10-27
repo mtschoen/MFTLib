@@ -233,6 +233,40 @@ public partial class BrokerProcessTests
         Assert.Contains("declined", exception.Message);
     }
 
+    [TestMethod]
+    public async Task OpenChannelAsync_TwoSameDriveChannels_ProduceDistinctValidHexPipeNames()
+    {
+        var connectedPipes = new List<string>();
+        await using var broker = new InProcessBroker(
+            BrokerHostFactory.Create(new()
+            {
+                WatchDrive = (_, _, _, _) => AsyncEnumerable.Empty<(UsnJournalEntry[], UsnJournalCursor)>()
+            }),
+            wrapConnector: inner => (pipeName, cancellationToken) =>
+            {
+                lock (connectedPipes)
+                {
+                    connectedPipes.Add(pipeName);
+                }
+
+                return inner(pipeName, cancellationToken);
+            });
+
+        await using var first = await broker.Process.OpenChannelAsync('C',
+                writer => BrokerProtocol.WriteStartWatch(writer, Armed), CancellationToken.None)
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
+        await using var second = await broker.Process.OpenChannelAsync('C',
+                writer => BrokerProtocol.WriteStartWatch(writer, Armed), CancellationToken.None)
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
+
+        Assert.HasCount(2, connectedPipes);
+        Assert.AreNotEqual(connectedPipes[0], connectedPipes[1]);
+        foreach (var pipeName in connectedPipes)
+        {
+            Assert.AreEqual(pipeName, BrokerFrame.OpenChannel(1, 'C', pipeName).RequirePipeName());
+        }
+    }
+
 
     // A cancelled wait may surface as OperationCanceledException or its TaskCanceledException subtype.
     static async Task AssertCancelledAsync(Task task)

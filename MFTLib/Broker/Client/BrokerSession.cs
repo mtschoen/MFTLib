@@ -131,13 +131,19 @@ public sealed class BrokerSession : IAsyncDisposable
         new BrokerMftBlockProducer(ConnectAsync, scanOptions).CreateIndexSource();
 
     /// <summary>
-    ///     Grows the drive's USN journal (never shrinks it) and returns the sizing the volume reports afterwards,
-    ///     launching the broker first if no use has yet.
+    ///     Grows the drive's USN journal within the broker's volume-size cap (never shrinks it) and returns the sizing
+    ///     the volume reports afterwards, launching the broker first if no use has yet.
     /// </summary>
     /// <param name="drive">The drive whose journal grows.</param>
-    /// <param name="target">The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the current.</param>
+    /// <param name="target">
+    ///     The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the
+    ///     current size or above the smaller of 8 GiB and 5% of the volume's total size queried at request time.
+    /// </param>
     /// <param name="cancellationToken">Ends this call's wait; it does not abort a launch other callers share.</param>
-    /// <exception cref="InvalidOperationException">The process ended, the launch did not start, or the broker refused the change.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The process ended, the launch did not start, or the broker refused the change (including a requested maximum
+    ///     at or below the current size or above the broker's volume-size cap).
+    /// </exception>
     /// <exception cref="ObjectDisposedException">The session was disposed.</exception>
     /// <exception cref="IOException">The process ended first. <see cref="Ended" /> says why.</exception>
     /// <exception cref="TimeoutException">The broker never connected, or did not answer within the reply timeout.</exception>

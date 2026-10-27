@@ -16,6 +16,29 @@ delegate bool DeviceIoControl(
     out uint bytesReturned,
     IntPtr overlapped);
 
+delegate int GetDiskSpaceInformation(
+    string rootPath,
+    out DiskSpaceInformation diskSpaceInformation);
+
+// Mirrors the Win32 DISK_SPACE_INFORMATION layout returned by GetDiskSpaceInformationW.
+[StructLayout(LayoutKind.Sequential)]
+struct DiskSpaceInformation
+{
+    public ulong ActualTotalAllocationUnits;
+    public ulong ActualAvailableAllocationUnits;
+    public ulong ActualPoolUnavailableAllocationUnits;
+    public ulong CallerTotalAllocationUnits;
+    public ulong CallerAvailableAllocationUnits;
+    public ulong CallerPoolUnavailableAllocationUnits;
+    public ulong UsedAllocationUnits;
+    public ulong TotalReservedAllocationUnits;
+    public ulong VolumeStorageReserveAllocationUnits;
+    public ulong AvailableCommittedAllocationUnits;
+    public ulong PoolAvailableAllocationUnits;
+    public uint SectorsPerAllocationUnit;
+    public uint BytesPerSector;
+}
+
 // Mirrors the Win32 BY_HANDLE_FILE_INFORMATION layout. Every member is 4-aligned, so a
 // uint pair stands in for each FILETIME; only FileIndexHigh/FileIndexLow are read -
 // together they are the file's 64-bit NTFS file reference number.
@@ -46,11 +69,13 @@ static partial class Kernel32
         internal Func<string, uint, uint, IntPtr, uint, uint, IntPtr, SafeFileHandle>
             _createFile = NativeCreateFile;
         internal DeviceIoControl _deviceIoControl = NativeDeviceIoControl;
+        internal GetDiskSpaceInformation _getDiskSpaceInformation = NativeGetDiskSpaceInformation;
 
         internal void ResetToDefaults()
         {
             _createFile = NativeCreateFile;
             _deviceIoControl = NativeDeviceIoControl;
+            _getDiskSpaceInformation = NativeGetDiskSpaceInformation;
         }
     }
 
@@ -76,6 +101,12 @@ static partial class Kernel32
         uint nOutBufferSize,
         out uint lpBytesReturned,
         IntPtr lpOverlapped);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetDiskSpaceInformationW",
+        StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeGetDiskSpaceInformation(
+        string rootPath,
+        out DiskSpaceInformation diskSpaceInformation);
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandle", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

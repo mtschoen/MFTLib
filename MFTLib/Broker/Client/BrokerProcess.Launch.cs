@@ -46,7 +46,7 @@ sealed partial class BrokerProcess
                 "Connect timeout must be non-negative or Timeout.InfiniteTimeSpan.");
         }
 
-        var pipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
+        var pipeName = BrokerFrame.PipeNamePrefix + Guid.NewGuid().ToString("N");
         NamedPipeServerStream? server = BrokerPipeAccess.CreateServer(pipeName);
         try
         {
@@ -59,7 +59,7 @@ sealed partial class BrokerProcess
             await WaitForBrokerAsync(server, pipeName, timeout, _connectTimeProvider, cancellationToken)
                 .ConfigureAwait(false);
             var process = new BrokerProcess(server, new NamedPipeBrokerPipeFactory(), createBlockSection,
-                TimeProvider.System, pipeName);
+                TimeProvider.System);
             server = null;
             return process;
         }

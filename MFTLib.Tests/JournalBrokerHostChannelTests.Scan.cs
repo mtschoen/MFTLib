@@ -29,8 +29,9 @@ public partial class JournalBrokerHostChannelTests
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, sectionWriter);
+        var sectionName = NamedBlockSection.BuildSectionName('C');
 
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
+        var pipe = await harness.OpenScanChannelAsync('C', sectionName);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
@@ -47,7 +48,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(default(UsnJournalCursor), frames[^1].Cursor);
         Assert.IsEmpty(frames[^1].Entries, "Catch-up entries stay on the host.");
         Assert.AreEqual(Armed, caughtUpFrom);
-        Assert.AreEqual("section-C", sectionWriter.LastSectionName);
+        Assert.AreEqual(sectionName, sectionWriter.LastSectionName);
         Assert.IsTrue(frames.All(frame => frame.Drive == null));
     }
 

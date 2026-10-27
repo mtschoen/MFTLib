@@ -53,8 +53,11 @@ sealed class HostChannelHarness : IAsyncDisposable
 
     public uint NextRequestId() => Interlocked.Increment(ref _nextRequestId);
 
+    public static string PipePrefix(DriveKey drive) =>
+        $"{BrokerFrame.PipeNamePrefix}{(byte)drive.Validated().Letter:x2}";
+
     public string NextPipeName(char drive) =>
-        $"harness-{drive}-{Interlocked.Increment(ref _nextPipe)}";
+        $"{PipePrefix(drive)}{Interlocked.Increment(ref _nextPipe):x30}";
 
     /// <summary>The connector the host uses by default: the host end of the named in-memory pipe.</summary>
     public async Task<Stream> ConnectInMemoryAsync(string pipeName, CancellationToken cancellationToken)
@@ -93,12 +96,13 @@ sealed class HostChannelHarness : IAsyncDisposable
         return DrivePipe(pipeName);
     }
 
-    public async Task<Stream> OpenScanChannelAsync(DriveKey drive, string sectionName = "section",
+    public async Task<Stream> OpenScanChannelAsync(DriveKey drive, string? sectionName = null,
         IReadOnlyCollection<string>? retainedFileNames = null)
     {
+        var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(drive);
         var pipe = await OpenChannelAsync(drive);
         await WriteFrameAsync(pipe,
-            writer => BrokerProtocol.WriteArmAndScan(writer, sectionName, retainedFileNames));
+            writer => BrokerProtocol.WriteArmAndScan(writer, targetSectionName, retainedFileNames));
         return pipe;
     }
 

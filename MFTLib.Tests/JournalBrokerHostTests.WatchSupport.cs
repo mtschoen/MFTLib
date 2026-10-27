@@ -127,7 +127,7 @@ public partial class JournalBrokerHostTests
         public async Task<Stream> ConnectAsync(string pipeName, CancellationToken cancellationToken)
         {
             var stream = await Harness!.ConnectInMemoryAsync(pipeName, cancellationToken);
-            if (!pipeName.StartsWith($"harness-{drive}-", StringComparison.Ordinal))
+            if (!pipeName.StartsWith(HostChannelHarness.PipePrefix(drive), StringComparison.Ordinal))
             {
                 return stream;
             }

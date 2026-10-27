@@ -60,14 +60,14 @@ run filters out `UsnJournalSyntheticTests`. For stress validation, use 32 ClassL
 MSTest workers with the existing Linux platform exclusions in `scripts/coverage-linux.sh`;
 do not add new exclusions to hide seam races.
 
-The shared `MFTLibNative.Hooks` object owns ABI-query, controlled parse and result-free substitutions. `FileUtilities.Hooks` owns ordinary and watch-volume handle substitution. `Kernel32.Hooks` owns CreateFile and DeviceIoControl substitution. These are process-global even though the delegates are instance fields. Tests accessing the objects or their members require class-level DoNotParallelize and restore defaults only after their operations have stopped. `NativeSeamIsolationTests` recognizes the hooks-object types and their access fields, including calls through generated methods and test helpers. Higher-level broker and local-producer tests inject IVolumeAccess instead.
+The shared `MFTLibNative.Hooks` object owns ABI-query, controlled parse and result-free substitutions. `FileUtilities.Hooks` owns ordinary and watch-volume handle substitution. `Kernel32.Hooks` owns CreateFile, DeviceIoControl and GetDiskSpaceInformation substitution. These are process-global even though the delegates are instance fields. Tests accessing the objects or their members require class-level DoNotParallelize and restore defaults only after their operations have stopped. `NativeSeamIsolationTests` recognizes the hooks-object types and their access fields, including calls through generated methods and test helpers. Higher-level broker and local-producer tests inject IVolumeAccess instead.
 
 The retained native substitutions remain for targeted low-level testing:
 - `MFTLibNative.Hooks._getMftNativeAbiVersion`: ABI-mismatch handling in `MftResultTests.Batches.cs` and `MftDumpInputFaultTests.cs`.
 - `MFTLibNative.Hooks._parseMftRecordsWithProgress`: callback exceptions, NaN progress samples, and synchronous delivery in `MftVolumeTests` and `MftProgressParseFixture`.
 - `MFTLibNative.Hooks._freeMftResult`: freeing deliberately constructed malformed ABI buffers in `MftResultTests` and `MockVolumeTests`.
 - `FileUtilities.Hooks._getVolumeHandle` and `_getWatchVolumeHandle`: fixture-file scans and cancellable idle-pipe tests using owned handles without privileged live volumes.
-- `Kernel32.Hooks._createFile` and `_deviceIoControl`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry and grow buffer injection.
+- `Kernel32.Hooks._createFile`, `_deviceIoControl`, and `_getDiskSpaceInformation`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry, disk-space and grow buffer injection.
 
 `Persistent` and `ExistingOnly` opens (null `FileIndexOptions.CacheMode` is `Persistent` for non-dump sources)
 require an explicit nonblank `FileIndexOptions.CacheDirectory`,

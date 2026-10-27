@@ -73,7 +73,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(), new BrokerTestHarnessOptions
         {
-            FailConnection = pipeName => pipeName.Contains("-C-", StringComparison.Ordinal)
+            FailConnection = pipeName => pipeName.StartsWith(BrokerFrame.PipeNamePrefix, StringComparison.Ordinal)
                 ? new IOException("no pipe for drive C")
                 : null
         });

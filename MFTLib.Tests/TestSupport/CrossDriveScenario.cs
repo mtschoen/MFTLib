@@ -27,6 +27,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
     readonly TempDirectory _roots = new("broker-cross-drive-roots", create: false);
     readonly ConcurrentDictionary<char, int> _scans = new();
     readonly ConcurrentDictionary<char, bool> _frozen = new();
+    readonly ConcurrentDictionary<string, char> _pipeDrives = new(StringComparer.Ordinal);
     readonly TaskCompletionSource _thaw = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly Channel<bool> _visits = Channel.CreateUnbounded<bool>();
     readonly Lock _gate = new();
@@ -262,7 +263,8 @@ sealed class CrossDriveScenario : IAsyncDisposable
             _pipes.Add((pipeName, reads));
         }
 
-        return reads.Wrap(client);
+        var wrapped = reads.Wrap(client);
+        return pipeName == ControlPipeName ? new OpenChannelObserverStream(wrapped, _pipeDrives) : wrapped;
     }
 
     // Measures from zero: no visit has happened yet on this pipe, so the sender's first one skips a
@@ -299,8 +301,23 @@ sealed class CrossDriveScenario : IAsyncDisposable
         }
     }
 
-    // A drive pipe is named "control-{drive}-{sequence}".
-    static char DriveOfPipe(string pipeName) => pipeName.Split('-')[^2][0];
+    char DriveOfPipe(string pipeName) => _pipeDrives[pipeName];
+
+    sealed class OpenChannelObserverStream(Stream inner, ConcurrentDictionary<string, char> pipeDrives)
+        : DelegatingStream(inner)
+    {
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (buffer.Length >= 5 && buffer.Span[4] == (byte)BrokerFrameKind.OpenChannel)
+            {
+                var frame = BrokerProtocol.ReadFrame(buffer.Span, out _);
+                pipeDrives[frame.RequirePipeName()] = frame.RequireDrive().Letter;
+            }
+
+            return base.WriteAsync(buffer, cancellationToken);
+        }
+    }
 
     static string TrackKey(char driveLetter) => driveLetter.ToString();
 

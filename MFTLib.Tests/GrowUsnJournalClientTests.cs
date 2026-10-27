@@ -105,5 +105,33 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         Assert.AreSequenceEqual([(0L, 0x01000000L), (0x08000000L, -1L)], received);
     }
 
+    [TestMethod]
+    public async Task GrowUsnJournalAsync_OverCapRefusal_SurfacesTheCapMessageThroughBrokerSession()
+    {
+        const long requested = (8L * 1024 * 1024 * 1024) + 1;
+        const long allowed = 8L * 1024 * 1024 * 1024;
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            GrowUsnJournal = (_, maximumSize, _) =>
+                throw new ArgumentOutOfRangeException(
+                    nameof(maximumSize),
+                    maximumSize,
+                    $"Requested USN journal maximum size of {maximumSize} bytes exceeds the allowed cap of {allowed} bytes.")
+        }));
+        var handle = broker.Handle;
+        await using var session = BrokerTestHarness.CreateSession(_ => Task.FromResult(handle));
+        var pendingGrowth = session.GrowUsnJournalAsync('C',
+                new UsnJournalSettings { MaximumSize = requested, AllocationDelta = 0x100000 },
+                CancellationToken.None)
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => pendingGrowth);
+
+        Assert.Contains(requested.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
+        Assert.Contains(allowed.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
+    }
+
     public TestContext TestContext { get; set; } = null!;
 }

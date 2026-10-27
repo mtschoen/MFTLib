@@ -17,8 +17,9 @@ public partial class JournalBrokerHostTests
             readJournal: CatchUpSources.ToTip(ScanArmedCursor with { NextUsn = ScanArmedCursor.NextUsn + 1 },
                 ScanEntry()));
         await using var harness = new HostChannelHarness(host, blockWriter);
+        var sectionName = NamedBlockSection.BuildSectionName('C');
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C");
+        var frames = await ScanFramesAsync(harness, 'C', sectionName);
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(ScanArmedCursor, frames[0].Cursor);
@@ -29,7 +30,7 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(default(UsnJournalCursor), completed.Cursor);
         Assert.IsEmpty(completed.Entries, "Catch-up entries stay on the host.");
         Assert.AreEqual(1, InUseRowCount(blockWriter));
-        Assert.AreEqual("mftlib-scan-C", blockWriter.LastSectionName);
+        Assert.AreEqual(sectionName, blockWriter.LastSectionName);
         Assert.IsTrue(frames.All(f => f.Drive == null && f.RequestId == 0), "A drive pipe carries no drive and no request id.");
     }
 
@@ -46,7 +47,7 @@ public partial class JournalBrokerHostTests
             ]);
         await using var harness = new HostChannelHarness(host, blockWriter);
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-streaming-C");
+        var frames = await ScanFramesAsync(harness);
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.Contains(f => f.Kind == BrokerFrameKind.ScanProgress, frames);
@@ -108,7 +109,7 @@ public partial class JournalBrokerHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, blockWriter);
 
-        var frames = await ScanFramesAsync(harness, 'D', "mftlib-scan-D");
+        var frames = await ScanFramesAsync(harness, 'D');
 
         Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
@@ -209,7 +210,7 @@ public partial class JournalBrokerHostTests
         var host = ScanHost(scanDrive: (_, _, _, _, _, _) => [records]);
         await using var harness = new HostChannelHarness(host, writer);
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", retainedFileNames);
+        var frames = await ScanFramesAsync(harness, retainedFileNames: retainedFileNames);
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         return writer;

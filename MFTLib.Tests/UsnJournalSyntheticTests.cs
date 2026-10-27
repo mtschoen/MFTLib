@@ -46,6 +46,25 @@ public partial class UsnJournalSyntheticTests
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
     }
 
+    static void UseDiskSpace(ulong totalBytes, ulong callerTotalAllocationUnits = 1,
+        ulong actualAvailableAllocationUnits = 1, ulong callerAvailableAllocationUnits = 1)
+    {
+        Kernel32.Hooks._getDiskSpaceInformation = (rootPath, out diskSpaceInformation) =>
+        {
+            Assert.AreEqual(@"C:\", rootPath);
+            diskSpaceInformation = new DiskSpaceInformation
+            {
+                ActualTotalAllocationUnits = totalBytes,
+                ActualAvailableAllocationUnits = actualAvailableAllocationUnits,
+                CallerTotalAllocationUnits = callerTotalAllocationUnits,
+                CallerAvailableAllocationUnits = callerAvailableAllocationUnits,
+                SectorsPerAllocationUnit = 1,
+                BytesPerSector = 1
+            };
+            return 0;
+        };
+    }
+
     // Queues a synthetic IOCTL success buffer; keeps it alive until cleanup.
     static void QueueSuccess(byte[] data) => QueuedUsnReads.Queue(data);
 
@@ -576,6 +595,7 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_RequestedNotLargerThanCurrent_RefusesWithoutIoctl(uint requestedMaximumSize)
     {
         UseFakeHandle();
+        UseDiskSpace(100UL * 1024 * 1024 * 1024);
         var query = JournalQueryFake.Create(() =>
             JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000));
         var createCalled = false;
@@ -615,6 +635,7 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_ValidRequest_IssuesCreateAndReturnsPostChangeSettings()
     {
         UseFakeHandle();
+        UseDiskSpace(100UL * 1024 * 1024 * 1024);
         var queryCount = 0;
         var query = JournalQueryFake.Create(() => ++queryCount == 1
             ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000) // pre-check
@@ -652,6 +673,7 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_CreateFails_ThrowsWin32Exception()
     {
         UseFakeHandle();
+        UseDiskSpace(100UL * 1024 * 1024 * 1024);
         var query = JournalQueryFake.Create(() =>
             JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000));
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
@@ -705,5 +727,263 @@ public partial class UsnJournalSyntheticTests
         {
             // Expected
         }
+    }
+
+    [TestMethod]
+    [DataRow(100UL * 1024 * 1024 * 1024, 5L * 1024 * 1024 * 1024)]
+    [DataRow(160UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024)]
+    [DataRow(1024UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024)]
+    [DataRow(20_000_039UL, 1_000_001L)]
+    public void GrowUsnJournal_AtExactCap_IssuesCreateAndReturnsSettings(ulong volumeBytes, long exactCapBytes)
+    {
+        UseFakeHandle();
+        UseDiskSpace(volumeBytes);
+        var queryCount = 0;
+        var query = JournalQueryFake.Create(() => ++queryCount == 1
+            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x1000, allocationDelta: 0x1000)
+            : JournalQueryFake.Describe(7, 200, maximumSize: (ulong)exactCapBytes, allocationDelta: 0x1000));
+        long capturedMaximum = 0;
+        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
+            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+
+            Assert.AreEqual(0x000900E7u, ioControlCode);
+            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
+            bytesReturned = 0;
+            return true;
+        };
+
+        using var volume = MftVolume.Open('C');
+        var settings = volume.Journal.GrowUsnJournal(exactCapBytes, 0x1000);
+
+        Assert.AreEqual(exactCapBytes, capturedMaximum);
+        Assert.AreEqual(exactCapBytes, settings.MaximumSize);
+    }
+
+    [TestMethod]
+    [DataRow(100UL * 1024 * 1024 * 1024, (5L * 1024 * 1024 * 1024) + 1, 5L * 1024 * 1024 * 1024)]
+    [DataRow(160UL * 1024 * 1024 * 1024, (8L * 1024 * 1024 * 1024) + 1, 8L * 1024 * 1024 * 1024)]
+    [DataRow(1024UL * 1024 * 1024 * 1024, (8L * 1024 * 1024 * 1024) + 1, 8L * 1024 * 1024 * 1024)]
+    [DataRow(20_000_039UL, 1_000_002L, 1_000_001L)]
+    [DataRow(1024UL * 1024 * 1024 * 1024, long.MaxValue, 8L * 1024 * 1024 * 1024)]
+    public void GrowUsnJournal_AboveCap_RefusesBeforeAnyIoctl(ulong volumeBytes, long requestedMaximumSize,
+        long expectedAllowedBytes)
+    {
+        UseFakeHandle();
+        UseDiskSpace(volumeBytes);
+        var ioctlCalls = 0;
+        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
+        {
+            Interlocked.Increment(ref ioctlCalls);
+            bytesReturned = 0;
+            return false;
+        };
+
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
+        var exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            journal.GrowUsnJournal(requestedMaximumSize, 0x1000));
+
+        Assert.AreEqual(0, ioctlCalls);
+        Assert.Contains(requestedMaximumSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            exception.Message);
+        Assert.Contains(expectedAllowedBytes.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            exception.Message);
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_QueriesVolumeSizeAtRequestTimeWithoutCaching()
+    {
+        UseFakeHandle();
+        var volumeSizes = new Queue<ulong>([40UL * 1024 * 1024 * 1024, 100UL * 1024 * 1024 * 1024]);
+        var diskSpaceQueries = 0;
+        Kernel32.Hooks._getDiskSpaceInformation = (rootPath, out diskSpaceInformation) =>
+        {
+            Assert.AreEqual(@"C:\", rootPath);
+            Interlocked.Increment(ref diskSpaceQueries);
+            diskSpaceInformation = new DiskSpaceInformation
+            {
+                ActualTotalAllocationUnits = volumeSizes.Dequeue(),
+                SectorsPerAllocationUnit = 1,
+                BytesPerSector = 1
+            };
+            return 0;
+        };
+        var ioctlCalls = 0;
+        const long requestedMaximum = 3L * 1024 * 1024 * 1024;
+        var query = JournalQueryFake.Create(() => ++ioctlCalls == 1
+            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
+            : JournalQueryFake.Describe(7, 200, maximumSize: requestedMaximum, allocationDelta: 0x100000));
+        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
+            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+
+            Interlocked.Increment(ref ioctlCalls);
+            bytesReturned = 0;
+            return true;
+        };
+
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            journal.GrowUsnJournal(requestedMaximum, 0x100000));
+        Assert.AreEqual(1, diskSpaceQueries);
+        Assert.AreEqual(0, ioctlCalls);
+
+        var settings = journal.GrowUsnJournal(requestedMaximum, 0x100000);
+
+        Assert.AreEqual(2, diskSpaceQueries);
+        Assert.AreEqual(requestedMaximum, settings.MaximumSize);
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_IgnoresCallerQuotaAndAvailableSpaceFields()
+    {
+        UseFakeHandle();
+        // 100 GiB total volume (5 GiB cap), but caller quota and available space are only 1 KiB.
+        UseDiskSpace(100UL * 1024 * 1024 * 1024,
+            callerTotalAllocationUnits: 1024,
+            actualAvailableAllocationUnits: 1024,
+            callerAvailableAllocationUnits: 1024);
+        const long fiveGiB = 5L * 1024 * 1024 * 1024;
+        var queryCount = 0;
+        var query = JournalQueryFake.Create(() => ++queryCount == 1
+            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
+            : JournalQueryFake.Describe(7, 200, maximumSize: fiveGiB, allocationDelta: 0x100000));
+        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
+            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+
+            bytesReturned = 0;
+            return true;
+        };
+
+        using var volume = MftVolume.Open('C');
+        var settings = volume.Journal.GrowUsnJournal(fiveGiB, 0x100000);
+
+        Assert.AreEqual(fiveGiB, settings.MaximumSize);
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_DiskSpaceQueryFails_ThrowsWin32ExceptionBeforeAnyIoctl()
+    {
+        UseFakeHandle();
+        const int failedHresult = unchecked((int)0x80070005);
+        var ioctlCalls = 0;
+        Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
+        {
+            diskSpaceInformation = default;
+            return failedHresult;
+        };
+        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
+        {
+            Interlocked.Increment(ref ioctlCalls);
+            bytesReturned = 0;
+            return false;
+        };
+
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
+        var exception = Assert.ThrowsExactly<Win32Exception>(() =>
+            journal.GrowUsnJournal(0x400000, 0x100000));
+
+        Assert.AreEqual(failedHresult, exception.NativeErrorCode);
+        Assert.AreEqual(0, ioctlCalls);
+    }
+
+    [TestMethod]
+    [DataRow(0UL, 8u, 512u)]
+    [DataRow(1000UL, 0u, 512u)]
+    [DataRow(1000UL, 8u, 0u)]
+    [DataRow(19UL, 1u, 1u)]
+    [DataRow(ulong.MaxValue, 2u, 512u)]
+    public void GrowUsnJournal_UnusableGeometryOrOverflow_ThrowsInvalidOperationBeforeAnyIoctl(
+        ulong totalUnits, uint sectorsPerUnit, uint bytesPerSector)
+    {
+        UseFakeHandle();
+        var ioctlCalls = 0;
+        Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
+        {
+            diskSpaceInformation = new DiskSpaceInformation
+            {
+                ActualTotalAllocationUnits = totalUnits,
+                SectorsPerAllocationUnit = sectorsPerUnit,
+                BytesPerSector = bytesPerSector
+            };
+            return 0;
+        };
+        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
+        {
+            Interlocked.Increment(ref ioctlCalls);
+            bytesReturned = 0;
+            return false;
+        };
+
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            journal.GrowUsnJournal(0x400000, 0x100000));
+
+        Assert.AreEqual(0, ioctlCalls);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("C:")]
+    [DataRow(@"\\.\c:")]
+    [DataRow(@"\\.\C:\")]
+    [DataRow(@"\\.\1:")]
+    [DataRow(@"\\.\C!")]
+    public void GrowUsnJournal_InvalidVolumePath_ThrowsBeforeQueryingDiskSpaceOrIoctl(string invalidVolumePath)
+    {
+        var diskSpaceCalls = 0;
+        var ioctlCalls = 0;
+        Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
+        {
+            Interlocked.Increment(ref diskSpaceCalls);
+            diskSpaceInformation = default;
+            return 0;
+        };
+        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
+        {
+            Interlocked.Increment(ref ioctlCalls);
+            bytesReturned = 0;
+            return false;
+        };
+
+        using var handle = FakeVolumeHandle.Create();
+        var journal = new UsnJournalVolume(handle, invalidVolumePath);
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            journal.GrowUsnJournal(0x400000, 0x100000));
+        Assert.AreEqual(0, diskSpaceCalls);
+        Assert.AreEqual(0, ioctlCalls);
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    public void GetDiskSpaceInformation_OnWindowsSystemDrive_ReturnsPositiveGeometry()
+    {
+        var hresult = Kernel32.Hooks._getDiskSpaceInformation(@"C:\", out var diskSpace);
+
+        Assert.AreEqual(0, hresult);
+        Assert.IsGreaterThan(0UL, diskSpace.ActualTotalAllocationUnits);
+        Assert.IsGreaterThan(0u, diskSpace.SectorsPerAllocationUnit);
+        Assert.IsGreaterThan(0u, diskSpace.BytesPerSector);
     }
 }

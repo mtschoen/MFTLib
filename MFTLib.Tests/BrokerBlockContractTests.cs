@@ -43,7 +43,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
 
         Assert.AreEqual(new DriveKey('C'), result.Drive);
         Assert.AreSequenceEqual([new DriveKey('C')], drives);
-        Assert.StartsWith("section-C-", broker.Sections.Single().SectionName);
+        Assert.StartsWith("mftlib-block-C-", broker.Sections.Single().SectionName);
     }
 
     [TestMethod]

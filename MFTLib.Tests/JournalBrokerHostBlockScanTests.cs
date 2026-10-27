@@ -47,7 +47,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.ContainsSingle(frame => frame.Kind == BrokerFrameKind.ScanReady, frames);
         Assert.AreEqual(21u, blockWriter.Block.Header.RowCount);
         Assert.AreEqual(18u, blockWriter.Block.Header.NamePoolUsed);
-        Assert.AreEqual("section-C", blockWriter.LastSectionName);
+        Assert.StartsWith("mftlib-block-C-", blockWriter.LastSectionName!);
         Assert.IsTrue(blockWriter.Block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, blockWriter.Block.Header.ProducerKind);
         Assert.AreEqual(5u, blockWriter.Block.Header.RootRow);
@@ -75,7 +75,7 @@ public class JournalBrokerHostBlockScanTests
 
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        Assert.AreEqual("section-C", blockWriter.LastSectionName);
+        Assert.StartsWith("mftlib-block-C-", blockWriter.LastSectionName!);
         Assert.IsNotNull(blockWriter.LastRetainedFileNames);
         Assert.AreSequenceEqual([".git"], [.. blockWriter.LastRetainedFileNames]);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
@@ -167,7 +167,7 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
             ProcessorCount = null
         });
         await using var harness = new HostChannelHarness(host, blockWriter);
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
+        var pipe = await harness.OpenScanChannelAsync('C');
 
         await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
         var firstProgress = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
@@ -213,7 +213,7 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
             ProcessorCount = null
         });
         await using var harness = new HostChannelHarness(host, blockWriter);
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
+        var pipe = await harness.OpenScanChannelAsync('C');
         await scanParked.Entered.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         await harness.CloseControlAsync();
@@ -223,6 +223,83 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
         Assert.DoesNotContain(frame => frame.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.Error, frames);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("other-block-C-0123456789abcdef0123456789abcdef")]
+    [DataRow("MFTLIB-BLOCK-C-0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-block-D-0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-block-c-0123456789abcdef0123456789abcdef")]
+    [DataRow(@"mftlib-block-C-0123456789abcdef\123456789abcdef")]
+    [DataRow(@"Global\mftlib-block-C-0123456789abcdef0123456789abcdef")]
+    [DataRow(@"Local\mftlib-block-C-0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-block-C_0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-block-C0123456789abcdef0123456789abcdef0")]
+    [DataRow("mftlib-block-C-0123456789abcdef0123456789abcde")]
+    [DataRow("mftlib-block-C-0123456789abcdef0123456789abcdef0")]
+    [DataRow("mftlib-block-C-0123456789abcdef0123456789abcdeg")]
+    public async Task ScanChannel_InvalidSectionName_WritesErrorWithoutTouchingVolumeOrSectionWriter(
+        string invalidSectionName)
+    {
+        var cursorQueries = 0;
+        var scanCalls = 0;
+        using var writer = new RecordingBlockSectionWriter();
+        var volumeInfo = new NtfsVolumeInformation(1024 * 1000, 1024);
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ =>
+            {
+                Interlocked.Increment(ref cursorQueries);
+                return ArmedCursor;
+            },
+            ScanDrive = (_, _, _, _, _, _) =>
+            {
+                Interlocked.Increment(ref scanCalls);
+                return [[BrokerHostFactory.Record(5, ".", 3)]];
+            },
+            QueryVolumeInformation = _ => volumeInfo,
+            ProcessorCount = null
+        });
+        await using var harness = new HostChannelHarness(host, writer);
+
+        var pipe = await harness.OpenScanChannelAsync('C', invalidSectionName);
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+        await harness.SendControlAsync(bufferWriter => BrokerProtocol.WriteQueryVolume(bufferWriter, 51, 'C'));
+        var controlReply = await harness.ReadControlAsync();
+
+        Assert.HasCount(1, frames);
+        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
+        Assert.AreEqual(0u, frames[0].RequestId);
+        Assert.Contains("invalid section name", frames[0].Message!);
+        Assert.IsNull(writer.LastSectionName);
+        Assert.AreEqual(0, cursorQueries);
+        Assert.AreEqual(0, scanCalls);
+        Assert.AreEqual(BrokerFrameKind.VolumeInfo, controlReply.Kind);
+        Assert.AreEqual(51u, controlReply.RequestId);
+    }
+
+    [TestMethod]
+    [DataRow("mftlib-block-C-0123456789abcdef0123456789abcdef")]
+    [DataRow("mftlib-block-C-ABCDEF0123456789ABCDEF0123456789")]
+    [DataRow("mftlib-block-C-0123456789abcdefABCDEF0123456789")]
+    public async Task ScanChannel_ValidHexSectionNames_AreAccepted(string validSectionName)
+    {
+        using var blockWriter = new RecordingBlockSectionWriter();
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        });
+        await using var harness = new HostChannelHarness(host, blockWriter);
+
+        var pipe = await harness.OpenScanChannelAsync('C', validSectionName);
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
+        Assert.AreEqual(validSectionName, blockWriter.LastSectionName);
     }
 
     [TestMethod]
@@ -309,7 +386,7 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         IReadOnlyCollection<string>? retainedFileNames = null)
     {
         await using var harness = new HostChannelHarness(host, blockWriter);
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C", retainedFileNames);
+        var pipe = await harness.OpenScanChannelAsync('C', retainedFileNames: retainedFileNames);
         return await HostChannelHarness.ReadToEndAsync(pipe);
     }
 

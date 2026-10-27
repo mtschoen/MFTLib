@@ -30,7 +30,17 @@ sealed partial class JournalBrokerHost
     {
         var requestId = request.RequestId;
         var drive = request.RequireDrive();
-        var pipeName = request.RequirePipeName();
+        string pipeName;
+        try
+        {
+            pipeName = request.RequirePipeName();
+        }
+        catch (InvalidDataException exception)
+        {
+            await WriteControlErrorAsync(session, requestId, exception.Message).ConfigureAwait(false);
+            return;
+        }
+
         if (await ConnectChannelAsync(session, requestId, drive, pipeName).ConfigureAwait(false) is not { } stream)
         {
             return;

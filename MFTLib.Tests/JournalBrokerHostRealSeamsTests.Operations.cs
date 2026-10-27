@@ -186,6 +186,16 @@ public partial class JournalBrokerHostRealSeamsTests
     public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams()
     {
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
+        {
+            diskSpaceInformation = new DiskSpaceInformation
+            {
+                ActualTotalAllocationUnits = 100UL * 1024 * 1024 * 1024,
+                SectorsPerAllocationUnit = 1,
+                BytesPerSector = 1
+            };
+            return 0;
+        };
 
         // The pre-check reports the journal smaller than the request, so the grow is
         // issued; the post-change read returns the grown sizing.
@@ -228,6 +238,60 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(0x400000L, capturedMaximum);
         Assert.AreEqual(0x200000L, capturedDelta);
         Assert.AreEqual(2, queryCount, "The grow reads the sizing before and after the change.");
+    }
+
+    [TestMethod]
+    public async Task ServeAsync_GrowUsnJournal_OverCap_RepliesErrorWithoutIoctlAndSessionContinues()
+    {
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
+        {
+            diskSpaceInformation = new DiskSpaceInformation
+            {
+                ActualTotalAllocationUnits = 100UL * 1024 * 1024 * 1024, // 5 GiB cap
+                SectorsPerAllocationUnit = 1,
+                BytesPerSector = 1
+            };
+            return 0;
+        };
+        var journalIoctls = 0;
+        var validGrowth = JournalQueryFake.Create(() => ++journalIoctls == 1
+            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
+            : JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x100000));
+        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
+            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return validGrowth(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+
+            Interlocked.Increment(ref journalIoctls);
+            bytesReturned = 0;
+            return true;
+        };
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
+        const long fiveGiB = 5L * 1024 * 1024 * 1024;
+        const long overCapRequest = fiveGiB + 1;
+
+        await harness.SendControlAsync(writer =>
+            BrokerProtocol.WriteGrowUsnJournal(writer, 15, 'C', overCapRequest, 0x100000));
+        var errorReply = await harness.ReadControlAsync();
+
+        Assert.AreEqual(BrokerFrameKind.Error, errorReply.Kind);
+        Assert.AreEqual(15u, errorReply.RequestId);
+        Assert.Contains(overCapRequest.ToString(System.Globalization.CultureInfo.InvariantCulture), errorReply.Message!);
+        Assert.Contains(fiveGiB.ToString(System.Globalization.CultureInfo.InvariantCulture), errorReply.Message!);
+        Assert.AreEqual(0, journalIoctls, "Refusal above the cap must not issue any journal IOCTL.");
+
+        await harness.SendControlAsync(writer =>
+            BrokerProtocol.WriteGrowUsnJournal(writer, 16, 'C', 0x400000, 0x100000));
+        var nextReply = await harness.ReadControlAsync();
+
+        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, nextReply.Kind);
+        Assert.AreEqual(16u, nextReply.RequestId);
+        Assert.AreEqual(0x400000L, nextReply.JournalMaximumSize);
     }
 
     [TestMethod]
