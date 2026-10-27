@@ -72,7 +72,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `MftScanOptions.RetainedFileNames` -> `FileIndexOptions.RetainedFileNames`, which the directory walk applies too
 - `DriveFailureKind.CacheTagMismatch` -> `DriveFailureKind.CacheIdentityMismatch`, which also covers a scan-shape mismatch
 - A `CacheTag` version bumped for retention or freed-record changes -> no bump; the library compares those options as the scan shape
-- `MftVolume.GenerateSyntheticMFT` -> `SyntheticBlock` and `SyntheticMftProducer` in `MFTLib.TestExtensions`
+- `MftVolume.GenerateSyntheticMFT` -> internal test support, used by MFTLib's own tests and Benchmark; `SyntheticBlock` and `SyntheticMftProducer` in `MFTLib.TestExtensions` build index cache blocks, not MFT dumps
 - `ElevationUtilities.IsElevated()` and `CanSelfElevate()` -> `ElevationUtilities.DefaultProvider.IsElevated()` and `CanSelfElevate()`
 - `ElevationUtilities.TryRunElevated(string arguments, int timeoutMs)` -> `ElevationUtilities.DefaultProvider.TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)`
 - `ElevationUtilities.GetProcessPath()` -> `Environment.ProcessPath`

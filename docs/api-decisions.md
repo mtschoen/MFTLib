@@ -1020,3 +1020,18 @@ user's own Defender-adjacent settings, PATH or the launching process itself), an
 
 **Revisit only if:** Defender flags the `-Command` launch, in which case the script returns to a temporary file checked
 by comparing its bytes with the bytes written immediately before launch.
+
+## The native synthetic MFT generators stay in the shipped DLL
+
+**Decision (2026-10-26, owner ruling B10):** the native generators in `MFTLibNative/mft/mft_synthetic.cpp` (bulk,
+`GenerateSyntheticMFTSizedUtf8`) and `mft_synthetic.fixture.cpp` (24-record fixture, `GenerateFixtureMFTUtf8`) stay in
+the shipped DLL. `Benchmark native-timings --synthetic` calls the bulk generator through `MftVolume.GenerateSyntheticMFT`;
+Benchmark's managed copy of it is deleted. `MFTLib.Tests/TestSupport/MftDumpFixture.cs` stays.
+
+**Reason:** the bulk generator produces realistic input (4096-byte records, extension records, non-resident data,
+millions of records, written by several threads) that a managed copy would reproduce less well. The 24-record fixture
+drives the parser edge-case tests on Windows and Linux. The shipped DLL is the tested DLL, as with the native test hooks.
+`MftDumpFixture` stays because it builds exact records for single-field corruption tests, which a bulk generator cannot do.
+
+**Revisit only if:** a generator stops being used by any test or by Benchmark. A proposal to remove the generators on the
+grounds that test code ships in the release DLL does not reopen this ruling.

@@ -8,6 +8,8 @@ public partial class BenchmarkRunner
     const string NativeTimingsUsage =
         "Usage: Benchmark.exe native-timings <--synthetic N|--dump path> [--iterations K]";
 
+    const uint MinimumSyntheticRecords = 16;
+
     async Task<int> RunNativeTimingsAsync(string[] arguments)
     {
         if (!TryParseNativeTimingsArguments(arguments, out var records, out var dumpPath, out var iterations))
@@ -25,7 +27,7 @@ public partial class BenchmarkRunner
                 Directory.CreateDirectory(directory);
                 dumpPath = Path.Combine(directory, "synthetic.mft");
                 var syntheticPath = dumpPath;
-                await Task.Run(() => SyntheticMftDump.Write(syntheticPath, records)).ConfigureAwait(false);
+                await Task.Run(() => MftVolume.GenerateSyntheticMFT(syntheticPath, records)).ConfigureAwait(false);
             }
 
             PrintNativeTimings(dumpPath, iterations, _output.WriteLine);
@@ -72,7 +74,7 @@ public partial class BenchmarkRunner
 
         return arguments[0].Equals("--synthetic", StringComparison.OrdinalIgnoreCase) &&
                uint.TryParse(arguments[1], CultureInfo.InvariantCulture, out records) &&
-               records >= SyntheticMftDump.MinimumRecords && records <= 10_000_000;
+               records >= MinimumSyntheticRecords && records <= 10_000_000;
     }
 
     // The native parse reads the next chunk while it fixes up and parses the current one, so the phases overlap:
