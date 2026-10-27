@@ -336,7 +336,7 @@ MFTLib.Index.IndexedDrive :: method public override Equals(object? obj) : bool
 MFTLib.Index.IndexedDrive :: method public override GetHashCode() : int
 MFTLib.Index.IndexedDrive :: method public override ToString() : string
 MFTLib.Index.IndexedDrive :: method public static EnumerateWindowsVolumes() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>
-MFTLib.Index.IndexedDrive :: method public static FromWindowsVolume(MFTLib.Index.DriveKey drive) : MFTLib.Index.IndexedDrive
+MFTLib.Index.IndexedDrive :: method public static FromWindowsDrive(MFTLib.Index.DriveKey drive) : MFTLib.Index.IndexedDrive
 MFTLib.Index.IndexedDrive :: method public static op_Equality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: method public static op_Inequality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: property public Drive { get; init; } : MFTLib.Index.DriveKey

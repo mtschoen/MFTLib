@@ -873,7 +873,7 @@ Windows-only API (a Windows P/Invoke, WMI, a named memory-mapped section, a Wind
 elevation), never on a whole type or assembly. Platform-neutral logic and test seams carry no annotation.
 A public Windows-only member whose behavior wraps logic is a one-line entry point over an internal
 platform-neutral member that tests call on every platform: `BrokerLauncher.Launch` over `StartElevated`,
-`IndexedDrive.FromWindowsVolume` over `ReadWindowsVolume`, `FileIndex.QueryUsnJournalSettings` over
+`IndexedDrive.FromWindowsDrive` over `ReadWindowsVolume`, `FileIndex.QueryUsnJournalSettings` over
 `ReadUsnJournalSettings`, and both launcher `BrokerSession` constructors over an internal constructor that takes
 the block section factory (production passes the Windows-only named-section factory). Internal members that
 guard with `OperatingSystem.IsWindows()` and throw `PlatformNotSupportedException` off Windows, such as
@@ -886,6 +886,17 @@ MSTEST0084 or CA1416 hides the mismatch instead of fixing the description of the
 
 **Revisit only if:** a public member's platform-neutral logic is needed by a consumer on Linux, which would
 make the internal member a public one.
+
+## Windows drive construction is named for its drive key
+
+**Decision (owner ruling B6, 2026-10-26):** `IndexedDrive.FromWindowsDrive(DriveKey drive)` is the sole public
+name for the Windows-only factory that reads the drive's volume serial and returns an MFT `IndexedDrive`.
+
+**Reason:** the factory takes a `DriveKey`, not a `WindowsVolume`. Naming it for the Windows drive avoids
+suggesting that callers must first construct or supply a `WindowsVolume`.
+
+**Revisit only if:** the factory changes the identity it accepts or no longer constructs a drive from a Windows
+drive key.
 
 ## Journal application is asynchronous end to end
 

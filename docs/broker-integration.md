@@ -126,14 +126,14 @@ and its scan fails; a block that passes transfers to the index.
 ### Mixed producers and drive failures
 
 `IndexedDrive.Producer` chooses each drive's producer. `ProducerKind.Mft`, the
-default and what `IndexedDrive.FromWindowsVolume` produces, scans through `MftSource`.
+default and what `IndexedDrive.FromWindowsDrive` produces, scans through `MftSource`.
 `ProducerKind.Enumeration` walks the directory tree from the drive's `RootDirectory`, so one
 index can mix both:
 
 ```csharp
 var drives = new[]
 {
-    IndexedDrive.FromWindowsVolume('C'),
+    IndexedDrive.FromWindowsDrive('C'),
     new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, ProducerKind.Enumeration)
 };
 ```

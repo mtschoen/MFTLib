@@ -61,10 +61,10 @@ public sealed class IndexedDriveTests : IDisposable
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
-    public void FromWindowsVolume_ReadsARealSerialForTheSystemDrive()
+    public void FromWindowsDrive_ReadsARealSerialForTheSystemDrive()
     {
         var systemRoot = Path.GetPathRoot(Environment.SystemDirectory)!;
-        var drive = IndexedDrive.FromWindowsVolume(systemRoot[0]);
+        var drive = IndexedDrive.FromWindowsDrive(systemRoot[0]);
 
         Assert.AreNotEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(systemRoot, drive.RootDirectory);

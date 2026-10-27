@@ -17,7 +17,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `EnumerateRows` yields non-allocating `IndexRow` views for whole-drive passes.
 - Index sources: `BrokerSession.CreateIndexSource`, `MftIndexSources.FromLocalVolumes` for an elevated process, and `MftIndexSources.FromMftDumpFile` for a saved `$MFT` file on Windows or Linux without elevation.
 - `DriveKey` names a drive by ASCII letter, normalized to upper case, and `DriveKey.TryParse` accepts a drive spec such as `C`, `c:` or `C:\`. Every lifecycle verb takes enumerable `DriveKey` values.
-- `IndexedDrive.Producer` selects an MFT scan or a directory walk per drive, so one index can mix NTFS volumes with any other filesystem. `IndexedDrive.FromWindowsVolume` builds an MFT drive from a drive letter.
+- `IndexedDrive.Producer` selects an MFT scan or a directory walk per drive, so one index can mix NTFS volumes with any other filesystem. `IndexedDrive.FromWindowsDrive` builds an MFT drive from a drive letter.
 - `IndexedDrive.EnumerateWindowsVolumes()` returns `IReadOnlyList<WindowsVolume>`, a record of `Drive`, `RootDirectory`, `DriveType`, `IsReady`, `Format`, `IsIndexable` and a display `Reason`. Read `IsReady` and `Format` instead of matching the reason text.
 - Live USN watching per drive: `StartWatchingAsync`, `StopWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` return one `DriveOperationResult` per requested drive.
 - `Changed` raises a `FileChange` with kind, path, previous path and journal timestamp. `WatchFaulted` raises a `WatchFault` with its kind and `IsRecovering`. `WatchStateChanged` reports every watch state change with a per-drive version.

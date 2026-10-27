@@ -143,7 +143,7 @@
     - **Per-drive producer**: `IndexedDrive` carries `(Drive, RootDirectory, VolumeSerial,
       Producer = ProducerKind.Mft)`. Each drive selects its own producer for initial scans
       and rescans, so one index can combine MFT-scanned drives with directory-walked drives.
-      `FromWindowsVolume` selects Mft. Enumeration starts at that drive's `RootDirectory`;
+      `FromWindowsDrive` selects Mft. Enumeration starts at that drive's `RootDirectory`;
       an operational producer failure leaves only that drive `Failed` with
       `DriveFailureKind.ProducerFailed`, for MFT and enumeration alike. Healthy siblings stay usable.
       A failed rescan keeps the previous block and records `DriveStatus.Failure` with the scan

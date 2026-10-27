@@ -59,7 +59,7 @@ using MFTLib;
 using MFTLib.Index;
 
 var cancellationToken = CancellationToken.None;
-var drive = IndexedDrive.FromWindowsVolume('C');
+var drive = IndexedDrive.FromWindowsDrive('C');
 var options = new FileIndexOptions
 {
     Drives = [drive],
@@ -85,7 +85,7 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 }
 ```
 
-- `IndexedDrive.FromWindowsVolume('C')` reads the volume serial from Windows and throws
+- `IndexedDrive.FromWindowsDrive('C')` reads the volume serial from Windows and throws
   `IOException` when Windows cannot report it.
 - Check `DriveStatus.State` before treating zero results as an empty drive. An unelevated
   process settles the drive `Failed` with `DriveFailureKind.ProducerFailed` rather than throwing.
@@ -154,7 +154,7 @@ var cacheDirectory = Path.Combine(
 await using var session = new BrokerSession();
 var options = new FileIndexOptions
 {
-    Drives = [IndexedDrive.FromWindowsVolume('C')],
+    Drives = [IndexedDrive.FromWindowsDrive('C')],
     CacheDirectory = cacheDirectory,
     MftSource = session.CreateIndexSource()
 };
