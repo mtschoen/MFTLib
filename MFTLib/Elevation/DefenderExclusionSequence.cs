@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 
 namespace MFTLib;
 
@@ -33,9 +34,6 @@ sealed class DefenderExclusionSequence
     readonly Func<Process, TimeSpan, bool> _waitForExit;
     readonly Action<Process> _killProcess;
     readonly Func<Process, int> _getExitCode;
-    readonly Func<string> _getTemporaryDirectory;
-    readonly Action<string>? _scriptWritten;
-    readonly Func<Microsoft.Win32.SafeHandles.SafeFileHandle, Microsoft.Win32.SafeHandles.SafeFileHandle>? _takeScriptAnchor;
 
     internal DefenderExclusionSequence(ElevationSeams seams)
     {
@@ -43,9 +41,6 @@ sealed class DefenderExclusionSequence
         _waitForExit = seams.WaitForExit ?? WaitForExit;
         _killProcess = seams.KillProcess ?? Kill;
         _getExitCode = seams.GetExitCode ?? ExitCode;
-        _getTemporaryDirectory = seams.GetTemporaryDirectory ?? Path.GetTempPath;
-        _scriptWritten = seams.ScriptWritten;
-        _takeScriptAnchor = seams.TakeScriptAnchor;
     }
 
     internal static bool WaitForExit(Process process, TimeSpan timeout) => process.WaitForExit(timeout);
@@ -120,7 +115,11 @@ sealed class DefenderExclusionSequence
         }
     }
 
-    /// <summary>Runs <paramref name="script" /> in Windows PowerShell; true only for exit code zero within <see cref="PowerShellTimeout" />.</summary>
+    /// <summary>
+    ///     Runs <paramref name="script" /> in Windows PowerShell as <c>-NoProfile -NonInteractive -Command</c>; true only
+    ///     for exit code zero within <see cref="PowerShellTimeout" />. The elevated launch goes through ShellExecute, which
+    ///     ignores <see cref="ProcessStartInfo.ArgumentList" />, so its arguments are one quoted string.
+    /// </summary>
     internal bool RunPowerShell(string script, bool elevated)
     {
         var startInfo = new ProcessStartInfo
@@ -133,18 +132,18 @@ sealed class DefenderExclusionSequence
         if (elevated)
         {
             startInfo.Verb = "runas";
+            startInfo.Arguments = string.Join(' ', ["-NoProfile", "-NonInteractive", "-Command", QuoteArgument(script)]);
         }
-
-        HeldScriptFile? held = null;
-        try
+        else
         {
-            held = HeldScriptFile.Create(_getTemporaryDirectory(), script, _scriptWritten, _takeScriptAnchor);
             startInfo.ArgumentList.Add("-NoProfile");
             startInfo.ArgumentList.Add("-NonInteractive");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-File");
-            startInfo.ArgumentList.Add(held.LaunchPath);
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add(script);
+        }
+
+        try
+        {
             using var process = _startProcess(startInfo);
             if (process is null)
             {
@@ -159,14 +158,40 @@ sealed class DefenderExclusionSequence
 
             return _getExitCode(process) == 0;
         }
-        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException
-            or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
         {
             return false;
         }
-        finally
+    }
+
+    // One command-line argument by the Windows C runtime rules: wrapped in double quotes, with each embedded quote
+    // escaped and the backslashes in front of a quote (or the closing quote) doubled.
+    internal static string QuoteArgument(string argument)
+    {
+        var quoted = new StringBuilder("\"");
+        var backslashes = 0;
+        foreach (var character in argument)
         {
-            held?.Dispose();
+            if (character == '\\')
+            {
+                backslashes++;
+                continue;
+            }
+
+            if (character == '"')
+            {
+                quoted.Append('\\', (backslashes * 2) + 1);
+            }
+            else
+            {
+                quoted.Append('\\', backslashes);
+            }
+
+            backslashes = 0;
+            quoted.Append(character);
         }
+
+        quoted.Append('\\', backslashes * 2);
+        return quoted.Append('"').ToString();
     }
 }

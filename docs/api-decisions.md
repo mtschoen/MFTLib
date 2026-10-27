@@ -962,3 +962,18 @@ deliberate heavy-scan demonstrations of row-level algorithms built over the publ
 materializing entries, which no lighter verb demonstrates.
 
 **Revisit only if:** the row enumeration they exercise is covered by another sample verb.
+
+## The Defender exclusion script is passed with -Command, not through a pinned temporary file
+
+**Decision (2026-10-26, owner ruling B9):** the Defender exclusion launch passes its script to Windows PowerShell as
+`-NoProfile -NonInteractive -Command <script>`. The temporary `.ps1` file and its pinning (held handle, file-id check,
+wildcard-path refusal, no delete by path) are removed. A plain `-Command` with the same script, run unelevated on the
+owner's machine on 2026-10-26, raised no Defender detection (the earlier `-EncodedCommand` launch had raised
+`Trojan:Win32/Commando.A!ml`); the owner ruled that a file would need only a diff check and that none is needed.
+
+**Reason:** the pinning defended against a same-user file swap that was never observed, with far more code than the
+two-line script it protected. A process already running as the user can interfere with this step (it can edit the
+user's own Defender-adjacent settings, PATH or the launching process itself), and MFTLib does not try to prevent it.
+
+**Revisit only if:** Defender flags the `-Command` launch, in which case the script returns to a temporary file checked
+by comparing its bytes with the bytes written immediately before launch.

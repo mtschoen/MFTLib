@@ -132,13 +132,4 @@ sealed record ElevationSeams
     internal Func<Process, TimeSpan, bool>? WaitForExit { get; init; }
     internal Action<Process>? KillProcess { get; init; }
     internal Func<Process, int>? GetExitCode { get; init; }
-    internal Func<string>? GetTemporaryDirectory { get; init; }
-
-    /// <summary>Runs after the PowerShell script file is written and before it is locked; test support only.</summary>
-    internal Action<string>? ScriptWritten { get; init; }
-
-    /// <summary>Replaces the attributes-only reopen that anchors the PowerShell script file; test support only.</summary>
-    internal Func<Microsoft.Win32.SafeHandles.SafeFileHandle, Microsoft.Win32.SafeHandles.SafeFileHandle>?
-        TakeScriptAnchor
-    { get; init; }
 }

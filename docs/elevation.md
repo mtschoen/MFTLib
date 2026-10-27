@@ -77,18 +77,10 @@ throws `ArgumentException` before anything runs, even off Windows. The script fi
 Defender module by absolute path (`Import-Module` of `$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\Defender\Defender.psd1`,
 `-ErrorAction Stop`), so a module planted in a per-user `PSModulePath` directory is never autoloaded into the
 elevated session, then runs one single-quoted module-qualified `Defender\Add-MpPreference -ExclusionProcess`
-literal per name, so a name cannot inject a command. PowerShell runs it from a
-script file: a uniquely named temporary `.ps1` (UTF-8 with a byte order mark) started with
-`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. The file is held open read-only, refusing write and delete
-sharing, until the child exits (or is killed on timeout). The held file must be the very file written (same volume
-and 128-bit file id, not only the same bytes), and on Windows the child is given its final path, with every junction
-and symbolic link resolved, rather than the temporary-directory path. NTFS refuses to rename any directory above an
-open file, so that path cannot be redirected while the child runs. Nothing starts when the script is not on a local
-NTFS drive reached at its drive root (a network path, another file system or a folder mount point), when Win32
-normalization would change the path (a trailing dot or space), when the path holds `[`, `]`, a backtick, `*` or `?`
-(Windows PowerShell 5.1 resolves a `-File` path as a wildcard, so `dir[ab]` would run a sibling `dira`), or when the
-path does not open the held file. Afterward the file is deleted through a reopen of its own handle, never by pathname;
-if that handle could not be taken the file is left behind, and a failed delete never changes the result.
+literal per name, so a name cannot inject a command. PowerShell receives the script as
+`-NoProfile -NonInteractive -Command <script>`: no temporary file is written and no encoded command is used. The unelevated
+launch passes it through `ArgumentList`; the elevated launch goes through ShellExecute, which ignores `ArgumentList`, so
+it passes one `Arguments` string with the script wrapped as a single quoted argument.
 
 Tests use `MFTLibTestExtensions.DefenderExclusionIsolation.ScriptPowerShell`, a process-global scope (use a nonparallel
 fixture) that records each PowerShell launch and reports a chosen outcome. A fake `IElevationProvider` decides the
