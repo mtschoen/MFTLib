@@ -28,7 +28,7 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(BrokerArgs, runner, runner.RecordExit);
+        var handled = ElevatedEntryPoint.RunBrokerIfRequested(BrokerArgs, runner.RunBroker, runner.RecordExit);
 
         Assert.IsTrue(handled);
         Assert.AreEqual(1, runner.BrokerCalls);
@@ -43,7 +43,7 @@ public class ElevatedEntryPointTests
         // is the executable path. The dispatch must scan past it to find the mode flag.
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(LeadingExecutablePathArgs, runner, runner.RecordExit);
+        var handled = ElevatedEntryPoint.RunBrokerIfRequested(LeadingExecutablePathArgs, runner.RunBroker, runner.RecordExit);
 
         Assert.IsTrue(handled);
         Assert.AreEqual("p", runner.BrokerPipe);
@@ -54,8 +54,8 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested(ScanOnlyArgs, runner, runner.RecordExit));
-        Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested([], runner, runner.RecordExit));
+        Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested(ScanOnlyArgs, runner.RunBroker, runner.RecordExit));
+        Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested([], runner.RunBroker, runner.RecordExit));
         Assert.AreEqual(0, runner.TotalCalls);
     }
 
@@ -92,7 +92,7 @@ public class ElevatedEntryPointTests
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
             BrokerDiagnostics.Dependencies.ResetToDefaults();
             var handled = ElevatedEntryPoint.RunBrokerIfRequested(
-                ["--broker", "--pipe", "p", "--diag", "--diag-log", suppliedPath], runner, runner.RecordExit);
+                ["--broker", "--pipe", "p", "--diag", "--diag-log", suppliedPath], runner.RunBroker, runner.RecordExit);
 
             Assert.IsTrue(handled);
             Assert.AreEqual(1, runner.BrokerCalls);
@@ -160,7 +160,7 @@ public class ElevatedEntryPointTests
         Directory.CreateDirectory(Path.Combine(InvalidDiagnosticsDirectory, BrokerDiagnostics.LogFileName));
         try
         {
-            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(arguments, runner, runner.RecordExit));
+            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(arguments, runner.RunBroker, runner.RecordExit));
             Assert.AreEqual(0, runner.TotalCalls);
             Assert.AreSequenceEqual([1], runner.ExitCodes);
         }
@@ -213,7 +213,7 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(BrokerWithDiagLogArgs, runner, runner.RecordExit);
+        var handled = ElevatedEntryPoint.RunBrokerIfRequested(BrokerWithDiagLogArgs, runner.RunBroker, runner.RecordExit);
 
         Assert.IsTrue(handled);
         Assert.AreEqual(ClientLogPath, BrokerDiagnostics.ClientLogPath);
@@ -225,7 +225,7 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(BrokerWithDiagIncludeSelfArgs, runner, runner.RecordExit);
+        var handled = ElevatedEntryPoint.RunBrokerIfRequested(BrokerWithDiagIncludeSelfArgs, runner.RunBroker, runner.RecordExit);
 
         Assert.IsTrue(handled);
         Assert.IsTrue(BrokerDiagnostics.IncludeSelfEntries);
@@ -251,7 +251,7 @@ public class ElevatedEntryPointTests
             var runner = new RecordingRunner();
             Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(
                 ["--broker", "--pipe", "p", "--diag", "--diag-log",
-                    Path.Combine(directory, "broker-diagnostics.ui.log")], runner, runner.RecordExit));
+                    Path.Combine(directory, "broker-diagnostics.ui.log")], runner.RunBroker, runner.RecordExit));
             Assert.AreEqual(1, runner.BrokerCalls);
             Assert.IsEmpty(runner.ExitCodes);
 
@@ -326,7 +326,7 @@ public class ElevatedEntryPointTests
         {
             Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", environmentOptIn ? "1" : null);
             var runner = new RecordingRunner();
-            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(DiagLogWithoutDiagArgs, runner, runner.RecordExit));
+            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(DiagLogWithoutDiagArgs, runner.RunBroker, runner.RecordExit));
             Assert.AreEqual(1, runner.BrokerCalls);
             Assert.IsNull(BrokerDiagnostics.ClientLogPath);
             Assert.IsFalse(BrokerDiagnostics.Enabled,
@@ -343,7 +343,7 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(PipeFlagWithNoValueArgs, runner, runner.RecordExit);
+        var handled = ElevatedEntryPoint.RunBrokerIfRequested(PipeFlagWithNoValueArgs, runner.RunBroker, runner.RecordExit);
 
         Assert.IsTrue(handled);
         Assert.IsNull(runner.BrokerPipe);
@@ -354,7 +354,7 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(NoPipeFlagArgs, runner, runner.RecordExit);
+        var handled = ElevatedEntryPoint.RunBrokerIfRequested(NoPipeFlagArgs, runner.RunBroker, runner.RecordExit);
 
         Assert.IsTrue(handled);
         Assert.IsNull(runner.BrokerPipe);
@@ -362,7 +362,7 @@ public class ElevatedEntryPointTests
 
     // Records which runner method was invoked and with what arguments, so the
     // dispatch can be tested without spawning a real elevated process, pipe, or scan.
-    sealed class RecordingRunner : IElevatedEntryRunner
+    sealed class RecordingRunner
     {
         public List<int> ExitCodes { get; } = [];
         public void RecordExit(int code) => ExitCodes.Add(code);

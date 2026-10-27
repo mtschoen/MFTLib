@@ -27,18 +27,18 @@ public static class ElevatedEntryPoint
     /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
     public static bool RunBrokerIfRequested(string[] arguments)
     {
-        return RunBrokerIfRequested(arguments, new DefaultElevatedEntryRunner(), Environment.Exit);
+        return RunBrokerIfRequested(arguments, new DefaultElevatedEntryRunner().RunBroker, Environment.Exit);
     }
 
     /// <summary>
-    ///     Internal dispatch allowing tests to supply a mock runner and exit handler. The exit action handles
-    ///     rejected diagnostics arguments before runner entry; valid dispatch invokes the supplied runner.
+    ///     Internal dispatch allowing tests to supply a broker-body action and exit handler. The exit action handles
+    ///     rejected diagnostics arguments before broker entry; valid dispatch invokes <paramref name="runBroker" />.
     /// </summary>
     /// <param name="arguments">The process arguments.</param>
-    /// <param name="runner">The runner to invoke when arguments are valid.</param>
-    /// <param name="exitProcess">Called with exit code 1 when diagnostics arguments are rejected before runner entry.</param>
+    /// <param name="runBroker">The broker-body action to invoke with the control pipe name when arguments are valid.</param>
+    /// <param name="exitProcess">Called with exit code 1 when diagnostics arguments are rejected before broker entry.</param>
     /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
-    internal static bool RunBrokerIfRequested(string[] arguments, IElevatedEntryRunner runner,
+    internal static bool RunBrokerIfRequested(string[] arguments, Action<string?> runBroker,
         Action<int> exitProcess)
     {
         foreach (var arg in arguments)
@@ -70,7 +70,7 @@ public static class ElevatedEntryPoint
                         BrokerDiagnostics.IncludeSelfEntries = HasFlag(arguments, "--diag-include-self");
                     }
 
-                    runner.RunBroker(FindOption(arguments, "--pipe"));
+                    runBroker(FindOption(arguments, "--pipe"));
                     return true;
             }
         }

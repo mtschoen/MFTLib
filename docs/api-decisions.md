@@ -1080,3 +1080,11 @@ is skipped and is not a failure (B2). `DriveKey.TryParse(string? text, out Drive
 **Reason:** matching the platform's conventions means consumers need not learn per-type names for the same idea.
 
 **Revisit only if:** the platform's own convention for failure text or `TryParse` parameters changes.
+
+## The broker body is an internal test seam
+
+**Decision (owner ruling, 2026-10-27, issue 802):** the broker body is an internal test seam, not a consumer extension point. `IElevatedEntryRunner` is deleted; the internal `ElevatedEntryPoint.RunBrokerIfRequested` overload accepts an `Action<string?>` broker-body delegate, while the public one-argument `ElevatedEntryPoint.RunBrokerIfRequested(string[] arguments)` overload stays unchanged and dispatches to `new DefaultElevatedEntryRunner().RunBroker`.
+
+**Reason:** the single-method interface had one production implementation and existed only so unit tests could substitute the broker body without spawning an elevated process. A consumer that wants its elevated child process to perform application-owned work uses `IElevationProvider` with its own relaunch flags rather than replacing the broker body, and any future tunable of the broker run (such as connect timeout or clock) belongs on a public options parameter on `RunBrokerIfRequested`, not a replaceable body.
+
+**Revisit only if:** a consumer needs a public options parameter on `RunBrokerIfRequested` to tune broker-session execution.

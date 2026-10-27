@@ -4,11 +4,11 @@ using System.Security.Principal;
 namespace MFTLib;
 
 /// <summary>
-///     Production <see cref="IElevatedEntryRunner" />. The broker mode does its work and
+///     Production elevated broker entry runner. The broker mode does its work and
 ///     then terminates the elevated child via <see cref="System.Environment.Exit" />,
 ///     since an elevated child exists only to perform one mode.
 /// </summary>
-sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+sealed class DefaultElevatedEntryRunner
 {
     readonly TimeProvider _timeProvider;
     readonly Action<int> _exitProcess;

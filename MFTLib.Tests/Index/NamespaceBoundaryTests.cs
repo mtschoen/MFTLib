@@ -126,7 +126,7 @@ public class NamespaceBoundaryTests
         "Broker", "IBroker", "JournalBrokerHost", "HostPipeWriter",
         "ChannelOperationKind", "ChannelOperationState", "ClientDisconnectedException",
         "RealBlockSectionWriter", "IBlockSectionWriter", "BlockScanOutcome", "BlockScanTarget",
-        "DefaultElevatedEntryRunner", "IElevatedEntryRunner", "ElevatedEntryPoint",
+        "DefaultElevatedEntryRunner", "ElevatedEntryPoint",
         "NamedPipeBrokerPipeFactory");
 
     static TypesShouldConjunctionWithDescription SourceBoundaryRule() =>
