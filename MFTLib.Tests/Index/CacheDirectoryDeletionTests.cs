@@ -50,7 +50,7 @@ public class CacheDirectoryDeletionTests
         foreach (var result in results)
         {
             Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
-            Assert.IsNull(result.FailureReason);
+            Assert.IsNull(result.FailureMessage);
             Assert.IsFalse(File.Exists(result.File.Path));
             Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(result.File.Path)));
             using var owner = BlockOwnerLock.TryAcquire(result.File.Path);
@@ -79,7 +79,7 @@ public class CacheDirectoryDeletionTests
         Assert.HasCount(2, results);
         var busy = results.Single(result => result.File.Path == unavailable);
         Assert.AreEqual(CachedBlockDeletionOutcome.InUse, busy.Outcome);
-        Assert.IsNull(busy.FailureReason);
+        Assert.IsNull(busy.FailureMessage);
         Assert.IsTrue(File.Exists(unavailable));
         Assert.IsTrue(Directory.Exists(BlockOwnerLock.LockPathFor(unavailable)));
         Assert.AreEqual(CachedBlockDeletionOutcome.Deleted,
@@ -108,7 +108,7 @@ public class CacheDirectoryDeletionTests
         Assert.HasCount(3, results);
         var failure = results.Single(result => result.Outcome == CachedBlockDeletionOutcome.Failed);
         Assert.AreEqual(replaced, failure.File.Path);
-        Assert.IsFalse(string.IsNullOrWhiteSpace(failure.FailureReason));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(failure.FailureMessage));
         Assert.AreEqual(2, results.Count(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
         Assert.IsTrue(Directory.Exists(replaced));
         foreach (var path in paths)
@@ -131,7 +131,7 @@ public class CacheDirectoryDeletionTests
         foreach (var result in results)
         {
             Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
-            Assert.IsNull(result.FailureReason);
+            Assert.IsNull(result.FailureMessage);
             Assert.IsFalse(File.Exists(result.File.Path));
             Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(result.File.Path)));
             using var owner = BlockOwnerLock.TryAcquire(result.File.Path);

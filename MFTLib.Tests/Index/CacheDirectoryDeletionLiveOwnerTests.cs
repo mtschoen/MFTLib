@@ -66,7 +66,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         Assert.HasCount(3, results);
         var ownedResult = results.Single(result => result.File.Path == CanonicalPath);
         Assert.AreEqual(CachedBlockDeletionOutcome.InUse, ownedResult.Outcome);
-        Assert.IsNull(ownedResult.FailureReason);
+        Assert.IsNull(ownedResult.FailureMessage);
         foreach (var unowned in new[] { unownedFirst, unownedSecond })
         {
             var result = results.Single(candidate => candidate.File.Path == unowned);
@@ -108,7 +108,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 
             var result = results.Single();
             Assert.AreEqual(CachedBlockDeletionOutcome.InUse, result.Outcome);
-            Assert.IsNull(result.FailureReason);
+            Assert.IsNull(result.FailureMessage);
             Assert.IsTrue(File.Exists(CanonicalPath),
                 "a clear racing an in-flight rescan must never delete the block being written");
         }

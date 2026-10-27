@@ -4,7 +4,7 @@
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **Drive keys**: `DriveKey` owns an ASCII letter, normalizes it to upper case once, and converts
       implicitly from `char`, with no string conversion.
-      `DriveKey.TryParse(string? text, out DriveKey driveKey)` accepts a trimmed ASCII
+      `DriveKey.TryParse(string? text, out DriveKey result)` accepts a trimmed ASCII
       letter, an optional colon, and an optional final slash or backslash, returning
       a normalized key. Invalid input returns false with the default key. It parses
       drive specs only; callers holding paths extract their roots first.

@@ -22,11 +22,11 @@ public readonly record struct DriveKey
     ///     ignoring surrounding whitespace and letter case. Accepts drive specs, not paths beyond a root.
     /// </summary>
     /// <param name="text">The drive spec to parse; callers holding a path pass its root.</param>
-    /// <param name="driveKey">The normalized key on success; the invalid default key on failure.</param>
+    /// <param name="result">The normalized key on success; the invalid default key on failure.</param>
     /// <returns>True for a valid drive spec; false for null or invalid input.</returns>
-    public static bool TryParse(string? text, out DriveKey driveKey)
+    public static bool TryParse(string? text, out DriveKey result)
     {
-        driveKey = default;
+        result = default;
         var token = text.AsSpan().Trim();
         if (token.IsEmpty || !char.IsAsciiLetter(token[0]))
         {
@@ -47,7 +47,7 @@ public readonly record struct DriveKey
             return false;
         }
 
-        driveKey = new DriveKey(token[0]);
+        result = new DriveKey(token[0]);
         return true;
     }
 

@@ -103,7 +103,7 @@ public class CacheDirectoryRejectionTests
 
         Assert.AreSequenceEqual([canonical], paths);
         Assert.AreSequenceEqual(foreign, [.. rejected.Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
-        Assert.IsTrue(rejected.All(entry => entry.Reason == "Invalid block filename."));
+        Assert.IsTrue(rejected.All(entry => entry.Message == "Invalid block filename."));
         foreach (var path in foreign.Concat(ignored))
         {
             Assert.AreEqual("foreign content", File.ReadAllText(path));

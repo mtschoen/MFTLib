@@ -48,7 +48,7 @@ partial class SampleHost
         var exitCode = 0;
         var directory = parsed.CacheDirectory ?? string.Empty;
         var drives = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
-        foreach (var block in CacheDirectory.InspectCached(directory, drives, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Reason}")))
+        foreach (var block in CacheDirectory.InspectCached(directory, drives, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Message}")))
         {
             _output.WriteLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}");
         }
@@ -57,7 +57,7 @@ partial class SampleHost
         {
             foreach (var result in CacheDirectory.DeleteCached(directory, drives))
             {
-                _output.WriteLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
+                _output.WriteLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureMessage is { } reason ? $" ({reason})" : string.Empty)}");
                 if (result.Outcome != CachedBlockDeletionOutcome.Deleted)
                 {
                     exitCode = 1;

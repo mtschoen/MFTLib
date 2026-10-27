@@ -372,7 +372,7 @@ members or a string conversion.
 
 ## DriveKey parses drive specs
 
-**Decision (2026-10-19):** `DriveKey.TryParse(string? text, out DriveKey driveKey)`
+**Decision (2026-10-19):** `DriveKey.TryParse(string? text, out DriveKey result)`
 accepts one ASCII letter with an optional colon and an optional final backslash
 or slash, ignoring surrounding whitespace and case. Success returns the normalized
 key. Null, empty, whitespace, UNC roots, multi-letter tokens, and paths beyond the
@@ -514,7 +514,7 @@ nullable `CacheLocation`, null when the block is not backed by a cache location,
 **Reason:** two fields stating one fact can contradict each other, and both consumers branch on the state enum
 and only print the reason. Six of the eight state-plus-reason pairs on the public surface already had this
 shape: `DriveStatus.Failure`, `WatchStateChange.Fault`, `DriveOperationResult.Failure`,
-`CachedBlockDeletionResult.FailureReason`, `IndexScanProgress.Outcome` and `DriveWatchStatus.FailureMessage`.
+`CachedBlockDeletionResult.FailureMessage`, `IndexScanProgress.Outcome` and `DriveWatchStatus.FailureMessage`.
 
 **Revisit only if:** a consumer needs to distinguish "checked and valid" from "not checked" on a row it cannot
 already distinguish by the state enum.
@@ -1035,3 +1035,16 @@ drives the parser edge-case tests on Windows and Linux. The shipped DLL is the t
 
 **Revisit only if:** a generator stops being used by any test or by Benchmark. A proposal to remove the generators on the
 grounds that test code ships in the release DLL does not reopen this ruling.
+
+## Failure text is Message or FailureMessage, and TryParse results are named result
+
+**Decision (owner ruling B12, 2026-10-26):** an object that is a failure names its human-readable text `Message`, as
+`Exception.Message` and `DriveFailure.Message` do. An object that may carry a failure names it `FailureMessage`, as
+`DriveWatchStatus.FailureMessage` does. `CachedBlockRejection.Reason` is therefore `Message` and
+`CachedBlockDeletionResult.FailureReason` is `FailureMessage`. `WindowsVolume.Reason` stays: it explains why a volume
+is skipped and is not a failure (B2). `DriveKey.TryParse(string? text, out DriveKey result)` names its out parameter
+`result`, as `int.TryParse`, `Guid.TryParse` and `IParsable<T>.TryParse` do.
+
+**Reason:** matching the platform's conventions means consumers need not learn per-type names for the same idea.
+
+**Revisit only if:** the platform's own convention for failure text or `TryParse` parameters changes.

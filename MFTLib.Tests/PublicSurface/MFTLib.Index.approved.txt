@@ -45,7 +45,7 @@ MFTLib.Index.CachedBlockDeletionResult :: method public override GetHashCode() :
 MFTLib.Index.CachedBlockDeletionResult :: method public override ToString() : string
 MFTLib.Index.CachedBlockDeletionResult :: method public static op_Equality(MFTLib.Index.CachedBlockDeletionResult? left, MFTLib.Index.CachedBlockDeletionResult? right) : bool
 MFTLib.Index.CachedBlockDeletionResult :: method public static op_Inequality(MFTLib.Index.CachedBlockDeletionResult? left, MFTLib.Index.CachedBlockDeletionResult? right) : bool
-MFTLib.Index.CachedBlockDeletionResult :: property public FailureReason { get; init; } : string?
+MFTLib.Index.CachedBlockDeletionResult :: property public FailureMessage { get; init; } : string?
 MFTLib.Index.CachedBlockDeletionResult :: property public File { get; init; } : MFTLib.Index.CachedBlockFile
 MFTLib.Index.CachedBlockDeletionResult :: property public Outcome { get; init; } : MFTLib.Index.CachedBlockDeletionOutcome
 MFTLib.Index.CachedBlockDeletionResult :: type public sealed class : System.IEquatable<MFTLib.Index.CachedBlockDeletionResult>
@@ -69,8 +69,8 @@ MFTLib.Index.CachedBlockRejection :: method public override GetHashCode() : int
 MFTLib.Index.CachedBlockRejection :: method public override ToString() : string
 MFTLib.Index.CachedBlockRejection :: method public static op_Equality(MFTLib.Index.CachedBlockRejection? left, MFTLib.Index.CachedBlockRejection? right) : bool
 MFTLib.Index.CachedBlockRejection :: method public static op_Inequality(MFTLib.Index.CachedBlockRejection? left, MFTLib.Index.CachedBlockRejection? right) : bool
+MFTLib.Index.CachedBlockRejection :: property public Message { get; init; } : string
 MFTLib.Index.CachedBlockRejection :: property public Path { get; init; } : string
-MFTLib.Index.CachedBlockRejection :: property public Reason { get; init; } : string
 MFTLib.Index.CachedBlockRejection :: type public sealed class : System.IEquatable<MFTLib.Index.CachedBlockRejection>
 MFTLib.Index.CachedBlockStatus :: method public <Clone>$() : MFTLib.Index.CachedBlockStatus
 MFTLib.Index.CachedBlockStatus :: method public Equals(MFTLib.Index.CachedBlockStatus? other) : bool
@@ -136,7 +136,7 @@ MFTLib.Index.DriveKey :: method public Equals(MFTLib.Index.DriveKey other) : boo
 MFTLib.Index.DriveKey :: method public override Equals(object obj) : bool
 MFTLib.Index.DriveKey :: method public override GetHashCode() : int
 MFTLib.Index.DriveKey :: method public override ToString() : string
-MFTLib.Index.DriveKey :: method public static TryParse(string? text, out MFTLib.Index.DriveKey driveKey) : bool
+MFTLib.Index.DriveKey :: method public static TryParse(string? text, out MFTLib.Index.DriveKey result) : bool
 MFTLib.Index.DriveKey :: method public static op_Equality(MFTLib.Index.DriveKey left, MFTLib.Index.DriveKey right) : bool
 MFTLib.Index.DriveKey :: method public static op_Implicit(char letter) : MFTLib.Index.DriveKey
 MFTLib.Index.DriveKey :: method public static op_Inequality(MFTLib.Index.DriveKey left, MFTLib.Index.DriveKey right) : bool

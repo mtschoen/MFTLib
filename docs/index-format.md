@@ -41,7 +41,7 @@ directory back into drive letters and serials (consumers list a directory with
 `CacheDirectory.InspectCached`), so a consumer never parses the name itself and a future
 format change is one edit rather than one edit per consumer.
 
-`InspectCached` accepts an optional `Action<CachedBlockRejection>? rejectedFile` parameter. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Reason` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter or lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
+`InspectCached` accepts an optional `Action<CachedBlockRejection>? rejectedFile` parameter. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Message` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter or lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
 
 Reporting does not open, validate, lock, rename, or delete the rejected file. Lock siblings, retired siblings, and subdirectories are not inventory candidates. The callback is synchronous, its ordering is unspecified, and it should return promptly without modifying the enumerated directory. A thrown callback exception aborts the call before any canonical inspection or deletion begins. Missing or empty directories produce no notifications. A call that omits `rejectedFile` silently excludes rejected names.
 
@@ -50,7 +50,7 @@ var rejected = new List<CachedBlockRejection>();
 var statuses = CacheDirectory.InspectCached(cacheDirectoryPath, null, rejected.Add);
 foreach (var entry in rejected)
 {
-    Console.WriteLine($"{entry.Path}: {entry.Reason}");
+    Console.WriteLine($"{entry.Path}: {entry.Message}");
 }
 ```
 
@@ -117,7 +117,7 @@ returns an empty result, and an inventory entry that is already gone by the time
 is reported `Deleted`, an idempotent success rather than a failure.
 
 Each attempt is a `CachedBlockDeletionResult`: the `CachedBlockFile` inventory entry that
-identifies it, the `CachedBlockDeletionOutcome`, and a `FailureReason` string that is non-null
+identifies it, the `CachedBlockDeletionOutcome`, and a `FailureMessage` string that is non-null
 only for `Failed`. Lock files are never deleted by this path, for the same create-and-lock race
 reason as above, so a `*.mlix.lock` file survives every outcome. Consumers render or log `CachedBlockDeletionResult` values after the call returns.
 

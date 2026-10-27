@@ -49,7 +49,7 @@ public class SyntheticNotificationsTests
             result);
         Assert.AreEqual(file, result.File);
         Assert.AreEqual(CachedBlockDeletionOutcome.Failed, result.Outcome);
-        Assert.AreEqual("access denied", result.FailureReason);
+        Assert.AreEqual("access denied", result.FailureMessage);
     }
 
     [TestMethod]
@@ -66,7 +66,7 @@ public class SyntheticNotificationsTests
 
         Assert.AreEqual(new CachedBlockRejection(@"C:\cache\x.mlix", "not canonical"), rejection);
         Assert.AreEqual(@"C:\cache\x.mlix", rejection.Path);
-        Assert.AreEqual("not canonical", rejection.Reason);
+        Assert.AreEqual("not canonical", rejection.Message);
     }
 
     [TestMethod]

@@ -52,7 +52,7 @@ ownership; block operations still follow the locks described below.
       that fails after the lock is taken reports `Failed` with the filesystem error message, and neither
       outcome stops the remaining candidates. `.lock` files are never deleted by this path either, for the
       same create-and-lock race reason as above. Each attempt returns a `CachedBlockDeletionResult` (the
-      `CachedBlockFile` inventory entry, the `CachedBlockDeletionOutcome`, and a `FailureReason` that is
+      `CachedBlockFile` inventory entry, the `CachedBlockDeletionOutcome`, and a `FailureMessage` that is
       non-null only for `Failed`); an already-absent file is reported `Deleted`, an idempotent success rather
       than a `Failed`. Consumers render or log the returned results after the call returns. `CacheDirectory.InspectCached(cacheDirectoryPath,
       drives = null, rejectedFile = null)` is one public method with optional drive selection

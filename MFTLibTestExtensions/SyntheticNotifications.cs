@@ -25,18 +25,18 @@ public static class SyntheticNotifications
     /// <summary>Builds the result of deleting one cached block.</summary>
     /// <param name="file">The inventory entry captured before deletion.</param>
     /// <param name="outcome">Whether deletion succeeded, ownership was unavailable, or deletion failed.</param>
-    /// <param name="failureReason">The filesystem error message for a failure; otherwise null.</param>
+    /// <param name="failureMessage">The filesystem error message for a failure; otherwise null.</param>
     /// <returns>The result.</returns>
     public static CachedBlockDeletionResult CreateCachedBlockDeletionResult(CachedBlockFile file,
-        CachedBlockDeletionOutcome outcome, string? failureReason) =>
-        new(file, outcome, failureReason);
+        CachedBlockDeletionOutcome outcome, string? failureMessage) =>
+        new(file, outcome, failureMessage);
 
     /// <summary>Builds a directory entry rejected from the cache inventory.</summary>
     /// <param name="path">The full path to the rejected file.</param>
-    /// <param name="reason">A human-readable explanation of the rejection.</param>
+    /// <param name="message">A human-readable explanation of the rejection.</param>
     /// <returns>The rejection.</returns>
-    public static CachedBlockRejection CreateCachedBlockRejection(string path, string reason) =>
-        new(path, reason);
+    public static CachedBlockRejection CreateCachedBlockRejection(string path, string message) =>
+        new(path, message);
 
     /// <summary>Builds an inspection result for one cached block.</summary>
     /// <param name="file">The inventory entry the inspection describes.</param>
