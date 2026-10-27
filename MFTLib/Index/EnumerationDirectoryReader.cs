@@ -17,7 +17,7 @@ sealed class EnumerationDirectoryReader
         var walk = options.DirectoryWalk;
         _retainedFileNames = options.RetainedFileNames is null
             ? null
-            : new HashSet<string>(options.RetainedFileNames, StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(options.RetainedFileNames, DirectoryWalkOptions.PathComparer)
                 .GetAlternateLookup<ReadOnlySpan<char>>();
 
         _prunedNames = new HashSet<string>(walk.PrunedDirectoryNames, DirectoryWalkOptions.PathComparer)

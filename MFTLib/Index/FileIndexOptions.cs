@@ -107,8 +107,10 @@ public sealed record FileIndexOptions
     /// <summary>
     ///     Which files the index keeps, applied by every producer: the MFT producers filter records and
     ///     the directory walk filters entries. Null (the default) keeps every eligible row. An empty
-    ///     collection keeps directories only. A nonempty collection also keeps files whose names match
-    ///     ordinally, ignoring case. The root row is always kept. <see cref="FileIndex.OpenAsync" />
+    ///     collection keeps directories only. A nonempty collection also keeps files whose names match by the
+    ///     drive's comparison. MFT sources use NTFS name comparison, ordinal and ignoring case, including dumps
+    ///     parsed on Linux. The directory walk uses one comparison for retained names and pruning: ignoring case
+    ///     on Windows and ordinal elsewhere. The root row is always kept. <see cref="FileIndex.OpenAsync" />
     ///     materializes the collection once and rejects a null or malformed UTF-16 element, or a set too long for the
     ///     source's request, before creating a cache directory or starting a scan. A cached block records
     ///     the retention that shaped it, so a warm start under another set discards the block and scans again.

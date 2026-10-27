@@ -730,7 +730,9 @@ Row retention is `FileIndexOptions.RetainedFileNames`
 ## Retention is an index option applied by every producer
 
 **Decision:** `FileIndexOptions.RetainedFileNames` is null to retain every eligible row, empty to retain
-directories only, or nonempty to retain directories plus files whose names match ordinally, ignoring case.
+directories only, or nonempty to retain directories plus files whose names match by the drive's comparison.
+MFT sources use NTFS name comparison, ordinal and ignoring case, including a dump parsed on Linux. The
+directory walk uses one comparison for retained names and pruning: ignoring case on Windows, ordinal elsewhere.
 Every producer applies it. The MFT producers filter records, the dump source filters records, and the
 directory walk (`ProducerKind.Enumeration`) does not write a non-directory entry whose name is not retained.
 The root row is always kept. The index hands the set to an MFT producer in the internal produce request, and
@@ -752,8 +754,9 @@ how a producer reads its substrate. This supersedes the F4 sentence that scoped 
 **Decision:** `FileIndexOptions.DirectoryWalk` is a `DirectoryWalkOptions` record, defaulting to `new()`, with
 four rules: `PrunedDirectoryNames`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and
 `PruneDotDirectories`. A pruned directory is written as a row, like `find -prune`, but its children are not
-enumerated. The drive's root is never pruned. Names compare with the drive's path comparison (ignoring case on
-Windows, ordinal elsewhere). Paths match a directory whose full path equals them after `Path.GetFullPath` and
+enumerated. The drive's root is never pruned. On directory walks, retained names and these pruning rules use
+one drive comparison: ignoring case on Windows, ordinal elsewhere. Paths match a directory whose full path
+equals them after `Path.GetFullPath` and
 `Path.TrimEndingDirectorySeparator`, so a path outside a drive's root has no effect on it. Hidden and system
 entries stay included unless a rule prunes them, and reparse points stay recorded and never entered. MFT drives
 ignore the record. `FileIndex.OpenAsync` rejects a null record or collection, a blank or separator-containing
@@ -771,7 +774,7 @@ row such as `.git` while skipping its contents.
 
 ## The library owns scan-shape identity
 
-**Decision:** block format 5 stores a 64-bit scan shape at header offset 112: the first eight bytes of SHA-256
+**Decision:** block format 6 stores a 64-bit scan shape at header offset 112: the first eight bytes of SHA-256
 over the canonical encoding of the options that shaped the rows, per producer (`docs/index-format.md`). Warm
 start compares it after the cache tag; a mismatch records `BlockValidationResult.WrongScanShape`, deletes the
 block under its owner lock and cold-scans, and a cache-only open leaves the block in place and fails with
@@ -1053,6 +1056,17 @@ drives the parser edge-case tests on Windows and Linux. The shipped DLL is the t
 
 **Revisit only if:** a generator stops being used by any test or by Benchmark. A proposal to remove the generators on the
 grounds that test code ships in the release DLL does not reopen this ruling.
+
+## Retained names and pruning share the drive comparison
+
+**Decision (2026-10-26, owner ruling B11):** `FileIndexOptions.RetainedFileNames` and directory-walk pruning
+use one comparison, the drive's. MFT sources use ordinal case-insensitive comparison for NTFS, including a dump
+parsed on Linux. The directory walk ignores case on Windows and is ordinal elsewhere for retained names, pruned
+names and pruned paths. The format version moved to 6, so blocks shaped under the previous comparison are discarded.
+
+**Reason:** one rule matches what the file system itself treats as the same name.
+
+**Revisit only if:** a source needs a comparison other than its file system's own name equality.
 
 ## Failure text is Message or FailureMessage, and TryParse results are named result
 

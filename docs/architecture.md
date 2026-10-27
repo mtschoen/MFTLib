@@ -112,7 +112,7 @@
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. The tag carries only meaning the consumer
-      owns. Block format 5 stores the two values at offsets 104 and 108 in a 128-byte
+      owns. Block format 6 stores the two values at offsets 104 and 108 in a 128-byte
       declared header. Old-format blocks cold-scan once. Mismatches report `WrongCacheTag` and cold-scan; a
       cache-only open fails with `DriveFailureKind.CacheIdentityMismatch` and leaves the block in place. Both emit
       stored/requested tag diagnostics.

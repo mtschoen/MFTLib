@@ -49,6 +49,11 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
     public async Task RetainedFileNames_OneSetReachesTheMftProducerAndFiltersTheEnumerationWalk()
     {
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Notes.TXT"), "keep", TestContext.CancellationToken);
+        if (!OperatingSystem.IsWindows())
+        {
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "notes.txt"), "keep exact", TestContext.CancellationToken);
+        }
+
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "other.bin"), "drop", TestContext.CancellationToken);
         var seen = new List<IReadOnlyCollection<string>?>();
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _)
@@ -71,7 +76,16 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Assert.AreSequenceEqual(retained, [.. seen.Single()!]);
         var walked = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, walked.State);
-        Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT"), TestContext.CancellationToken));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT"), TestContext.CancellationToken));
+        }
+        else
+        {
+            Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "notes.txt"), TestContext.CancellationToken));
+            Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT"), TestContext.CancellationToken));
+        }
+
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "other.bin"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
         Assert.IsTrue(index.Find(Path.Combine(TreeRoot, "Documents"), TestContext.CancellationToken)!.Value.IsDirectory);

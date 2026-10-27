@@ -113,16 +113,34 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task Produce_NonemptyRetainedFileNames_WritesDirectoriesAndMatchingFilesIgnoringCase()
+    public async Task Produce_RetainedFileNamesFollowTheDriveComparison()
     {
-        var snapshot = Produce(out var block, retainedFileNames: ["REPORT.PDF", "no-such-file.txt"]);
+        var root = Path.Combine(_treeRoot, "RetainedNames");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "upper", TestContext.CancellationToken);
+        if (!DriveComparisonIgnoresCase)
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "readme.md"), "lower", TestContext.CancellationToken);
+        }
+
+        await File.WriteAllTextAsync(Path.Combine(root, "other.txt"), "other", TestContext.CancellationToken);
+
+        var snapshot = Produce(out var block, retainedFileNames: ["readme.md", "no-such-file.txt"],
+            rootDirectory: root);
         try
         {
-            // Root, Documents, Projects, Pictures, report.pdf.
-            Assert.AreEqual(5u, block.Header.RowCount);
-            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf")).HasValue);
-            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg")).HasValue);
-            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
+            var fileNames = new List<string>();
+            for (var rowIndex = 0u; rowIndex < block.Header.RowCount; rowIndex++)
+            {
+                if (!block.Rows[(int)rowIndex].IsDirectory)
+                {
+                    fileNames.Add(new string(NamePool.ReadRowName(block, rowIndex)));
+                }
+            }
+
+            Assert.AreEqual(2u, block.Header.RowCount);
+            Assert.HasCount(1, fileNames);
+            Assert.AreEqual(DriveComparisonIgnoresCase ? "README.md" : "readme.md", fileNames[0]);
         }
         finally
         {

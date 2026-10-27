@@ -152,6 +152,23 @@ public sealed class FileIndexScanShapeTests
     }
 
     [TestMethod]
+    public async Task EnumerationRetentionCasingFollowsTheDriveComparison()
+    {
+        var diagnostics = new List<string>();
+        await OpenOnce(EnumerationOptions(diagnostics) with { RetainedFileNames = ["app.dll"] });
+
+        await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics) with
+        {
+            RetainedFileNames = ["APP.DLL"]
+        }, TestContext.CancellationToken);
+
+        var expectedOrigin = OperatingSystem.IsWindows() ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan;
+        Assert.AreEqual(!OperatingSystem.IsWindows(), RecordedWrongScanShape(diagnostics));
+        Assert.AreEqual(expectedOrigin, OriginOf(reopened, 'A'));
+        Assert.AreEqual(expectedOrigin, OriginOf(reopened, 'B'));
+    }
+
+    [TestMethod]
     public async Task EditingAPrunedPathUnderDriveB_LeavesDriveAsBlockAdopted()
     {
         var diagnostics = new List<string>();
@@ -266,7 +283,7 @@ public sealed class FileIndexScanShapeTests
             Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
         }
 
-        // Retention compares ignoring case, so another spelling of the same name is the same shape.
+        // MFT retention compares ignoring case, so another spelling of the same name is the same shape.
         await using var reopened = await FileIndex.OpenAsync(MftOptions(false, ["HEAD"], diagnostics) with
         {
             DirectoryWalk = new DirectoryWalkOptions { PruneDotDirectories = true, PrunedDirectoryNames = ["build"] }

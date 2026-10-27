@@ -30,7 +30,7 @@ static class ScanShape
     {
         var buffer = new ArrayBufferWriter<byte>();
         WriteUInt32(buffer, (uint)ProducerKind.Mft);
-        WriteRetention(buffer, retainedFileNames);
+        WriteRetention(buffer, retainedFileNames, FoldForMft);
         WriteFlag(buffer, includeFreed);
         return Digest(buffer);
     }
@@ -48,7 +48,7 @@ static class ScanShape
     {
         var buffer = new ArrayBufferWriter<byte>();
         WriteUInt32(buffer, (uint)ProducerKind.Enumeration);
-        WriteRetention(buffer, retainedFileNames);
+        WriteRetention(buffer, retainedFileNames, FoldForDrive);
         WriteStrings(buffer, walk.PrunedDirectoryNames.Select(FoldForDrive));
         WriteUInt32(buffer, (uint)walk.PrunedDirectoryAttributes);
         WriteFlag(buffer, walk.PruneDotDirectories);
@@ -56,15 +56,18 @@ static class ScanShape
         return Digest(buffer);
     }
 
-    // Retention matches ordinally ignoring case on every producer, so upper-invariant is its canonical form.
-    static void WriteRetention(ArrayBufferWriter<byte> buffer, IReadOnlyCollection<string>? retainedFileNames)
+    // Retention folds exactly when the producer's name comparison ignores case.
+    static void WriteRetention(ArrayBufferWriter<byte> buffer, IReadOnlyCollection<string>? retainedFileNames,
+        Func<string, string> fold)
     {
         WriteFlag(buffer, retainedFileNames is not null);
         if (retainedFileNames is not null)
         {
-            WriteStrings(buffer, retainedFileNames.Select(name => name.ToUpperInvariant()));
+            WriteStrings(buffer, retainedFileNames.Select(fold));
         }
     }
+
+    static string FoldForMft(string value) => value.ToUpperInvariant();
 
     static string FoldForDrive(string value) => OperatingSystem.IsWindows() ? value.ToUpperInvariant() : value;
 

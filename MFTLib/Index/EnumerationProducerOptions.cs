@@ -15,7 +15,8 @@ sealed record EnumerationProducerOptions
 
     /// <summary>
     ///     Null writes every entry. Empty writes directories only. A nonempty set also writes files whose
-    ///     names match ordinally, ignoring case. The root row is always written.
+    ///     names match by the drive's comparison: ignoring case on Windows, ordinal elsewhere. The root row
+    ///     is always written.
     /// </summary>
     public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 

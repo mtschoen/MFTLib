@@ -168,7 +168,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 120 | access-denied subtree count | u32 | Subtrees the enumeration producer could not enter; zero for MFT blocks |
 | 124 | reserved | u32 | Written as zero |
 
-The format version is 5. The declared header ends at byte 128 within a
+The format version is 6. The declared header ends at byte 128 within a
 4096-byte header page. A version mismatch rejects the block: normal opens
 rebuild it, and cache-only opens decline the drive and leave the block in place.
 
@@ -221,7 +221,8 @@ canonical byte encoding. Integers are little-endian, a flag is one byte (0 or 1)
 a string set is a u32 count followed by each string as a u32 UTF-8 byte count and its
 bytes, deduplicated and sorted ordinally after folding. Retention is a flag that is 1
 when `FileIndexOptions.RetainedFileNames` is non-null, followed, when it is, by the
-names folded to upper-invariant, because every producer matches them ignoring case.
+names folded to upper-invariant for MFT blocks. Enumeration retention folds that way on
+Windows and stays as given elsewhere, matching the drive comparison.
 Every string is well-formed UTF-16, so the UTF-8 form is lossless: admission rejects an unpaired
 surrogate in a retained name, a pruned directory name or a pruned path before any cache work.
 
@@ -230,8 +231,8 @@ surrogate in a retained name, a pruned directory name or a pruned path before an
 | MFT | producer kind u32 (1); retention; `MftScanOptions.IncludeFreed` flag |
 | Enumeration | producer kind u32 (2); retention; pruned directory names; pruned directory attributes u32; `PruneDotDirectories` flag; pruned directory paths |
 
-For an enumeration block, pruned names and paths fold to upper-invariant on Windows and
-stay as given elsewhere, matching the drive's path comparison. Paths are normalized with
+For an enumeration block, retained names, pruned names and pruned paths fold to upper-invariant
+on Windows and stay as given elsewhere, matching the drive's path comparison. Paths are normalized with
 `Path.GetFullPath` and `Path.TrimEndingDirectorySeparator`, and only the paths equal to
 or beneath the drive's root are encoded, so editing a pruned path under one drive leaves
 every other drive's block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`. The
