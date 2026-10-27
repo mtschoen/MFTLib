@@ -15,15 +15,15 @@ public class SyntheticNotificationsTests
     static readonly DateTime Moment = new(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
 
     static CachedBlockFile File() =>
-        SyntheticNotifications.CreateCachedBlockFile('T', 7, @"C:\cache\T-7.mlix", 4096, Moment);
+        SyntheticNotifications.CreateCachedBlockFile(new VolumeKey('T'), 7, @"C:\cache\T-7.mlix", 4096, Moment);
 
     [TestMethod]
     public void CreateCachedBlockFile_ForwardsEveryValue()
     {
         var file = File();
 
-        Assert.AreEqual(new CachedBlockFile('T', 7, @"C:\cache\T-7.mlix", 4096, Moment), file);
-        Assert.AreEqual('T', file.Drive);
+        Assert.AreEqual(new CachedBlockFile(new VolumeKey('T'), 7, @"C:\cache\T-7.mlix", 4096, Moment), file);
+        Assert.AreEqual(new VolumeKey('T'), file.Drive);
         Assert.AreEqual(7u, file.VolumeSerial);
         Assert.AreEqual(@"C:\cache\T-7.mlix", file.Path);
         Assert.AreEqual(4096L, file.Size);
@@ -34,7 +34,7 @@ public class SyntheticNotificationsTests
     public void CreateCachedBlockFile_RefusesANullPath()
     {
         Assert.ThrowsExactly<ArgumentNullException>(() =>
-            SyntheticNotifications.CreateCachedBlockFile('T', 7, null!, 0, Moment));
+            SyntheticNotifications.CreateCachedBlockFile(new VolumeKey('T'), 7, null!, 0, Moment));
     }
 
     [TestMethod]
@@ -173,7 +173,7 @@ public class SyntheticNotificationsTests
     [DataRow(true)]
     public void CreateWatchStateChange_ForwardsEveryValue(bool includeFault)
     {
-        var watch = SyntheticNotifications.CreateDriveStatus('T', DriveState.Offline, null, null).Watch
+        var watch = SyntheticNotifications.CreateDriveStatus(new VolumeKey('T'), DriveState.Offline, null, null).Watch
             with
         { State = WatchState.Faulted, StateVersion = 7, FailureMessage = "watch failed" };
         var fault = includeFault
@@ -182,7 +182,7 @@ public class SyntheticNotificationsTests
 
         var change = SyntheticNotifications.CreateWatchStateChange('t', watch, fault);
 
-        Assert.AreEqual(new DriveKey('T'), change.Drive);
+        Assert.AreEqual(new VolumeKey('T'), change.Drive);
         Assert.AreSame(watch, change.Watch);
         Assert.AreSame(fault, change.Fault);
         Assert.AreEqual(new WatchStateChange('T', watch, fault), change);
@@ -198,12 +198,12 @@ public class SyntheticNotificationsTests
             ? new IOException("scan failed")
             : null;
 
-        var result = SyntheticNotifications.CreateDriveOperationResult('t', outcome, failure);
+        var result = SyntheticNotifications.CreateDriveOperationResult(new VolumeKey('t'), outcome, failure);
 
-        Assert.AreEqual(new DriveKey('T'), result.Drive);
+        Assert.AreEqual(new VolumeKey('T'), result.Drive);
         Assert.AreEqual(outcome, result.Outcome);
         Assert.AreSame(failure, result.Failure);
-        Assert.AreEqual(new DriveOperationResult('T', outcome, failure), result);
+        Assert.AreEqual(new DriveOperationResult(new VolumeKey('T'), outcome, failure), result);
     }
 
     [TestMethod]
@@ -226,10 +226,10 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateIndexDriveOpened_ForwardsEveryValue()
     {
-        var opened = SyntheticNotifications.CreateIndexDriveOpened('T', 2, 5);
+        var opened = SyntheticNotifications.CreateIndexDriveOpened(new VolumeKey('T'), 2, 5);
 
-        Assert.AreEqual(new IndexDriveOpened('T', 2, 5), opened);
-        Assert.AreEqual('T', opened.Drive);
+        Assert.AreEqual(new IndexDriveOpened(new VolumeKey('T'), 2, 5), opened);
+        Assert.AreEqual(new VolumeKey('T'), opened.Drive);
         Assert.AreEqual(2, opened.SettledDriveCount);
         Assert.AreEqual(5, opened.TotalDriveCount);
     }
@@ -251,10 +251,10 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateIndexScanProgress_ForwardsEveryValue()
     {
-        var progress = SyntheticNotifications.CreateIndexScanProgress('T', IndexScanPhase.Finished, 9, 10,
+        var progress = SyntheticNotifications.CreateIndexScanProgress(new VolumeKey('T'), IndexScanPhase.Finished, 9, 10,
             @"T:\dir", IndexScanOutcome.Succeeded);
 
-        Assert.AreEqual('T', progress.Drive);
+        Assert.AreEqual(new VolumeKey('T'), progress.Drive);
         Assert.AreEqual(IndexScanPhase.Finished, progress.Phase);
         Assert.AreEqual(9u, progress.WrittenRowCount);
         Assert.AreEqual(10u, progress.ExpectedRowCount);
@@ -265,9 +265,9 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateIndexScanProgress_WithoutOptionalValues_LeavesThemNull()
     {
-        var progress = SyntheticNotifications.CreateIndexScanProgress('T', IndexScanPhase.ParsingMft, 1);
+        var progress = SyntheticNotifications.CreateIndexScanProgress(new VolumeKey('T'), IndexScanPhase.ParsingMft, 1);
 
-        Assert.AreEqual(new IndexScanProgress('T', IndexScanPhase.ParsingMft, 1), progress);
+        Assert.AreEqual(new IndexScanProgress(new VolumeKey('T'), IndexScanPhase.ParsingMft, 1), progress);
         Assert.IsNull(progress.ExpectedRowCount);
         Assert.IsNull(progress.CurrentDirectory);
         Assert.IsNull(progress.Outcome);
@@ -276,12 +276,12 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateDriveStatus_ForwardsEveryValueAndLeavesTheOptionalOnesDefault()
     {
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
+        var status = SyntheticNotifications.CreateDriveStatus(new VolumeKey('T'), DriveState.Ready,
             SyntheticNotifications.CreateDriveBlockStatus(BlockOrigin.WarmStartedFromCache, 40, true, Moment), null);
         status = status with { Watch = status.Watch with { IsSupported = true } };
 
         Assert.AreEqual(
-            new DriveStatus('T', DriveState.Ready)
+            new DriveStatus(new VolumeKey('T'), DriveState.Ready)
             {
                 Block = new DriveBlockStatus
                 {
@@ -293,7 +293,7 @@ public class SyntheticNotificationsTests
                 Watch = new DriveWatchStatus { IsSupported = true }
             },
             status);
-        Assert.AreEqual('T', status.Drive);
+        Assert.AreEqual(new VolumeKey('T'), status.Drive);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, status.Block!.Origin);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
@@ -308,7 +308,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateDriveStatus_AcceptsAWithExpressionForTheOptionalValues()
     {
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
+        var status = SyntheticNotifications.CreateDriveStatus(new VolumeKey('T'), DriveState.Ready,
             SyntheticNotifications.CreateDriveBlockStatus(BlockOrigin.ProducedByScan, 0, false, DateTime.MinValue),
             null);
         status = status with { Watch = status.Watch with { FailureMessage = "watch failed" } };
@@ -321,7 +321,7 @@ public class SyntheticNotificationsTests
     {
         var failure = SyntheticNotifications.CreateDriveFailure(DriveFailureKind.CacheDeclined, "no usable cache");
 
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Failed, null, failure);
+        var status = SyntheticNotifications.CreateDriveStatus(new VolumeKey('T'), DriveState.Failed, null, failure);
 
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.IsNull(status.Block);

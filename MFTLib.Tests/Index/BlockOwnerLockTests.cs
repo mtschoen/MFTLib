@@ -30,7 +30,7 @@ public sealed class BlockOwnerLockTests : IDisposable
     [TestMethod]
     public void TryAcquire_SecondAcquisitionOnTheSamePathFailsUntilTheFirstIsDisposed()
     {
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
 
         var first = BlockOwnerLock.TryAcquire(blockPath);
         Assert.IsNotNull(first);
@@ -48,7 +48,7 @@ public sealed class BlockOwnerLockTests : IDisposable
     [TestMethod]
     public void TryAcquire_AnUnreadableLockFile_ReportsInUseRatherThanThrowing()
     {
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         var lockPath = BlockOwnerLock.LockPathFor(blockPath);
         Directory.CreateDirectory(lockPath);
 

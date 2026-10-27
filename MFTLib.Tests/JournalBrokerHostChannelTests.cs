@@ -22,7 +22,7 @@ public partial class JournalBrokerHostChannelTests
             ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = drive =>
             {
-                Assert.AreEqual(new DriveKey('C'), drive);
+                Assert.AreEqual(new VolumeKey('C'), drive);
                 return Volume;
             }
         });
@@ -47,7 +47,7 @@ public partial class JournalBrokerHostChannelTests
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
             {
-                Assert.AreEqual(new DriveKey('D'), drive);
+                Assert.AreEqual(new VolumeKey('D'), drive);
                 return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
             }
         });
@@ -365,7 +365,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreSequenceEqual([validPipeName], connectedNames);
     }
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> IdleWatch(
-        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
@@ -388,7 +388,7 @@ public partial class JournalBrokerHostChannelTests
     // connection is still pending when it starts waiting, so the harness holds the connection
     // until that timer exists.
     static async Task<Stream> OpenChannelAfterConnectBoundAsync(HostChannelHarness harness, TimerSignalingClock clock,
-        TaskCompletionSource connectionsReleased, DriveKey drive)
+        TaskCompletionSource connectionsReleased, VolumeKey drive)
     {
         var open = harness.OpenChannelAsync(drive);
         await clock.TimerCreated(BrokerLiveness.ChannelConnectTimeout).WaitAsync(HangGuard);

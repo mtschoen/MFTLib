@@ -116,7 +116,7 @@ static class NamedBlockSection
         return new InvalidDataException($"Block section '{sectionName}' was rejected: {validation}.");
     }
 
-    public static string BuildSectionName(DriveKey drive)
+    public static string BuildSectionName(VolumeKey drive)
     {
         return BlockSectionNaming.Prefix + drive + "-" + Guid.NewGuid().ToString("N");
     }

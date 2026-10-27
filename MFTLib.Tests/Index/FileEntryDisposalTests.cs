@@ -33,7 +33,7 @@ public class FileEntryDisposalTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        _snapshot = [new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
         _entry = FileEntry.Create(_snapshot[0], readme);
     }
 
@@ -82,7 +82,7 @@ public class FileEntryDisposalTests
 
         var deepest = builder.AddRow("deep.txt", parent, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
-        DriveBlock[] snapshot = [new DriveBlock('T', 0, builder.OpenForReading(out _)!,
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), 0, builder.OpenForReading(out _)!,
             rootDirectoryPath: TestDriveRoot.For('T'))];
         try
         {
@@ -105,7 +105,7 @@ public class FileEntryDisposalTests
         var root = builder.AddRoot();
         var file = builder.AddRow("rootless.txt", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
-        DriveBlock[] snapshot = [new DriveBlock('T', 0, builder.OpenForReading(out _)!)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), 0, builder.OpenForReading(out _)!)];
         try
         {
             var entry = FileEntry.Create(snapshot[0], file);

@@ -23,8 +23,8 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         return new FileIndexOptions
         {
             Drives = [
-                new IndexedDrive('T', TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
-                new IndexedDrive('U', secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration)
+                SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
+                SyntheticIndexedDrive.Create(new VolumeKey('U'), secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration)
             ],
             CacheDirectory = CacheDirectoryPath
         };
@@ -34,7 +34,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     [TestMethod]
     public async Task DisposeAsync_AfterAQueryAndWhileAHandleIsHeld_ReleasesTheBlockFile()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         Assert.IsFalse(entry.IsDisposed);
@@ -55,14 +55,14 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var retiredHandle = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
         var currentHandle = index.Search(new SearchQuery("second.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
 
         await index.DisposeAsync();
 
         Assert.IsTrue(retiredHandle.IsDisposed, "the retired snapshot must be released too");
         Assert.IsTrue(currentHandle.IsDisposed);
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         BlockFileHoldAssertions.AssertNotHeld(blockPath);
     }
 
@@ -80,7 +80,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         await index.DisposeAsync();
 
         var unchangedBlockPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('U', secondVolumeSerial));
+            CacheDirectory.BlockFileName(new VolumeKey('U'), secondVolumeSerial));
         BlockFileHoldAssertions.AssertNotHeld(unchangedBlockPath);
         Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
     }
@@ -101,21 +101,21 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         var held = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         var retiredRelease = ReleaseStateOf(index, 'U');
         await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "second.md"), "second", TestContext.CancellationToken);
-        await index.RescanAsync(['U'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('U')], CancellationToken.None);
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
         Assert.IsTrue(retiredRelease.IsReleaseComplete, "a handle on drive T kept drive U's retired block mapped");
         Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('U', secondVolumeSerial) + ".retired-*"));
+            CacheDirectory.BlockFileName(new VolumeKey('U'), secondVolumeSerial) + ".retired-*"));
         Assert.AreEqual("readme.md", held.Name);
         await index.DisposeAsync();
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     static DriveBlockRelease ReleaseStateOf(FileIndex index, char drive) =>
-        LookupEngine.FindDriveBlock(index.CurrentSnapshot, drive)!.ReleaseState;
+        LookupEngine.FindDriveBlock(index.CurrentSnapshot, new VolumeKey(drive))!.ReleaseState;
 
     /// <summary>
     ///     A rescan does not keep its retired snapshot alive. Once its handles are unreachable,
@@ -126,7 +126,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     {
         var index = await OpenAndRescanWithoutRetainingThePreviousSnapshotAsync();
         var retiredBlockPath = Directory.EnumerateFiles(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*").Single();
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*").Single();
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
@@ -159,7 +159,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         {
             var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
                 CancellationToken.None);
-            var retiredBlock = LookupEngine.FindDriveBlock(index.CurrentSnapshot, 'T')!;
+            var retiredBlock = LookupEngine.FindDriveBlock(index.CurrentSnapshot, new VolumeKey('T'))!;
             var retiredRelease = retiredBlock.ReleaseState;
             retiredRelease.Hooks._releaseStarted = () =>
             {
@@ -168,7 +168,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
             };
 
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-            await index.RescanAsync(['T'], CancellationToken.None);
+            await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
             // Stands in for the snapshot finalizer: the same non-waiting release call, held at the
             // exact point the finalizer reaches once the flag is set and before a block is unmapped.
@@ -186,9 +186,9 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
             GC.KeepAlive(retiredBlock);
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('U', secondVolumeSerial)));
+                CacheDirectory.BlockFileName(new VolumeKey('U'), secondVolumeSerial)));
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', UniqueVolumeSerial)));
+                CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial)));
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
@@ -205,7 +205,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     [TestMethod]
     public async Task DisposeAsync_WhileABorrowIsHeld_WaitsForItAndThenReleasesTheBlockFile()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var borrow = new SnapshotBorrow(index.CurrentSnapshot);
         try
@@ -238,7 +238,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     [TestMethod]
     public async Task AQueryWhoseTokenSourceWasDisposed_LeavesNoBorrowOutstanding()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var release = index.CurrentSnapshot[0].ReleaseState;
         var cancellation = new CancellationTokenSource();
@@ -321,7 +321,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     [TestMethod]
     public async Task DisposeAsync_WhenACancellationCallbackThrows_StillReleasesTheBlock()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         await using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
@@ -346,7 +346,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         try
         {
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-            await index.RescanAsync(['T'], CancellationToken.None);
+            await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
             Assert.AreNotSame(borrow.DriveBlocks, index.CurrentSnapshot,
                 "the rescan did not retire the borrowed snapshot, so this proves nothing");
 
@@ -359,7 +359,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
             await disposal;
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', UniqueVolumeSerial)));
+                CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial)));
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
@@ -382,7 +382,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         try
         {
             var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-            var retiredBlock = LookupEngine.FindDriveBlock(index.CurrentSnapshot, 'T')!;
+            var retiredBlock = LookupEngine.FindDriveBlock(index.CurrentSnapshot, new VolumeKey('T'))!;
             var retiredRelease = retiredBlock.ReleaseState;
             retiredRelease.Hooks._releaseStarted = () =>
             {
@@ -391,13 +391,13 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
             };
 
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-            await index.RescanAsync(['T'], CancellationToken.None);
+            await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
             var competingRelease = Task.Run(retiredRelease.ReleaseUnborrowed);
             TestGate.WaitSynchronously(reachedTheGate.Entered);
 
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third", TestContext.CancellationToken);
-            await index.RescanAsync(['T'], CancellationToken.None);
+            await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
             var disposal = index.DisposeAsync().AsTask();
 
@@ -410,7 +410,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
             GC.KeepAlive(retiredBlock);
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', UniqueVolumeSerial)));
+                CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial)));
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
@@ -427,10 +427,10 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     {
         var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
             CancellationToken.None);
-        GC.SuppressFinalize(LookupEngine.FindDriveBlock(index.CurrentSnapshot, 'T')!);
+        GC.SuppressFinalize(LookupEngine.FindDriveBlock(index.CurrentSnapshot, new VolumeKey('T'))!);
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second",
             TestContext.CancellationToken);
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
         return index;
     }
 
@@ -440,7 +440,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second",
             TestContext.CancellationToken);
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
         return index;
     }
 

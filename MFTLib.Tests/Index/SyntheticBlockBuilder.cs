@@ -29,6 +29,7 @@ sealed class SyntheticBlockBuilder : IDisposable
             _block = BlockFile.Create(new BlockFileCreateOptions
             {
                 Path = BlockPath,
+                Root = new VolumeKey(driveLetter),
                 VolumeSerial = volumeSerial,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = slotCapacity,

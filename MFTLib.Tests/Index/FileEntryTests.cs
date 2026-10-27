@@ -34,7 +34,7 @@ public class FileEntryTests
         _builder.Complete(ScanMoment);
 
         var block = _builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(_builder.Drive, 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey(_builder.Drive), 0, block);
         _snapshot = [driveBlock];
     }
 
@@ -91,9 +91,9 @@ public class FileEntryTests
         var entry = FileEntry.Create(_snapshot[0], _fileRow);
         var id = entry.RecordKey;
 
-        Assert.AreEqual(new DriveKey('T'), entry.Drive);
+        Assert.AreEqual(new VolumeKey('T'), entry.Drive);
         Assert.AreEqual(id.Drive, entry.Drive);
-        Assert.AreEqual('T', id.Drive);
+        Assert.AreEqual(new VolumeKey('T'), id.Drive);
         Assert.AreEqual(_fileRow, id.RecordNumber);
         Assert.AreEqual(ProducerKind.Enumeration, id.ProducerKind);
     }
@@ -107,11 +107,11 @@ public class FileEntryTests
         builder.Complete(ScanMoment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('V', 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), 0, block)];
         try
         {
             var entry = FileEntry.Create(snapshot[0], row);
-            Assert.AreEqual(new DriveKey('V'), entry.Drive);
+            Assert.AreEqual(new VolumeKey('V'), entry.Drive);
             Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
             Assert.IsFalse(entry.IsSizeKnown);
             Assert.AreEqual(0L, entry.Size);
@@ -155,7 +155,7 @@ public class FileEntryTests
         builder.MutateHeader((ref header) => header.ProducerKind = ProducerKind.Mft);
 
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(builder.Drive, 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey(builder.Drive), 0, block);
         DriveBlock[] snapshot = [driveBlock];
         try
         {

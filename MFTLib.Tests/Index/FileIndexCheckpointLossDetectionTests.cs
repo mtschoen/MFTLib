@@ -69,7 +69,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
         // now. Only the report from the open remains.
         using var journal = JournalWindows.Journal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
-        await index.StartWatchingAsync(['T'], Token);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token);
 
         await FailDriveAndWaitForFaultAsync(index, source,
             new UnauthorizedAccessException("the volume handle was revoked"));
@@ -85,7 +85,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         Assert.AreEqual(openReport, loss, "nothing about the open's report changed");
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
-            () => index.StopWatchingAsync(['T'], Token));
+            () => index.StopWatchingAsync([new VolumeKey('T')], Token));
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         await using var index = await OpenWithAnOpenTimeLossAsync(source.IndexSource);
         index.HoldEveryRecovery();
 
-        await index.StartWatchingAsync(['T'], Token);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token);
 
         // A window distinct from the open's, so the numbers say which detection produced them.
         using var journal = JournalWindows.Journal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
@@ -114,7 +114,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
         Assert.AreEqual(900L, loss.BytesBehind, "the watch's window, not the open's");
         Assert.AreEqual(CachedNextUsn + 8_000, loss.NextUsn);
 
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(['T'], Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync([new VolumeKey('T')], Token));
     }
 
     /// <summary>

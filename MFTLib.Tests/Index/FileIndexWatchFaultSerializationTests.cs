@@ -15,7 +15,7 @@ public class FileIndexWatchFaultSerializationTests
     public async Task SuccessorFaultDuringRecoveryFaultHandler_DoesNotOverlapIt()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
         harness.FailNextProduction('T', new IOException("the volume went away"));
         var recoveryHandlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseRecoveryHandler = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,7 +42,7 @@ public class FileIndexWatchFaultSerializationTests
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await recoveryHandlerEntered.Task.WaitAsync(HangGuard, Token);
-        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token);
         harness.Source.WatchFor('T').LoseChannel(new IOException("the successor's broker died"));
 
         // Serialized, the successor's pump (captured by its state change) blocks; overlapped, its handler enters.

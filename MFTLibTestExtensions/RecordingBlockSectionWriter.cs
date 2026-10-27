@@ -13,6 +13,7 @@ sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSectio
     public BlockFile Block { get; } = BlockFile.Create(new BlockFileCreateOptions
     {
         Path = Path.Combine(Path.GetTempPath(), $"mft-block-section-{Guid.NewGuid():N}.bin"),
+        Root = new VolumeKey('C'),
         VolumeSerial = 123,
         ProducerKind = ProducerKind.Mft,
         RootRow = 5,

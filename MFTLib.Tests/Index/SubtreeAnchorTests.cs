@@ -135,7 +135,7 @@ public class SubtreeAnchorTests
     {
         using var anchorOwner = new WatchHarness(anchorDrive);
         using var queried = new WatchHarness(queriedDrive);
-        var anchor = anchorOwner.Index.Root(anchorDrive, TestContext.CancellationToken);
+        var anchor = anchorOwner.Index.Root(new VolumeKey(anchorDrive), TestContext.CancellationToken);
 
         Rejected<ArgumentException>(queried.Index, form, Under(anchor));
 
@@ -149,8 +149,8 @@ public class SubtreeAnchorTests
         using var first = new WatchHarness('T');
         using var second = new WatchHarness('T');
         var firstIndex = first.Index;
-        var ownRoot = firstIndex.Root('T', TestContext.CancellationToken);
-        var foreignRoot = second.Index.Root('T', TestContext.CancellationToken);
+        var ownRoot = firstIndex.Root(new VolumeKey('T'), TestContext.CancellationToken);
+        var foreignRoot = second.Index.Root(new VolumeKey('T'), TestContext.CancellationToken);
 
         Assert.ThrowsExactly<ArgumentException>(() =>
             firstIndex.Search(new SearchQuery(null, Subtree: foreignRoot), TestContext.CancellationToken));
@@ -168,7 +168,7 @@ public class SubtreeAnchorTests
         FileEntry anchor;
         using (var anchorOwner = new WatchHarness('T'))
         {
-            anchor = anchorOwner.Index.Root('T', TestContext.CancellationToken);
+            anchor = anchorOwner.Index.Root(new VolumeKey('T'), TestContext.CancellationToken);
         }
 
         Assert.IsTrue(anchor.IsDisposed);
@@ -185,7 +185,7 @@ public class SubtreeAnchorTests
         using var harness = new WatchHarness('T');
         var anchor = Documents(harness.Index);
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
         Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
@@ -201,9 +201,9 @@ public class SubtreeAnchorTests
     {
         using var harness = new WatchHarness('T', 'U');
         var anchor = harness.Index.Search(new SearchQuery("documents", NameMatchMode.Exact), TestContext.CancellationToken)
-            .Single(entry => entry.Drive == 'T');
+            .Single(entry => entry.Drive == new VolumeKey('T'));
 
-        await harness.Index.RescanAsync(['U'], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+        await harness.Index.RescanAsync([new VolumeKey('U')], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.Index, form, Under(anchor)));
     }
@@ -250,7 +250,7 @@ public class SubtreeAnchorTests
             await admitted.Task.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             Assert.AreEqual(1, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
 
-            await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             Assert.AreNotSame(snapshot, harness.Index.CurrentSnapshot, "The rescan published a new snapshot.");
             proceed.TrySetResult();
             names = await query.WaitAsync(HangGuard * 3, TestContext.CancellationToken);

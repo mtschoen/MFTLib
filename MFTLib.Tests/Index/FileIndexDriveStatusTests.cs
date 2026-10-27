@@ -27,8 +27,8 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
         {
             Drives =
             [
-                new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
-                new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
+                MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+                MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
             ],
             CacheDirectory = CacheDirectoryPath
         };
@@ -36,13 +36,13 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.HasCount(2, index.Drives);
-        Assert.AreEqual('Z', index.Drives[0].Drive);
+        Assert.AreEqual(new VolumeKey('Z'), index.Drives[0].Drive);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
         Assert.IsNull(index.Drives[0].Block);
         Assert.AreEqual(WatchState.NotStarted, index.Drives[0].Watch.State);
         Assert.IsFalse(index.Drives[0].Watch.IsSupported);
         Assert.IsNull(index.Drives[0].Failure);
-        Assert.AreEqual('T', index.Drives[1].Drive);
+        Assert.AreEqual(new VolumeKey('T'), index.Drives[1].Drive);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
     }
 
@@ -56,7 +56,7 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
             TestContext.CancellationToken);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', TreeRoot, 4242, ProducerKind.Enumeration)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 4242, ProducerKind.Enumeration)],
             CacheDirectory = CacheDirectoryPath
         }, TestContext.CancellationToken);
 
@@ -73,8 +73,8 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
         {
             Drives =
             [
-                new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
-                new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
+                MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+                MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
             ],
             CacheDirectory = CacheDirectoryPath
         };
@@ -82,7 +82,7 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var exception = await DriveResultAssertions.FailureAsync<ArgumentException>(
-            () => index.RescanAsync(['Z'], CancellationToken.None));
+            () => index.RescanAsync([new VolumeKey('Z')], CancellationToken.None));
         Assert.Contains("has no block", exception.Message);
     }
 
@@ -155,7 +155,7 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
 
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon", TestContext.CancellationToken);
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.AreEqual(1, index.Drives[0].Block!.AccessDeniedSubtreeCount);
         Assert.AreEqual(0, index.Drives[0].Block!.SkippedRecordCount);
@@ -164,7 +164,7 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
     [TestMethod]
     public async Task Drives_CallerListMutatedAfterOpen_LeavesTheIndexUnchanged()
     {
-        var configured = new List<IndexedDrive> { new('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration) };
+        var configured = new List<IndexedDrive> { new(new VolumeKey('T'), TreeRoot, 0x0BADF00D, ProducerKind.Enumeration) };
         var options = new FileIndexOptions
         {
             Drives = configured,
@@ -175,10 +175,10 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
         {
             var before = index.Drives.Select(drive => drive.Drive).ToArray();
 
-            configured.Add(new IndexedDrive('U', TreeRoot, 0x0BADF00E));
+            configured.Add(MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), TreeRoot, 0x0BADF00E));
 
             Assert.AreSequenceEqual(before, [.. index.Drives.Select(drive => drive.Drive)]);
-            Assert.AreSequenceEqual(['T'], before);
+            Assert.AreSequenceEqual([new VolumeKey('T')], before);
         }
         finally
         {
@@ -217,8 +217,8 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
     public async Task OpenAsync_CallerDriveListEnumerableOnlyOnce_OpensFromTheFirstEnumeration()
     {
         var configured = new EnumerableOnceDriveList(
-            new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
-            new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration));
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D, ProducerKind.Enumeration));
         var options = new FileIndexOptions
         {
             Drives = configured,
@@ -232,7 +232,7 @@ public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
             var statuses = index.Drives;
 
             Assert.AreEqual(1, configured.EnumerationCount);
-            Assert.AreSequenceEqual(['Z', 'T'], [.. statuses.Select(drive => drive.Drive.Letter)]);
+            Assert.AreSequenceEqual(["Z", "T"], [.. statuses.Select(drive => drive.Drive.ToString())]);
             Assert.AreEqual(DriveState.Offline, statuses[0].State);
             Assert.AreEqual(DriveState.Ready, statuses[1].State);
         }

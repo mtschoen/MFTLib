@@ -39,7 +39,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
 
         skippedRecordCount[0] = 0;
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.AreEqual(0, index.Drives.Single().Block!.SkippedRecordCount);
         Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
@@ -67,14 +67,14 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         using var mftRoot = new TempDirectory("mftlib-mft-root");
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('M', mftRoot.Path, 2), new IndexedDrive('T', TreeRoot, 1, ProducerKind.Enumeration)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('M'), mftRoot.Path, 2), MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Produce),
             RetainedFileNames = retained
         }, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(retained, [.. seen.Single()!]);
-        var walked = index.Drives.Single(drive => drive.Drive == 'T');
+        var walked = index.Drives.Single(drive => drive.Drive == new VolumeKey('T'));
         Assert.AreEqual(DriveState.Ready, walked.State);
         if (OperatingSystem.IsWindows())
         {
@@ -102,23 +102,23 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Directory.CreateDirectory(secondRoot);
         Directory.CreateDirectory(CacheDirectoryPath);
         await File.WriteAllTextAsync(
-            Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1)), "invalid",
+            Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 1)), "invalid",
             TestContext.CancellationToken);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), firstRoot, 1), MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), secondRoot, 2)],
             CacheDirectory = CacheDirectoryPath,
-            MftSource = new MftIndexSource((request, _) => request.Drive == 'T'
+            MftSource = new MftIndexSource((request, _) => request.Drive == new VolumeKey('T')
                 ? throw new UnauthorizedAccessException(failureMessage)
                 : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 0)))
         }, TestContext.CancellationToken);
 
-        var failed = index.Drives.Single(drive => drive.Drive == 'T');
+        var failed = index.Drives.Single(drive => drive.Drive == new VolumeKey('T'));
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(failureMessage, failed.Failure?.Message);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
-        var ready = index.Drives.Single(drive => drive.Drive == 'U');
+        var ready = index.Drives.Single(drive => drive.Drive == new VolumeKey('U'));
         Assert.AreEqual(DriveState.Ready, ready.State);
         Assert.IsNull(ready.Failure);
         Assert.IsNotNull(ready.Block);
@@ -136,21 +136,21 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         {
             Drive = 'U',
             VolumeSerial = 2,
-            BlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 2))
+            BlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('U'), 2))
         }, 7, 4096, FixedMoment))
         {
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), firstRoot, 1), MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), secondRoot, 2)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"))
         }, TestContext.CancellationToken);
 
         Assert.AreEqual("elevation declined",
-            index.Drives.Single(drive => drive.Drive == 'T').Failure?.Message);
-        var warmStarted = index.Drives.Single(drive => drive.Drive == 'U');
+            index.Drives.Single(drive => drive.Drive == new VolumeKey('T')).Failure?.Message);
+        var warmStarted = index.Drives.Single(drive => drive.Drive == new VolumeKey('U'));
         Assert.AreEqual(DriveState.Ready, warmStarted.State);
         Assert.IsNull(warmStarted.Failure);
     }
@@ -173,7 +173,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(CountingProducer),
             CacheMode = CacheMode.ExistingOnly
@@ -193,7 +193,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
     {
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(static (_, token) => throw new OperationCanceledException(token))
         }, TestContext.CancellationToken));
@@ -217,9 +217,9 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.RescanAsync(['T'], CancellationToken.None));
+                () => index.RescanAsync([new VolumeKey('T')], CancellationToken.None));
 
-            Assert.AreEqual(4096L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+            Assert.AreEqual(4096L, index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().Failure?.Kind);
             Assert.AreEqual("elevation declined during rescan", index.Drives.Single().Failure?.Message);
@@ -229,7 +229,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         }
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
-        Assert.AreEqual(4096L, reopened.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(4096L, reopened.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(DriveState.Ready, reopened.Drives.Single().State);
         Assert.AreEqual(0, reopened.Drives.Single().Block!.SkippedRecordCount);
         Assert.AreEqual(0, reopened.Drives.Single().Block!.AccessDeniedSubtreeCount);
@@ -254,13 +254,13 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
             CancellationToken.None);
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync(['T'], CancellationToken.None));
+            () => index.RescanAsync([new VolumeKey('T')], CancellationToken.None));
         Assert.AreEqual("elevation declined during rescan", index.Drives.Single().Failure?.Message);
 
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.IsNull(index.Drives.Single().Failure);
-        Assert.AreEqual(12288L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(12288L, index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
     }
 
     [TestMethod]
@@ -275,14 +275,14 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
             CancellationToken.None);
-        var previousRoot = index.Root('T', TestContext.CancellationToken);
+        var previousRoot = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
 
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.AreEqual(2, invocationCount);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsFalse(index.Drives[0].Watch.IsSupported, "the source offers no watch source");
-        Assert.AreEqual(8192L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(8192L, index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(TreeRoot, previousRoot.Path);
     }
@@ -337,7 +337,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Assert.IsNotNull(producedBlock);
         BlockFileAssertions.IsDisposed(producedBlock);
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         Assert.IsFalse(File.Exists(blockPath),
             "a rejected block must not survive to be warm-started by a later open");
 
@@ -423,7 +423,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         // Record 20's create leaves its cycle open in ReportedReasonCycles leading up to rescan.
         Assert.HasCount(1, await index.ApplyJournalEntriesAsync('T', [created], 7, 5004));
 
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
 
         // On the replaced block, the open cycle was discarded with the old DriveBlock;
         // the close record is treated as a first-sighted create rather than coalesced.
@@ -444,7 +444,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer),
             CacheMode = CacheMode.ExistingOnly
@@ -453,7 +453,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
 
         Assert.AreEqual(1, invocationCount);
         var status = index.Drives.Single();
@@ -463,7 +463,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsFalse(status.Watch.IsSupported, "the source offers no watch source");
-        Assert.AreEqual(4096L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(4096L, index.Root(new VolumeKey('T'), TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
     }
 
     [TestMethod]
@@ -471,7 +471,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined")),
             CacheMode = CacheMode.ExistingOnly
@@ -479,7 +479,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync(['T'], TestContext.CancellationToken));
+            () => index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken));
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
@@ -503,14 +503,14 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer)
         }, TestContext.CancellationToken);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().Failure?.Kind);
 
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
 
         Assert.AreEqual(2, invocationCount);
         var status = index.Drives.Single();
@@ -536,7 +536,7 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
             TestContext.CancellationToken);
 
         Assert.AreEqual(DriveState.Failed, failedIndex.Drives.Single().State);
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
         Assert.IsNotNull(line, "the rejected producer block's delete must be logged with its path");
         Assert.Contains("journal cursor", line);

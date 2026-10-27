@@ -124,7 +124,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             CacheMode = CacheMode.Disabled,
             MftSource = MftIndexSources.FromLocalVolumes()
         };
-        Assert.AreEqual('C', productionOptions.Drives.Single().Drive);
+        Assert.AreEqual(new VolumeKey('C'), productionOptions.Drives.Single().Drive);
         Assert.AreEqual(CacheMode.Disabled, productionOptions.CacheMode);
         Assert.IsNotNull(productionOptions.MftSource);
 

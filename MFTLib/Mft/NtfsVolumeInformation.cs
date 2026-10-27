@@ -35,14 +35,14 @@ readonly record struct NtfsVolumeInformation(
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="drive" /> is invalid.</exception>
     [SupportedOSPlatform("windows")]
-    public static NtfsVolumeInformation Query(DriveKey drive) => Query(drive, OperatingSystem.IsWindows());
+    public static NtfsVolumeInformation Query(VolumeKey drive) => Query(drive, OperatingSystem.IsWindows());
 
     /// <summary>
-    ///     The real query behind <see cref="Query(DriveKey)" />, given whether the host is Windows, so
+    ///     The real query behind <see cref="Query(VolumeKey)" />, given whether the host is Windows, so
     ///     the refusal off Windows is tested on every platform. Depends only on its arguments and
     ///     the platform APIs.
     /// </summary>
-    internal static NtfsVolumeInformation Query(DriveKey drive, bool isWindows)
+    internal static NtfsVolumeInformation Query(VolumeKey drive, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {

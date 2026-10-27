@@ -26,7 +26,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Scan_NormalizesTheDriveLetter()
     {
-        var drives = new List<DriveKey>();
+        var drives = new List<VolumeKey>();
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
@@ -41,8 +41,8 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
 
-        Assert.AreEqual(new DriveKey('C'), result.Drive);
-        Assert.AreSequenceEqual([new DriveKey('C')], drives);
+        Assert.AreEqual(new VolumeKey('C'), result.Drive);
+        Assert.AreSequenceEqual([new VolumeKey('C')], drives);
         Assert.StartsWith("mftlib-block-C-", broker.Sections.Single().SectionName);
     }
 

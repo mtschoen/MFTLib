@@ -26,7 +26,7 @@ public sealed record DriveOperationResult
     /// <param name="drive">The normalized drive key.</param>
     /// <param name="outcome">What the operation did for the drive.</param>
     /// <param name="failure">The per-drive exception for a failure; otherwise null.</param>
-    internal DriveOperationResult(DriveKey drive, DriveOperationOutcome outcome, Exception? failure)
+    internal DriveOperationResult(RootKey drive, DriveOperationOutcome outcome, Exception? failure)
     {
         Drive = drive;
         Outcome = outcome;
@@ -34,7 +34,7 @@ public sealed record DriveOperationResult
     }
 
     /// <summary>Matches the request key; assigning the invalid default throws ArgumentException.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public RootKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>What the operation did for the drive.</summary>
     public DriveOperationOutcome Outcome { get; init; }

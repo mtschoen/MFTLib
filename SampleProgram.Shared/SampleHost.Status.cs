@@ -38,7 +38,7 @@ partial class SampleHost
         internal const uint ProgressRowInterval = 250_000;
 
         readonly Lock _gate = new();
-        readonly Dictionary<DriveKey, (IndexScanPhase Phase, uint Rows)> _lastReportByDrive = [];
+        readonly Dictionary<RootKey, (IndexScanPhase Phase, uint Rows)> _lastReportByDrive = [];
 
         public void Report(IndexScanProgress value)
         {

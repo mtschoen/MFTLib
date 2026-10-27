@@ -167,7 +167,7 @@ public sealed partial class FileIndex
             var failure = new InvalidOperationException(
                 $"A rescan replaced drive {Drive}'s block and the watch could not be started on it.",
                 startFailure);
-            var fault = new WatchFault(WatchFaultKind.RescanRestart, Drive, failure);
+            var fault = new WatchFault(WatchFaultKind.RescanRestart, Volume, failure);
             lock (StateLock)
             {
                 if (IsDisposed || !ReferenceEquals(Current, instance))

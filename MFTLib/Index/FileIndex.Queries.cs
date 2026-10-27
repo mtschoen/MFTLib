@@ -172,7 +172,7 @@ public sealed partial class FileIndex
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public FileEntry Root(DriveKey drive, CancellationToken cancellationToken = default)
+    public FileEntry Root(RootKey drive, CancellationToken cancellationToken = default)
     {
         drive = drive.Validated();
         QueryScope query;

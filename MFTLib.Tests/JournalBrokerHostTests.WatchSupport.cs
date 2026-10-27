@@ -14,9 +14,9 @@ public partial class JournalBrokerHostTests
     static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024);
 
     static JournalBrokerHost CreateWatchHost(
-        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
-        Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<VolumeKey, UsnJournalCursor>? queryCursor = null,
+        Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
         MftRecordBatchSource? scanDrive = null,
         Func<BrokerDiagnosticsLogFilter?>? createLogFilter = null)
     {

@@ -13,7 +13,7 @@ public sealed partial class FileIndex
         readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;
 
-        public WatchInstance(DriveKey drive, long generation, DriveBlock armedBlock,
+        public WatchInstance(RootKey drive, long generation, DriveBlock armedBlock,
             TaskCompletionSource? catchUpWaiter, CancellationToken disposalToken)
         {
             Drive = drive;
@@ -29,7 +29,7 @@ public sealed partial class FileIndex
                 static state => (state as CancellationTokenSource)?.Cancel(), StartCancellation);
         }
 
-        public DriveKey Drive { get; }
+        public RootKey Drive { get; }
 
         public long Generation { get; }
 

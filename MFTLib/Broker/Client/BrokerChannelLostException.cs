@@ -19,12 +19,12 @@ sealed class BrokerChannelLostException : IOException
     /// <param name="drive">The drive whose channel was lost, or null for the control pipe.</param>
     /// <param name="message">What was lost and why.</param>
     /// <param name="innerException">The read, write or protocol failure behind the loss, if any.</param>
-    internal BrokerChannelLostException(DriveKey? drive, string message, Exception? innerException = null)
+    internal BrokerChannelLostException(VolumeKey? drive, string message, Exception? innerException = null)
         : base(message, innerException)
     {
         Drive = drive?.Validated();
     }
 
     /// <summary>The drive whose channel was lost, or null when the control pipe was.</summary>
-    internal DriveKey? Drive { get; }
+    internal VolumeKey? Drive { get; }
 }

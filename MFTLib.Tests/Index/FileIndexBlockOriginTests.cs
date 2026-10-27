@@ -46,7 +46,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block!.Origin);
 
-        await reopened.RescanAsync(['T'], CancellationToken.None);
+        await reopened.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Drives.Single().Block!.Origin);
     }
@@ -56,7 +56,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration)],
             CacheDirectory = CacheDirectoryPath
         };
 

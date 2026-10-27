@@ -6,9 +6,11 @@ sealed class DriveKind
     enum Kind { LiveVolume, DirectoryWalk, Dump }
 
     static readonly DriveKind LiveVolume = new(Kind.LiveVolume);
-    static readonly DriveKind DirectoryWalk = new(Kind.DirectoryWalk);
+    internal static readonly DriveKind DirectoryWalk = new(Kind.DirectoryWalk);
     static readonly DriveKind Dump = new(Kind.Dump);
     readonly Kind _kind;
+
+    internal static bool? _directoryCaseSensitiveOverride;
 
     DriveKind(Kind kind) => _kind = kind;
 
@@ -21,7 +23,8 @@ sealed class DriveKind
     internal bool CanWatch => _kind == Kind.LiveVolume;
     internal bool HasJournalSettings => _kind != Kind.Dump;
     internal bool RequiresExistingRoot => _kind != Kind.Dump;
-    internal bool IsCaseSensitive => _kind == Kind.DirectoryWalk && !OperatingSystem.IsWindows();
+    internal bool IsCaseSensitive => _kind == Kind.DirectoryWalk &&
+        (_directoryCaseSensitiveOverride ?? !OperatingSystem.IsWindows());
     bool UsesBackslashSeparators => _kind == Kind.Dump || OperatingSystem.IsWindows();
     internal ReadOnlySpan<char> Separators => UsesBackslashSeparators ? "\\/" : "/";
     internal StringComparison Comparison => IsCaseSensitive

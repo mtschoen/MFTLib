@@ -79,7 +79,10 @@ public sealed partial class FileIndex
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
         IndexedDrive Configuration { get; } = configuration;
-        public DriveKey Drive => Configuration.Drive;
+        public RootKey Drive => Configuration.Drive;
+        public VolumeKey Volume => Drive.TryGetVolume(out var volume)
+            ? volume
+            : throw new InvalidOperationException("The drive root is not a volume.");
         public DriveBlock? Block;
         PendingDriveResult? _lastResult;
         public DriveState BlocklessState = DriveState.Offline;
@@ -97,21 +100,6 @@ public sealed partial class FileIndex
         ///     Never taken under the state lock.
         /// </summary>
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
-
-        /// <summary>Scans of this drive in a row whose journal catch-up was lost.</summary>
-        int _consecutiveLostCatchUps;
-
-        /// <summary>Automatic catch-up retries exhausted; only a successful publication clears it.</summary>
-        bool _recoveryStopped;
-
-        /// <summary>
-        ///     Set while a scan operation of a watched drive retries after a lost catch-up, which is
-        ///     what makes the drive read <see cref="WatchState.Recovering" />.
-        /// </summary>
-        bool _retryingLostCatchUp;
-
-        /// <summary>The lost catch-up a retrying scan operation is rescanning for, while it retries.</summary>
-        JournalCatchUpLostException? _retriedLostCatchUp;
 
         /// <summary>
         ///     The drive's queued or running recovery, or none. A manual rescan, a consumer start, a
@@ -159,33 +147,5 @@ public sealed partial class FileIndex
         ///     it; the drive's next start, a stop, or a rescan that replaces the block clears it.
         /// </summary>
         Exception? _refusedStartFault;
-
-        /// <summary>
-        ///     The <see cref="WatchState" /> last noted for the drive, which
-        ///     <see cref="NoteWatchStateLocked" /> compares the derived state against.
-        /// </summary>
-        WatchState _notedWatchState;
-
-        /// <summary>The drive's <see cref="DriveWatchStatus.StateVersion" />.</summary>
-        long _watchStateVersion;
-
-        /// <summary>
-        ///     Noted changes not yet delivered through <see cref="FileIndex.WatchStateChanged" />, in
-        ///     version order.
-        /// </summary>
-        List<WatchStateChange>? _pendingWatchStates;
-
-        /// <summary>
-        ///     Serializes delivery of this drive's <see cref="FileIndex.WatchStateChanged" />, held from
-        ///     taking <see cref="_pendingWatchStates" /> until the last handler returns. Taken before
-        ///     the state lock, never under it or under a write gate.
-        /// </summary>
-        Lock DeliveryLock { get; } = new();
-
-        /// <summary>
-        ///     Serializes delivery of this drive's <see cref="FileIndex.WatchFaulted" />, whichever thread
-        ///     raises it. Taken with no other lock held.
-        /// </summary>
-        Lock FaultDeliveryLock { get; } = new();
     }
 }

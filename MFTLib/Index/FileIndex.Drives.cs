@@ -9,10 +9,10 @@ public sealed partial class FileIndex
     ///     and kept until it is disposed. Every watch and rescan operation on a drive acts on that
     ///     drive's entry only. The dictionary itself is never modified after construction.
     /// </summary>
-    readonly Dictionary<DriveKey, DriveRuntime> _driveRuntimes = [];
+    readonly Dictionary<RootKey, DriveRuntime> _driveRuntimes = [];
 
     /// <summary>The drive's runtime, or <see cref="ArgumentException" /> for a drive not in this index.</summary>
-    DriveRuntime GetDriveRuntime(DriveKey drive)
+    DriveRuntime GetDriveRuntime(RootKey drive)
     {
         return _driveRuntimes.TryGetValue(drive.Validated(), out var runtime)
             ? runtime
@@ -20,17 +20,17 @@ public sealed partial class FileIndex
     }
 
     /// <summary>A test seam: takes the drive's write gate, as a batch or a commit would.</summary>
-    internal Task WaitForDriveWriteGateForTest(DriveKey drive, CancellationToken cancellationToken = default) =>
+    internal Task WaitForDriveWriteGateForTest(RootKey drive, CancellationToken cancellationToken = default) =>
         GetDriveRuntime(drive).WriteGate.WaitAsync(cancellationToken);
 
     /// <summary>A test seam: releases the write gate <see cref="WaitForDriveWriteGateForTest" /> took.</summary>
-    internal void ReleaseDriveWriteGateForTest(DriveKey drive) => GetDriveRuntime(drive).WriteGate.Release();
+    internal void ReleaseDriveWriteGateForTest(RootKey drive) => GetDriveRuntime(drive).WriteGate.Release();
 
     /// <summary>
     ///     A test seam: true when neither the drive's lifecycle gate nor its write gate is held.
     ///     Takes each without waiting and releases it again.
     /// </summary>
-    internal bool AreDriveGatesFreeForTest(DriveKey drive)
+    internal bool AreDriveGatesFreeForTest(RootKey drive)
     {
         var runtime = GetDriveRuntime(drive);
         var free = true;
@@ -53,7 +53,7 @@ public sealed partial class FileIndex
     ///     A test observation: the completion of the drive's current recovery ticket, when it has one.
     ///     Exposes exact recovery ticket completion identity under the state lock. Complements <see cref="IndexHooks" />.
     /// </summary>
-    internal bool TryGetRecoveryCompletionForTest(DriveKey drive, [NotNullWhen(true)] out Task? completion)
+    internal bool TryGetRecoveryCompletionForTest(RootKey drive, [NotNullWhen(true)] out Task? completion)
     {
         var runtime = GetDriveRuntime(drive);
         lock (_stateLock)

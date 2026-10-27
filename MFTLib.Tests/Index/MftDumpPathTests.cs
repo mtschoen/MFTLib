@@ -21,7 +21,7 @@ public class MftDumpPathTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        var root = index.Root('D', TestContext.CancellationToken);
+        var root = index.Root(new VolumeKey('D'), TestContext.CancellationToken);
         var documents = index.Find("dump:/D/documents", TestContext.CancellationToken)!.Value;
 
         Assert.AreEqual("dump:/D", root.Path);
@@ -71,7 +71,7 @@ public class MftDumpPathTests
     public async Task Find_ARootWithATrailingSeparatorOrBackslashIsTheRootRow()
     {
         await using var index = await MftDumpIndexes.OpenAsync();
-        var root = index.Root('D', TestContext.CancellationToken);
+        var root = index.Root(new VolumeKey('D'), TestContext.CancellationToken);
 
         Assert.AreEqual(root, index.Find("dump:/D", TestContext.CancellationToken));
         Assert.AreEqual(root, index.Find("dump:/D/", TestContext.CancellationToken));

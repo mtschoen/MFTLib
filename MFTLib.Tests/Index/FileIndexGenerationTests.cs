@@ -28,10 +28,10 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken);
 
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
         Assert.AreEqual(2ul, GenerationOf(index));
 
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
         Assert.AreEqual(3ul, GenerationOf(index));
     }
 
@@ -40,7 +40,7 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
     {
         await using (var first = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken))
         {
-            await first.RescanAsync(['T'], TestContext.CancellationToken);
+            await first.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
             Assert.AreEqual(2ul, GenerationOf(first));
         }
 
@@ -60,12 +60,12 @@ public sealed class FileIndexGenerationTests : IndexTreeTestBase
         await index.ApplyJournalEntriesAsync('T', [WatchHarness.Create(9, "first.txt")],
             WatchHarness.JournalIdentifier, 600);
         observed.Add(GenerationOf(index));
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
         observed.Add(GenerationOf(index));
         await index.ApplyJournalEntriesAsync('T', [WatchHarness.Create(10, "second.txt")],
             WatchHarness.JournalIdentifier, 700);
         observed.Add(GenerationOf(index));
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
         observed.Add(GenerationOf(index));
 
         var message = string.Join(",", observed);

@@ -22,7 +22,7 @@ public sealed partial class FileIndex
 
             // Ownership of a successfully opened block passes to the DriveBlock its adoption builds,
             // which releases it through its DriveBlockRelease state, not through IDisposable.
-            if (BlockFile.Open(path, Configuration.VolumeSerial, out var validation) is { } block)
+            if (BlockFile.OpenCanonical(path, Configuration.VolumeSerial, out var validation) is { } block)
             {
                 if (block.Header.ProducerKind != Configuration.Producer)
                 {
@@ -97,9 +97,9 @@ public sealed partial class FileIndex
             {
                 ref readonly var header = ref candidate.Header;
                 var checkpointLoss = WatchSourceOrNull is null
-                    ? JournalCheckpointCheck.CheckUnmoved(Drive, header.UsnJournalIdentifier, header.UsnNextUsn,
+                    ? JournalCheckpointCheck.CheckUnmoved(Volume, header.UsnJournalIdentifier, header.UsnNextUsn,
                         JournalCheckpointLossDetection.DriveOpening)
-                    : JournalCheckpointCheck.Check(Drive, header.UsnJournalIdentifier, header.UsnNextUsn,
+                    : JournalCheckpointCheck.Check(Volume, header.UsnJournalIdentifier, header.UsnNextUsn,
                         JournalCheckpointLossDetection.DriveOpening);
                 if (checkpointLoss is not { } loss)
                 {

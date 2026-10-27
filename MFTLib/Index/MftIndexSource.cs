@@ -67,5 +67,5 @@ public sealed class MftIndexSource
     internal const string NoJournalSettingsReason = "this source has no live journal settings";
 
 
-    internal static string FormatUnavailable(DriveKey drive, string reason) => $"Drive {drive}: {reason}.";
+    internal static string FormatUnavailable(VolumeKey drive, string reason) => $"Drive {drive}: {reason}.";
 }

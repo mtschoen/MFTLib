@@ -18,7 +18,7 @@ public static class SyntheticNotifications
     /// <param name="size">The file size in bytes.</param>
     /// <param name="lastWriteTime">The file last-write time in UTC.</param>
     /// <returns>The entry.</returns>
-    public static CachedBlockFile CreateCachedBlockFile(DriveKey drive, uint volumeSerial, string path,
+    public static CachedBlockFile CreateCachedBlockFile(RootKey drive, uint volumeSerial, string path,
         long size, DateTime lastWriteTime) =>
         new(drive, volumeSerial, path, size, lastWriteTime);
 
@@ -67,7 +67,7 @@ public static class SyntheticNotifications
     /// <param name="drive">The drive the fault names.</param>
     /// <param name="exception">The exception behind the fault.</param>
     /// <returns>The fault.</returns>
-    public static WatchFault CreateWatchFault(WatchFaultKind kind, DriveKey drive, Exception exception) =>
+    public static WatchFault CreateWatchFault(WatchFaultKind kind, VolumeKey drive, Exception exception) =>
         new(kind, drive, exception);
 
     /// <summary>Builds a watch state change for a consumer event handler.</summary>
@@ -75,7 +75,7 @@ public static class SyntheticNotifications
     /// <param name="watch">The drive's watch status after the change.</param>
     /// <param name="fault">The fault that caused the change, or null.</param>
     /// <returns>The state change.</returns>
-    public static WatchStateChange CreateWatchStateChange(DriveKey drive, DriveWatchStatus watch,
+    public static WatchStateChange CreateWatchStateChange(VolumeKey drive, DriveWatchStatus watch,
         WatchFault? fault) =>
         new(drive, watch, fault);
 
@@ -84,7 +84,7 @@ public static class SyntheticNotifications
     /// <param name="outcome">What the operation did for the drive.</param>
     /// <param name="failure">The per-drive exception for a failure; otherwise null.</param>
     /// <returns>The operation result.</returns>
-    public static DriveOperationResult CreateDriveOperationResult(DriveKey drive,
+    public static DriveOperationResult CreateDriveOperationResult(RootKey drive,
         DriveOperationOutcome outcome, Exception? failure) =>
         new(drive, outcome, failure);
 
@@ -101,7 +101,7 @@ public static class SyntheticNotifications
     /// <param name="settledDriveCount">The settle order of this drive, counted from 1.</param>
     /// <param name="totalDriveCount">How many drives the open was configured with.</param>
     /// <returns>The report.</returns>
-    public static IndexDriveOpened CreateIndexDriveOpened(DriveKey drive, int settledDriveCount,
+    public static IndexDriveOpened CreateIndexDriveOpened(RootKey drive, int settledDriveCount,
         int totalDriveCount) =>
         new(drive, settledDriveCount, totalDriveCount);
 
@@ -113,7 +113,7 @@ public static class SyntheticNotifications
     /// <param name="rootDirectory">The drive root, for example <c>C:\</c>.</param>
     /// <param name="driveType">The operating system's classification of the drive.</param>
     /// <returns>The volume, not ready and not indexable until the fixture says otherwise.</returns>
-    public static WindowsVolume CreateWindowsVolume(DriveKey drive, string rootDirectory, DriveType driveType) =>
+    public static WindowsVolume CreateWindowsVolume(VolumeKey drive, string rootDirectory, DriveType driveType) =>
         new(drive, rootDirectory, driveType);
 
     /// <summary>Builds one scan progress sample.</summary>
@@ -131,7 +131,7 @@ public static class SyntheticNotifications
     /// <param name="currentDirectory">The directory being enumerated, or null.</param>
     /// <param name="outcome">The terminal outcome on a finished sample; otherwise null.</param>
     /// <returns>The sample.</returns>
-    public static IndexScanProgress CreateIndexScanProgress(DriveKey drive, IndexScanPhase phase,
+    public static IndexScanProgress CreateIndexScanProgress(RootKey drive, IndexScanPhase phase,
         uint writtenRowCount, uint? expectedRowCount = null, string? currentDirectory = null,
         IndexScanOutcome? outcome = null) =>
         new(drive, phase, writtenRowCount)
@@ -151,7 +151,7 @@ public static class SyntheticNotifications
     /// <param name="block">The block behind a <see cref="DriveState.Ready" /> drive; null otherwise.</param>
     /// <param name="failure">Why the drive failed; null for a drive that did not.</param>
     /// <returns>The status.</returns>
-    public static DriveStatus CreateDriveStatus(DriveKey drive, DriveState state, DriveBlockStatus? block,
+    public static DriveStatus CreateDriveStatus(RootKey drive, DriveState state, DriveBlockStatus? block,
         DriveFailure? failure) =>
         new(drive, state)
         {
@@ -195,7 +195,7 @@ public static class SyntheticNotifications
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="journalSettings">The journal sizing when the loss was detected.</param>
     /// <returns>The report.</returns>
-    public static JournalCheckpointLoss CreateJournalCheckpointLoss(DriveKey drive,
+    public static JournalCheckpointLoss CreateJournalCheckpointLoss(VolumeKey drive,
         JournalCheckpointLossCause cause, JournalCheckpointLossDetection detectedDuring,
         UsnJournalSettings journalSettings) =>
         new(drive, detectedDuring, cause, journalSettings);

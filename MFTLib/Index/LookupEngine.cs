@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 /// </summary>
 static class LookupEngine
 {
-    internal static FileEntry Root(IReadOnlyList<DriveBlock> snapshot, DriveKey drive,
+    internal static FileEntry Root(IReadOnlyList<DriveBlock> snapshot, RootKey drive,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -24,11 +24,11 @@ static class LookupEngine
         FindLongestMatchingRoot(snapshot, nativePath) is { } match ? [match.DriveBlock] : [];
 
     /// <summary>The one block <see cref="Root" /> reads for this drive, or none when it has no block.</summary>
-    internal static IReadOnlyList<DriveBlock> SelectDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey drive) =>
+    internal static IReadOnlyList<DriveBlock> SelectDriveBlock(IReadOnlyList<DriveBlock> snapshot, RootKey drive) =>
         FindDriveBlock(snapshot, drive) is { } driveBlock ? [driveBlock] : [];
 
     /// <summary>The snapshot's block for this drive, or null when it has none.</summary>
-    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey drive) =>
+    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, RootKey drive) =>
         snapshot.FirstOrDefault(candidate => candidate.Drive == drive.Validated());
 
     /// <summary>

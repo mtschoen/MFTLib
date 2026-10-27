@@ -12,7 +12,7 @@ static class BlockLayout
     public const uint Magic = 0x58494C4D;
 
     /// <summary>A mismatch means discard the block and rescan. There is no migration path.</summary>
-    public const uint FormatVersion = 6;
+    public const uint FormatVersion = 7;
 
     /// <summary>Alignment, in bytes, of each on-disk block region.</summary>
     public const int PageSize = 4096;

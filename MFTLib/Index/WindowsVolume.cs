@@ -10,7 +10,7 @@ public sealed record WindowsVolume
     /// <param name="drive">The drive letter of <paramref name="rootDirectory" />.</param>
     /// <param name="rootDirectory">The drive root, for example <c>C:\</c>.</param>
     /// <param name="driveType">The operating system's classification of the drive.</param>
-    internal WindowsVolume(DriveKey drive, string rootDirectory, DriveType driveType)
+    internal WindowsVolume(VolumeKey drive, string rootDirectory, DriveType driveType)
     {
         Drive = drive;
         RootDirectory = rootDirectory;
@@ -18,7 +18,7 @@ public sealed record WindowsVolume
     }
 
     /// <summary>The drive letter of <see cref="RootDirectory" />.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public VolumeKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>The drive root, for example <c>C:\</c>.</summary>
     public string RootDirectory { get; init; }

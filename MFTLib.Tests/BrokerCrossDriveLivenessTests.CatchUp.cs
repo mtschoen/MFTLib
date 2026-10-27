@@ -38,8 +38,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
-        var rescanOfT = index.RescanAsync(['T'], token);
-        var rescanOfU = index.RescanAsync(['U'], token);
+        var rescanOfT = index.RescanAsync([new VolumeKey('T')], token);
+        var rescanOfU = index.RescanAsync([new VolumeKey('U')], token);
         await rescanOfU.WaitAsync(HangGuard, TestContext.CancellationToken);
         var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard, TestContext.CancellationToken));
 
@@ -65,7 +65,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(JournalSizeArithmetic.SizeThatWouldHaveRetained(ArmedCursor.NextUsn, TrimmedWindow.NextUsn,
             TrimmedWindow.AllocationDelta), report.SizeThatWouldHaveRetained);
         Assert.AreEqual(report, statusesAtLoss[^1].Watch.CheckpointLoss);
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync([new VolumeKey('T')], token));
 
         // U completed normally in the same run.
         Assert.AreEqual(2, scenario.ScansOf('U'));
@@ -76,9 +76,9 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         // The source is fixed: a manual rescan succeeds, the count resets and a start is accepted.
         journal.Fix();
-        await index.RescanAsync(['T'], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, scenario.DriveOf('T').Watch.ConsecutiveLostCatchUps);
-        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since);
         Assert.AreEqual(hostClockAtStart, scenario.HostClock.GetUtcNow(), "no time passed on the host");
         Assert.AreEqual(clientClockAtStart, scenario.ClientClock.GetUtcNow(), "no time passed on the client");
@@ -101,7 +101,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailNextReads(1);
 
-        await index.RescanAsync(['T'], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(2, scenario.ChannelsOpenedFor('T') - channelsBefore, "the lost scan and the one that held");
         var fault = scenario.FaultsOf('T').Single();
@@ -115,7 +115,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             "the report the lost scan produced is kept");
         Assert.HasCount(1, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token), "T's block is the second scan's");
         Assert.IsEmpty(index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token));
-        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since,
             "the watch starts from the second block's cursor");
     }
@@ -137,7 +137,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         journal.FailEveryRead();
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync(['T'], token).WaitAsync(HangGuard, TestContext.CancellationToken));
+            () => index.RescanAsync([new VolumeKey('T')], token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains(ScriptedCatchUp.FailureMessage, failure.Message);
         Assert.AreEqual(1, scenario.ChannelsOpenedFor('T') - channelsBefore, "one scan channel, no retry");
@@ -162,7 +162,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         public void Fix() => Volatile.Write(ref _failuresLeft, 0);
 
-        public (UsnJournalEntry[] Entries, UsnJournalCursor Cursor) ReadJournal(DriveKey drive,
+        public (UsnJournalEntry[] Entries, UsnJournalCursor Cursor) ReadJournal(VolumeKey drive,
             UsnJournalCursor since, int maximumBufferReads)
         {
             if (drive == 'T' && Interlocked.Decrement(ref _failuresLeft) >= 0)

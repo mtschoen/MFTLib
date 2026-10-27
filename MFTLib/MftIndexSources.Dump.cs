@@ -30,7 +30,7 @@ public static partial class MftIndexSources
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
     /// <exception cref="ArgumentException"><paramref name="filePath" /> is null, empty or white space.</exception>
     /// <exception cref="ArgumentException"><paramref name="drive" /> is the default key.</exception>
-    public static MftIndexSource FromMftDumpFile(string filePath, DriveKey drive)
+    public static MftIndexSource FromMftDumpFile(string filePath, VolumeKey drive)
     {
         if (string.IsNullOrWhiteSpace(filePath))
         {

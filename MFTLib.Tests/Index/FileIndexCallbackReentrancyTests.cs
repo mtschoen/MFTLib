@@ -31,7 +31,7 @@ public class FileIndexCallbackReentrancyTests
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
         var outcome = NewSignal<Exception?>();
-        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync(['U'], CancellationToken.None))));
+        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync([new VolumeKey('U')], CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
@@ -51,7 +51,7 @@ public class FileIndexCallbackReentrancyTests
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
         var outcome = NewSignal<Exception?>();
-        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync(['T'], CancellationToken.None))));
+        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync([new VolumeKey('T')], CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
@@ -78,13 +78,13 @@ public class FileIndexCallbackReentrancyTests
             {
                 tGate.MarkEntered();
                 tGate.WaitForRelease();
-                tOutcome.TrySetResult(BlockOn(() => index.StopWatchingAsync(['U'], CancellationToken.None)));
+                tOutcome.TrySetResult(BlockOn(() => index.StopWatchingAsync([new VolumeKey('U')], CancellationToken.None)));
             }
             else if (change.Entry.Name == "u.txt")
             {
                 uGate.MarkEntered();
                 uGate.WaitForRelease();
-                uOutcome.TrySetResult(BlockOn(() => index.StopWatchingAsync(['T'], CancellationToken.None)));
+                uOutcome.TrySetResult(BlockOn(() => index.StopWatchingAsync([new VolumeKey('T')], CancellationToken.None)));
             }
         };
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -113,7 +113,7 @@ public class FileIndexCallbackReentrancyTests
         harness.Index.HoldEveryRecovery();
         var index = harness.Index;
         var outcome = NewSignal<Exception?>();
-        OnDriveFault(harness, () => outcome.TrySetResult(BlockOn(() => index.RescanAsync(['U'], CancellationToken.None))));
+        OnDriveFault(harness, () => outcome.TrySetResult(BlockOn(() => index.RescanAsync([new VolumeKey('U')], CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
@@ -128,8 +128,8 @@ public class FileIndexCallbackReentrancyTests
         harness.Index.HoldEveryRecovery();
         var index = harness.Index;
         var outcome = NewSignal<Exception?>();
-        OnDriveFault(harness, () => outcome.TrySetResult(BlockOn(() => index.StartWatchingAsync(['U'], CancellationToken.None))));
-        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        OnDriveFault(harness, () => outcome.TrySetResult(BlockOn(() => index.StartWatchingAsync([new VolumeKey('U')], CancellationToken.None))));
+        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
@@ -160,7 +160,7 @@ public class FileIndexCallbackReentrancyTests
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
         var outcome = NewSignal<Exception?>();
-        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.WaitForCatchUpAsync(['U'], CancellationToken.None))));
+        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.WaitForCatchUpAsync([new VolumeKey('U')], CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
@@ -176,13 +176,13 @@ public class FileIndexCallbackReentrancyTests
         var outcome = NewSignal<(bool Settled, Exception? SingleFailure, Exception? BatchedFailure)>();
         OnChanged(harness, "t.txt", () =>
         {
-            var single = index.WaitForCatchUpAsync(['T'], CancellationToken.None);
-            var batched = index.WaitForCatchUpAsync(['T'], CancellationToken.None);
+            var single = index.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None);
+            var batched = index.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None);
             outcome.TrySetResult((single.IsCompleted, BlockOn(() => single), BlockOn(() => batched)));
         });
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        await index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.WaitForCatchUpAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
@@ -200,16 +200,16 @@ public class FileIndexCallbackReentrancyTests
         var token = CancellationToken.None;
         var calls = new (string Operation, Func<Task> Call)[]
         {
-            ("StartWatchingAsync", () => index.StartWatchingAsync(['U'], token)),
-            ("StartWatchingAsync", () => index.StartWatchingAsync(['U'], token)),
+            ("StartWatchingAsync", () => index.StartWatchingAsync([new VolumeKey('U')], token)),
+            ("StartWatchingAsync", () => index.StartWatchingAsync([new VolumeKey('U')], token)),
             ("StartWatchingAsync", () => index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive),token)),
-            ("StopWatchingAsync", () => index.StopWatchingAsync(['U'], token)),
-            ("StopWatchingAsync", () => index.StopWatchingAsync(['U'], token)),
+            ("StopWatchingAsync", () => index.StopWatchingAsync([new VolumeKey('U')], token)),
+            ("StopWatchingAsync", () => index.StopWatchingAsync([new VolumeKey('U')], token)),
             ("StopWatchingAsync", () => index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive),token)),
-            ("RescanAsync", () => index.RescanAsync(['U'], token)),
-            ("RescanAsync", () => index.RescanAsync(['U'], token)),
-            ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(['U'], token)),
-            ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(['U'], token)),
+            ("RescanAsync", () => index.RescanAsync([new VolumeKey('U')], token)),
+            ("RescanAsync", () => index.RescanAsync([new VolumeKey('U')], token)),
+            ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync([new VolumeKey('U')], token)),
+            ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync([new VolumeKey('U')], token)),
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive),token)),
             ("DisposeAsync", () => index.DisposeAsync().AsTask())
         };
@@ -237,11 +237,11 @@ public class FileIndexCallbackReentrancyTests
         {
             if (fault.Kind == WatchFaultKind.CatchUpLost)
             {
-                outcome.TrySetResult(BlockOn(() => index.RescanAsync(['U'], CancellationToken.None)));
+                outcome.TrySetResult(BlockOn(() => index.RescanAsync([new VolumeKey('U')], CancellationToken.None)));
             }
         };
 
-        await index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard, TestContext.CancellationToken), "RescanAsync");
     }
@@ -257,7 +257,7 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(async () =>
         {
             await Task.Run(() => completedGate.Entered, TestContext.CancellationToken).ConfigureAwait(false);
-            await index.StopWatchingAsync(['U'], CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken).ConfigureAwait(false);
+            await index.StopWatchingAsync([new VolumeKey('U')], CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken).ConfigureAwait(false);
         })));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -277,7 +277,7 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => queuedStop.TrySetResult(Task.Run(async () =>
         {
             await afterHandler.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken).ConfigureAwait(false);
-            await index.StopWatchingAsync(['T'], CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken).ConfigureAwait(false);
+            await index.StopWatchingAsync([new VolumeKey('T')], CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken).ConfigureAwait(false);
         }, TestContext.CancellationToken)));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -359,7 +359,7 @@ public class FileIndexCallbackReentrancyTests
         var observedInline = NewSignal<bool>();
         OnDriveFault(harness, CancelFromHandlerStack(waitCancellation));
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var wait = index.WaitForCatchUpAsync(['U'], waitCancellation.Token);
+        var wait = index.WaitForCatchUpAsync([new VolumeKey('U')], waitCancellation.Token);
         var awaiter = ObserveCancellationAsync(wait, observedInline, () => index.DisposeAsync().AsTask());
 
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
@@ -393,10 +393,10 @@ public class FileIndexCallbackReentrancyTests
         var uConsumed = harness.Source.WatchFor('U').Queue(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         await uGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         harness.SetNextProducedCursor('U', WatchHarness.JournalIdentifier, nextUsn: 300);
-        var stop = index.StopWatchingAsync(['U'], stopCancellation.Token);
+        var stop = index.StopWatchingAsync([new VolumeKey('U')], stopCancellation.Token);
         Assert.IsFalse(stop.IsCompleted, "the stop waits for U's pump, which is inside its handler");
         var token = Token;
-        var awaiter = ObserveCancellationAsync(stop, observedInline, () => index.RescanAsync(['U'], token));
+        var awaiter = ObserveCancellationAsync(stop, observedInline, () => index.RescanAsync([new VolumeKey('U')], token));
 
         var tConsumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
@@ -417,18 +417,18 @@ public class FileIndexCallbackReentrancyTests
         var outcome = NewSignal<Exception?>();
         index.WatchFaulted += fault =>
         {
-            if (fault.Kind == WatchFaultKind.Drive && fault.Drive == 'T')
+            if (fault.Kind == WatchFaultKind.Drive && fault.Drive == new VolumeKey('T'))
             {
                 _ = Task.Run(async () =>
                 {
                     await subscriberBGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken).ConfigureAwait(false);
-                    outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync(['U'], CancellationToken.None)));
+                    outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync([new VolumeKey('U')], CancellationToken.None)));
                 }, TestContext.CancellationToken);
             }
         };
         index.WatchFaulted += fault =>
         {
-            if (fault.Kind == WatchFaultKind.Drive && fault.Drive == 'T')
+            if (fault.Kind == WatchFaultKind.Drive && fault.Drive == new VolumeKey('T'))
             {
                 subscriberBGate.MarkEntered();
                 subscriberBGate.WaitForRelease();
@@ -453,7 +453,7 @@ public class FileIndexCallbackReentrancyTests
         var outcome = NewSignal<Exception?>();
         Task? disposal = null;
 
-        IEnumerable<DriveKey> ResolveDrives()
+        IEnumerable<RootKey> ResolveDrives()
         {
             materializing.MarkEntered();
             materializing.WaitForRelease();
@@ -496,7 +496,7 @@ public class FileIndexCallbackReentrancyTests
         {
             if (change.Entry.Name == "inner.txt")
             {
-                outcome.TrySetResult(BlockOn(() => outerIndex.StopWatchingAsync(['U'], CancellationToken.None)));
+                outcome.TrySetResult(BlockOn(() => outerIndex.StopWatchingAsync([new VolumeKey('U')], CancellationToken.None)));
             }
         };
         var innerIndex = inner.Index;
@@ -528,9 +528,9 @@ public class FileIndexCallbackReentrancyTests
             gate.MarkEntered();
             gate.WaitForRelease();
             outcome.TrySetResult([
-                BlockOn(() => index.WaitForCatchUpAsync(['T', 'U'], CancellationToken.None)),
-                BlockOn(() => index.StartWatchingAsync(['T', 'U'], CancellationToken.None)),
-                BlockOn(() => index.StopWatchingAsync(['T', 'U'], CancellationToken.None))
+                BlockOn(() => index.WaitForCatchUpAsync([new VolumeKey('T'), new VolumeKey('U')], CancellationToken.None)),
+                BlockOn(() => index.StartWatchingAsync([new VolumeKey('T'), new VolumeKey('U')], CancellationToken.None)),
+                BlockOn(() => index.StopWatchingAsync([new VolumeKey('T'), new VolumeKey('U')], CancellationToken.None))
             ]);
         });
         await StartBothAsync(harness).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -594,8 +594,8 @@ public class FileIndexCallbackReentrancyTests
 
     static async Task StartBothAsync(WatchHarness harness)
     {
-        await harness.Index.StartWatchingAsync(['T'], CancellationToken.None).WaitAsync(HangGuard);
-        await harness.Index.StartWatchingAsync(['U'], CancellationToken.None).WaitAsync(HangGuard);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T')], CancellationToken.None).WaitAsync(HangGuard);
+        await harness.Index.StartWatchingAsync([new VolumeKey('U')], CancellationToken.None).WaitAsync(HangGuard);
     }
 
     static void OnChanged(WatchHarness harness, string fileName, Action handler)
@@ -613,7 +613,7 @@ public class FileIndexCallbackReentrancyTests
     {
         harness.Index.WatchFaulted += fault =>
         {
-            if (fault.Kind == WatchFaultKind.Drive && fault.Drive == 'T')
+            if (fault.Kind == WatchFaultKind.Drive && fault.Drive == new VolumeKey('T'))
             {
                 handler();
             }

@@ -61,7 +61,7 @@ sealed class MftVolume : IDisposable
     /// <exception cref="ArgumentException"><paramref name="drive" /> is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bufferSizeRecords" /> is zero.</exception>
     /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
-    internal static MftVolume Open(DriveKey drive, uint bufferSizeRecords = DefaultBufferSizeRecords)
+    internal static MftVolume Open(VolumeKey drive, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
         ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
         var volumePath = MFTUtilities.GetVolumePath(drive);

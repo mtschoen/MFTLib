@@ -58,7 +58,7 @@ static partial class BrokerProtocol
             return this;
         }
 
-        public PayloadWriter Drive(DriveKey drive)
+        public PayloadWriter Drive(VolumeKey drive)
         {
             BinaryPrimitives.WriteUInt16LittleEndian(_payload.GetSpan(2), drive.Letter);
             _payload.Advance(2);
@@ -135,13 +135,13 @@ static partial class BrokerProtocol
             return Encoding.Unicode.GetString(Take(Length()));
         }
 
-        public DriveKey Drive()
+        public VolumeKey Drive()
         {
             var character = (char)BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
-            DriveKey drive;
+            VolumeKey drive;
             try
             {
-                drive = new DriveKey(character);
+                drive = new VolumeKey(character);
             }
             catch (ArgumentException exception)
             {

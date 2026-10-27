@@ -216,8 +216,8 @@ public partial class JournalBrokerHostLivenessTests
         public bool SenderIsBackground { get; private set; }
 
         public JournalBrokerHost Host(
-            Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-            Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+            Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+            Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
             MftRecordBatchSource? scanDrive = null, int processorCount = 4)
         {
             var host = new JournalBrokerHost(

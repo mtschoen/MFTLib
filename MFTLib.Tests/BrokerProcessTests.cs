@@ -19,7 +19,7 @@ public partial class BrokerProcessTests
         {
             QueryVolumeInformation = drive =>
             {
-                Assert.AreEqual(new DriveKey('D'), drive);
+                Assert.AreEqual(new VolumeKey('D'), drive);
                 return Volume;
             }
         }));
@@ -38,7 +38,7 @@ public partial class BrokerProcessTests
         {
             GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
             {
-                Assert.AreEqual(new DriveKey('E'), drive);
+                Assert.AreEqual(new VolumeKey('E'), drive);
                 return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
             }
         }));

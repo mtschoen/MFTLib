@@ -20,7 +20,7 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IEnumerable<DriveKey> drives,
+    public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IEnumerable<RootKey> drives,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StartWatchingAsync)) is { } rejected)
@@ -43,7 +43,7 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IEnumerable<DriveKey> drives,
+    public Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IEnumerable<RootKey> drives,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StopWatchingAsync)) is { } rejected)
@@ -67,7 +67,7 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<IReadOnlyList<DriveOperationResult>> RescanAsync(IEnumerable<DriveKey> drives,
+    public Task<IReadOnlyList<DriveOperationResult>> RescanAsync(IEnumerable<RootKey> drives,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(RescanAsync)) is { } rejected)
@@ -91,13 +91,13 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="InvalidOperationException">A wait that is not yet settled was requested from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IEnumerable<DriveKey> drives,
+    public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IEnumerable<RootKey> drives,
         CancellationToken cancellationToken)
     {
         // Only the synchronous reads of the index sit inside the try: a disposal they observe
         // from inside a handler is reported as that handler's rejection. The returned tasks are
         // outside it on purpose, so their own faults reach the caller unchanged.
-        DriveKey[] keys;
+        RootKey[] keys;
         Task?[] waits;
         CancellationToken disposalToken;
         try
@@ -125,7 +125,7 @@ public sealed partial class FileIndex
         return new BatchedCatchUpWait(keys, waits, cancellationToken, disposalToken).Completion;
     }
 
-    bool HasWatchableBlock(DriveKey drive)
+    bool HasWatchableBlock(RootKey drive)
     {
         lock (_stateLock)
         {
@@ -133,7 +133,7 @@ public sealed partial class FileIndex
         }
     }
 
-    bool IsWatching(DriveKey drive)
+    bool IsWatching(RootKey drive)
     {
         lock (_stateLock)
         {
@@ -141,8 +141,8 @@ public sealed partial class FileIndex
         }
     }
 
-    async Task<IReadOnlyList<DriveOperationResult>> RunBatchAsync(IEnumerable<DriveKey> drives,
-        Func<DriveKey, bool>? applicable, Func<DriveKey, Task> operation, CancellationToken cancellationToken)
+    async Task<IReadOnlyList<DriveOperationResult>> RunBatchAsync(IEnumerable<RootKey> drives,
+        Func<RootKey, bool>? applicable, Func<RootKey, Task> operation, CancellationToken cancellationToken)
     {
         var keys = ValidateBatch(drives);
         var results = await Task.WhenAll(keys.Select(key => RunOneAsync(key, applicable, operation)))
@@ -151,12 +151,12 @@ public sealed partial class FileIndex
         return results;
     }
 
-    DriveKey[] ValidateBatch(IEnumerable<DriveKey> drives)
+    RootKey[] ValidateBatch(IEnumerable<RootKey> drives)
     {
         ArgumentNullException.ThrowIfNull(drives);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var keys = drives.ToArray();
-        HashSet<DriveKey> seen = [];
+        HashSet<RootKey> seen = [];
         foreach (var key in keys)
         {
             if (!_driveRuntimes.ContainsKey(key.Validated()))
@@ -173,8 +173,8 @@ public sealed partial class FileIndex
         return keys;
     }
 
-    static async Task<DriveOperationResult> RunOneAsync(DriveKey drive, Func<DriveKey, bool>? applicable,
-        Func<DriveKey, Task> operation)
+    static async Task<DriveOperationResult> RunOneAsync(RootKey drive, Func<RootKey, bool>? applicable,
+        Func<RootKey, Task> operation)
     {
         try
         {

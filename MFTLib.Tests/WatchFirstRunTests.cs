@@ -35,7 +35,7 @@ public sealed class WatchFirstRunTests : IDisposable
     }
 
     static WindowsVolume Facts(string rootDirectory, string? reason = null) =>
-        SyntheticNotifications.CreateWindowsVolume(new DriveKey(rootDirectory[0]), rootDirectory, DriveType.Fixed) with
+        SyntheticNotifications.CreateWindowsVolume(new VolumeKey(rootDirectory[0]), rootDirectory, DriveType.Fixed) with
         {
             IsReady = true,
             Format = reason is null ? "NTFS" : "exFAT",
@@ -350,7 +350,7 @@ public sealed class WatchFirstRunTests : IDisposable
 
     // Every drive roots at the fixture directory except Q, whose root is missing, so it is offline.
     IndexedDrive FixtureDrive(string letter) =>
-        new(letter[0], letter == "Q" ? Path.Combine(TemporaryDirectoryPath, "missing-root") : TemporaryDirectoryPath, 4242);
+        new(new VolumeKey(letter[0]), letter == "Q" ? Path.Combine(TemporaryDirectoryPath, "missing-root") : TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(List<string> lines, TextReader? input = null, TimeProvider? timeProvider = null, bool? interactive = null) =>
         HostOver(new LineCollectingWriter(lines), input, timeProvider, interactive);

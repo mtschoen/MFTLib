@@ -183,7 +183,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         return index;
     }
 
-    internal bool TryGetDriveOrdinal(DriveKey drive, out ushort driveOrdinal)
+    internal bool TryGetDriveOrdinal(RootKey drive, out ushort driveOrdinal)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_stateLock)
@@ -198,7 +198,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     away has nothing to do, not a different exception to raise over the one already in
     ///     flight. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    bool TryGetDriveOrdinalLocked(DriveKey drive, out ushort driveOrdinal)
+    bool TryGetDriveOrdinalLocked(RootKey drive, out ushort driveOrdinal)
     {
         if (_driveRuntimes.TryGetValue(drive.Validated(), out var runtime) && runtime.Block is { } block)
         {

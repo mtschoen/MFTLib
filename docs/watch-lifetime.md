@@ -1,10 +1,11 @@
 # Watch lifetime
 
 - Index contracts:
-    - **Drive identity and lifecycle admission**: `DriveKey` is an ASCII letter normalized once to upper
-      case, with implicit conversion from `char` and no string conversion. The default key is invalid.
+    - **Drive identity and lifecycle admission**: `VolumeKey` is an ASCII letter normalized once to upper
+      case, with implicit conversion from `char` and no string conversion, and `RootKey` is a volume or a directory path that
+      widens implicitly from it. The default of either is invalid.
       Start, stop, catch-up wait and rescan each expose one method taking
-      `(IEnumerable<DriveKey> drives, CancellationToken cancellationToken)` and returning
+      `(IEnumerable<RootKey> drives, CancellationToken cancellationToken)` and returning
       `Task<IReadOnlyList<DriveOperationResult>>`. The sequence is materialized once; null, default,
       duplicate and unconfigured keys are rejected before any drive starts. Results preserve request
       order, including for one drive. Empty requests return no results unless cancelled. Callers wanting

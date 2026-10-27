@@ -33,7 +33,7 @@ partial class SampleHost
 
     // With both sizes it grows the journal through the broker; with neither it reports the settings the drive has.
     [SuppressMessage("Interoperability", "CA1416", Justification = "A broker session, which the journal needs first, is only created on Windows")]
-    async Task WriteJournalAsync(BrokerSession session, FileIndex index, DriveKey drive, WatchArguments parsed, CancellationToken cancellationToken)
+    async Task WriteJournalAsync(BrokerSession session, FileIndex index, VolumeKey drive, WatchArguments parsed, CancellationToken cancellationToken)
     {
         var settings = parsed.MaximumSize is { } maximum && parsed.AllocationDelta is { } delta
             ? await session.GrowUsnJournalAsync(drive,
@@ -47,7 +47,7 @@ partial class SampleHost
     {
         var exitCode = 0;
         var directory = parsed.CacheDirectory ?? string.Empty;
-        var drives = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
+        var drives = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => (RootKey)new VolumeKey(drive[0])).ToArray();
         foreach (var block in CacheDirectory.InspectCached(directory, drives, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Message}")))
         {
             _output.WriteLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}");

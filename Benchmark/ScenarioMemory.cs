@@ -14,7 +14,7 @@ internal sealed record ScenarioMemoryRequest(
     string Scenario, string InputPath, int Iterations, IndexMemoryInput? Index = null, uint Rows = 0);
 
 internal sealed record IndexMemoryInput(
-    char Drive, string RootDirectory, uint VolumeSerial, ProducerKind Producer,
+    string Drive, string RootDirectory, uint VolumeSerial, ProducerKind Producer,
     uint PackedFourCc, uint TagVersion, ulong ScanShape);
 
 internal sealed class ScenarioMemoryCapture : IAsyncDisposable

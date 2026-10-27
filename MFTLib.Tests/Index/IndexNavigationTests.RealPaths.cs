@@ -17,7 +17,7 @@ public partial class IndexNavigationTests
 
         var rootDirectory = Path.Combine(builder.DirectoryPath, "mftlib-path-root");
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: rootDirectory)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: rootDirectory)];
         try
         {
             Assert.AreEqual(rootDirectory, FileEntry.Create(snapshot[0], root).Path);
@@ -50,7 +50,7 @@ public partial class IndexNavigationTests
 
         var separator = Path.DirectorySeparatorChar;
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('C', 0, block, rootDirectoryPath: "C:");
+        var driveBlock = new DriveBlock(new VolumeKey('C'), 0, block, rootDirectoryPath: "C:");
         DriveBlock[] snapshot = [driveBlock];
         try
         {
@@ -76,7 +76,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('T', 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), 0, block)];
         try
         {
             var exception = Assert.ThrowsExactly<InvalidOperationException>(

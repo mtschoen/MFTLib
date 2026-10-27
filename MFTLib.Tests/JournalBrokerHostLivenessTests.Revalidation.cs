@@ -98,7 +98,7 @@ public partial class JournalBrokerHostLivenessTests
         }
 
         IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchAsync(
-            DriveKey drive, UsnJournalCursor since, ISourceOperationReporter reporter, CancellationToken cancellationToken)
+            VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter reporter, CancellationToken cancellationToken)
         {
             if (drive == 'Z')
             {

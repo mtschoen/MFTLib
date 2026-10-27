@@ -34,7 +34,7 @@ public abstract class BrokerBlockTestBase
     ///     written it and sent ScanReady, before the client validates it.
     /// </summary>
     internal static InProcessBroker CreateBrokerChangingBlock(Action<BlockFile> change,
-        MftRecordBatchSource? scanDrive = null, Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null)
+        MftRecordBatchSource? scanDrive = null, Func<VolumeKey, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
         var created = new StrongBox<InProcessBroker?>();
         created.Value = new InProcessBroker(BrokerHostFactory.Create(new()

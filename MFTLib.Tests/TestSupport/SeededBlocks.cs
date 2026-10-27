@@ -11,6 +11,13 @@ namespace MFTLib.Tests.TestSupport;
 /// </summary>
 static class SeededBlocks
 {
+    /// <summary>The root a canonical volume block name carries, or volume T for a name that is not canonical.</summary>
+    public static RootKey RootFor(string? path) =>
+        path is not null && CacheDirectory.TryParseBlockFileName(Path.GetFileName(path), out var parsed) &&
+        parsed.Volume is { } volume
+            ? volume
+            : new VolumeKey('T');
+
     /// <summary>The completion and row timestamp of blocks seeded straight onto disk by rescan and cache tests.</summary>
     public static readonly DateTime SeededMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
@@ -61,7 +68,7 @@ static class SeededBlocks
     static BlockFile Create(string path, uint volumeSerial, bool deleteOnClose, CacheTag cacheTag,
         ulong journalIdentifier, long nextUsn, DateTime moment, IEnumerable<SyntheticRow> rows)
     {
-        return SyntheticBlock.Build(path, volumeSerial, deleteOnClose, new SyntheticBlockOptions
+        return SyntheticBlock.Build(path, RootFor(path), volumeSerial, deleteOnClose, new SyntheticBlockOptions
         {
             JournalCursor = new SyntheticJournalCursor(journalIdentifier, nextUsn),
             ScanTimestamp = moment,

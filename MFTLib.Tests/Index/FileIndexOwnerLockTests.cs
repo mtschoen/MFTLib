@@ -22,7 +22,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
             Diagnostics = diagnostics
         };
 
-    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
 
     [TestMethod]
     public async Task OpenAsync_CacheOnly_SecondIndexReportsInUseAndLeavesTheFirstIndexsBlockAlone()
@@ -71,7 +71,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
             Assert.AreEqual(DriveState.Ready, status.State);
             Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             Assert.AreEqual(CacheLocation.PrivateFallback, status.Block.CacheLocation);
-            Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
+            Assert.IsTrue(second.TryGetDriveOrdinal(new VolumeKey('T'), out var secondOrdinal));
             secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(secondBlockPath));
             Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the owning index's canonical cache is not replaced, truncated, or deleted");
@@ -98,7 +98,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
 
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             progress.Armed = true;
-            var rescan = first.RescanAsync(['T'], cancellationTokenSource.Token);
+            var rescan = first.RescanAsync([new VolumeKey('T')], cancellationTokenSource.Token);
             await progress.Reported;
 
             // The rescan is blocked mid-scan with the canonical file renamed aside. The second
@@ -116,7 +116,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
 
             Assert.IsTrue(File.Exists(CanonicalPath), "the canonical file must be restored");
             Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"));
+                CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*"));
         }
 
         await using var third = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -136,17 +136,17 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
             var oldSnapshot = first.CurrentSnapshot;
 
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-            await first.RescanAsync(['T'], CancellationToken.None);
+            await first.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
             var retiredPaths = Directory
-                .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*")
+                .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*")
                 .ToList();
             Assert.HasCount(1, retiredPaths);
 
             string secondBlockPath;
             await using (var second = await FileIndex.OpenAsync(Options(), CancellationToken.None))
             {
-                Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
+                Assert.IsTrue(second.TryGetDriveOrdinal(new VolumeKey('T'), out var secondOrdinal));
                 secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
                 Assert.Contains("mftlib-private-", secondBlockPath);
                 Assert.IsTrue(File.Exists(retiredPaths[0]),
@@ -182,20 +182,20 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
             await using var second = await FileIndex.OpenAsync(Options(), CancellationToken.None);
             var initialStatus = second.Drives.Single();
             Assert.AreEqual(CacheLocation.PrivateFallback, initialStatus.Block!.CacheLocation);
-            Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
+            Assert.IsTrue(second.TryGetDriveOrdinal(new VolumeKey('T'), out var secondOrdinal));
             var firstPrivatePath = second.CurrentSnapshot[secondOrdinal].Block.Path;
 
             // While the first index owns the slot, the second index's rescan must not rename the
             // canonical file aside: it scans privately again.
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-            await second.RescanAsync(['T'], CancellationToken.None);
+            await second.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
             var secondPrivatePath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.AreEqual(CacheLocation.PrivateFallback, second.Drives.Single().Block!.CacheLocation);
             Assert.AreNotEqual(firstPrivatePath, secondPrivatePath);
             Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the canonical cache still belongs to the first index, untouched by the rescan");
             Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"));
+                CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*"));
             Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
 
             // Once the owner is gone, the second index's next rescan takes the slot: the leftover
@@ -205,7 +205,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
 
             Assert.AreEqual(CacheLocation.PrivateFallback, second.Drives.Single().Block!.CacheLocation);
 
-            await second.RescanAsync(['T'], CancellationToken.None);
+            await second.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
             Assert.AreEqual(CacheLocation.OwnedCanonical, second.Drives.Single().Block!.CacheLocation);
             Assert.AreEqual(BlockOrigin.ProducedByScan, second.Drives.Single().Block!.Origin);
@@ -228,7 +228,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
         Assert.AreEqual(DriveFailureKind.InUse, second.Drives.Single().Failure?.Kind);
         Assert.IsNull(second.Drives.Single().Block);
 
-        await second.RescanAsync(['T'], CancellationToken.None);
+        await second.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         var status = second.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
@@ -246,7 +246,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
         Assert.IsNull(index.Drives.Single().Block!.CacheLocation);
         Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives.Single().Block!.Origin);
 
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.IsNull(index.Drives.Single().Block!.CacheLocation);
         Assert.IsFalse(File.Exists(CanonicalPath));
@@ -257,7 +257,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
     {
         var options = Options() with
         {
-            Drives = [new IndexedDrive('T', Path.Combine(TreeRoot, "missing"), UniqueVolumeSerial)]
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), Path.Combine(TreeRoot, "missing"), UniqueVolumeSerial)]
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
@@ -271,7 +271,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.IsNull(index.Drives.Single().Block);
 
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         Assert.AreEqual(CacheLocation.OwnedCanonical, index.Drives.Single().Block!.CacheLocation);
@@ -283,7 +283,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
     {
         var options = Options() with
         {
-            Drives = [new IndexedDrive('T', TreeRoot, UniqueVolumeSerial)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial)],
             MftSource = new MftIndexSource((_, _) => throw new IOException("Synthetic production failure"))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -309,7 +309,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
 
             using var cancellation = new CancellationTokenSource();
             progress.Armed = true;
-            var rescan = second.RescanAsync(['T'], cancellation.Token);
+            var rescan = second.RescanAsync([new VolumeKey('T')], cancellation.Token);
             try
             {
                 await progress.Reported.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
@@ -343,7 +343,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
             if (cancel)
             {
                 progress.Armed = false;
-                await second.RescanAsync(['T'], CancellationToken.None);
+                await second.RescanAsync([new VolumeKey('T')], CancellationToken.None);
                 Assert.AreEqual(CacheLocation.OwnedCanonical, second.Drives.Single().Block!.CacheLocation);
             }
         }

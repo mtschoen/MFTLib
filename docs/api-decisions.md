@@ -122,10 +122,10 @@ choice. An MFT failure never selects a directory walk; enumeration ignores `MftS
 (`Enum.IsDefined`, throwing `ArgumentOutOfRangeException`) on construction and in its `init` setters.
 `FileIndex.OpenAsync` materializes `FileIndexOptions.Drives` once and validates it up front, before creating
 `CacheDirectory` or running any producer: a null `Drives` collection, a null or invalid element, or duplicate
-normalized `DriveKey` entries throw `ArgumentException`, and an undefined `ProducerKind` value throws
+normalized `RootKey` entries throw `ArgumentException`, and an undefined `ProducerKind` value throws
 `ArgumentOutOfRangeException`.
 
-**Reason:** `OpenAsync` is a dictionary-keyed, per-drive API (`Drives`, `Root(DriveKey)`), so duplicate drive
+**Reason:** `OpenAsync` is a dictionary-keyed, per-drive API (`Drives`, `Root(RootKey)`), so duplicate drive
 keys, blank roots, and undefined enum values are caller configuration bugs that must fail fast with no filesystem
 side effects.
 
@@ -362,35 +362,55 @@ one way is not a setting.
 
 **Revisit only if:** a dump gains a legitimate cached form, for example a persisted scan of an image.
 
-## One key type for drives, one method per lifecycle verb
+## Two key types: VolumeKey and RootKey, one method per lifecycle verb
 
-**Decision (API review findings F7 and F8):** the `DriveKey` struct identifies drives
-across the public surface. It normalizes case
-once, converts implicitly from `char` and never from `string`. Each lifecycle verb of `FileIndex` (start
-watching, stop watching, wait for catch-up, rescan) is one method taking `IEnumerable<DriveKey>` and returning
-one `DriveOperationResult` per requested drive, with no overloads.
+**Decision (owner ruling 2026-10-27, issue 806; API review findings F7 and F8):** two structs name what an index
+holds. `VolumeKey` identifies an NTFS volume by one ASCII letter: it normalizes case once, converts implicitly from
+`char` and never from `string`, and its default value is invalid. `RootKey` identifies any indexed root, either a
+`VolumeKey` or a normalized directory path: it converts implicitly from `VolumeKey`, exposes `IsVolume`,
+`TryGetVolume`, `FromDirectory`, `TryParse` and `CompareTo` (volumes by letter before directories by ordinal text), and
+has no `Letter`. Directory keys compare under the platform case policy and the default `RootKey` is invalid.
+Volume-only APIs take `VolumeKey`: `MFTUtilities.GetVolumePath`, `MftVolume` opens, `FromWindowsDrive`,
+`FileIndex.QueryUsnJournalSettings`, `BrokerSession.GrowUsnJournalAsync`, `MftIndexSources.FromMftDumpFile`, every
+broker frame, and the watch notifications `WatchFault.Drive`, `WatchStateChange.Drive` and `JournalCheckpointLoss.Drive`.
+Any-root APIs take or carry `RootKey`: `FileEntry`, `IndexRow`, `IndexRecordKey`, `DriveStatus`,
+`DriveOperationResult`, `IndexScanProgress`, `IndexDriveOpened`, `CachedBlockFile`, `CacheDirectory.DeleteCached`
+and `InspectCached`, `FileIndex.Root` and `RescanAsync`, and `IndexedDrive.Drive`. Each lifecycle verb of `FileIndex`
+(start watching, stop watching, wait for catch-up, rescan) is one method taking `IEnumerable<RootKey>` and returning one
+`DriveOperationResult` per requested drive, with no overloads; a root that cannot be watched answers `NotApplicable`.
+The library derives the key and serial of a walked folder: `IndexedDrive.FromDirectory(rootDirectory)` returns a root
+whose `Drive` is `RootKey.FromDirectory(rootDirectory)` and whose `VolumeSerial` is the serial of the volume that
+contains the path, or zero when the platform does not report one. The public record constructor for an arbitrary key
+and serial does not exist; test code gets one from `MFTLibTestExtensions.SyntheticIndexedDrive`. A directory key can
+never reach raw volume access: internal volume boundaries take `VolumeKey` through `TryGetVolume`, and a directory key
+with `ProducerKind.Mft` is rejected at configuration with `ArgumentException`.
 
 **Reason:** the letter was the key of the whole API with no owner: case rules, parameter types and collection
 types differed from member to member, both consumers up-cased what the library returned, and the four verbs had
 an uneven set of single, list and all-drives overloads. A bare `IEnumerable<char>` would accept a `string`
-("CD" as two drives), which is why the key has its own type. The struct is also the one place a key could later
-become something other than an ASCII letter for Linux and enumeration roots.
+("CD" as two drives), which is why the key has its own type. Consumers read `.Letter` from any-root keys at about 55
+production sites; with one type each of those is a latent runtime throw on a walked root, with two the compiler finds
+every site. Consumers also invented letters and serials for walked folders; the serial of a walked root is the
+containing volume's serial or zero, and the library owns that derivation.
 
 **Deferred on purpose:** whether a key may be a label rather than a letter.
 
-**Implementation note:** the default struct value is invalid; its `Letter` and `ToString`
-and public key-accepting operations reject it with `ArgumentException`. Key-bearing record constructors
-and `Drive` init accessors validate it too. Members carrying keys are named `Drive`; the letter accessor
-on the key itself is `Letter`. Lifecycle requests are materialized once, reject duplicates before work
-starts and preserve request order, matching the list contract. Empty sequences succeed with no results
-unless cancelled. These choices keep identity and admission in one owner without adding public validation
-members or a string conversion.
+**Implementation note:** the default value of either struct is invalid; `Letter`, `ToString` and public key-accepting
+operations reject it with `ArgumentException`. Key-bearing record constructors and `Drive` init accessors validate it
+too. Members carrying keys are named `Drive`. Lifecycle requests are materialized once, reject duplicates before work
+starts and preserve request order, matching the list contract. Empty sequences succeed with no results unless
+cancelled. A directory key whose normalized text exceeds 1,983 UTF-16 code units is rejected by
+`RootKey.FromDirectory`, the limit of the key text stored in each cache block (see [index format](index-format.md)).
+These choices keep identity and admission in one owner without adding a string conversion.
 
-**Implementation completion:** drive keys continue through internal volume operations, broker channels and source delegates, and test adapters. Variables carrying identity are named `drive`. The native boundary formats `\\.\C:` from the key. The compiler, existing public-surface pins and behavioral protocol tests enforce the change. **Reason:** repeated character/string normalization obscured an identity that already has one owner; deleting those conversions reduces the implementation. **Revisit only if:** a concrete producer needs a key that the existing ASCII drive-key contract cannot represent.
+**Implementation completion:** keys continue through internal volume operations, broker channels and source delegates,
+and test adapters. Variables carrying identity are named `drive`. The native boundary formats the device path from the
+volume key. The compiler, public-surface pins and protocol tests enforce the change. **Revisit only if:** a concrete
+producer needs a volume key that the ASCII letter cannot represent.
 
-## DriveKey parses drive specs
+## VolumeKey parses drive specs
 
-**Decision (2026-10-19):** `DriveKey.TryParse(string? text, out DriveKey result)`
+**Decision (2026-10-19):** `VolumeKey.TryParse(string? text, out VolumeKey result)`
 accepts one ASCII letter with an optional colon and an optional final backslash
 or slash, ignoring surrounding whitespace and case. Success returns the normalized
 key. Null, empty, whitespace, UNC roots, multi-letter tokens, and paths beyond the
@@ -398,7 +418,8 @@ root return false and set the out parameter to the invalid default key. Callers
 holding a path pass its root; path resolution belongs to the caller.
 
 **Reason:** file-wizard and git-wizard each hand-rolled the same drive-spec parser
-and compared strings instead of DriveKey values.
+and compared strings instead of VolumeKey values. `RootKey.TryParse` builds on it: a drive spec parses to the volume case and
+any other valid full path to a normalized directory.
 
 **Revisit only if:** a consumer needs path-to-drive resolution MFTLib cannot
 define portably.
@@ -427,7 +448,7 @@ is `ScanTimestamp`, a journal event's time is `Timestamp`, a byte size is `Size`
 ends in `Count`, and a bound is the property name followed by `Minimum` or `Maximum`. Applied in MFTLib and
 MFTLibTestExtensions: `SyntheticRow.LastWriteTime`, `ScanTimestamp` on `SyntheticBlockOptions`,
 `SyntheticMftProducer`, `CachedBlockFile.Size`, `IndexScanProgress.WrittenRowCount`
-and `ExpectedRowCount`, and `SearchQuery.SizeMinimum` and `SizeMaximum`. A parameter that takes a `DriveKey` is
+and `ExpectedRowCount`, and `SearchQuery.SizeMinimum` and `SizeMaximum`. A parameter that takes a `RootKey` is
 named `drive` (or `drives` for a sequence), never `driveLetter`.
 
 **Reason:** the surface named the same concept several ways, so a reader had to learn each type's word for a
@@ -540,7 +561,7 @@ already distinguish by the state enum.
 ## One cache inspection method, documented directory preparation
 
 **Decision (API review finding F20):** `CacheDirectory.InspectCached`
-is one public method with optional `IEnumerable<DriveKey>? drives = null`
+is one public method with optional `IEnumerable<RootKey>? drives = null`
 and `Action<CachedBlockRejection>? rejectedFile = null` parameters.
 `CacheDirectory.EnsureCreated` stays public and unchanged, with its application
 usage documented. `DeleteCached` keeps its rejected-filename callback overload internal.
@@ -580,7 +601,7 @@ example size.
 ## Cache deletion reports per-file outcomes through results
 
 **Decision:**
-`CacheDirectory.DeleteCached(string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null)`
+`CacheDirectory.DeleteCached(string cacheDirectoryPath, IEnumerable<RootKey>? drives = null)`
 returns each attempted file's outcome and optional failure reason in
 `CachedBlockDeletionResult`. The Watch sample prints those results once.
 The internal overload additionally accepts `Action<CachedBlockRejection>? rejectedFile`
@@ -599,7 +620,7 @@ deletion results cannot express.
 ## File entries expose their drive and keep distinct state questions
 
 **Decision (API review finding F24):** `FileEntry.Drive` is a
-`DriveKey` equal to `RecordKey.Drive`, with the same default-value and disposal
+`RootKey` equal to `RecordKey.Drive`, with the same default-value and disposal
 behavior as the entry's other data properties. `FileIndex.Drives` keeps its name.
 `FileEntry.IsValid` and `IsDisposed` stay separate.
 
@@ -705,7 +726,7 @@ fallback text. This is the first instance of the state-plus-nullable-reason rule
 **Decision (API review finding F3):**
 the enum is `WatchState`; its members `NotStarted`, `Recovering` and `Faulted`
 describe the watch lifecycle, and `DriveWatchStatus.State` is its property. `FileIndex.WatchStateChanged` is an
-`Action<WatchStateChange>`; `WatchStateChange` carries `DriveKey Drive`, the same
+`Action<WatchStateChange>`; `WatchStateChange` carries `VolumeKey Drive`, the same
 `DriveWatchStatus` snapshot that `DriveStatus.Watch` reports (`Watch`), and the optional `Fault`. One builder produces
 the snapshot for both `Drives` and the event, so they cannot diverge.
 
@@ -861,7 +882,7 @@ exception informed nobody.
 
 **Decision (owner, 2026-10-16; record 2026-10-18):** `IndexedDrive.EnumerateWindowsVolumes()` returns every
 root from `DriveInfo.GetDrives()` as `IReadOnlyList<WindowsVolume>`. `WindowsVolume` is a public sealed record
-of `DriveKey Drive`, `string RootDirectory`, `DriveType DriveType`, `bool IsReady`, `string? Format`,
+of `VolumeKey Drive`, `string RootDirectory`, `DriveType DriveType`, `bool IsReady`, `string? Format`,
 `bool IsIndexable` and `string? Reason`. Only ready fixed NTFS drives are indexable; NTFS compares with
 `StringComparison.OrdinalIgnoreCase`. `Reason` stays for display: `not ready`, `network`, `removable`,
 `optical`, `other drive type`, `not NTFS (<format>)`. Non-fixed drives are classified by type alone, so
@@ -930,16 +951,17 @@ MSTEST0084 or CA1416 hides the mismatch instead of fixing the description of the
 **Revisit only if:** a public member's platform-neutral logic is needed by a consumer on Linux, which would
 make the internal member a public one.
 
-## Windows drive construction is named for its drive key
+## Windows drive construction is named for its volume key
 
-**Decision (owner ruling B6, 2026-10-26):** `IndexedDrive.FromWindowsDrive(DriveKey drive)` is the sole public
-name for the Windows-only factory that reads the drive's volume serial and returns an MFT `IndexedDrive`.
+**Decision (owner ruling B6, 2026-10-26):** `IndexedDrive.FromWindowsDrive(VolumeKey drive)` is the sole public
+name for the Windows-only factory that reads the volume's serial and returns an MFT `IndexedDrive`. Because the
+parameter is a `VolumeKey`, the drive is a letter by type and the factory has no letter validation of its own.
 
-**Reason:** the factory takes a `DriveKey`, not a `WindowsVolume`. Naming it for the Windows drive avoids
+**Reason:** the factory takes a `VolumeKey`, not a `WindowsVolume`. Naming it for the Windows drive avoids
 suggesting that callers must first construct or supply a `WindowsVolume`.
 
 **Revisit only if:** the factory changes the identity it accepts or no longer constructs a drive from a Windows
-drive key.
+volume key.
 
 ## Journal application is asynchronous end to end
 
@@ -1074,7 +1096,7 @@ names and pruned paths. The format version moved to 6, so blocks shaped under th
 `Exception.Message` and `DriveFailure.Message` do. An object that may carry a failure names it `FailureMessage`, as
 `DriveWatchStatus.FailureMessage` does. `CachedBlockRejection.Reason` is therefore `Message` and
 `CachedBlockDeletionResult.FailureReason` is `FailureMessage`. `WindowsVolume.Reason` stays: it explains why a volume
-is skipped and is not a failure (B2). `DriveKey.TryParse(string? text, out DriveKey result)` names its out parameter
+is skipped and is not a failure (B2). `VolumeKey.TryParse(string? text, out VolumeKey result)` names its out parameter
 `result`, as `int.TryParse`, `Guid.TryParse` and `IParsable<T>.TryParse` do.
 
 **Reason:** matching the platform's conventions means consumers need not learn per-type names for the same idea.

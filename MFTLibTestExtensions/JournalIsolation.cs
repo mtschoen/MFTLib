@@ -60,7 +60,7 @@ public static class JournalIsolation
     ///     Callback exceptions propagate through the calling index operation's existing policy.
     ///     Disposal does not drain callbacks already in progress.
     /// </remarks>
-    public static IDisposable OverrideJournalWindow(Func<DriveKey, SyntheticJournalWindow?> journal)
+    public static IDisposable OverrideJournalWindow(Func<VolumeKey, SyntheticJournalWindow?> journal)
     {
         ArgumentNullException.ThrowIfNull(journal);
         return ProcessGlobalScope.Acquire("A synthetic journal-window override", () =>

@@ -11,7 +11,7 @@ sealed partial class BrokerProcess
     // operation's one request frame. Every failed branch releases the pipe server and anything
     // connected to it, so the host reads EOF on whatever end it holds and its own bounded waits
     // end the rest.
-    internal async Task<BrokerDriveChannel> OpenChannelAsync(DriveKey drive,
+    internal async Task<BrokerDriveChannel> OpenChannelAsync(VolumeKey drive,
         Action<ArrayBufferWriter<byte>> writeFirstRequest, CancellationToken cancellationToken)
     {
         drive = drive.Validated();
@@ -47,7 +47,7 @@ sealed partial class BrokerProcess
         }
     }
 
-    async Task RequestChannelAsync(DriveKey drive, string pipeName, CancellationToken cancellationToken)
+    async Task RequestChannelAsync(VolumeKey drive, string pipeName, CancellationToken cancellationToken)
     {
         try
         {
@@ -63,7 +63,7 @@ sealed partial class BrokerProcess
 
     // The host connects before it acknowledges, so after ChannelOpened the connection is due at
     // once; a host that acknowledged and never connected is given ControlReplyTimeout.
-    async Task<Stream> AwaitConnectionAsync(DriveKey drive, Task<Stream> connection, CancellationToken cancellationToken)
+    async Task<Stream> AwaitConnectionAsync(VolumeKey drive, Task<Stream> connection, CancellationToken cancellationToken)
     {
         try
         {

@@ -8,7 +8,7 @@ static class BlockSectionNaming
     /// <summary>The length of every section name: the prefix, one drive letter, a dash and 32 hexadecimal digits.</summary>
     internal const int Length = 13 + 1 + 1 + 32;
 
-    internal static bool IsValid(string name, DriveKey drive)
+    internal static bool IsValid(string name, VolumeKey drive)
     {
         drive = drive.Validated();
         if (name.Length != Length ||

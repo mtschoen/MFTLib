@@ -9,6 +9,9 @@ sealed record BlockFileCreateOptions
     /// <summary>Full path of the block file to create.</summary>
     public required string Path { get; init; }
 
+    /// <summary>The root the block indexes, stored in page 0 so the block names its own root.</summary>
+    public required RootKey Root { get; init; }
+
     /// <summary>NTFS volume serial number that the block represents.</summary>
     public required uint VolumeSerial { get; init; }
 

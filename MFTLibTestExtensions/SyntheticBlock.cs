@@ -18,7 +18,7 @@ public static class SyntheticBlock
     /// <param name="drive">The drive letter.</param>
     /// <param name="volumeSerial">The volume serial number the index reports for the drive.</param>
     /// <returns>The full path of the drive's block file.</returns>
-    public static string CachedPath(string cacheDirectory, DriveKey drive, uint volumeSerial)
+    public static string CachedPath(string cacheDirectory, RootKey drive, uint volumeSerial)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectory);
         return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(drive, volumeSerial));
@@ -34,7 +34,7 @@ public static class SyntheticBlock
     /// <param name="options">The header values.</param>
     /// <param name="rows">The rows to write, including the root row named by <see cref="SyntheticBlockOptions.RootRow" />.</param>
     /// <returns>The full path of the block file.</returns>
-    public static string WriteCached(string cacheDirectory, DriveKey drive, uint volumeSerial,
+    public static string WriteCached(string cacheDirectory, RootKey drive, uint volumeSerial,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -42,7 +42,7 @@ public static class SyntheticBlock
         var path = CachedPath(cacheDirectory, drive, volumeSerial);
         Directory.CreateDirectory(cacheDirectory);
         using var owner = AcquireSlot(path);
-        using var block = Build(path, volumeSerial, deleteOnClose: false, options, rows);
+        using var block = Build(path, drive, volumeSerial, deleteOnClose: false, options, rows);
         return path;
     }
 
@@ -110,7 +110,7 @@ public static class SyntheticBlock
     ///     values, and returns the open handle. Internal because the handle is not public surface:
     ///     <see cref="SyntheticMftProducer" /> and the MFTLib tests transfer it to an index.
     /// </summary>
-    internal static BlockFile Build(string path, uint volumeSerial, bool deleteOnClose,
+    internal static BlockFile Build(string path, RootKey root, uint volumeSerial, bool deleteOnClose,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         var planned = rows as IReadOnlyList<SyntheticRow> ?? rows.ToList();
@@ -119,6 +119,7 @@ public static class SyntheticBlock
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = path,
+            Root = root,
             VolumeSerial = volumeSerial,
             ProducerKind = options.ProducerKind,
             RootRow = options.RootRow,

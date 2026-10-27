@@ -135,7 +135,7 @@ sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 sealed record ScriptedBrokerSeams
 {
     /// <summary>The host's journal catch-up source; the default reads nothing and stays at the cursor it is given.</summary>
-    public Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
+    public Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
 
     /// <summary>The host's clock; null reads the system clock.</summary>
     public TimeProvider? HostClock { get; init; }

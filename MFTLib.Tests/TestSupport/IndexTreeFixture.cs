@@ -43,7 +43,7 @@ sealed class IndexTreeFixture : IDisposable
 
     public IndexedDrive Drive(char drive = 'T', uint volumeSerial = 0x0BADF00D,
         ProducerKind producer = ProducerKind.Enumeration) =>
-        new(drive, TreeRoot, volumeSerial, producer);
+        new(new VolumeKey(drive), TreeRoot, volumeSerial, producer);
 
     public FileIndexOptions Options(char drive = 'T', uint volumeSerial = 0x0BADF00D,
         ProducerKind producer = ProducerKind.Enumeration, CacheMode? cacheMode = null) => new()

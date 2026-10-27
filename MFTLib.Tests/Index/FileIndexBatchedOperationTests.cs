@@ -22,8 +22,8 @@ public class FileIndexBatchedOperationTests
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    static char[] Letters(IReadOnlyList<DriveOperationResult> results) =>
-        [.. results.Select(result => result.Drive.Letter)];
+    static RootKey[] Letters(IReadOnlyList<DriveOperationResult> results) =>
+        [.. results.Select(result => result.Drive)];
 
     [TestMethod]
     public async Task BatchedStart_PartialFailure_ReportsPerDrive_DoesNotThrow()
@@ -32,9 +32,9 @@ public class FileIndexBatchedOperationTests
         var failure = new IOException("the broker refused U");
         harness.Source.FailNextStartFor('U', failure);
 
-        var results = await harness.Index.StartWatchingAsync(['T', 'U', 'V'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var results = await harness.Index.StartWatchingAsync([new VolumeKey('T'), new VolumeKey('U'), new VolumeKey('V')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreSequenceEqual(['T', 'U', 'V'], Letters(results));
+        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U'), new VolumeKey('V')], Letters(results));
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[0].Outcome);
         Assert.IsNull(results[0].Failure);
         Assert.AreEqual(DriveOperationOutcome.Failed, results[1].Outcome);
@@ -53,7 +53,7 @@ public class FileIndexBatchedOperationTests
         var heldStart = harness.TrackGate();
         harness.Source.HoldStartFor('U', heldStart, observeToken: true);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
-        var batch = harness.Index.StartWatchingAsync(['U'], cancellation.Token);
+        var batch = harness.Index.StartWatchingAsync([new VolumeKey('U')], cancellation.Token);
         try
         {
             await heldStart.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -81,11 +81,11 @@ public class FileIndexBatchedOperationTests
         var heldStartV = harness.TrackGate();
         harness.Source.HoldStartFor('V', heldStartV, observeToken: false);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
-        var rescanT = harness.Index.RescanAsync(['T'], Token);
+        var rescanT = harness.Index.RescanAsync([new VolumeKey('T')], Token);
         try
         {
             await heldScanT.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-            var batch = harness.Index.StartWatchingAsync(['T', 'V'], cancellation.Token);
+            var batch = harness.Index.StartWatchingAsync([new VolumeKey('T'), new VolumeKey('V')], cancellation.Token);
             await heldStartV.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             await cancellation.CancelAsync().WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -113,12 +113,12 @@ public class FileIndexBatchedOperationTests
         var index = harness.Index;
         var none = Array.Empty<char>();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StartWatchingAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
-        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
-        await Assert.ThrowsAsync<OperationCanceledException>(() => index.RescanAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
-        await Assert.ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
-        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(['V'], cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
-        await Assert.ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(['V'], cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StartWatchingAsync(none.Select(letter => (RootKey)new VolumeKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(none.Select(letter => (RootKey)new VolumeKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.RescanAsync(none.Select(letter => (RootKey)new VolumeKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(none.Select(letter => (RootKey)new VolumeKey(letter)), cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync([new VolumeKey('V')], cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync([new VolumeKey('V')], cancelled.Token).WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -126,10 +126,14 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(['T', 'U', 't'], Token));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(['U', 'U'], Token));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(['T', 'T'], Token));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(['V', 'v'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(
+            [new VolumeKey('T'), new VolumeKey('U'), new VolumeKey('t')], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(
+            [new VolumeKey('U'), new VolumeKey('U')], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(
+            [new VolumeKey('T'), new VolumeKey('T')], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(
+            [new VolumeKey('V'), new VolumeKey('v')], Token));
 
         Assert.IsEmpty(harness.Source.Starts);
         Assert.AreEqual(1, harness.ProductionCount('T'), "only the open scanned");
@@ -141,10 +145,12 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(['T', 'X'], Token));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(['X'], Token));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(['U', 'X'], Token));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(['X'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(
+            [new VolumeKey('T'), new VolumeKey('X')], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync([new VolumeKey('X')], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(
+            [new VolumeKey('U'), new VolumeKey('X')], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync([new VolumeKey('X')], Token));
 
         Assert.IsEmpty(harness.Source.Starts, "the list is validated before any drive starts");
         Assert.AreEqual(1, harness.ProductionCount('U'), "only the open scanned");
@@ -169,10 +175,10 @@ public class FileIndexBatchedOperationTests
         var index = harness.Index;
         await index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(['T'], Token));
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(['T'], Token));
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.RescanAsync(['T'], Token));
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(['T'], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync([new VolumeKey('T')], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync([new VolumeKey('T')], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.RescanAsync([new VolumeKey('T')], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync([new VolumeKey('T')], Token));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive), Token));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), Token));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), Token));
@@ -182,7 +188,7 @@ public class FileIndexBatchedOperationTests
     public async Task NoListForm_CoversDrivesInOptionsOrder()
     {
         using var harness = new WatchHarness('V', 'T', 'U');
-        var expected = new[] { 'V', 'T', 'U' };
+        RootKey[] expected = [new VolumeKey('V'), new VolumeKey('T'), new VolumeKey('U')];
 
         var started = await harness.Index.StartWatchingAsync(harness.Index.Drives.Select(drive => drive.Drive), Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreSequenceEqual(expected, Letters(started));
@@ -191,7 +197,8 @@ public class FileIndexBatchedOperationTests
         var waiting = harness.Index.WaitForCatchUpAsync(harness.Index.Drives.Select(drive => drive.Drive), Token);
         foreach (var letter in expected)
         {
-            await harness.Source.WatchFor(letter).Publish(new DriveCaughtUp());
+            Assert.IsTrue(letter.TryGetVolume(out var volume));
+            await harness.Source.WatchFor(volume).Publish(new DriveCaughtUp());
         }
 
         var caughtUp = await waiting.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -212,12 +219,12 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync(['T', 'U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T'), new VolumeKey('U')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var faulted = harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         var fault = await faulted.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var results = await harness.Index.StopWatchingAsync(['T', 'U', 'V'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var results = await harness.Index.StopWatchingAsync([new VolumeKey('T'), new VolumeKey('U'), new VolumeKey('V')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
         Assert.AreSame(fault.Exception, results[0].Failure, "stop carries the fault that had ended T's watch");
@@ -231,8 +238,8 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync(['T', 'U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var wait = harness.Index.WaitForCatchUpAsync(['T', 'U', 'V'], Token);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T'), new VolumeKey('U')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var wait = harness.Index.WaitForCatchUpAsync([new VolumeKey('T'), new VolumeKey('U'), new VolumeKey('V')], Token);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.IsFalse(wait.IsCompleted, "U is still catching up");
@@ -250,7 +257,7 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync(['T', 'U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T'), new VolumeKey('U')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         harness.Index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             _settlingPumpFault = true;
@@ -273,10 +280,10 @@ public class FileIndexBatchedOperationTests
 
         async Task<bool> WaitThenStopOtherDriveAsync(FileIndex index)
         {
-            var results = await index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+            var results = await index.WaitForCatchUpAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.AreEqual(DriveOperationOutcome.Failed, results.Single().Outcome);
             var observedWhileSettling = _settlingPumpFault;
-            await index.StopWatchingAsync(['U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+            await index.StopWatchingAsync([new VolumeKey('U')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
             return observedWhileSettling;
         }
     }
@@ -287,7 +294,7 @@ public class FileIndexBatchedOperationTests
         using var harness = new WatchHarness('T', 'U');
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
 
-        var results = await harness.Index.RescanAsync(['T', 'U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var results = await harness.Index.RescanAsync([new VolumeKey('T'), new VolumeKey('U')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
         var lost = (JournalCatchUpLostException)results[0].Failure!;
@@ -307,7 +314,7 @@ public class FileIndexBatchedOperationTests
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
 
         var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
-            () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+            () => harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.IsTrue(failure.IsRecoveryStopped);
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
@@ -322,7 +329,7 @@ public class FileIndexBatchedOperationTests
         harness.FailNextProduction('T', producerFailure);
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+            () => harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("the scan could not read the volume", failure.Message);
         Assert.AreSame(producerFailure, failure.InnerException);

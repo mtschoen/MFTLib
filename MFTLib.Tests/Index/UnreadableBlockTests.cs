@@ -38,7 +38,7 @@ public sealed class UnreadableBlockTests : IndexTreeTestBase
         {
         }
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         Assert.IsTrue(File.Exists(blockPath), "the first open must leave a warm-start block behind");
 
         DenyReadForCurrentUser(blockPath);

@@ -23,7 +23,7 @@ public sealed class RowScanningContractTests
         yield return ["Search", (QueryCall)((index, _, _, token) => index.Search(new SearchQuery("readme"), token).Count), 2];
         yield return ["Enumerate", (QueryCall)((index, _, _, token) => index.Enumerate(new SearchQuery("readme"), token).Count()), 2];
         yield return ["EnumerateRows", (QueryCall)((index, _, _, token) => CountRows(index, new SearchQuery("readme"), token)), 2];
-        yield return ["Root", (QueryCall)((index, _, _, token) => index.Root('T', token).IsValid ? 1 : 0), 1];
+        yield return ["Root", (QueryCall)((index, _, _, token) => index.Root(new VolumeKey('T'), token).IsValid ? 1 : 0), 1];
         yield return ["Children", (QueryCall)((_, root, _, token) => root.Children(token).Count), 2];
     }
 
@@ -142,7 +142,7 @@ public sealed class RowScanningContractTests
         Func<uint, uint>? parentFactory = null) =>
         FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', AppContext.BaseDirectory, 1)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1)],
             CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(
@@ -253,7 +253,7 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
 
         Assert.AreEqual(typeof(OperationCanceledException),
-            ThrownBy(call, index, index.Root('T', TestContext.CancellationToken), Path.Combine(tree.FirstRoot, "Documents", "readme.md"), Cancelled), api);
+            ThrownBy(call, index, index.Root(new VolumeKey('T'), TestContext.CancellationToken), Path.Combine(tree.FirstRoot, "Documents", "readme.md"), Cancelled), api);
         Assert.AreEqual(0, BorrowCount(index), api);
     }
 
@@ -263,7 +263,7 @@ public sealed class RowScanningContractTests
     {
         using var tree = new TwoDriveQueryFixture();
         var index = await tree.OpenAsync();
-        var root = index.Root('T', TestContext.CancellationToken);
+        var root = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
         var blocks = index.CurrentSnapshot.ToArray();
         await index.DisposeAsync();
@@ -280,7 +280,7 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
 
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
-        Assert.AreEqual(expectedCount, call(index, index.Root('T', TestContext.CancellationToken), path, CancellationToken.None), api);
+        Assert.AreEqual(expectedCount, call(index, index.Root(new VolumeKey('T'), TestContext.CancellationToken), path, CancellationToken.None), api);
         Assert.AreEqual(0, BorrowCount(index), api);
     }
 
@@ -366,7 +366,7 @@ public sealed class RowScanningContractTests
             row => row == sentinel ? chainEnd : row is > 6 and <= chainEnd ? row - 1 : 5);
         using var cancellation = new CancellationTokenSource();
 
-        var query = new SearchQuery("needle", Subtree: index.Root('T', TestContext.CancellationToken));
+        var query = new SearchQuery("needle", Subtree: index.Root(new VolumeKey('T'), TestContext.CancellationToken));
         var visited = VisitUntilCancelled(index, rows, query, 1, cancellation, out var cancelled);
 
         Assert.IsTrue(cancelled);

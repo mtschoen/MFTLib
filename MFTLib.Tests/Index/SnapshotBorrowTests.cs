@@ -17,7 +17,7 @@ public class SnapshotBorrowTests
 
     static DriveBlock OpenDriveBlock(SyntheticBlockBuilder builder)
     {
-        return new DriveBlock(builder.Drive, 0, builder.OpenForReading(out _)!);
+        return new DriveBlock(new VolumeKey(builder.Drive), 0, builder.OpenForReading(out _)!);
     }
 
     [TestMethod]

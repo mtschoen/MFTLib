@@ -13,6 +13,6 @@ namespace MFTLib;
 ///     the first batch, how many records the source left out because it could not trust them, so the
 ///     block write counts them with the records it skips.
 /// </summary>
-delegate IEnumerable<IReadOnlyList<MftRecord>> MftRecordBatchSource(DriveKey drive,
+delegate IEnumerable<IReadOnlyList<MftRecord>> MftRecordBatchSource(VolumeKey drive,
     ParseThreadAllowance parseThreads, BlockWriteReporting reporting, MftScanOptions scanOptions,
     Action<long> recordsOmitted, CancellationToken cancellationToken);

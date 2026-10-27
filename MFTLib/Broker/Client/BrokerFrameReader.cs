@@ -20,7 +20,7 @@ namespace MFTLib;
 sealed class BrokerFrameReader : IAsyncDisposable
 {
     readonly Stream _stream;
-    readonly DriveKey? _drive;
+    readonly VolumeKey? _drive;
     readonly string _channelTag;
     readonly TimeProvider _timeProvider;
     readonly Action _markFrameStarted;
@@ -32,7 +32,7 @@ sealed class BrokerFrameReader : IAsyncDisposable
     long _readStarted;
     bool _disposed;
 
-    public BrokerFrameReader(Stream stream, DriveKey? drive, string channelTag, TimeProvider timeProvider)
+    public BrokerFrameReader(Stream stream, VolumeKey? drive, string channelTag, TimeProvider timeProvider)
     {
         _stream = stream;
         _drive = drive?.Validated();

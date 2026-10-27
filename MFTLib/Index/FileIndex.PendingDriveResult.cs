@@ -34,7 +34,7 @@ public sealed partial class FileIndex
         /// <param name="drive">The drive, named in the exception when the message is missing.</param>
         /// <returns>The message every blockless result carries.</returns>
         /// <exception cref="InvalidOperationException">The result has no failure message.</exception>
-        public string RequireFailureMessage(DriveKey drive) =>
+        public string RequireFailureMessage(RootKey drive) =>
             ProducerFailureMessage ?? throw new InvalidOperationException(
                 $"Drive {drive} failed without a failure message.");
 

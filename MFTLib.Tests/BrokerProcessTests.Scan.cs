@@ -28,7 +28,7 @@ public partial class BrokerProcessTests
         using var block = result.Block.Block;
 
         var (_, sectionBlock, lifetime) = broker.Sections.Single();
-        Assert.AreEqual(new DriveKey('C'), result.Drive);
+        Assert.AreEqual(new VolumeKey('C'), result.Drive);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.AreEqual(Armed.NextUsn, block.Header.UsnNextUsn);
         Assert.AreNotEqual(advanced.NextUsn, block.Header.UsnNextUsn);
@@ -91,7 +91,7 @@ public partial class BrokerProcessTests
             Assert.AreSequenceEqual(names, [.. broker.Writer.LastRetainedFileNames!]);
         }
 
-        Assert.AreEqual(new DriveKey('C'), broker.Handle.Scans.Single().Drive);
+        Assert.AreEqual(new VolumeKey('C'), broker.Handle.Scans.Single().Drive);
     }
 
     [TestMethod]
@@ -274,7 +274,7 @@ public partial class BrokerProcessTests
             null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = other.Block.Block;
 
-        Assert.AreEqual(new DriveKey('D'), other.Drive);
+        Assert.AreEqual(new VolumeKey('D'), other.Drive);
         Assert.IsGreaterThan(0u, block.Header.RowCount);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
@@ -282,7 +282,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDrive_TwoDrivesConcurrently_BothComplete()
     {
-        var gates = new Dictionary<DriveKey, TestGate> { ['C'] = new(), ['D'] = new() };
+        var gates = new Dictionary<VolumeKey, TestGate> { ['C'] = new(), ['D'] = new() };
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             ScanDrive = (drive, _, _, _, _, _) =>
@@ -333,7 +333,7 @@ public partial class BrokerProcessTests
 
         Assert.IsNull(produced.CatchUpLoss);
         Assert.IsNotEmpty(indexReports);
-        Assert.IsTrue(indexReports.All(report => report.Drive == 'C'));
+        Assert.IsTrue(indexReports.All(report => report.Drive == new VolumeKey('C')));
         Assert.AreEqual(IndexScanPhase.Transferring, indexReports[^1].Phase);
         Assert.IsTrue(indexReports[^1].ExpectedRowCount > 0);
     }

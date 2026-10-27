@@ -175,7 +175,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
         var initialBlock = index.CurrentSnapshot.Count > 0 ? index.CurrentSnapshot[0] : null;
         try
         {
-            var root = index.Root('T', token);
+            var root = index.Root(new VolumeKey('T'), token);
             var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var holdTheReader = () =>
@@ -208,7 +208,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
             await disposal;
 
             BlockFileHoldAssertions.AssertNotHeld(
-                Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+                Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D)));
             return result;
         }
         finally

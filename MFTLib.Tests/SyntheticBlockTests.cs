@@ -42,7 +42,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
     ];
 
     string Seed(IEnumerable<SyntheticRow>? rows = null, SyntheticBlockOptions? options = null) =>
-        SyntheticBlock.WriteCached(CacheDirectoryPath, 'T', Serial, options ?? Options(), rows ?? SampleRows());
+        SyntheticBlock.WriteCached(CacheDirectoryPath, new VolumeKey('T'), Serial, options ?? Options(), rows ?? SampleRows());
 
     FileIndexOptions CacheOnly(bool enumeration = false) =>
         Fixture.Options(volumeSerial: Serial,
@@ -61,10 +61,10 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
     static SyntheticMftProducer SampleProducer() => new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment };
 
-    static SyntheticMftProducer SampleProducer(Func<DriveKey, CancellationToken, Task> beforeProduce) =>
+    static SyntheticMftProducer SampleProducer(Func<VolumeKey, CancellationToken, Task> beforeProduce) =>
         new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment, BeforeProduceAsync = beforeProduce };
 
-    static SyntheticMftProducer SampleProducer(Func<DriveKey, JournalCheckpointLoss?> catchUpLoss) =>
+    static SyntheticMftProducer SampleProducer(Func<VolumeKey, JournalCheckpointLoss?> catchUpLoss) =>
         new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment, CatchUpLoss = catchUpLoss };
 
     [TestMethod]
@@ -76,9 +76,9 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
     [TestMethod]
     public void CachedPath_IsTheCanonicalBlockFileInTheCacheDirectory()
     {
-        var path = SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial);
+        var path = SyntheticBlock.CachedPath(CacheDirectoryPath, new VolumeKey('T'), Serial);
 
-        Assert.AreEqual(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', Serial)), path);
+        Assert.AreEqual(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), Serial)), path);
     }
 
     [TestMethod]
@@ -86,7 +86,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
     {
         var path = Seed();
 
-        Assert.AreEqual(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), path);
+        Assert.AreEqual(SyntheticBlock.CachedPath(CacheDirectoryPath, new VolumeKey('T'), Serial), path);
         Assert.AreSequenceEqual(SampleRows(), [.. SyntheticBlock.ReadRows(path, Serial)]);
     }
 
@@ -275,7 +275,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
     [TestMethod]
     public void Edit_MissingOrInvalidBlock_ThrowsNamingTheProblem()
     {
-        var missing = SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial);
+        var missing = SyntheticBlock.CachedPath(CacheDirectoryPath, new VolumeKey('T'), Serial);
         var absent = Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.Edit(missing, Serial, _ => { }));
         Assert.Contains("does not exist", absent.Message);
@@ -349,7 +349,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         var status = CacheDirectory.InspectCached(CacheDirectoryPath).Single();
         Assert.AreEqual(tag, status.CacheTag, "the producer copies the request's cache tag");
-        using var block = BlockFile.Open(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), Serial, out _)!;
+        using var block = BlockFile.Open(SyntheticBlock.CachedPath(CacheDirectoryPath, new VolumeKey('T'), Serial), Serial, out _)!;
         Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
     }
@@ -361,7 +361,7 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
         Assert.AreSequenceEqual(['T'], [.. producer.ProducedDrives]);
 
-        await index.RescanAsync(['T'], Token);
+        await index.RescanAsync([new VolumeKey('T')], Token);
 
         Assert.AreSequenceEqual(['T', 'T'], [.. producer.ProducedDrives]);
     }

@@ -24,13 +24,13 @@ public sealed class BrokerFileIndexRescanTests
         var token = harness.CancellationToken;
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource();
         await using var index = await scenario.OpenIndexAsync(source.Producer, source.WatchSource!, token);
-        await index.StartWatchingAsync(['T'], token);
-        await index.StartWatchingAsync(['U'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
+        await index.StartWatchingAsync([new VolumeKey('U')], token);
         var firstT = await harness.Watch('T').RunAsync(1);
         var firstU = await harness.Watch('U').RunAsync(1);
         var scanning = scenario.HoldSecondScanOfT();
 
-        var rescan = index.RescanAsync(['T'], token);
+        var rescan = index.RescanAsync([new VolumeKey('T')], token);
         await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         try
@@ -63,8 +63,8 @@ public sealed class BrokerFileIndexRescanTests
         var appliedOnT = ChangeSignal.WhenApplied(index, "after.txt");
         secondT.Push(41, "after.txt", 300);
         await appliedOnT;
-        await index.StopWatchingAsync(['T'], token);
-        await index.StopWatchingAsync(['U'], token);
+        await index.StopWatchingAsync([new VolumeKey('T')], token);
+        await index.StopWatchingAsync([new VolumeKey('U')], token);
     }
 
     [TestMethod]
@@ -86,16 +86,16 @@ public sealed class BrokerFileIndexRescanTests
         {
             await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
-            var start = index.StartWatchingAsync(['T'], token);
+            var start = index.StartWatchingAsync([new VolumeKey('T')], token);
             await connectGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsFalse(start.IsCompleted, "StartWatchingAsync completed before the broker connected.");
 
             connectGate.Release();
             await start.WaitAsync(HangGuard, TestContext.CancellationToken);
-            await index.RescanAsync(['U'], token);
+            await index.RescanAsync([new VolumeKey('U')], token);
 
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-            await index.StopWatchingAsync(['T'], token);
+            await index.StopWatchingAsync([new VolumeKey('T')], token);
         }
         finally
         {
@@ -118,15 +118,15 @@ public sealed class BrokerFileIndexRescanTests
             : connect(connectToken));
         await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(['T'], token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync([new VolumeKey('T')], token));
 
         Assert.AreSame(connectionFailure, failure);
-        Assert.AreEqual(WatchState.Faulted, index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
-        await index.StopWatchingAsync(['T'], token);
-        await index.StartWatchingAsync(['T'], token);
-        await index.RescanAsync(['T'], token);
+        Assert.AreEqual(WatchState.Faulted, index.Drives.Single(drive => drive.Drive == new VolumeKey('T')).Watch.State);
+        await index.StopWatchingAsync([new VolumeKey('T')], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
+        await index.RescanAsync([new VolumeKey('T')], token);
         Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-        await index.StopWatchingAsync(['T'], token);
+        await index.StopWatchingAsync([new VolumeKey('T')], token);
     }
 
     [TestMethod]
@@ -154,15 +154,15 @@ public sealed class BrokerFileIndexRescanTests
             await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
             using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-            var start = index.StartWatchingAsync(['T'], startCancellation.Token);
+            var start = index.StartWatchingAsync([new VolumeKey('T')], startCancellation.Token);
             await connectGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             await startCancellation.CancelAsync();
 
             await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard, TestContext.CancellationToken));
-            await index.StartWatchingAsync(['T'], token);
-            await index.RescanAsync(['T'], token);
+            await index.StartWatchingAsync([new VolumeKey('T')], token);
+            await index.RescanAsync([new VolumeKey('T')], token);
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-            await index.StopWatchingAsync(['T'], token);
+            await index.StopWatchingAsync([new VolumeKey('T')], token);
         }
         finally
         {
@@ -178,7 +178,7 @@ public sealed class BrokerFileIndexRescanTests
     {
         readonly TempDirectory _cache = new("broker-rescan", create: false);
         readonly TempDirectory _roots = new("broker-rescan-roots");
-        readonly ConcurrentDictionary<DriveKey, int> _scans = new();
+        readonly ConcurrentDictionary<VolumeKey, int> _scans = new();
         TestGate? _heldScanOfT;
 
         public void Dispose()
@@ -204,19 +204,19 @@ public sealed class BrokerFileIndexRescanTests
         {
             return FileIndex.OpenAsync(new FileIndexOptions
             {
-                Drives = [new IndexedDrive('T', _roots.Path, 123), new IndexedDrive('U', _roots.Path, 456)],
+                Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _roots.Path, 123), SyntheticIndexedDrive.Create(new VolumeKey('U'), _roots.Path, 456)],
                 CacheDirectory = _cache.Path,
                 CacheMode = CacheMode.Disabled,
                 MftSource = new MftIndexSource(producer, watchSource)
             }, token);
         }
 
-        IEnumerable<IReadOnlyList<MftRecord>> Scan(DriveKey drive, ParseThreadAllowance parseThreads,
+        IEnumerable<IReadOnlyList<MftRecord>> Scan(VolumeKey drive, ParseThreadAllowance parseThreads,
             BlockWriteReporting reporting,
             MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {
             var scanNumber = _scans.AddOrUpdate(drive, 1, (_, count) => count + 1);
-            if (drive == 'T' && scanNumber == 2 && _heldScanOfT is { } held)
+            if (drive == new VolumeKey('T') && scanNumber == 2 && _heldScanOfT is { } held)
             {
                 held.MarkEntered();
                 held.WaitForRelease();

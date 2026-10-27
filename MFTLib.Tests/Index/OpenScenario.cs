@@ -58,7 +58,7 @@ sealed class OpenScenario : IDisposable
     public int ProductionsOf(char driveLetter) => _productions.GetValueOrDefault(driveLetter);
 
     public IEnumerable<IndexDriveOpened> ReportsFor(char driveLetter) =>
-        _reports.Where(report => report.Drive == driveLetter);
+        _reports.Where(report => report.Drive == new VolumeKey(driveLetter));
 
     /// <summary>Forgets every report so far, for a test that opens the index more than once.</summary>
     public void ResetReports()
@@ -86,13 +86,13 @@ sealed class OpenScenario : IDisposable
             .Select(path => Path.GetFileName(path)).Order(StringComparer.Ordinal)];
 
     public static string CanonicalBlockName(char driveLetter) =>
-        MFTLib.Index.CacheDirectory.BlockFileName(driveLetter, SerialOf(driveLetter));
+        MFTLib.Index.CacheDirectory.BlockFileName(new VolumeKey(driveLetter), SerialOf(driveLetter));
 
     public string CanonicalBlockPath(char driveLetter) => Path.Combine(CacheDirectory, CanonicalBlockName(driveLetter));
 
     public FileIndexOptions Options(string driveLetters, bool cacheOnly = false) => new()
     {
-        Drives = driveLetters.Select(letter => new IndexedDrive(letter, TreeRoot, SerialOf(letter))).ToArray(),
+        Drives = driveLetters.Select(letter => SyntheticIndexedDrive.Create(new VolumeKey(letter), TreeRoot, SerialOf(letter))).ToArray(),
         CacheDirectory = CacheDirectory,
         MftSource = new MftIndexSource(ProduceAsync, Source.IndexSource),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,

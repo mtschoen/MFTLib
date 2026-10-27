@@ -18,7 +18,7 @@ delegate Task<MftBlockProduceResult> MftBlockProducer(
 sealed record MftBlockProduceRequest
 {
     /// <summary>The drive to scan: its MFT is read, and the block that results is filed under this letter in the index.</summary>
-    public required DriveKey Drive { get; init; }
+    public required VolumeKey Drive { get; init; }
 
     /// <summary>
     ///     The volume serial number to stamp into the block header; a later open rejects a

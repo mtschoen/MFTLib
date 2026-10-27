@@ -155,7 +155,7 @@ sealed class EnumerationReadObservation
         }
     }
 
-    public void Enter(DriveKey drive, string path, CancellationToken token)
+    public void Enter(RootKey drive, string path, CancellationToken token)
     {
         var active = Interlocked.Increment(ref _active);
         while (true)
@@ -176,7 +176,7 @@ sealed class EnumerationReadObservation
         }
     }
 
-    public void Exit(DriveKey drive, string path)
+    public void Exit(RootKey drive, string path)
     {
         Interlocked.Decrement(ref _active);
     }

@@ -281,10 +281,10 @@ public partial class JournalBrokerHostChannelTests
     // not keeps the native-work stand-in running until released.
     sealed class HeldScans
     {
-        readonly Dictionary<DriveKey, HeldScan> _scans = [];
-        readonly Dictionary<DriveKey, int> _invocations = [];
+        readonly Dictionary<VolumeKey, HeldScan> _scans = [];
+        readonly Dictionary<VolumeKey, int> _invocations = [];
 
-        public HeldScan this[DriveKey drive]
+        public HeldScan this[VolumeKey drive]
         {
             get
             {
@@ -295,7 +295,7 @@ public partial class JournalBrokerHostChannelTests
             }
         }
 
-        public int InvocationCount(DriveKey drive)
+        public int InvocationCount(VolumeKey drive)
         {
             lock (_scans)
             {
@@ -314,7 +314,7 @@ public partial class JournalBrokerHostChannelTests
             }
         }
 
-        public IEnumerable<IReadOnlyList<MftRecord>> Source(DriveKey drive, ParseThreadAllowance parseThreads,
+        public IEnumerable<IReadOnlyList<MftRecord>> Source(VolumeKey drive, ParseThreadAllowance parseThreads,
             BlockWriteReporting reporting,
             MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {

@@ -9,8 +9,8 @@ namespace MFTLib.Index;
 ///     itself: it binds to the sequence number its row held when it was minted. For an enumeration block it is the
 ///     row index the producer assigned in traversal order; <see cref="ProducerKind" /> says which.
 /// </summary>
-public readonly record struct IndexRecordKey(DriveKey Drive, ulong RecordNumber, ProducerKind ProducerKind)
+public readonly record struct IndexRecordKey(RootKey Drive, ulong RecordNumber, ProducerKind ProducerKind)
 {
     /// <summary>Identifies the row's volume independently of its record number; default keys are rejected.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); } = Drive.Validated();
+    public RootKey Drive { get; init => field = value.Validated(); } = Drive.Validated();
 }

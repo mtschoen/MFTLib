@@ -89,7 +89,7 @@ public sealed record JournalCheckpointLoss
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="journalSettings">The journal's sizing when the loss was detected.</param>
-    internal JournalCheckpointLoss(DriveKey drive, JournalCheckpointLossDetection detectedDuring,
+    internal JournalCheckpointLoss(VolumeKey drive, JournalCheckpointLossDetection detectedDuring,
         JournalCheckpointLossCause cause, UsnJournalSettings journalSettings)
     {
         Drive = drive;
@@ -99,7 +99,7 @@ public sealed record JournalCheckpointLoss
     }
 
     /// <summary>Upper case, matching the letter this drive was configured with.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public VolumeKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>
     ///     Which check found this, and so which moment the report comes from.

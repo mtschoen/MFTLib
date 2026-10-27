@@ -8,10 +8,10 @@ sealed partial class JournalBrokerHost
     // One drive pipe and what its operation needs to write to it. The pipe writer's lock keeps a
     // scan's progress pump, its operation and the heartbeat sender from interleaving frames on
     // this pipe only; the pipe writer is also the operation state the channel's source reports to.
-    sealed class DriveChannel(Stream stream, DriveKey drive, HostPipeWriter pipe)
+    sealed class DriveChannel(Stream stream, VolumeKey drive, HostPipeWriter pipe)
     {
         public Stream Stream { get; } = stream;
-        public DriveKey Drive { get; } = drive;
+        public VolumeKey Drive { get; } = drive;
         public string Tag => Pipe.Tag;
         public HostPipeWriter Pipe { get; } = pipe;
     }
@@ -61,7 +61,7 @@ sealed partial class JournalBrokerHost
     }
 
     // Returns the connected stream, or null once the Error reply has been written.
-    async Task<Stream?> ConnectChannelAsync(ControlSession session, uint requestId, DriveKey drive, string pipeName)
+    async Task<Stream?> ConnectChannelAsync(ControlSession session, uint requestId, VolumeKey drive, string pipeName)
     {
         using var connectCancellation = CancellationTokenSource.CreateLinkedTokenSource(session.Token);
         var connectToken = connectCancellation.Token;
@@ -115,7 +115,7 @@ sealed partial class JournalBrokerHost
     // behind. The host closes its end when the operation returns. The heartbeat sender visits the
     // pipe from the first request's wait until the operation has returned; a Stalled frame or a
     // failed heartbeat cancels the channel.
-    async Task ServeChannelAsync(ControlSession session, Stream stream, DriveKey drive, string tag)
+    async Task ServeChannelAsync(ControlSession session, Stream stream, VolumeKey drive, string tag)
     {
         await using (stream.ConfigureAwait(false))
         {

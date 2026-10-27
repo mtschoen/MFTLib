@@ -22,7 +22,7 @@ public partial class FileIndexPerDriveProducerKindTests
             ScanProgress = new SynchronousProgress<IndexScanProgress>(sample =>
             {
                 samples.Enqueue(sample);
-                if (sample.Drive == 'U' && sample.Phase != IndexScanPhase.Finished)
+                if (sample.Drive == new VolumeKey('U') && sample.Phase != IndexScanPhase.Finished)
                 {
                     throw failure;
                 }
@@ -32,15 +32,15 @@ public partial class FileIndexPerDriveProducerKindTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         AssertDrive(index, 'T', ProducerKind.Mft);
-        Assert.AreEqual(new DriveKey('T'), index.Search(new SearchQuery("scanned.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
-        var failed = index.Drives.Single(drive => drive.Drive == 'U');
+        Assert.AreEqual(new VolumeKey('T'), index.Search(new SearchQuery("scanned.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
+        var failed = index.Drives.Single(drive => drive.Drive == new VolumeKey('U'));
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.AreEqual(failure.Message, failed.Failure?.Message);
         Assert.IsNull(failed.Block);
         Assert.AreEqual(IndexScanOutcome.Failed,
-            samples.Single(sample => sample.Drive == 'U' && sample.Phase == IndexScanPhase.Finished).Outcome);
-        Assert.IsFalse(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 123))));
+            samples.Single(sample => sample.Drive == new VolumeKey('U') && sample.Phase == IndexScanPhase.Finished).Outcome);
+        Assert.IsFalse(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('U'), 123))));
     }
 
     [TestMethod]
@@ -59,12 +59,12 @@ public partial class FileIndexPerDriveProducerKindTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         var previousBlock = index.CurrentSnapshot.Single().Block;
         var previousStatus = index.Drives.Single().Block;
-        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 123));
+        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 123));
         var previousBytes = cacheMode == CacheMode.Persistent ? ReadSharedBlock(canonicalPath) : null;
 
         progress.Failure = failure;
         var reported = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync(['T'], CancellationToken.None));
+            () => index.RescanAsync([new VolumeKey('T')], CancellationToken.None));
 
         Assert.AreSame(failure, reported.InnerException);
         Assert.AreSame(previousBlock, index.CurrentSnapshot.Single().Block);
@@ -81,7 +81,7 @@ public partial class FileIndexPerDriveProducerKindTests
         }
 
         progress.Failure = null;
-        var recovered = await index.RescanAsync(['T'], CancellationToken.None);
+        var recovered = await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
         Assert.AreEqual(DriveOperationOutcome.Succeeded, recovered.Single().Outcome);
         Assert.IsNull(index.Drives.Single().Failure);
     }
@@ -109,7 +109,7 @@ public partial class FileIndexPerDriveProducerKindTests
             }),
             DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(opened =>
             {
-                if (opened.Drive == 'T')
+                if (opened.Drive == new VolumeKey('T'))
                 {
                     siblingSettled.TrySetResult();
                 }
@@ -132,7 +132,7 @@ public partial class FileIndexPerDriveProducerKindTests
             Assert.IsFalse(File.Exists(siblingPath));
         }
 
-        Assert.IsFalse(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 123))));
+        Assert.IsFalse(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('U'), 123))));
         await using var reopened = await FileIndex.OpenAsync(options with
         {
             ScanProgress = null,
@@ -140,7 +140,7 @@ public partial class FileIndexPerDriveProducerKindTests
         }, CancellationToken.None);
         AssertDrive(reopened, 'U', ProducerKind.Enumeration);
         Assert.AreEqual(cacheMode == CacheMode.Persistent ? CacheLocation.OwnedCanonical : null,
-            reopened.Drives.Single(drive => drive.Drive == 'U').Block?.CacheLocation);
+            reopened.Drives.Single(drive => drive.Drive == new VolumeKey('U')).Block?.CacheLocation);
     }
 
     static byte[] ReadSharedBlock(string path)
@@ -170,7 +170,7 @@ public partial class FileIndexPerDriveProducerKindTests
     {
         public void Report(IndexScanProgress value)
         {
-            if (value.Drive == 'U' && value.Phase != IndexScanPhase.Finished)
+            if (value.Drive == new VolumeKey('U') && value.Phase != IndexScanPhase.Finished)
             {
                 TestGate.WaitSynchronously(siblingSettled);
                 cancellation.Cancel();

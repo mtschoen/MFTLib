@@ -9,7 +9,7 @@ public sealed record FileIndexOptions
     /// <summary>
     ///     Drives to include in the index. <see cref="FileIndex.OpenAsync" /> materializes the
     ///     collection once and rejects a null collection, a null or invalid element, or duplicate
-    ///     normalized <see cref="DriveKey" /> entries before creating a cache directory or starting
+    ///     normalized <see cref="RootKey" /> entries before creating a cache directory or starting
     ///     a scan. For ordinary sources, an empty collection opens an index with no drives; a dump
     ///     source supplies its own virtual drive and requires an empty collection.
     /// </summary>
@@ -171,7 +171,7 @@ public sealed record FileIndexOptions
         // Materialized once into a private copy so the index never re-evaluates or shares the
         // caller's list, and validated before any cache directory or scan work begins.
         var drives = configuredDrives.ToArray();
-        HashSet<DriveKey> seen = [];
+        HashSet<RootKey> seen = [];
         foreach (var drive in drives)
         {
             if (drive is null)

@@ -12,7 +12,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
 
     string BlockPath(uint volumeSerial = 0x0BADF00D)
     {
-        return Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', volumeSerial));
+        return Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), volumeSerial));
     }
 
     async Task SeedCacheAsync()
@@ -142,7 +142,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
         await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello", TestContext.CancellationToken);
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = CacheDirectoryPath
         };
 

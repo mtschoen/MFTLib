@@ -32,16 +32,37 @@ capacity-exhausted flag independently of either count.
 
 ## File name
 
-`<drive letter>-<volume serial as eight uppercase hexadecimal digits>.mlix`, for
-example `C-0BADF00D.mlix`. The serial is part of the name so a re-lettered drive
-never matches the wrong block.
+Two shapes, both ending in the serial of the volume that contains the root as eight
+uppercase hexadecimal digits and the extension `.mlix`:
 
-The library owns both directions of this name: it writes the name and reads a
-directory back into drive letters and serials (consumers list a directory with
-`CacheDirectory.InspectCached`), so a consumer never parses the name itself and a future
-format change is one edit rather than one edit per consumer.
+- A volume root: `<drive letter>-<serial>.mlix`, for example `C-0BADF00D.mlix`.
+- A directory root: `D<sixteen lowercase hexadecimal digits>-<serial>.mlix`, for example
+  `D0123456789abcdef-0BADF00D.mlix`. The digits are the first eight bytes of the SHA-256
+  of the root key text (the normalized directory path) encoded as UTF-8. On a
+  case-insensitive platform (Windows) the text is first mapped with the invariant simple uppercase
+  mapping, the one `OrdinalIgnoreCase` equality of root keys uses, so every pair of equal keys
+  (including sigma and final sigma) shares one name; on a case-sensitive platform it is hashed as written.
 
-`InspectCached` accepts an optional `Action<CachedBlockRejection>? rejectedFile` parameter. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Message` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter or lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
+The serial is part of the name so a re-lettered drive never matches the wrong block. A hashed
+name cannot be turned back into a path, so every block stores its root key text in page 0
+(see [Root key text](#root-key-text)); the name is derived from that text and the header's
+volume serial, and a block whose file name differs from the derived name is invalid.
+The `.mlix.lock` sibling, the `.retired-*` siblings and the private and cache-disabled
+temporary names all derive from the same name.
+
+The library owns both directions of this name: it writes the name and lists a
+directory back into roots and serials (consumers list a directory with
+`CacheDirectory.InspectCached`), reading the stored key of a directory-shaped file, so a consumer never parses
+the name itself and a future format change is one edit rather than one edit per consumer.
+`InspectCached` and `DeleteCached` compute the expected name stem of each selected root forward, keep that root as
+the candidate's identity and open no file outside the selection. Slot ownership comes first: each candidate's owner lock
+is tried before any block byte is read or validated, and a held lock reports `InUse` under the selected root whatever the
+key storage holds. Once the lock is held, the stored key of a directory-shaped file names the result. Only an unselected
+directory-shaped file has no identity until its key page is read; when its lock is held by another owner that page is read
+to say which root is in use, and a file whose key cannot be read (or whose name is not the one the key derives) has no
+identity to report and is reported through `rejectedFile` like any other non-canonical name, never deleted.
+
+`InspectCached` accepts an optional `Action<CachedBlockRejection>? rejectedFile` parameter. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Message` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter, an uppercase hash digit or a lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
 
 Reporting does not open, validate, lock, rename, or delete the rejected file. Lock siblings, retired siblings, and subdirectories are not inventory candidates. The callback is synchronous, its ordering is unspecified, and it should return promptly without modifying the enumerated directory. A thrown callback exception aborts the call before any canonical inspection or deletion begins. Missing or empty directories produce no notifications. A call that omits `rejectedFile` silently excludes rejected names.
 
@@ -168,9 +189,27 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 120 | access-denied subtree count | u32 | Subtrees the enumeration producer could not enter; zero for MFT blocks |
 | 124 | reserved | u32 | Written as zero |
 
-The format version is 6. The declared header ends at byte 128 within a
-4096-byte header page. A version mismatch rejects the block: normal opens
+The format version is 7. The declared header ends at byte 128 within a
+4096-byte header page; the root key text follows it. A version mismatch rejects the block: normal opens
 rebuild it, and cache-only opens decline the drive and leave the block in place.
+
+## Root key text
+
+Page 0 holds the block's root key after the declared header, for every block:
+
+| Offset | Field | Type | Notes |
+| --- | --- | --- | --- |
+| 128 | key text length | u16 | UTF-16 code units, 1 to 1983 |
+| 130 | key text | UTF-16 code units | The volume letter (`C`) or the normalized directory path, without a trailing separator |
+
+A reader accepts the key only when the count fits the page (`130 + 2 * count <= 4096`), the text
+parses to a root key whose own text is exactly the stored text, and the file name equals the name derived from that key
+and the header's volume serial. Malformed text reports `InconsistentRegions`; a name that is not the derived one reports
+`WrongRootDirectory`. Either discards the block and cold-scans. The text is written once when the block is created and
+never changes.
+
+The path length limit follows from the page: `RootKey.FromDirectory` throws `ArgumentException` for a normalized
+directory path longer than 1983 UTF-16 code units, so no walked root can produce a block whose key does not fit.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
@@ -468,7 +507,7 @@ is the inner exception. Stop returns the fault once as `Failed`. Across a succes
 events can arrive after publication and repeat during the new watch's catch-up; queries can
 lag until it reports `CaughtUp`.
 
-`WaitForCatchUpAsync(IEnumerable<DriveKey>, CancellationToken)` returns one
+`WaitForCatchUpAsync(IEnumerable<RootKey>, CancellationToken)` returns one
 `DriveOperationResult` per requested drive in request order after every drive has settled.
 A failed drive has `DriveOperationOutcome.Failed` and carries the exception in `Failure`;
 it does not end the waits for other drives. A drive with no watch is `NotApplicable`. The

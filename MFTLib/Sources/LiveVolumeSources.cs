@@ -19,7 +19,7 @@ static class LiveVolumeSources
     // Supplies native record batches without path resolution for the block writer. The scan's
     // allowance and token reach the native parse, so a rebalance takes effect at its next chunk
     // and a closed pipe stops it.
-    internal static IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(DriveKey drive,
+    internal static IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(VolumeKey drive,
         ParseThreadAllowance parseThreads, BlockWriteReporting reporting, MftScanOptions scanOptions,
         Action<long> recordsOmitted, CancellationToken cancellationToken)
     {
@@ -45,7 +45,7 @@ static class LiveVolumeSources
     // the watch ends. The native read blocks until the journal changes, so the source reports
     // waiting on the volume before each read and processing once a batch arrives.
     internal static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchAndDisposeAsync(
-        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
@@ -72,13 +72,13 @@ static class LiveVolumeSources
         }
     }
 
-    internal static UsnJournalSettings GrowUsnJournal(DriveKey drive, long maximumSize, long allocationDelta)
+    internal static UsnJournalSettings GrowUsnJournal(VolumeKey drive, long maximumSize, long allocationDelta)
     {
         using var volume = MftVolume.Open(drive);
         return volume.Journal.GrowUsnJournal(maximumSize, allocationDelta);
     }
 
-    internal static UsnJournalCursor QueryCursor(DriveKey drive)
+    internal static UsnJournalCursor QueryCursor(VolumeKey drive)
     {
         using var volume = MftVolume.Open(drive);
         return volume.Journal.QueryUsnJournalCursor();
@@ -87,12 +87,12 @@ static class LiveVolumeSources
     // The internal overload carries the platform refusal, so a broker built for this cross-platform
     // library throws a clear PlatformNotSupportedException on a non-Windows host instead of failing to
     // compile there.
-    internal static NtfsVolumeInformation QueryVolumeInfo(DriveKey drive)
+    internal static NtfsVolumeInformation QueryVolumeInfo(VolumeKey drive)
     {
         return NtfsVolumeInformation.Query(drive, OperatingSystem.IsWindows());
     }
 
-    internal static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(DriveKey drive, UsnJournalCursor since,
+    internal static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(VolumeKey drive, UsnJournalCursor since,
         int maximumBufferReads)
     {
         using var volume = MftVolume.Open(drive);

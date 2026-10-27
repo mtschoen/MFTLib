@@ -40,14 +40,14 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
 
     static void AssertReport(IndexDriveOpened report, char driveLetter, int total)
     {
-        Assert.AreEqual(driveLetter, report.Drive);
+        Assert.AreEqual(new VolumeKey(driveLetter), report.Drive);
         Assert.AreEqual(total, report.TotalDriveCount);
     }
 
     /// <summary>The drive's settled outcome, which the open report no longer repeats.</summary>
     static void AssertSettled(FileIndex index, char driveLetter, BlockOrigin? blockOrigin, DriveState state)
     {
-        var status = index.Drives.Single(drive => drive.Drive == driveLetter);
+        var status = index.Drives.Single(drive => drive.Drive == new VolumeKey(driveLetter));
         Assert.AreEqual(blockOrigin, status.Block?.Origin);
         Assert.AreEqual(state, status.State);
     }
@@ -57,7 +57,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     {
         var settledCounts = reports.Select(report => report.SettledDriveCount).Order().ToArray();
         Assert.AreSequenceEqual([.. Enumerable.Range(1, reports.Count)], settledCounts, "every settle takes the next count once");
-        return reports.Single(report => report.Drive == driveLetter);
+        return reports.Single(report => report.Drive == new VolumeKey(driveLetter));
     }
 
     [TestMethod]
@@ -65,9 +65,9 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     {
         var drives = new[]
         {
-            new IndexedDrive('T', CreateDriveRoot("first"), 1),
-            new IndexedDrive('U', CreateDriveRoot("second"), 2),
-            new IndexedDrive('V', CreateDriveRoot("third"), 3)
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1),
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), CreateDriveRoot("second"), 2),
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('V'), CreateDriveRoot("third"), 3)
         };
 
         // A first ordinary open builds each drive's cache block; disposing it leaves the
@@ -91,8 +91,8 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_CacheOnlyDeclinedDrive_ReportsItsBlocklessState()
     {
-        var warmDrive = new IndexedDrive('T', CreateDriveRoot("first"), 1);
-        var coldDrive = new IndexedDrive('U', CreateDriveRoot("second"), 2);
+        var warmDrive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1);
+        var coldDrive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), CreateDriveRoot("second"), 2);
 
         await using (await FileIndex.OpenAsync(Options([warmDrive]), TestContext.CancellationToken))
         {
@@ -108,7 +108,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
         AssertSettled(index, 'T', BlockOrigin.WarmStartedFromCache, DriveState.Ready);
         AssertReport(ReportOf(reports, 'U'), 'U', 2);
         AssertSettled(index, 'U', null, DriveState.Failed);
-        Assert.AreEqual(DriveState.Failed, index.Drives.Single(drive => drive.Drive == 'U').State);
+        Assert.AreEqual(DriveState.Failed, index.Drives.Single(drive => drive.Drive == new VolumeKey('U')).State);
     }
 
     [TestMethod]
@@ -125,7 +125,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
             return Task.FromResult(result);
         }
 
-        var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
+        var drives = new[] { MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1) };
         var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
             producer: ProducerKind.Mft, mftProducer: FakeProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
@@ -140,7 +140,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_OfflineDrive_ReportsOfflineWithNoBlock()
     {
-        var drives = new[] { new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1) };
+        var drives = new[] { MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1) };
         var reports = new ConcurrentQueue<IndexDriveOpened>();
 
         await using var index = await FileIndex.OpenAsync(
@@ -158,8 +158,8 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     {
         var drives = new[]
         {
-            new IndexedDrive('T', CreateDriveRoot("first"), 1),
-            new IndexedDrive('U', CreateDriveRoot("second"), 2)
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1),
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), CreateDriveRoot("second"), 2)
         };
         var options = Options(drives);
         Assert.IsNull(options.DriveOpenProgress, "the member defaults to null so existing consumers compile unchanged");
@@ -174,7 +174,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task RescanAsync_DoesNotReportOpenProgress()
     {
-        var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
+        var drives = new[] { MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1) };
         var reports = new ConcurrentQueue<IndexDriveOpened>();
 
         await using var index = await FileIndex.OpenAsync(
@@ -182,7 +182,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
             TestContext.CancellationToken);
         Assert.HasCount(1, reports);
 
-        await index.RescanAsync(['T'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], TestContext.CancellationToken);
 
         Assert.HasCount(1, reports, "a rescan has its own awaitable surface and stays silent on open progress");
     }
@@ -190,9 +190,9 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_InterleavedDrives_ReportsEachSettledStateOnce()
     {
-        var warmDrive = new IndexedDrive('T', CreateDriveRoot("first"), 1);
-        var coldDrive = new IndexedDrive('U', CreateDriveRoot("second"), 2);
-        var offlineDrive = new IndexedDrive('V', Path.Combine(TreeRoot, "absent"), 3);
+        var warmDrive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1);
+        var coldDrive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), CreateDriveRoot("second"), 2);
+        var offlineDrive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('V'), Path.Combine(TreeRoot, "absent"), 3);
 
         // Pre-create cache for drive T
         await using (await FileIndex.OpenAsync(Options([warmDrive]), TestContext.CancellationToken))
@@ -233,7 +233,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
             throw new IOException("simulated MFT producer failure");
         }
 
-        var drives = new[] { new IndexedDrive('T', CreateDriveRoot("failing"), 1) };
+        var drives = new[] { MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("failing"), 1) };
         var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
             producer: ProducerKind.Mft, mftProducer: FailingProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
@@ -248,7 +248,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_ThrowingOpenProgressCallback_Throws()
     {
-        var drives = new[] { new IndexedDrive('T', CreateDriveRoot("throwing"), 1) };
+        var drives = new[] { MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("throwing"), 1) };
         var throwingProgress = new SynchronousProgress<IndexDriveOpened>(_ =>
             throw new InvalidOperationException("simulated progress callback failure"));
         var options = Options(drives, throwingProgress);

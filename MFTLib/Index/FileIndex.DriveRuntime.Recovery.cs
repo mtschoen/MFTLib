@@ -4,6 +4,21 @@ public sealed partial class FileIndex
 {
     sealed partial class DriveRuntime
     {
+        /// <summary>Scans of this drive in a row whose journal catch-up was lost.</summary>
+        int _consecutiveLostCatchUps;
+
+        /// <summary>Automatic catch-up retries exhausted; only a successful publication clears it.</summary>
+        bool _recoveryStopped;
+
+        /// <summary>
+        ///     Set while a scan operation of a watched drive retries after a lost catch-up, which is
+        ///     what makes the drive read <see cref="WatchState.Recovering" />.
+        /// </summary>
+        bool _retryingLostCatchUp;
+
+        /// <summary>The lost catch-up a retrying scan operation is rescanning for, while it retries.</summary>
+        JournalCatchUpLostException? _retriedLostCatchUp;
+
         /// <summary>
         ///     The completion of every recovery that has been queued and has not ended, including one
         ///     whose ticket a stop, start, or rescan has since cleared. Guarded by
@@ -165,7 +180,7 @@ public sealed partial class FileIndex
                         _recoveryState = RecoveryState.None;
                     }
 
-                    reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, Drive, failure);
+                    reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, Volume, failure);
                     NoteWatchStateLocked(reported);
                 }
             }

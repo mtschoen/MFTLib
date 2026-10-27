@@ -15,14 +15,14 @@ public sealed record DriveStatus
     /// <summary>Creates a status with the values every drive has, whether or not it has a block or a watch.</summary>
     /// <param name="drive">The drive.</param>
     /// <param name="state">Whether the drive has a queryable block, is offline, or failed without a block.</param>
-    internal DriveStatus(DriveKey drive, DriveState state)
+    internal DriveStatus(RootKey drive, DriveState state)
     {
         Drive = drive;
         State = state;
     }
 
     /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public RootKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>Whether the drive has a queryable block, is offline, or failed without a block. Capacity exhaustion is reported independently by <see cref="DriveBlockStatus.IsCapacityExhausted" />.</summary>
     public DriveState State { get; init; }

@@ -35,7 +35,7 @@ public sealed partial class FileIndex
         {
             Index.ThrowIfCancelledByDisposal(cancellationToken);
             var source = WatchSourceOrNull ?? throw new InvalidOperationException(
-                MftIndexSource.FormatUnavailable(Drive, MftIndexSource.NoWatchReason));
+                MftIndexSource.FormatUnavailable(Volume, MftIndexSource.NoWatchReason));
 
             (DriveBlock ArmedBlock, Task? PreviousDrain)? preparation;
             try
@@ -237,7 +237,7 @@ public sealed partial class FileIndex
                         // retired this instance, so a recovery restart still current is still ticketed.
                         if (recovery is not null)
                         {
-                            cause = new WatchFault(WatchFaultKind.Recovery, Drive, exception);
+                            cause = new WatchFault(WatchFaultKind.Recovery, Volume, exception);
                         }
                     }
 

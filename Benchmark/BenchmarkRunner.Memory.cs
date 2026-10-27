@@ -67,7 +67,7 @@ public partial class BenchmarkRunner
 
         var input = request.Index ?? throw new ArgumentException("Index memory request requires drive metadata.");
         if (string.IsNullOrWhiteSpace(request.InputPath) || string.IsNullOrWhiteSpace(input.RootDirectory) ||
-            input.Drive is < 'A' or > 'Z' || !Enum.IsDefined(input.Producer) ||
+            !RootKey.TryParse(input.Drive, out var rootKey) || !Enum.IsDefined(input.Producer) ||
             !CacheTag.IsValidStorage(input.PackedFourCc))
         {
             throw new ArgumentException("Invalid index memory identity.");
@@ -87,10 +87,10 @@ public partial class BenchmarkRunner
             CacheDirectory = request.InputPath,
             CacheMode = CacheMode.ExistingOnly,
             CacheTag = tag,
-            Drives = [new IndexedDrive(input.Drive, input.RootDirectory, input.VolumeSerial, input.Producer)]
+            Drives = [new IndexedDrive(rootKey, input.RootDirectory, input.VolumeSerial, input.Producer)]
         }, CancellationToken.None).ConfigureAwait(false);
         using var borrow = index.BorrowCurrentSnapshot();
-        var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, input.Drive);
+        var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, rootKey);
         if (drive is null || drive.Block.Header.ScanShape != input.ScanShape)
         {
             throw new InvalidOperationException($"Drive {input.Drive}: unavailable or replaced during memory measurement.");

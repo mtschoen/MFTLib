@@ -130,7 +130,7 @@ sealed partial class JournalBrokerHost
     // A failed cached-cursor startup gets rescan wording only when the journal now proves that
     // position is lost. Unknown journal state preserves the original error, as do sentinel starts
     // and failures after batches have flowed.
-    static string DescribeWatchFailure(DriveKey drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
+    static string DescribeWatchFailure(VolumeKey drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
     {
         if (yieldedAny || since.JournalIdentifier == 0 ||
             JournalCheckpointCheck.Check(drive, since.JournalIdentifier, since.NextUsn,

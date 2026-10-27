@@ -208,12 +208,12 @@ public partial class BenchmarkRunnerTests
             Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key, TestContext.CancellationToken));
         }
         CollectionAssert.AreEqual(
-            new (char, string, uint, uint, ulong)[]
+            new (string, string, uint, uint, ulong)[]
             {
-                ('T', "exact-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
-                ('T', "substring-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
-                ('U', "exact-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape),
-                ('U', "substring-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape)
+                ("T", "exact-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
+                ("T", "substring-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
+                ("U", "exact-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape),
+                ("U", "substring-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape)
             },
             requests.Select(request => (
                 request.Index!.Drive,
@@ -365,7 +365,7 @@ public partial class BenchmarkRunnerTests
         var cache = Directory.CreateDirectory(Path.Combine(_directory, "cache with spaces")).FullName;
         var expectedShape = SyntheticScanShape.Default(ProducerKind.Enumeration);
         WriteCacheBlock(cache, cache, 'T', expectedShape);
-        var input = new IndexMemoryInput('T', cache, 1, ProducerKind.Enumeration,
+        var input = new IndexMemoryInput("T:", cache, 1, ProducerKind.Enumeration,
             new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape);
         var first = await ScenarioMemoryProcess.MeasureAsync(
             new ScenarioMemoryRequest("exact-search", cache, 1, input), TestContext.CancellationToken);

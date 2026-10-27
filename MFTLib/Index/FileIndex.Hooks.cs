@@ -51,13 +51,13 @@ public sealed partial class FileIndex
         ///     Invoked with own lifecycle and write gates held, before state lock and cancellation checkpoint.
         ///     Must not wait for own write/lifecycle gate.
         /// </summary>
-        internal Action<DriveKey>? PublishInsideWriteGate { get; set; }
+        internal Action<RootKey>? PublishInsideWriteGate { get; set; }
 
         /// <summary>
         ///     Invoked before lifecycle acquisition, no gates or state lock; awaited with the recovery token.
         ///     May park asynchronously, honoring cancellation.
         /// </summary>
-        internal Func<DriveKey, CancellationToken, Task>? RecoveryBeforeLifecycleGate { get; set; }
+        internal Func<RootKey, CancellationToken, Task>? RecoveryBeforeLifecycleGate { get; set; }
 
         /// <summary>
         ///     Wraps ticket completion after lifecycle release, outside the state lock; must complete once.
@@ -69,31 +69,31 @@ public sealed partial class FileIndex
         ///     Invoked with the lifecycle gate held, no write/state lock, before disposed/request state is read.
         ///     Must not await disposal/start/rescan that needs the held lifecycle gate.
         /// </summary>
-        internal Action<DriveKey>? BeforeRestartDecision { get; set; }
+        internal Action<RootKey>? BeforeRestartDecision { get; set; }
 
         /// <summary>
         ///     Invoked with the lifecycle gate held, after requested=true is read, before revalidation.
         ///     Same waiting restriction as <see cref="BeforeRestartDecision" />.
         /// </summary>
-        internal Action<DriveKey>? RestartRequested { get; set; }
+        internal Action<RootKey>? RestartRequested { get; set; }
 
         /// <summary>
         ///     Invoked on restart with the lifecycle gate held, after predecessor drain, before registration takes the state lock.
         ///     Must not wait for operations needing that lifecycle gate.
         /// </summary>
-        internal Func<DriveKey, Task>? RestartBeforeRegistration { get; set; }
+        internal Func<RootKey, Task>? RestartBeforeRegistration { get; set; }
 
         /// <summary>
         ///     Invoked on pump entry to apply, after validation, before write-gate acquisition; no gate or state lock held.
         ///     Must not wait for a stop that drains the pump.
         /// </summary>
-        internal Action<DriveKey>? ApplyJournalEntriesEntered { get; set; }
+        internal Action<RootKey>? ApplyJournalEntriesEntered { get; set; }
 
         /// <summary>
         ///     Invoked with own write gate held, state lock released, no lifecycle gate acquired by apply.
         ///     Cannot wait for own publication or disposal.
         /// </summary>
-        internal Action<DriveKey>? ApplyJournalEntriesInsideWriteGate { get; set; }
+        internal Action<RootKey>? ApplyJournalEntriesInsideWriteGate { get; set; }
 
         /// <summary>
         ///     Wraps the Settle action in <see cref="DriveRuntime.RecordPumpFault" />; pump holds no gate or state lock at entry.
@@ -105,6 +105,6 @@ public sealed partial class FileIndex
         ///     Invoked after apply released the write gate, before <see cref="DriveRuntime.RaiseChanged" />; no lifecycle/write/state lock.
         ///     Cannot await a rescan that drains this same pump.
         /// </summary>
-        internal Action<DriveKey>? BeforeWatchChanged { get; set; }
+        internal Action<RootKey>? BeforeWatchChanged { get; set; }
     }
 }

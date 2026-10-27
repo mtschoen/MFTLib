@@ -100,10 +100,10 @@ public sealed partial class FileIndex
             if (!DriveKind.For(Configuration.Producer, Options.MftSource).HasJournalSettings)
             {
                 throw new InvalidOperationException(
-                    MftIndexSource.FormatUnavailable(Drive, MftIndexSource.NoJournalSettingsReason));
+                    MftIndexSource.FormatUnavailable(Volume, MftIndexSource.NoJournalSettingsReason));
             }
 
-            return UsnJournalSettingsQuery.Query(Drive);
+            return UsnJournalSettingsQuery.Query(Volume);
         }
     }
 }

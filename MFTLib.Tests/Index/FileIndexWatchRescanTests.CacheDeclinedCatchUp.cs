@@ -15,12 +15,12 @@ public sealed partial class FileIndexWatchRescanTests
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         try
         {
-            await index.StartWatchingAsync(['U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+            await index.StartWatchingAsync([new VolumeKey('U')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             // U catches up at once; T is adopted by the rescan and joins the watch by its own start.
             await source.WatchFor('U').Publish(new DriveCaughtUp());
-            await index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-            await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+            await index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+            await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             // The no-list wait covers the adopted drive rather than completing on U alone.
             var aggregateWait = index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), Token);

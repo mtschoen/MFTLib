@@ -39,7 +39,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
 
     FileIndex? _index;
 
-    CrossDriveScenario(Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal)
+    CrossDriveScenario(Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal)
     {
         Broker = new ScriptedWatchBrokerHarness(scanDrive: Scan, seams: new ScriptedBrokerSeams
         {
@@ -79,7 +79,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
     /// </summary>
     /// <param name="readJournal">The host's catch-up source; null reads nothing and holds at the armed cursor.</param>
     public static async Task<CrossDriveScenario> OpenAsync(
-        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null)
+        Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null)
     {
         var scenario = new CrossDriveScenario(readJournal);
         try
@@ -107,7 +107,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
         }
     }
 
-    public DriveStatus DriveOf(char driveLetter) => Index.Drives.Single(drive => drive.Drive == driveLetter);
+    public DriveStatus DriveOf(char driveLetter) => Index.Drives.Single(drive => drive.Drive == new VolumeKey(driveLetter));
 
     /// <summary>
     ///     Holds every write the host makes to <paramref name="driveLetter" />'s pipes from now on,
@@ -235,7 +235,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
         var producer = new BrokerMftBlockProducer(Broker.ConnectAsync);
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _roots.Path, 123), new IndexedDrive('U', _roots.Path, 456)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _roots.Path, 123), SyntheticIndexedDrive.Create(new VolumeKey('U'), _roots.Path, 456)],
             CacheDirectory = _cache.Path,
             CacheMode = CacheMode.Disabled,
             MftSource = producer.CreateIndexSource()
@@ -243,7 +243,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
         _index.WatchFaulted += RecordFault;
     }
 
-    IEnumerable<IReadOnlyList<MftRecord>> Scan(DriveKey drive, ParseThreadAllowance parseThreads,
+    IEnumerable<IReadOnlyList<MftRecord>> Scan(VolumeKey drive, ParseThreadAllowance parseThreads,
         BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
     {

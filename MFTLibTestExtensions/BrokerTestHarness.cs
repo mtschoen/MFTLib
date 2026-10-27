@@ -78,7 +78,7 @@ public static class BrokerTestHarness
         });
     }
 
-    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey drive,
+    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(VolumeKey drive,
         SyntheticJournalCursor since, int maximumBufferReads) => ([], since);
 
     static IEnumerable<IReadOnlyList<MftRecord>> ConvertScan(
@@ -104,7 +104,7 @@ public static class BrokerTestHarness
         }
     }
 
-    static NtfsVolumeInformation SmallVolume(DriveKey drive) => new(256 * 1024, 1024);
+    static NtfsVolumeInformation SmallVolume(VolumeKey drive) => new(256 * 1024, 1024);
 
     // The start MFTLib's own tests use: any host, section writer and client section factory, plus the
     // client's clock, per-pipe connection failures and held host writes, a wrapper around each client end

@@ -9,7 +9,7 @@ partial class SampleHost
     async Task<int> WatchIndexAsync(FileIndex index, WatchArguments parsed, CancellationToken cancellationToken)
     {
         var failureCount = 0;
-        var ready = new List<DriveKey>();
+        var ready = new List<RootKey>();
         foreach (var status in index.Drives)
         {
             await _output.WriteLineAsync($"=== Drive {status.Drive}: ===").ConfigureAwait(false);

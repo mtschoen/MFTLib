@@ -10,7 +10,7 @@ static partial class BrokerProtocol
     // Control pipe
 
     // payload: [requestId u32][drive UTF-16 character][pipeName string]
-    public static void WriteOpenChannel(IBufferWriter<byte> writer, uint requestId, DriveKey drive, string pipeName)
+    public static void WriteOpenChannel(IBufferWriter<byte> writer, uint requestId, VolumeKey drive, string pipeName)
     {
         new PayloadWriter().UInt32(requestId).Drive(drive).String(pipeName)
             .WriteTo(writer, BrokerFrameKind.OpenChannel);
@@ -23,7 +23,7 @@ static partial class BrokerProtocol
     }
 
     // payload: [requestId u32][drive UTF-16 character]
-    public static void WriteQueryVolume(IBufferWriter<byte> writer, uint requestId, DriveKey drive)
+    public static void WriteQueryVolume(IBufferWriter<byte> writer, uint requestId, VolumeKey drive)
     {
         new PayloadWriter().UInt32(requestId).Drive(drive).WriteTo(writer, BrokerFrameKind.QueryVolume);
     }
@@ -37,7 +37,7 @@ static partial class BrokerProtocol
     }
 
     // payload: [requestId u32][drive UTF-16 character][maximumSize i64][allocationDelta i64]
-    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, uint requestId, DriveKey drive,
+    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, uint requestId, VolumeKey drive,
         long maximumSize, long allocationDelta)
     {
         new PayloadWriter().UInt32(requestId).Drive(drive).Int64(maximumSize).Int64(allocationDelta)

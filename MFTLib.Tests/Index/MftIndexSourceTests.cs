@@ -70,7 +70,7 @@ public sealed class MftIndexSourceTests : IDisposable
         for (var attempt = 0; attempt < 2; attempt++)
         {
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.RescanAsync(['T'], Token));
+                () => index.RescanAsync([new VolumeKey('T')], Token));
             status = index.Drives.Single();
             Assert.AreEqual(DriveState.Failed, status.State);
             Assert.IsNull(status.Block);
@@ -85,7 +85,7 @@ public sealed class MftIndexSourceTests : IDisposable
         }
 
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync(['T'], Token));
+            () => index.StartWatchingAsync([new VolumeKey('T')], Token));
         Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
 
@@ -95,7 +95,7 @@ public sealed class MftIndexSourceTests : IDisposable
     public async Task NullSource_WarmOpenAndFailedRescanKeepTheCachedBlock(CacheMode cacheMode)
     {
         await _fixture.Seed(cancellationToken: Token);
-        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow>
+        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow>
         {
             ['T'] = HealthyWindow
         });
@@ -107,13 +107,13 @@ public sealed class MftIndexSourceTests : IDisposable
             Assert.IsNull(before.Failure);
             Assert.IsNotNull(before.Block);
             Assert.AreEqual(BlockOrigin.WarmStartedFromCache, before.Block.Origin);
-            var root = index.Root('T', TestContext.CancellationToken).RecordKey;
+            var root = index.Root(new VolumeKey('T'), TestContext.CancellationToken).RecordKey;
             await DriveResultAssertions.NotApplicableAsync(
-                () => index.StartWatchingAsync(['T'], Token));
+                () => index.StartWatchingAsync([new VolumeKey('T')], Token));
             Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
 
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => index.RescanAsync(['T'], Token));
+                () => index.RescanAsync([new VolumeKey('T')], Token));
             var after = index.Drives.Single();
             Assert.AreEqual(DriveState.Ready, after.State);
             Assert.AreEqual(DriveFailureKind.MftSourceMissing, after.Failure?.Kind);
@@ -123,7 +123,7 @@ public sealed class MftIndexSourceTests : IDisposable
             Assert.AreEqual(before.Block.Origin, after.Block.Origin);
             Assert.AreEqual(before.Block.CacheLocation, after.Block.CacheLocation);
             Assert.AreEqual(before.Block.LiveRowCount, after.Block.LiveRowCount);
-            Assert.AreEqual(root, index.Root('T', TestContext.CancellationToken).RecordKey);
+            Assert.AreEqual(root, index.Root(new VolumeKey('T'), TestContext.CancellationToken).RecordKey);
             Assert.IsFalse(after.Watch.IsRequested);
         }
 
@@ -137,11 +137,11 @@ public sealed class MftIndexSourceTests : IDisposable
     public async Task SourceWithoutWatchSource_ReportsWatchingNotApplicable()
     {
         await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
-        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock) }, Token);
 
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync(['T'], Token));
+            () => index.StartWatchingAsync([new VolumeKey('T')], Token));
 
         Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
@@ -151,11 +151,11 @@ public sealed class MftIndexSourceTests : IDisposable
     {
         await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         var watchSource = new ScriptedWatchSource();
-        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             _fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource) }, Token);
 
-        await index.StartWatchingAsync(['T'], Token);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token);
 
         Assert.HasCount(1, watchSource.Starts);
         Assert.AreEqual('T', watchSource.Starts[0].Drive);

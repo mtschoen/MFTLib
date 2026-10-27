@@ -165,7 +165,7 @@ public sealed partial class FileIndex
     /// </summary>
     async Task ReleaseSnapshotsForDisposalAsync(ExceptionDispatchInfo? cancellationFailure)
     {
-        var runtimes = _driveRuntimes.Values.OrderBy(runtime => runtime.Drive.Letter).ToArray();
+        var runtimes = _driveRuntimes.Values.OrderBy(runtime => runtime.Drive).ToArray();
         foreach (var runtime in runtimes)
         {
             await runtime.LifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);

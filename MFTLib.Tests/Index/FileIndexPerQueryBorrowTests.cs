@@ -47,8 +47,8 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     FileIndexOptions TwoDriveOptions() => new()
     {
         Drives = [
-            new IndexedDrive('T', TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
-            new IndexedDrive('U', _secondTree!.Path, _secondSerial, ProducerKind.Enumeration)
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
+            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), _secondTree!.Path, _secondSerial, ProducerKind.Enumeration)
         ],
         CacheDirectory = CacheDirectoryPath
     };
@@ -57,13 +57,13 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     static DriveBlockRelease ReleaseStateOf(FileIndex index, char drive) =>
-        LookupEngine.FindDriveBlock(index.CurrentSnapshot, drive)!.ReleaseState;
+        LookupEngine.FindDriveBlock(index.CurrentSnapshot, new VolumeKey(drive))!.ReleaseState;
 
     async Task RescanSecondDriveAsync(FileIndex index)
     {
         await File.WriteAllTextAsync(Path.Combine(_secondTree!.Path, $"added-{++_rescanCount}.md"), "added",
             TestContext.CancellationToken);
-        await index.RescanAsync(['U'], TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('U')], TestContext.CancellationToken);
     }
 
     /// <summary>Collects until the release completes or the pass limit is reached; no sleeping or timing.</summary>
@@ -111,7 +111,7 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     async Task<(FileIndex Index, FileEntry FirstRoot)> OpenAsync()
     {
         var index = await FileIndex.OpenAsync(TwoDriveOptions(), TestContext.CancellationToken);
-        return (index, index.Root('T', TestContext.CancellationToken));
+        return (index, index.Root(new VolumeKey('T'), TestContext.CancellationToken));
     }
 
     /// <summary>A suspended Enumerate anchored on drive T does not delay drive U's retired block.</summary>
@@ -174,7 +174,7 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
         var retired = ReleaseStateOf(index, 'U');
 
         var released = await RescanWhileQueryHeldAsync(index, retired,
-            () => _ = index.Root('T', TestContext.CancellationToken));
+            () => _ = index.Root(new VolumeKey('T'), TestContext.CancellationToken));
 
         Assert.IsTrue(released, "a Root on drive T kept drive U's retired block mapped");
     }
@@ -206,7 +206,7 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
             observed.Add((firstRelease.Hooks.OutstandingBorrowCount, secondRelease.Hooks.OutstandingBorrowCount));
 
         _ = index.Find(ReadmePath, TestContext.CancellationToken);
-        _ = index.Root('T', TestContext.CancellationToken);
+        _ = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
         _ = index.Search(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken);
         _ = index.Enumerate(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken).ToList();
         foreach (var row in index.EnumerateRows(new SearchQuery("readme", Subtree: root), TestContext.CancellationToken))

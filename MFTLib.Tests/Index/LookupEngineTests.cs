@@ -34,8 +34,8 @@ public class LookupEngineTests
         var firstBlock = _firstBuilder.OpenForReading(out _)!;
         var secondBlock = _secondBuilder.OpenForReading(out _)!;
         _snapshot = [
-            new DriveBlock('T', 0, firstBlock, rootDirectoryPath: TestDriveRoot.For('T')),
-            new DriveBlock('U', 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))
+            new DriveBlock(new VolumeKey('T'), 0, firstBlock, rootDirectoryPath: TestDriveRoot.For('T')),
+            new DriveBlock(new VolumeKey('U'), 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))
         ];
     }
 
@@ -101,7 +101,7 @@ public class LookupEngineTests
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken);
         Assert.HasCount(2, results);
-        Assert.AreSequenceEqual(['T', 'U'], [.. results.Select(entry => entry.RecordKey.Drive.Letter)], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["T", "U"], [.. results.Select(entry => entry.RecordKey.Drive.ToString())], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -115,14 +115,14 @@ public class LookupEngineTests
     [TestMethod]
     public void Root_ReturnsTheDriveRootForEachDrive()
     {
-        Assert.AreEqual(TestDriveRoot.For('T'), LookupEngine.Root(_snapshot, 'T', TestContext.CancellationToken).Path);
-        Assert.AreEqual(TestDriveRoot.For('U'), LookupEngine.Root(_snapshot, 'u', TestContext.CancellationToken).Path);
+        Assert.AreEqual(TestDriveRoot.For('T'), LookupEngine.Root(_snapshot, new VolumeKey('T'), TestContext.CancellationToken).Path);
+        Assert.AreEqual(TestDriveRoot.For('U'), LookupEngine.Root(_snapshot, new VolumeKey('u'), TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
     public void Root_UnknownDriveThrows()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => LookupEngine.Root(_snapshot, 'Z', TestContext.CancellationToken));
+        Assert.ThrowsExactly<ArgumentException>(() => LookupEngine.Root(_snapshot, new VolumeKey('Z'), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -143,10 +143,10 @@ public class LookupEngineTests
 
         var block = builder.OpenForReading(out var validation)!;
         Assert.IsNull(validation);
-        DriveBlock[] snapshot = [new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), 0, block, rootDirectoryPath: TestDriveRoot.For('V'))];
         try
         {
-            Assert.AreEqual(rootRow, LookupEngine.Root(snapshot, 'V', TestContext.CancellationToken).RowIndex);
+            Assert.AreEqual(rootRow, LookupEngine.Root(snapshot, new VolumeKey('V'), TestContext.CancellationToken).RowIndex);
             var entry = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('V'), "Documents", "report.pdf"), TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
@@ -163,10 +163,10 @@ public class LookupEngineTests
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out var validation)!;
         Assert.IsNull(validation);
-        var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
         DriveBlock[] snapshot = [driveBlock];
 
-        var root = LookupEngine.Root(snapshot, 'T', TestContext.CancellationToken);
+        var root = LookupEngine.Root(snapshot, new VolumeKey('T'), TestContext.CancellationToken);
 
         Assert.AreEqual(5u, root.RowIndex);
     }
@@ -176,7 +176,7 @@ public class LookupEngineTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
         DriveBlock[] snapshot = [driveBlock];
 
         var found = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), TestContext.CancellationToken);
@@ -248,8 +248,8 @@ public class LookupEngineTests
         var firstBlock = firstBuilder.OpenForReading(out _)!;
         var secondBlock = secondBuilder.OpenForReading(out _)!;
         DriveBlock[] snapshot = [
-            new DriveBlock('T', 0, firstBlock),
-            new DriveBlock('U', 1, secondBlock)
+            new DriveBlock(new VolumeKey('T'), 0, firstBlock),
+            new DriveBlock(new VolumeKey('U'), 1, secondBlock)
         ];
         try
         {
@@ -258,7 +258,7 @@ public class LookupEngineTests
 
             Assert.HasCount(5, partitioned);
             Assert.AreSequenceEqual(
-                [('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u)], [.. partitioned.Select(entry => (entry.RecordKey.Drive.Letter, entry.RowIndex))]);
+                [("T", 100u), ("T", 16000u), ("T", 33000u), ("U", 42u), ("U", 20000u)], [.. partitioned.Select(entry => (entry.RecordKey.Drive.ToString(), entry.RowIndex))]);
             Assert.AreSequenceEqual(
                 [.. reference.Select(entry => (entry.RecordKey.Drive, entry.RowIndex))], [.. partitioned.Select(entry => (entry.RecordKey.Drive, entry.RowIndex))]);
         }
@@ -292,7 +292,7 @@ public class LookupEngineTests
     public async Task SearchExact_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
-        DriveBlock[] snapshot = [new DriveBlock('Y', 0, builder.OpenForWriting())];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, builder.OpenForWriting())];
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);

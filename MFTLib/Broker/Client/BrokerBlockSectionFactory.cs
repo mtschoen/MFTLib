@@ -12,4 +12,4 @@ namespace MFTLib;
 /// <param name="drive">The drive being scanned.</param>
 /// <param name="options">The block's layout, sized from the drive's volume information.</param>
 delegate (string SectionName, BlockFile Block, IDisposable Lifetime) BrokerBlockSectionFactory(
-    DriveKey drive, BlockFileCreateOptions options);
+    VolumeKey drive, BlockFileCreateOptions options);

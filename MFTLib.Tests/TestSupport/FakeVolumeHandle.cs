@@ -13,7 +13,7 @@ static class FakeVolumeHandle
     ///     Opens a test volume and captures the handle supplied by its open hook.
     ///     The returned volume owns disposal; the out handle is borrowed for native assertions.
     /// </summary>
-    internal static MftVolume OpenVolume(DriveKey drive, out SafeFileHandle volumeHandle)
+    internal static MftVolume OpenVolume(VolumeKey drive, out SafeFileHandle volumeHandle)
     {
         SafeFileHandle capturedHandle = null!;
         FileUtilities.Hooks._getVolumeHandle = _ => capturedHandle = Create();

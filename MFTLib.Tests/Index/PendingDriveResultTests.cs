@@ -12,7 +12,7 @@ public class PendingDriveResultTests
     {
         var result = new FileIndex.PendingDriveResult { ProducerFailureMessage = "elevation declined" };
 
-        Assert.AreEqual("elevation declined", result.RequireFailureMessage('T'));
+        Assert.AreEqual("elevation declined", result.RequireFailureMessage(new VolumeKey('T')));
     }
 
     [TestMethod]
@@ -20,7 +20,7 @@ public class PendingDriveResultTests
     {
         var result = new FileIndex.PendingDriveResult();
 
-        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => result.RequireFailureMessage('T'));
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => result.RequireFailureMessage(new VolumeKey('T')));
 
         Assert.Contains("Drive T", exception.Message);
     }

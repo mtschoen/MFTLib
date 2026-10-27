@@ -36,24 +36,24 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     [TestMethod]
     public void EnumerateCached_ReportsOnlyTheFilesThatMatchTheBlockFileNameFormat()
     {
-        var first = WriteFile(CacheDirectory.BlockFileName('C', 0x0BADF00D), "first block");
-        var second = WriteFile(CacheDirectory.BlockFileName('D', 0x12345678), "second");
+        var first = WriteFile(CacheDirectory.BlockFileName(new VolumeKey('C'), 0x0BADF00D), "first block");
+        var second = WriteFile(CacheDirectory.BlockFileName(new VolumeKey('D'), 0x12345678), "second");
         WriteFile("A-ZZZZZZZZ.mlix", "invalid hexadecimal serial");
         WriteFile("A_12345678.mlix", "invalid separator");
         WriteFile("notes.mlix", "an unrelated name that happens to end in the extension");
-        WriteFile($"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName('E', 1)}", "disabled-cache temp file");
-        WriteFile(CacheDirectory.BlockFileName('F', 2) + ".retired-" + Guid.NewGuid().ToString("N"), "retired");
+        WriteFile($"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(new VolumeKey('E'), 1)}", "disabled-cache temp file");
+        WriteFile(CacheDirectory.BlockFileName(new VolumeKey('F'), 2) + ".retired-" + Guid.NewGuid().ToString("N"), "retired");
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
-            .OrderBy(entry => entry.Drive.Letter).ToArray();
+            .OrderBy(entry => entry.Drive).ToArray();
 
         Assert.HasCount(2, cached);
-        Assert.AreEqual('C', cached[0].Drive);
+        Assert.AreEqual(new VolumeKey('C'), cached[0].Drive);
         Assert.AreEqual(0x0BADF00Du, cached[0].VolumeSerial);
         Assert.AreEqual(first, cached[0].Path);
         Assert.AreEqual(new FileInfo(first).Length, cached[0].Size);
         Assert.AreEqual(File.GetLastWriteTimeUtc(first), cached[0].LastWriteTime);
-        Assert.AreEqual('D', cached[1].Drive);
+        Assert.AreEqual(new VolumeKey('D'), cached[1].Drive);
         Assert.AreEqual(0x12345678u, cached[1].VolumeSerial);
         Assert.AreEqual(second, cached[1].Path);
     }
@@ -61,17 +61,17 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     [TestMethod]
     public void EnumerateCached_IsTheInverseOfBlockFileNameAcrossTheLetterRangeAndEdgeSerials()
     {
-        var expected = new List<(char DriveLetter, uint VolumeSerial)>();
+        var expected = new List<(RootKey Drive, uint VolumeSerial)>();
         var serials = new[] { 0u, 1u, 0x0BADF00Du, uint.MaxValue };
         for (var driveLetter = 'A'; driveLetter <= 'Z'; driveLetter++)
         {
             var serial = serials[(driveLetter - 'A') % serials.Length];
-            WriteFile(CacheDirectory.BlockFileName(driveLetter, serial), "block");
-            expected.Add((driveLetter, serial));
+            WriteFile(CacheDirectory.BlockFileName(new VolumeKey(driveLetter), serial), "block");
+            expected.Add((new VolumeKey(driveLetter), serial));
         }
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
-            .Select(entry => (entry.Drive.Letter, entry.VolumeSerial)).ToArray();
+            .Select(entry => (entry.Drive, entry.VolumeSerial)).ToArray();
 
         Assert.AreSequenceEqual(expected, cached, SequenceOrder.InAnyOrder);
     }

@@ -37,7 +37,7 @@ public sealed partial class FileIndex
                     }
 
                     var lost = RecordLostCatchUp(catchUpLoss, attempt.ConsecutiveLostCatchUps);
-                    RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, Drive, lost));
+                    RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, Volume, lost));
                     if (lost.IsRecoveryStopped)
                     {
                         throw lost;
@@ -136,7 +136,7 @@ public sealed partial class FileIndex
         JournalCatchUpLostException RecordLostCatchUp(JournalCheckpointLoss catchUpLoss,
             int consecutiveLostCatchUps)
         {
-            var drive = Drive;
+            var drive = Volume;
             var recoveryStopped = consecutiveLostCatchUps >= LostCatchUpRecoveryLimit;
             var lost = new JournalCatchUpLostException(recoveryStopped,
                 DescribeLostCatchUp(consecutiveLostCatchUps, recoveryStopped, catchUpLoss));

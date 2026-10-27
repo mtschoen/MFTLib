@@ -48,7 +48,7 @@ sealed class EnumerationDrainObservation : IDisposable
         }
     };
 
-    void Enter(DriveKey drive, string path, CancellationToken token)
+    void Enter(RootKey drive, string path, CancellationToken token)
     {
         _reads.Enter(drive, path, token);
         if (path == _root)
@@ -68,7 +68,7 @@ sealed class EnumerationDrainObservation : IDisposable
         }
     }
 
-    void Exit(DriveKey drive, string path)
+    void Exit(RootKey drive, string path)
     {
         try
         {

@@ -15,9 +15,15 @@ public enum BlockValidationResult
     Incomplete,
     /// <summary>The cached identifiers arise from another volume, so they cannot identify files on the requested drive.</summary>
     WrongVolumeSerial,
-    /// <summary>The on-disk layout cannot be mapped safely because its regions contradict the header.</summary>
+    /// <summary>
+    ///     The on-disk layout cannot be mapped safely because its regions contradict the header, or the root key
+    ///     text stored after the header is malformed.
+    /// </summary>
     InconsistentRegions,
-    /// <summary>The cache covers another tree on the same volume, so it cannot satisfy this open request.</summary>
+    /// <summary>
+    ///     The cache covers another root, so it cannot satisfy this open request: another tree on the same volume, or a
+    ///     file whose name is not the one its stored root key and volume serial derive.
+    /// </summary>
     WrongRootDirectory,
     /// <summary>A row could address unvalidated name-pool bytes, so the cache cannot be read safely.</summary>
     InvalidNameDescriptor,

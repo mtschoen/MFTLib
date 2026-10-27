@@ -118,7 +118,7 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.AreEqual(22L, index.Find("dump:/D/documents/Deep/leaf.txt", TestContext.CancellationToken)!.Value.Size);
         Assert.IsFalse(index.Find("dump:/D/sizeless.bin", TestContext.CancellationToken)!.Value.IsSizeKnown);
         Assert.IsTrue(index.Find("dump:/D/documents", TestContext.CancellationToken)!.Value.IsDirectory);
-        Assert.AreSequenceEqual(["$MFT", "documents", "sizeless.bin"], [.. index.Root('D', TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["$MFT", "documents", "sizeless.bin"], [.. index.Root(new VolumeKey('D'), TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -190,7 +190,7 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.AreEqual(16u, parsing[^1].ExpectedRowCount);
         Assert.AreEqual(7u, transferring[^1].WrittenRowCount);
         Assert.IsNull(transferring[^1].ExpectedRowCount);
-        Assert.IsTrue(samples.All(sample => sample.Drive == 'D' && sample.Outcome is null));
+        Assert.IsTrue(samples.All(sample => sample.Drive == new VolumeKey('D') && sample.Outcome is null));
         Assert.IsLessThan(samples.IndexOf(transferring[0]), samples.IndexOf(parsing[^1]),
             "the parse total is reported before the first transfer sample");
     }

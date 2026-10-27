@@ -9,16 +9,16 @@ namespace MFTLibTestExtensions;
 /// </summary>
 public sealed class SyntheticMftProducer
 {
-    readonly Func<DriveKey, IEnumerable<SyntheticRow>> _rowsForDrive;
+    readonly Func<VolumeKey, IEnumerable<SyntheticRow>> _rowsForDrive;
     readonly Lock _gate = new();
-    readonly List<DriveKey> _producedDrives = [];
+    readonly List<VolumeKey> _producedDrives = [];
 
     /// <summary>Creates a producer.</summary>
-    /// <param name="rowsForDrive">The rows of a drive's block, including row 5, the root. Called once per production.</param>
-    public SyntheticMftProducer(Func<DriveKey, IEnumerable<SyntheticRow>> rowsForDrive)
+    /// <param name="rowsForVolume">The rows of a volume's block, including row 5, the root. Called once per production.</param>
+    public SyntheticMftProducer(Func<VolumeKey, IEnumerable<SyntheticRow>> rowsForVolume)
     {
-        ArgumentNullException.ThrowIfNull(rowsForDrive);
-        _rowsForDrive = rowsForDrive;
+        ArgumentNullException.ThrowIfNull(rowsForVolume);
+        _rowsForDrive = rowsForVolume;
     }
 
     /// <summary>A watch started after the scan resumes from this position, so set it to what the test's watch source expects.</summary>
@@ -33,13 +33,13 @@ public sealed class SyntheticMftProducer
     internal int SkippedRecordCount { get; init; }
 
     /// <summary>Awaited before each production builds its block, so a test can hold a scan or rescan in progress.</summary>
-    public Func<DriveKey, CancellationToken, Task>? BeforeProduceAsync { get; init; }
+    public Func<VolumeKey, CancellationToken, Task>? BeforeProduceAsync { get; init; }
 
     /// <summary>The proven catch-up loss a production reports; null, or a null result, reports none.</summary>
-    public Func<DriveKey, JournalCheckpointLoss?>? CatchUpLoss { get; init; }
+    public Func<VolumeKey, JournalCheckpointLoss?>? CatchUpLoss { get; init; }
 
     /// <summary>Every drive whose production has started, in order, including repeats and productions held by <see cref="BeforeProduceAsync" />.</summary>
-    internal IReadOnlyList<DriveKey> ProducedDrives
+    internal IReadOnlyList<VolumeKey> ProducedDrives
     {
         get
         {
@@ -69,7 +69,7 @@ public sealed class SyntheticMftProducer
 
         cancellationToken.ThrowIfCancellationRequested();
         var cursor = JournalCursor;
-        return Describe(SyntheticBlock.Build(request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
+        return Describe(SyntheticBlock.Build(request.BlockPath, request.Drive, request.VolumeSerial, request.DeleteOnClose,
             new SyntheticBlockOptions
             {
                 JournalCursor = cursor,
@@ -80,7 +80,7 @@ public sealed class SyntheticMftProducer
     }
 
     /// <summary>Wraps the built block, closing it when the catch-up loss callback throws so no handle leaks.</summary>
-    MftBlockProduceResult Describe(BlockFile block, DriveKey drive)
+    MftBlockProduceResult Describe(BlockFile block, VolumeKey drive)
     {
         try
         {

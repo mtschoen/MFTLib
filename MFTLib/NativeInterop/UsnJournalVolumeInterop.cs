@@ -25,7 +25,7 @@ static class UsnJournalVolumeInterop
     ///     Opens a drive's root directory for journal queries. <paramref name="purpose" />
     ///     names the query in the failure message, since the caller knows which one it is.
     /// </summary>
-    internal static SafeFileHandle OpenVolumeRoot(DriveKey drive, string purpose)
+    internal static SafeFileHandle OpenVolumeRoot(VolumeKey drive, string purpose)
     {
         var rootDirectory = drive + @":\";
         var handle = Kernel32.Hooks._createFile(rootDirectory, FileReadAttributes, ShareAll, IntPtr.Zero,

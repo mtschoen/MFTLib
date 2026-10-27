@@ -21,7 +21,7 @@ public sealed record WatchStateChange
     /// <param name="drive">The drive whose watch changed state.</param>
     /// <param name="watch">The drive's watch status after the change.</param>
     /// <param name="fault">The fault that caused the change, or null.</param>
-    internal WatchStateChange(DriveKey drive, DriveWatchStatus watch, WatchFault? fault)
+    internal WatchStateChange(VolumeKey drive, DriveWatchStatus watch, WatchFault? fault)
     {
         Drive = drive;
         Watch = watch;
@@ -29,7 +29,7 @@ public sealed record WatchStateChange
     }
 
     /// <summary>Identifies the watch whose state changed; default keys are rejected.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public VolumeKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>The drive's <see cref="DriveStatus.Watch" /> after the change.</summary>
     public DriveWatchStatus Watch { get; init; }

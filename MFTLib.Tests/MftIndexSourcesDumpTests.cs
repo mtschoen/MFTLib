@@ -39,7 +39,7 @@ public class MftIndexSourcesDumpTests
             () => MftIndexSources.FromMftDumpFile("volume.mft", driveLetter));
 
         Assert.AreEqual("letter", failure.ParamName);
-        Assert.StartsWith("The drive key must be an ASCII letter.", failure.Message);
+        Assert.StartsWith("The volume key must be an ASCII letter.", failure.Message);
     }
 
     [TestMethod]

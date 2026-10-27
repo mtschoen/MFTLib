@@ -45,7 +45,7 @@ static class MftDumpIndexes
         Assert.ThrowsExactlyAsync<TException>(() => action(index));
 
     static BlockFile Build(MftBlockProduceRequest request) =>
-        SyntheticBlock.Build(request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
+        SyntheticBlock.Build(request.BlockPath, request.Drive, request.VolumeSerial, request.DeleteOnClose,
             new SyntheticBlockOptions
             {
                 JournalCursor = new SyntheticJournalCursor(7, 4096),

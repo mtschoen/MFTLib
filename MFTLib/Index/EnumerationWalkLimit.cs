@@ -20,10 +20,10 @@ static class EnumerationWalkLimit
         internal Action? _walkQueued;
 
         /// <summary>Invoked before physical reading begins for a directory.</summary>
-        internal Action<DriveKey, string, CancellationToken>? _directoryEntered;
+        internal Action<RootKey, string, CancellationToken>? _directoryEntered;
 
         /// <summary>Invoked after physical reading completes or faults for a directory.</summary>
-        internal Action<DriveKey, string>? _directoryExited;
+        internal Action<RootKey, string>? _directoryExited;
 
         internal void ResetToDefaults()
         {

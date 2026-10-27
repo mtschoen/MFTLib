@@ -9,6 +9,6 @@ static class IndexHeaderReads
 {
     /// <summary>The header of the drive's current block; fails the test when the drive has none.</summary>
     internal static SyntheticDriveHeader HeaderOf(this FileIndex index, char driveLetter = 'T') =>
-        SyntheticIndexInspection.ReadHeader(index, driveLetter)
+        SyntheticIndexInspection.ReadHeader(index, new VolumeKey(driveLetter))
         ?? throw new AssertFailedException($"Drive {driveLetter} has no block, so it has no header.");
 }

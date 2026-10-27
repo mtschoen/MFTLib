@@ -19,20 +19,20 @@ public sealed partial class FileIndex
     /// <exception cref="System.ComponentModel.Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadUsnJournalSettings; the target is covered.")]
-    public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive) => ReadUsnJournalSettings(drive);
+    public UsnJournalSettings QueryUsnJournalSettings(VolumeKey drive) => ReadUsnJournalSettings(drive);
 
     /// <summary>
     ///     The logic behind <see cref="QueryUsnJournalSettings" />: validates the drive, refuses a source without
     ///     live journal settings, and otherwise reads the volume, which throws
     ///     <see cref="PlatformNotSupportedException" /> off Windows.
     /// </summary>
-    internal UsnJournalSettings ReadUsnJournalSettings(DriveKey drive)
+    internal UsnJournalSettings ReadUsnJournalSettings(VolumeKey drive)
     {
         var validatedDrive = RequireConfiguredDrive(drive);
         return GetDriveRuntime(validatedDrive).QueryUsnJournalSettings();
     }
 
-    DriveKey RequireConfiguredDrive(DriveKey drive)
+    VolumeKey RequireConfiguredDrive(VolumeKey drive)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var validatedDrive = drive.Validated();

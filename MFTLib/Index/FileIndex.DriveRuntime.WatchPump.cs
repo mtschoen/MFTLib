@@ -46,7 +46,7 @@ public sealed partial class FileIndex
         /// </summary>
         async Task<WatchFault?> ReadWatchAsync(WatchInstance instance, IIndexDriveWatch handle)
         {
-            var drive = Drive;
+            var drive = Volume;
             var stopToken = instance.PumpStop.Token;
             try
             {
@@ -145,7 +145,7 @@ public sealed partial class FileIndex
 
             if (first)
             {
-                RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, Drive, exception));
+                RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, Volume, exception));
             }
         }
 

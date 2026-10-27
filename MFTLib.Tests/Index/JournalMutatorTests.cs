@@ -32,7 +32,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             Attributes: 32, Size: 100, Moment.Ticks, SequenceNumber: 0));
         _writer.Complete(Moment, null);
 
-        _driveBlock = new DriveBlock('T', 0, _block, rootDirectoryPath: TestDriveRoot.For('T'));
+        _driveBlock = new DriveBlock(new VolumeKey('T'), 0, _block, rootDirectoryPath: TestDriveRoot.For('T'));
         _snapshot = [_driveBlock];
     }
 

@@ -67,7 +67,7 @@ public sealed partial class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = 'T'
+            Drive = new VolumeKey('T')
         })
         {
             HandoffWaiting = () => handoffWaiting.TrySetResult(),

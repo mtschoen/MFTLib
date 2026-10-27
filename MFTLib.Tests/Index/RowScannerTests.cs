@@ -26,7 +26,7 @@ public class RowScannerTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock('T', 0, block)];
+        _snapshot = [new DriveBlock(new VolumeKey('T'), 0, block)];
     }
 
     [TestCleanup]

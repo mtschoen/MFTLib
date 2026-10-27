@@ -32,12 +32,12 @@ partial class SampleHost
                 Search(index, parsed, cancellationToken);
                 break;
             case DirectVerb.Tree:
-                var start = parsed.Path is null ? index.Root(letter, cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
+                var start = parsed.Path is null ? index.Root(new VolumeKey(letter), cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
                 _output.WriteLine(start.Path);
                 WriteTree(start.RecordKey.RecordNumber, ChildLookup(index.Enumerate(new SearchQuery(null), cancellationToken)), 1, parsed.Depth);
                 break;
             case DirectVerb.Children:
-                var parent = parsed.Path is null ? index.Root(letter, cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
+                var parent = parsed.Path is null ? index.Root(new VolumeKey(letter), cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
                 WriteRows(parent.Children(cancellationToken).OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase), parsed);
                 break;
             case DirectVerb.Open:
@@ -60,8 +60,8 @@ partial class SampleHost
     // One mixed-row pass explains what the scan retained without materializing names or entry lists.
     void WriteInventory(FileIndex index, CancellationToken cancellationToken)
     {
-        var counts = new Dictionary<DriveKey, (long Files, long Directories, long Deleted)>();
-        var freshness = new Dictionary<DriveKey, (long UnknownSize, long UnknownLastWrite, long Hidden, DateTime Newest)>();
+        var counts = new Dictionary<RootKey, (long Files, long Directories, long Deleted)>();
+        var freshness = new Dictionary<RootKey, (long UnknownSize, long UnknownLastWrite, long Hidden, DateTime Newest)>();
         foreach (var row in index.EnumerateRows(new SearchQuery(null, IncludeDeleted: true), cancellationToken))
         {
             counts.TryGetValue(row.Drive, out var count);
@@ -91,9 +91,9 @@ partial class SampleHost
         {
             cancellationToken.ThrowIfCancellationRequested();
             counts.TryGetValue(drive.Drive, out var count);
-            _output.WriteLine($"{drive.Drive.Letter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
+            _output.WriteLine($"{drive.Drive}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
             freshness.TryGetValue(drive.Drive, out var seen);
-            _output.WriteLine($"{drive.Drive.Letter}: {seen.UnknownSize} files with unknown size, {seen.UnknownLastWrite} with unknown last-write time, {seen.Hidden} hidden, newest known last write {seen.Newest:u}");
+            _output.WriteLine($"{drive.Drive}: {seen.UnknownSize} files with unknown size, {seen.UnknownLastWrite} with unknown last-write time, {seen.Hidden} hidden, newest known last write {seen.Newest:u}");
         }
     }
 

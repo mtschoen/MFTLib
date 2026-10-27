@@ -16,10 +16,10 @@ static class MftDumpPaths
     const string RootPrefix = "dump:/";
 
     /// <summary>The virtual root of the dump assigned <paramref name="drive" />, in upper case.</summary>
-    internal static string CanonicalRoot(DriveKey drive) => RootPrefix + drive;
+    internal static string CanonicalRoot(VolumeKey drive) => RootPrefix + drive;
 
     /// <summary>True when <paramref name="root" /> is exactly the canonical root of <paramref name="drive" />.</summary>
-    internal static bool IsCanonicalRoot(string? root, DriveKey drive) =>
+    internal static bool IsCanonicalRoot(string? root, VolumeKey drive) =>
         string.Equals(root, CanonicalRoot(drive), StringComparison.Ordinal);
 
     /// <summary>

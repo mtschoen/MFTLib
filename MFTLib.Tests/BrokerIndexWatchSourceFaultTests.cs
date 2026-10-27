@@ -86,11 +86,11 @@ public class BrokerIndexWatchSourceFaultTests
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], token);
-        await index.StartWatchingAsync(['U'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
+        await index.StartWatchingAsync([new VolumeKey('U')], token);
         var runT = await broker.Watch('T').RunAsync(1);
         var runU = await broker.Watch('U').RunAsync(1);
-        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.WaitForCatchUpAsync([new VolumeKey('U')], token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The host closes T's pipe: its watch ends without a word.
         runT.End();
@@ -117,8 +117,8 @@ public class BrokerIndexWatchSourceFaultTests
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], token);
-        await index.StartWatchingAsync(['U'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
+        await index.StartWatchingAsync([new VolumeKey('U')], token);
         var runU = await broker.Watch('U').RunAsync(1);
 
         (await broker.Watch('T').RunAsync(1)).Fail(new IOException("journal wrapped"));

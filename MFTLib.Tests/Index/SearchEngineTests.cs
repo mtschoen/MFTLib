@@ -33,7 +33,7 @@ public class SearchEngineTests
         _builder.Complete(Newer);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock('T', 0, block)];
+        _snapshot = [new DriveBlock(new VolumeKey('T'), 0, block)];
     }
 
     [TestCleanup]
@@ -117,7 +117,7 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('S', 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('S'), 0, block)];
         try
         {
             var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0), TestContext.CancellationToken);
@@ -196,7 +196,7 @@ public class SearchEngineTests
         builder.AddRow("needle.txt", parent, RowFlags.InUse, 1, Newer, sequenceNumber: 0);
         builder.Complete(Newer);
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('Z', 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), 0, block)];
         try
         {
             var ancestor = FileEntry.Create(snapshot[0], root);
@@ -224,7 +224,7 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('Z', 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Z'), 0, block)];
         try
         {
             var ancestor = FileEntry.Create(snapshot[0], root);
@@ -252,7 +252,7 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock('Y', 0, block)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, block)];
         try
         {
             var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob), TestContext.CancellationToken);
@@ -299,7 +299,7 @@ public class SearchEngineTests
     public async Task Search_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
-        DriveBlock[] snapshot = [new DriveBlock('Y', 0, builder.OpenForWriting())];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('Y'), 0, builder.OpenForWriting())];
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);

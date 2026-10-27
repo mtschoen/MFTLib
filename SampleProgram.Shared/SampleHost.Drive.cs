@@ -11,7 +11,7 @@ partial class SampleHost
     static IndexedDrive ResolveDriveNative(string letter)
     {
         return OperatingSystem.IsWindows()
-            ? IndexedDrive.FromWindowsDrive(new DriveKey(letter[0]))
+            ? IndexedDrive.FromWindowsDrive(new VolumeKey(letter[0]))
             : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
     }
 }

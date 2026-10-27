@@ -29,7 +29,7 @@ static class JournalCheckpointCheck
     {
         int _liveReadsForbidden;
 
-        internal Func<DriveKey, JournalWindow?>? ObservationOverride
+        internal Func<VolumeKey, JournalWindow?>? ObservationOverride
         {
             get => Volatile.Read(ref field);
             set => Volatile.Write(ref field, value);
@@ -55,7 +55,7 @@ static class JournalCheckpointCheck
     ///     which one produced it rather than leaving a reader to infer it from context that is
     ///     gone by the time the report is read.
     /// </param>
-    public static JournalCheckpointLoss? Check(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
+    public static JournalCheckpointLoss? Check(VolumeKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
         => CheckObservation(drive, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
 
@@ -64,11 +64,11 @@ static class JournalCheckpointCheck
     ///     precedence, then any unequal next USN requires a rescan. An unavailable or incoherent
     ///     observation reports nothing, just as the resumability check does.
     /// </summary>
-    internal static JournalCheckpointLoss? CheckUnmoved(DriveKey drive, ulong checkpointJournalIdentifier,
+    internal static JournalCheckpointLoss? CheckUnmoved(VolumeKey drive, ulong checkpointJournalIdentifier,
         long checkpointUsn, JournalCheckpointLossDetection detectedDuring)
         => CheckObservation(drive, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
 
-    static JournalCheckpointLoss? CheckObservation(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
+    static JournalCheckpointLoss? CheckObservation(VolumeKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
         if (ReadJournal(drive) is not { } observation)
@@ -140,7 +140,7 @@ static class JournalCheckpointCheck
     ///     Uses an installed observation override first, otherwise reports nothing while
     ///     automatic live reads are forbidden, otherwise reads the live journal.
     /// </summary>
-    static JournalWindow? ReadJournal(DriveKey drive)
+    static JournalWindow? ReadJournal(VolumeKey drive)
     {
         if (Hooks.ObservationOverride is { } journalOverride)
         {
@@ -161,14 +161,14 @@ static class JournalCheckpointCheck
     ///     The real unelevated read, reachable from a test that deliberately wants a real
     ///     volume even while <see cref="ForbidLiveJournalReads" /> is active.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(DriveKey drive) =>
+    internal static JournalWindow? ReadLiveJournal(VolumeKey drive) =>
         ReadLiveJournal(drive, OperatingSystem.IsWindows());
 
     /// <summary>
-    ///     The read behind <see cref="ReadLiveJournal(DriveKey)" />, given whether the host is Windows,
+    ///     The read behind <see cref="ReadLiveJournal(VolumeKey)" />, given whether the host is Windows,
     ///     so the answer off Windows is tested on every platform.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(DriveKey drive, bool isWindows)
+    internal static JournalWindow? ReadLiveJournal(VolumeKey drive, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {
@@ -199,7 +199,7 @@ static class JournalCheckpointCheck
     ///     Stops this process's automatic checkpoint observations reading any real volume's journal for the rest of its life, so a
     ///     warm start in a test decides the same way whatever drives the host happens
     ///     to have. One way and idempotent, like the cache-directory guard; a test that wants
-    ///     a real volume installs an override over <see cref="ReadLiveJournal(DriveKey)" />.
+    ///     a real volume installs an override over <see cref="ReadLiveJournal(VolumeKey)" />.
     /// </summary>
     internal static void ForbidLiveJournalReads()
     {

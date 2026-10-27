@@ -188,7 +188,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         Assert.Contains("C: 2 live files, 2 live directories, 1 retained deleted rows", output.ToString());
     }
@@ -201,7 +201,7 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run([.. Dump("open"), "--path", $"{DumpRoot}/documents/Notes.txt"]);
 
         Assert.AreEqual(1, result);
-        var description = $"{DumpRoot}/documents/Notes.txt ({new IndexRecordKey('D', 7, ProducerKind.Mft)})";
+        var description = $"{DumpRoot}/documents/Notes.txt ({new IndexRecordKey(new VolumeKey('D'), 7, ProducerKind.Mft)})";
         Assert.Contains(line => line.StartsWith($"{description}: record 7 on D (Mft), ", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.AreEqual($"Error: InvalidOperationException: {description}: Files in an MFT dump cannot be opened through the index.", lines.Single(line => line.StartsWith("Error: ", StringComparison.Ordinal)));
         Assert.DoesNotContain(line => line.StartsWith("  caused by ", StringComparison.Ordinal), lines);
@@ -231,10 +231,10 @@ public sealed class DirectHostTests : IDisposable
             new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
-        await host.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, source, SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
-        Assert.Contains($"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ", report);
+        Assert.Contains($"{path} ({new IndexRecordKey(new VolumeKey('C'), 7, ProducerKind.Mft)}): record ", report);
         Assert.Contains($"modified {expectedLastWriteTime}, parent ", report);
         Assert.Contains("3 bytes, first 3: 010203", report);
     }
@@ -300,7 +300,7 @@ public sealed class DirectHostTests : IDisposable
         {
             Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt", "--include-freed"], out var parsed, out var error), error);
             seen = parsed;
-            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None).GetAwaiter().GetResult();
+            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         });
 
@@ -324,7 +324,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
         Assert.DoesNotContain("deleted=", report, report);
@@ -348,7 +348,7 @@ public sealed class DirectHostTests : IDisposable
             new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
         ]));
 
-        await elevatedHost.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await elevatedHost.RunSourceAsync(parsed!, source, SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
@@ -378,7 +378,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         Assert.Contains("a.txt: 2 entries", output.ToString());
     }
@@ -391,7 +391,7 @@ public sealed class DirectHostTests : IDisposable
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('Q', Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('Q'), Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
         Assert.Contains("The drive is offline; nothing was scanned.", exception.Message);
     }
 
@@ -404,7 +404,7 @@ public sealed class DirectHostTests : IDisposable
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, source, SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None));
         Assert.Contains("volume unreadable", exception.Message);
     }
 

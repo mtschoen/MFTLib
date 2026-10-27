@@ -5,13 +5,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" /> exercised against a real, live
+///     <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{RootKey})" /> exercised against a real, live
 ///     <see cref="FileIndex" /> owner rather than hand-written block files: MFTLib issue 234
 ///     requires that a clear never deletes, tears, or unlinks a block another index actually
 ///     owns, whether that ownership is settled before the clear runs, still in flight, or racing
 ///     a concurrent open. This class also installs <see cref="CacheDirectory.Hooks" />,
 ///     a process-wide test seam with no synchronization of its own, so it must not run
-///     concurrently with any other test that calls <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" />.
+///     concurrently with any other test that calls <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{RootKey})" />.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -36,11 +36,11 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
             ScanProgress = progress
         };
 
-    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
 
     static string CreateDecoyBlock(string cacheDirectory, char letter)
     {
-        var path = Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(letter, 1));
+        var path = Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(new VolumeKey(letter), 1));
         File.WriteAllText(path, "deliberately invalid decoy block content, never opened by a real index");
         return path;
     }
@@ -93,7 +93,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
 
         // Parks mid-rescan: the canonical file has already been renamed aside and the
         // replacement is being written back to the canonical path while the owner lock is held.
-        var rescan = owner.RescanAsync(['T'], CancellationToken.None);
+        var rescan = owner.RescanAsync([new VolumeKey('T')], CancellationToken.None);
         await progress.Reported;
 
         try
@@ -120,7 +120,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
 
     /// <summary>
     ///     Parks the first call to <see cref="CacheDirectory.Hooks" /> until the
-    ///     test releases it, so <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" /> can be driven from a
+    ///     test releases it, so <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{RootKey})" /> can be driven from a
     ///     background task while it still holds the candidate block's owner lock and the file has
     ///     not been deleted yet, at a deterministic point a concurrent <see cref="FileIndex.OpenAsync" />
     ///     can race against.
@@ -172,7 +172,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
             var status = fallbackOpen.Drives.Single();
             Assert.AreEqual(DriveState.Ready, status.State);
             Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
-            Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal('T', out var ordinal));
+            Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal(new VolumeKey('T'), out var ordinal));
             privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
             Assert.Contains("mftlib-private-", privateBlockPath);
             Assert.AreNotEqual(CanonicalPath, privateBlockPath);
@@ -194,7 +194,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         var freshStatus = freshOpen.Drives.Single();
         Assert.AreEqual(DriveState.Ready, freshStatus.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, freshStatus.Block!.Origin);
-        Assert.IsTrue(freshOpen.TryGetDriveOrdinal('T', out var freshOrdinal));
+        Assert.IsTrue(freshOpen.TryGetDriveOrdinal(new VolumeKey('T'), out var freshOrdinal));
         Assert.AreEqual(CanonicalPath, freshOpen.CurrentSnapshot[freshOrdinal].Block.Path,
             "once the clear has released the lock, a fresh open takes the slot normally");
     }

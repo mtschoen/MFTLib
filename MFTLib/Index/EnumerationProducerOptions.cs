@@ -11,7 +11,7 @@ sealed record EnumerationProducerOptions
     public required string RootDirectory { get; init; }
 
     /// <summary>Drive letter reported by entries produced by this enumeration.</summary>
-    public required DriveKey Drive { get; init; }
+    public required RootKey Drive { get; init; }
 
     /// <summary>
     ///     Null writes every entry. Empty writes directories only. A nonempty set also writes files whose

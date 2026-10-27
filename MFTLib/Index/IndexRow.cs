@@ -22,7 +22,7 @@ public readonly ref struct IndexRow
     public ReadOnlySpan<char> Name { get; }
 
     /// <summary>The configured logical drive key, including for virtual dump drives.</summary>
-    public DriveKey Drive => _driveBlock.Drive;
+    public RootKey Drive => _driveBlock.Drive;
 
     /// <summary>
     ///     The file length in bytes, or zero for directories and unknown sizes. This is the length the last

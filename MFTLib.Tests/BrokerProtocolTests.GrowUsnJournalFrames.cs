@@ -17,7 +17,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, frame.Kind);
         Assert.AreEqual(12u, frame.RequestId);
-        Assert.AreEqual(new DriveKey('C'), frame.RequireDrive());
+        Assert.AreEqual(new VolumeKey('C'), frame.RequireDrive());
         Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
         Assert.IsEmpty(frame.Entries);

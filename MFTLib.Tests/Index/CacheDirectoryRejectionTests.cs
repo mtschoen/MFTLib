@@ -41,13 +41,13 @@ public sealed class CacheDirectoryRejectionTests : IDisposable
                 var statuses = operation == "inspect-default-drives"
                     ? CacheDirectory.InspectCached(_directory, rejectedFile: rejectedFile)
                     : CacheDirectory.InspectCached(_directory,
-                        drives?.Select(letter => new DriveKey(letter)), rejectedFile);
+                        drives?.Select(letter => (RootKey)new VolumeKey(letter)), rejectedFile);
                 Assert.IsTrue(statuses.All(status =>
                     status.Availability == CachedBlockAvailability.Available));
                 return [.. statuses.Select(status => status.File.Path)];
             case "delete":
                 var results = CacheDirectory.DeleteCached(_directory,
-                    drives?.Select(letter => new DriveKey(letter)), rejectedFile);
+                    drives?.Select(letter => (RootKey)new VolumeKey(letter)), rejectedFile);
                 Assert.IsTrue(results.All(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
                 return [.. results.Select(result => result.File.Path)];
             default:

@@ -99,7 +99,7 @@ public class BrokerProcessLivenessTests
         await healthy.FinishAsync();
         var result = await healthy.Scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
-        Assert.AreEqual(new DriveKey('D'), result.Drive);
+        Assert.AreEqual(new VolumeKey('D'), result.Drive);
     }
 
     [TestMethod]

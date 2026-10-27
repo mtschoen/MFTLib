@@ -4,5 +4,5 @@ namespace MFTLib.NativeInterop;
 
 static class MFTUtilities
 {
-    public static string GetVolumePath(DriveKey drive) => @$"\\.\{drive.Letter}:";
+    public static string GetVolumePath(VolumeKey drive) => @$"\\.\{drive.Letter}:";
 }

@@ -49,7 +49,7 @@ public sealed class FreedRowsIndexTests : IndexTreeTestBase
     {
         await using var index = await OpenAsync(includeFreed: true);
         var docs = index.Find(Path.Combine(TreeRoot, "docs"), TestContext.CancellationToken)!.Value;
-        var root = index.Root('T', TestContext.CancellationToken);
+        var root = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(["keep.txt"], [.. docs.Children(TestContext.CancellationToken).Select(child => child.Name)]);
         Assert.DoesNotContain("orphan.txt", root.Children(TestContext.CancellationToken).Select(child => child.Name).ToArray());
@@ -63,7 +63,7 @@ public sealed class FreedRowsIndexTests : IndexTreeTestBase
     {
         await using var index = await OpenAsync(includeFreed: true);
         var docs = index.Find(Path.Combine(TreeRoot, "docs"), TestContext.CancellationToken)!.Value;
-        var root = index.Root('T', TestContext.CancellationToken);
+        var root = index.Root(new VolumeKey('T'), TestContext.CancellationToken);
 
         string[] Names(FileEntry? under) => [.. index
             .Search(new SearchQuery(".txt", Subtree: under, IncludeDeleted: true), TestContext.CancellationToken).Select(entry => entry.Name)

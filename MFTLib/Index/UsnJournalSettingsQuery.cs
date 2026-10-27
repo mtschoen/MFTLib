@@ -14,12 +14,12 @@ static class UsnJournalSettingsQuery
     /// <summary>Process-global test dependencies for querying USN journal settings.</summary>
     internal sealed class QueryDependencies
     {
-        internal Func<DriveKey, UsnJournalSettings>? _queryOverride;
+        internal Func<VolumeKey, UsnJournalSettings>? _queryOverride;
 
         internal void ResetToDefaults() => _queryOverride = null;
     }
 
-    public static UsnJournalSettings Query(DriveKey drive)
+    public static UsnJournalSettings Query(VolumeKey drive)
     {
         if (Dependencies._queryOverride is { } queryOverride)
         {
@@ -30,11 +30,11 @@ static class UsnJournalSettingsQuery
     }
 
     /// <summary>
-    ///     The real query behind <see cref="Query(DriveKey)" />, given whether the host is Windows, so
+    ///     The real query behind <see cref="Query(VolumeKey)" />, given whether the host is Windows, so
     ///     the refusal off Windows is tested on every platform. Depends only on its arguments and
-    ///     the platform APIs; the test override is handled by <see cref="Query(DriveKey)" />.
+    ///     the platform APIs; the test override is handled by <see cref="Query(VolumeKey)" />.
     /// </summary>
-    internal static UsnJournalSettings Query(DriveKey drive, bool isWindows)
+    internal static UsnJournalSettings Query(VolumeKey drive, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {

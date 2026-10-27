@@ -189,7 +189,7 @@ public partial class BrokerProcessTests
 
         public ThrowingLifetime Lifetime { get; } = new();
 
-        public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(DriveKey drive,
+        public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(VolumeKey drive,
             BlockFileCreateOptions options)
         {
             var (sectionName, block, _) = Inner.Create(drive, options);

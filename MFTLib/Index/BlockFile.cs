@@ -60,7 +60,7 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     kept; the offsets are derived from the capacities, and the mapped header is never read.
     /// </summary>
     BlockFile(string path, long length, MemoryMappedFile mappedFile,
-        MemoryMappedViewAccessor view, BlockHeader layout)
+        MemoryMappedViewAccessor view, BlockHeader layout, RootKey root)
     {
         if (BlockLayout.TotalBlockBytes(layout.SlotCapacity, layout.NamePoolCapacity) > length ||
             layout.RowCount > layout.SlotCapacity || layout.NamePoolUsed > layout.NamePoolCapacity)
@@ -69,6 +69,7 @@ sealed unsafe partial class BlockFile : IDisposable
         }
 
         Path = path;
+        Root = root;
         Length = length;
         _mappedFile = mappedFile;
         _view = view;
@@ -223,7 +224,7 @@ sealed unsafe partial class BlockFile : IDisposable
         var header = InitialHeader(options);
         try
         {
-            block = new BlockFile(options.Path, length, mappedFile, view, header);
+            block = new BlockFile(options.Path, length, mappedFile, view, header, options.Root.Validated());
         }
         catch
         {
@@ -235,6 +236,7 @@ sealed unsafe partial class BlockFile : IDisposable
         }
 
         block.Header = header;
+        block.WriteRootKey(options.Root);
         return block;
     }
 
@@ -246,7 +248,7 @@ sealed unsafe partial class BlockFile : IDisposable
     /// </summary>
     internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length,
         BlockHeader layout)
-        : this(string.Empty, length, mappedFile, view, layout)
+        : this(string.Empty, length, mappedFile, view, layout, root: default)
     {
     }
 
@@ -345,9 +347,15 @@ sealed unsafe partial class BlockFile : IDisposable
                 fileOptions: FileOptions.None);
             view.Read(0, out BlockHeader header);
             validation = BlockHeader.Validate(in header, expectedVolumeSerial, length);
+            RootKey storedRoot = default;
+            if (validation is null && !TryReadRootKey(view, out storedRoot))
+            {
+                validation = BlockValidationResult.InconsistentRegions;
+            }
+
             if (validation is null)
             {
-                block = new BlockFile(path, length, mappedFile, view, header);
+                block = new BlockFile(path, length, mappedFile, view, header, storedRoot);
                 view = null;
                 mappedFile = null;
                 validation = block.ValidateNameDescriptors();

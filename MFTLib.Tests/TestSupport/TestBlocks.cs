@@ -22,6 +22,7 @@ static class TestBlocks
         => new()
         {
             Path = path ?? Path.Combine(Path.GetTempPath(), $"mftlib-block-{Guid.NewGuid():N}.mlix"),
+            Root = SeededBlocks.RootFor(path),
             VolumeSerial = volumeSerial,
             ProducerKind = producer,
             SlotCapacity = slotCapacity,
@@ -37,7 +38,7 @@ static class TestBlocks
         ProducerKind producer = ProducerKind.Enumeration,
         Action<BlockFile>? mutate = null)
     {
-        var path = Path.Combine(directory, CacheDirectory.BlockFileName(letter, volumeSerial));
+        var path = Path.Combine(directory, CacheDirectory.BlockFileName(new VolumeKey(letter), volumeSerial));
         using var block = Create(path, producer, slotCapacity: 8, namePoolCapacity: 4096,
             volumeSerial: volumeSerial, rootRow: producer == ProducerKind.Mft ? 5u : 0u);
         var writer = new BlockWriter(block);
@@ -55,7 +56,7 @@ static class TestBlocks
 
     public static string WriteInvalidCache(string directory, char letter, uint volumeSerial = 1)
     {
-        var path = Path.Combine(directory, CacheDirectory.BlockFileName(letter, volumeSerial));
+        var path = Path.Combine(directory, CacheDirectory.BlockFileName(new VolumeKey(letter), volumeSerial));
         File.WriteAllText(path, "deliberately invalid block content");
         return path;
     }

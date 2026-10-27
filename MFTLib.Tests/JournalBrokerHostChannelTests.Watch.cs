@@ -14,7 +14,7 @@ public partial class JournalBrokerHostChannelTests
     public async Task WatchChannel_StreamsBatchesAndCaughtUp_NoDriveFields()
     {
         var since = new UsnJournalCursor(7, 100);
-        DriveKey? watchedDrive = null;
+        VolumeKey? watchedDrive = null;
         UsnJournalCursor? watchedSince = null;
         var host = BrokerHostFactory.Create(new()
         {
@@ -28,7 +28,7 @@ public partial class JournalBrokerHostChannelTests
         var pipe = await harness.OpenWatchChannelAsync('C', since);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(new DriveKey('C'), watchedDrive);
+        Assert.AreEqual(new VolumeKey('C'), watchedDrive);
         Assert.AreEqual(since, watchedSince);
         Assert.AreSequenceEqual(
             [BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp], [.. frames.Select(frame => frame.Kind)]);
@@ -38,7 +38,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.IsTrue(frames.All(frame => frame.Drive == null && frame.RequestId == 0));
         return;
 
-        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(DriveKey drive,
+        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(VolumeKey drive,
             UsnJournalCursor from, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -71,7 +71,7 @@ public partial class JournalBrokerHostChannelTests
         return;
 
         static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> FailingWatch(
-            DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+            VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await Task.Yield();
@@ -87,7 +87,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task WatchChannel_ClientClosesPipe_EndsQuietly_OtherChannelUnaffected()
     {
-        var sources = new Dictionary<DriveKey, ScriptedWatch>
+        var sources = new Dictionary<VolumeKey, ScriptedWatch>
         {
             ['C'] = new(),
             ['D'] = new()

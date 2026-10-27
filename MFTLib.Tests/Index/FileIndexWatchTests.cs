@@ -22,7 +22,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
 
         // Seed a warm-start MFT block for drive 'T' so journal mutations are supported on it.
         Directory.CreateDirectory(CacheDirectoryPath);
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         using (var block = TestBlocks.Create(blockPath, ProducerKind.Mft, 256, 4096))
         {
             var writer = new BlockWriter(block);
@@ -36,9 +36,9 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
         {
             Drives =
             [
-                new IndexedDrive('T', TreeRoot, 0x0BADF00D),
-                new IndexedDrive('E', EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
-                new IndexedDrive('Z', Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration)
+                SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
+                SyntheticIndexedDrive.Create(new VolumeKey('E'), EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
+                SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration)
             ],
             CacheDirectory = CacheDirectoryPath,
             MftSource = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
@@ -94,7 +94,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
         Assert.IsFalse(_index!.Drives[1].Watch.IsSupported);
         Assert.IsFalse(_index!.Drives[0].Watch.IsSupported, "no source offers a watch source");
         await DriveResultAssertions.NotApplicableAsync(
-            () => _index!.StartWatchingAsync(['T'], CancellationToken.None));
+            () => _index!.StartWatchingAsync([new VolumeKey('T')], CancellationToken.None));
     }
 
     [TestMethod]
@@ -104,13 +104,13 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('E', TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('E'), TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration)],
             CacheDirectory = Path.Combine(CacheDirectoryPath, "enumeration-only"),
             MftSource = TestMftSources.WatchOnly(source)
         }, CancellationToken.None);
 
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StartWatchingAsync(['E'], CancellationToken.None));
+            () => index.StartWatchingAsync([new VolumeKey('E')], CancellationToken.None));
 
         Assert.IsFalse(source.WasCalled);
     }
@@ -156,7 +156,7 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
         Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
         Assert.AreEqual("injected.txt", observed[0].Entry.Name);
         Assert.AreEqual(observed[0], applied[0]);
-        var root = _index!.Root('T', TestContext.CancellationToken);
+        var root = _index!.Root(new VolumeKey('T'), TestContext.CancellationToken);
         Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(100L, root.DriveBlock.Block.Header.UsnNextUsn);
         Assert.HasCount(1, _index!.Search(new SearchQuery("injected"), TestContext.CancellationToken));
@@ -285,9 +285,9 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
         Assert.IsTrue(_index!.Drives[0].Block!.IsCapacityExhausted);
         Assert.IsNotNull(_index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
 
-        await _index!.RescanAsync(['T'], CancellationToken.None);
+        await _index!.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
-        var replaced = _index!.Drives.Single(drive => drive.Drive == 'T');
+        var replaced = _index!.Drives.Single(drive => drive.Drive == new VolumeKey('T'));
         Assert.AreEqual(DriveState.Ready, replaced.State);
         Assert.IsFalse(replaced.Block!.IsCapacityExhausted);
         Assert.IsNotNull(_index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));

@@ -7,21 +7,21 @@ sealed class LiveVolumeAccess : IVolumeAccess
     internal static LiveVolumeAccess Instance { get; } = new();
     LiveVolumeAccess() { }
 
-    public UsnJournalCursor QueryCursor(DriveKey drive) => LiveVolumeSources.QueryCursor(drive);
+    public UsnJournalCursor QueryCursor(VolumeKey drive) => LiveVolumeSources.QueryCursor(drive);
     public IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(
-        DriveKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+        VolumeKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
         LiveVolumeSources.ScanDriveRecordBatches(drive, parseThreads, reporting,
             scanOptions, recordsOmitted, cancellationToken);
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
-        DriveKey drive, UsnJournalCursor since, int maximumBufferReads) =>
+        VolumeKey drive, UsnJournalCursor since, int maximumBufferReads) =>
         LiveVolumeSources.ReadJournal(drive, since, maximumBufferReads);
     public IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchDrive(
-        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
         CancellationToken cancellationToken) =>
         LiveVolumeSources.WatchAndDisposeAsync(drive, since, operation, cancellationToken);
-    public NtfsVolumeInformation QueryVolumeInformation(DriveKey drive) =>
+    public NtfsVolumeInformation QueryVolumeInformation(VolumeKey drive) =>
         LiveVolumeSources.QueryVolumeInfo(drive);
-    public UsnJournalSettings GrowUsnJournal(DriveKey drive, long maximumSize, long allocationDelta) =>
+    public UsnJournalSettings GrowUsnJournal(VolumeKey drive, long maximumSize, long allocationDelta) =>
         LiveVolumeSources.GrowUsnJournal(drive, maximumSize, allocationDelta);
 }

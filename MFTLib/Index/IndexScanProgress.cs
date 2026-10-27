@@ -18,7 +18,7 @@ public sealed record IndexScanProgress
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     ///     Finished samples carry the final block row count on success, otherwise zero.
     /// </param>
-    internal IndexScanProgress(DriveKey drive, IndexScanPhase phase, uint rowsWritten)
+    internal IndexScanProgress(RootKey drive, IndexScanPhase phase, uint rowsWritten)
     {
         Drive = drive;
         Phase = phase;
@@ -26,7 +26,7 @@ public sealed record IndexScanProgress
     }
 
     /// <summary>Drive whose block is being produced.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public RootKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>Current stage of the scan.</summary>
     public IndexScanPhase Phase { get; init; }

@@ -29,7 +29,7 @@ sealed class BrokerDiagnosticsLogFilter
     readonly List<string> _logPaths = [];
 
     // Watched drive -> references to drop.
-    readonly Dictionary<DriveKey, HashSet<ulong>> _referencesByDrive = [];
+    readonly Dictionary<VolumeKey, HashSet<ulong>> _referencesByDrive = [];
 
     internal BrokerDiagnosticsLogFilter(string ownLogPath, string? clientLogPath,
         Func<string, ulong?>? resolveFileReference = null)
@@ -47,7 +47,7 @@ sealed class BrokerDiagnosticsLogFilter
         }
     }
 
-    internal UsnJournalEntry[] Filter(DriveKey drive, UsnJournalEntry[] entries)
+    internal UsnJournalEntry[] Filter(VolumeKey drive, UsnJournalEntry[] entries)
     {
         ResolvePathsFor(drive);
         if (entries.Length == 0 ||
@@ -86,7 +86,7 @@ sealed class BrokerDiagnosticsLogFilter
         return kept;
     }
 
-    void ResolvePathsFor(DriveKey drive)
+    void ResolvePathsFor(VolumeKey drive)
     {
         foreach (var path in _logPaths)
         {
@@ -135,10 +135,10 @@ sealed class BrokerDiagnosticsLogFilter
 
     // Extract the bare drive from a rooted path ("C:\...", "C:...", or extended "\\?\C:\...");
     // anything else (UNC, non-Windows root) never matches a watched drive and stays pending.
-    internal static bool TryGetDrive(string path, out DriveKey drive) =>
+    internal static bool TryGetDrive(string path, out VolumeKey drive) =>
         TryGetDrive(path, OperatingSystem.IsWindows(), out drive);
 
-    internal static bool TryGetDrive(string path, bool isWindows, out DriveKey drive)
+    internal static bool TryGetDrive(string path, bool isWindows, out VolumeKey drive)
     {
         drive = default;
         if (string.IsNullOrWhiteSpace(path))
@@ -149,7 +149,7 @@ sealed class BrokerDiagnosticsLogFilter
         // Standard Windows drive-letter path: "C:\...", "C:/...", "C:file"
         if (path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]))
         {
-            drive = new DriveKey(path[0]);
+            drive = new VolumeKey(path[0]);
             return true;
         }
 
@@ -163,7 +163,7 @@ sealed class BrokerDiagnosticsLogFilter
             path[5] == ':' &&
             char.IsAsciiLetter(path[4]))
         {
-            drive = new DriveKey(path[4]);
+            drive = new VolumeKey(path[4]);
             return true;
         }
 
@@ -174,7 +174,7 @@ sealed class BrokerDiagnosticsLogFilter
                 var fullPath = Path.GetFullPath(path);
                 if (fullPath.Length >= 2 && fullPath[1] == ':' && char.IsAsciiLetter(fullPath[0]))
                 {
-                    drive = new DriveKey(fullPath[0]);
+                    drive = new VolumeKey(fullPath[0]);
                     return true;
                 }
             }

@@ -167,7 +167,7 @@ public sealed partial class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = TreePath("absent"),
-            Drive = 'T'
+            Drive = new VolumeKey('T')
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);

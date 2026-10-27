@@ -15,10 +15,10 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
 
         Assert.IsFalse(driveBlock.IsReleased);
-        Assert.AreEqual('T', driveBlock.Drive);
+        Assert.AreEqual(new VolumeKey('T'), driveBlock.Drive);
         Assert.AreEqual(ProducerKind.Enumeration, driveBlock.ProducerKind);
 
         Assert.IsTrue(driveBlock.ReleaseState.ReleaseUnborrowed());
@@ -29,7 +29,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
 
         Assert.IsTrue(driveBlock.ReleaseState.ReleaseUnborrowed());
         Assert.IsFalse(driveBlock.ReleaseState.ReleaseUnborrowed());
@@ -42,7 +42,7 @@ public class DriveBlockTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     static DriveBlockRelease CreateUnrootedDriveBlock(BlockFile block, Action? releaseStarted = null)
     {
-        var driveBlock = new DriveBlock('T', 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
         driveBlock.ReleaseState.Hooks._releaseStarted = releaseStarted;
         return driveBlock.ReleaseState;
     }
@@ -85,7 +85,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
@@ -101,7 +101,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
@@ -123,7 +123,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
+        var driveBlock = new DriveBlock(new VolumeKey('T'), 0, block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);

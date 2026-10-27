@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -11,27 +10,15 @@ namespace MFTLib.Index;
 ///     SYSTEM only, inheritance blocked so no Administrators or Users entry is inherited. On
 ///     platforms without access-control lists the equivalent is owner-only Unix permissions.
 /// </summary>
-public static class CacheDirectory
+public static partial class CacheDirectory
 {
-    /// <summary>
-    ///     Produces the canonical cache filename for a volume, using an uppercase drive letter and
-    ///     eight hexadecimal serial-number digits.
-    /// </summary>
-    /// <param name="drive">Drive for the cached volume.</param>
-    /// <param name="volumeSerial">NTFS volume serial number encoded in the filename.</param>
-    /// <returns>The filename without a directory component.</returns>
-    internal static string BlockFileName(DriveKey drive, uint volumeSerial)
-    {
-        return $"{drive}-{volumeSerial:X8}{BlockFileExtension}";
-    }
-
     /// <summary>
     ///     The cached drives in <paramref name="cacheDirectoryPath" />, one record per file whose
     ///     name this class wrote. The listing is eager rather than lazy so a missing directory is
     ///     an empty result at the call rather than a deferred throw from the caller's own
-    ///     <c>foreach</c>. Nothing is opened or validated here; validation stays in the open path,
-    ///     which already reports per-drive failures, and every field on the record comes from the
-    ///     directory entry the walk already read, so no per-file stat can fail mid-listing.
+    ///     <c>foreach</c>. Nothing is validated here, and only a directory-shaped file is opened (to read its
+    ///     stored key); validation stays in the open path, which already reports per-drive failures, and
+    ///     every other field on the record comes from the directory entry the walk already read.
     ///     Rejected filenames are silently excluded; use the callback overload to observe them.
     /// </summary>
     internal static IReadOnlyList<CachedBlockFile> EnumerateCached(string cacheDirectoryPath)
@@ -41,9 +28,9 @@ public static class CacheDirectory
     ///     The cached drives in <paramref name="cacheDirectoryPath" />, one record per file whose
     ///     name this class wrote. The listing is eager rather than lazy so a missing directory is
     ///     an empty result at the call rather than a deferred throw from the caller's own
-    ///     <c>foreach</c>. Nothing is opened or validated here; validation stays in the open path,
-    ///     which already reports per-drive failures, and every field on the record comes from the
-    ///     directory entry the walk already read, so no per-file stat can fail mid-listing.
+    ///     <c>foreach</c>. Nothing is validated here, and only a directory-shaped file is opened (to read its
+    ///     stored key); validation stays in the open path, which already reports per-drive failures, and
+    ///     every other field on the record comes from the directory entry the walk already read.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to enumerate.</param>
     /// <param name="rejectedFile">
@@ -57,33 +44,69 @@ public static class CacheDirectory
     internal static IReadOnlyList<CachedBlockFile> EnumerateCached(
         string cacheDirectoryPath, Action<CachedBlockRejection>? rejectedFile)
     {
-        ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var directory = new DirectoryInfo(cacheDirectoryPath);
-        if (!directory.Exists)
-        {
-            return [];
-        }
-
         var cached = new List<CachedBlockFile>();
-        foreach (var file in directory.EnumerateFiles("*" + BlockFileExtension))
+        foreach (var candidate in EnumerateCandidates(cacheDirectoryPath, rejectedFile, null))
         {
-            if (!TryParseBlockFileName(file.Name, out var drive, out var volumeSerial))
+            var root = candidate.Root ?? ReadStoredRoot(candidate);
+            if (root is null)
             {
-                rejectedFile?.Invoke(new CachedBlockRejection(file.FullName, "Invalid block filename."));
+                rejectedFile?.Invoke(new CachedBlockRejection(candidate.Path, "Unreadable block root key."));
                 continue;
             }
 
-            cached.Add(new CachedBlockFile(drive, volumeSerial, file.FullName, file.Length,
-                file.LastWriteTimeUtc));
+            cached.Add(candidate.ToFile(root.Value));
         }
 
         return cached;
     }
 
     /// <summary>
+    ///     The files whose name this class wrote, restricted to the stems of <paramref name="selected" /> when it is
+    ///     not null. Nothing is opened: a candidate's root is the volume its name carries, or the selected root whose
+    ///     stem its name carries, and is null only for an unselected directory-shaped name, whose key page is read
+    ///     only after the caller holds the slot lock.
+    /// </summary>
+    static List<CacheCandidate> EnumerateCandidates(string cacheDirectoryPath,
+        Action<CachedBlockRejection>? rejectedFile, Dictionary<string, RootKey>? selected)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
+        var directory = new DirectoryInfo(cacheDirectoryPath);
+        var candidates = new List<CacheCandidate>();
+        if (!directory.Exists)
+        {
+            return candidates;
+        }
+
+        foreach (var file in directory.EnumerateFiles("*" + BlockFileExtension))
+        {
+            if (!TryParseBlockFileName(file.Name, out var parsed))
+            {
+                rejectedFile?.Invoke(new CachedBlockRejection(file.FullName, "Invalid block filename."));
+                continue;
+            }
+
+            RootKey? root = parsed.Volume;
+            if (selected is not null)
+            {
+                if (!selected.TryGetValue(parsed.Stem, out var selectedRoot))
+                {
+                    continue;
+                }
+
+                root ??= selectedRoot;
+            }
+
+            candidates.Add(new CacheCandidate(parsed, file.FullName, file.Length, file.LastWriteTimeUtc, root));
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
     ///     Inspects selected cached blocks while holding each block's slot lock. A missing
     ///     directory returns an empty list. A lock that is held or cannot be opened reports
-    ///     InUse without reading any block bytes; an unreadable or rejected block reports
+    ///     InUse without reading or validating block bytes (only an unselected directory-shaped name, which
+    ///     carries just a hash, has its stored key read to identify it); an unreadable or rejected block reports
     ///     Invalid using the reason the block failed validation.
     ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
     ///     The block is disposed before its lock is released, after the root name has been
@@ -105,34 +128,77 @@ public static class CacheDirectory
     /// </param>
     /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="drives" /> holds the default key.</exception>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null,
+        string cacheDirectoryPath, IEnumerable<RootKey>? drives = null,
         Action<CachedBlockRejection>? rejectedFile = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var selected = ValidateSelection(drives);
+        var selected = SelectedRoots(drives);
         var statuses = new List<CachedBlockStatus>();
-        foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
+        foreach (var candidate in EnumerateCandidates(cacheDirectoryPath, rejectedFile, selected))
         {
-            if (selected?.Contains(file.Drive) == false)
+            using var owner = BlockOwnerLock.TryAcquire(candidate.Path);
+            if (owner is null)
             {
+                if (IdentifyContended(candidate, rejectedFile) is { } contended)
+                {
+                    statuses.Add(new CachedBlockStatus(contended, CachedBlockAvailability.InUse, null, null, null));
+                }
+
                 continue;
             }
 
-            statuses.Add(InspectCachedFile(file));
+            if (IdentifyHeld(candidate, rejectedFile) is { } file)
+            {
+                statuses.Add(InspectHeldFile(file));
+            }
         }
 
         return statuses;
     }
 
-    static CachedBlockStatus InspectCachedFile(CachedBlockFile file)
+    /// <summary>
+    ///     Names a candidate whose slot lock another owner holds. A selected or volume-shaped candidate already has its
+    ///     root. An unselected directory-shaped one has only a hash, so its key page is read to say which root is in
+    ///     use; when that cannot be read the file is reported as rejected, since it has no identity to report.
+    /// </summary>
+    static CachedBlockFile? IdentifyContended(CacheCandidate candidate, Action<CachedBlockRejection>? rejectedFile)
     {
-        using var owner = BlockOwnerLock.TryAcquire(file.Path);
-        if (owner is null)
+        var root = candidate.Root ?? ReadStoredRoot(candidate);
+        if (root is null)
         {
-            return new CachedBlockStatus(file, CachedBlockAvailability.InUse, null, null, null);
+            rejectedFile?.Invoke(new CachedBlockRejection(candidate.Path, "Unreadable block root key."));
+            return null;
         }
 
-        using var block = BlockFile.Open(file.Path, file.VolumeSerial, out var validation);
+        return candidate.ToFile(root.Value);
+    }
+
+    /// <summary>
+    ///     Names a candidate whose slot lock this call holds: the stored key when it reads and derives the file name,
+    ///     else the selected or volume root; an unselected directory-shaped file with no readable key is rejected.
+    /// </summary>
+    static CachedBlockFile? IdentifyHeld(CacheCandidate candidate, Action<CachedBlockRejection>? rejectedFile)
+    {
+        var root = (candidate.Parsed.Volume is null ? ReadStoredRoot(candidate) : null) ?? candidate.Root;
+        if (root is null)
+        {
+            rejectedFile?.Invoke(new CachedBlockRejection(candidate.Path, "Unreadable block root key."));
+            return null;
+        }
+
+        return candidate.ToFile(root.Value);
+    }
+
+    static RootKey? ReadStoredRoot(CacheCandidate candidate) =>
+        BlockFile.TryReadStoredRootKey(candidate.Path, out var root) &&
+        string.Equals(BlockFileName(root, candidate.Parsed.VolumeSerial), Path.GetFileName(candidate.Path),
+            StringComparison.Ordinal)
+            ? root
+            : null;
+
+    static CachedBlockStatus InspectHeldFile(CachedBlockFile file)
+    {
+        using var block = BlockFile.OpenCanonical(file.Path, file.VolumeSerial, out var validation);
         if (block is null)
         {
             return new CachedBlockStatus(file, CachedBlockAvailability.Invalid, validation, null, null);
@@ -172,7 +238,7 @@ public static class CacheDirectory
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="drives" /> holds the default key.</exception>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null)
+        string cacheDirectoryPath, IEnumerable<RootKey>? drives = null)
         => DeleteCached(cacheDirectoryPath, drives, null);
 
     /// <summary>
@@ -199,20 +265,18 @@ public static class CacheDirectory
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     internal static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? drives,
+        string cacheDirectoryPath, IEnumerable<RootKey>? drives,
         Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var selected = ValidateSelection(drives);
+        var selected = SelectedRoots(drives);
         var results = new List<CachedBlockDeletionResult>();
-        foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
+        foreach (var candidate in EnumerateCandidates(cacheDirectoryPath, rejectedFile, selected))
         {
-            if (selected?.Contains(file.Drive) == false)
+            if (DeleteCachedCandidate(candidate, rejectedFile) is { } result)
             {
-                continue;
+                results.Add(result);
             }
-
-            results.Add(DeleteCachedFile(file));
         }
 
         return results;
@@ -229,12 +293,20 @@ public static class CacheDirectory
         internal void ResetToDefaults() => _beforeDelete = null;
     }
 
-    static CachedBlockDeletionResult DeleteCachedFile(CachedBlockFile file)
+    static CachedBlockDeletionResult? DeleteCachedCandidate(CacheCandidate candidate,
+        Action<CachedBlockRejection>? rejectedFile)
     {
-        using var owner = BlockOwnerLock.TryAcquire(file.Path);
+        using var owner = BlockOwnerLock.TryAcquire(candidate.Path);
         if (owner is null)
         {
-            return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.InUse, null);
+            return IdentifyContended(candidate, rejectedFile) is { } contended
+                ? new CachedBlockDeletionResult(contended, CachedBlockDeletionOutcome.InUse, null)
+                : null;
+        }
+
+        if (IdentifyHeld(candidate, rejectedFile) is not { } file)
+        {
+            return null;
         }
 
         Hooks._beforeDelete?.Invoke(file.Path);
@@ -251,44 +323,20 @@ public static class CacheDirectory
         return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Deleted, null);
     }
 
-    static HashSet<DriveKey>? ValidateSelection(IEnumerable<DriveKey>? drives) =>
-        drives?.Select(drive => drive.Validated()).ToHashSet();
-
-    const string BlockFileExtension = ".mlix";
-
-    /// <summary>
-    ///     The exact inverse of <see cref="BlockFileName" />, and private on purpose: the format
-    ///     is the library's, not the consumer's. The final round trip through
-    ///     <see cref="BlockFileName" /> is what keeps the two from ever drifting apart, so a name
-    ///     is only accepted when the formatter would have produced exactly it.
-    /// </summary>
-    static bool TryParseBlockFileName(string fileName, out DriveKey drive, out uint volumeSerial)
+    static Dictionary<string, RootKey>? SelectedRoots(IEnumerable<RootKey>? drives)
     {
-        drive = default;
-        volumeSerial = 0;
-
-        const int serialDigits = 8;
-        var expectedLength = 1 + 1 + serialDigits + BlockFileExtension.Length;
-        if (fileName.Length != expectedLength || fileName[1] != '-' || !char.IsAsciiLetter(fileName[0]))
+        if (drives is null)
         {
-            return false;
+            return null;
         }
 
-        if (!uint.TryParse(fileName.AsSpan(2, serialDigits), NumberStyles.HexNumber,
-                CultureInfo.InvariantCulture, out var parsedSerial))
+        var selected = new Dictionary<string, RootKey>(StringComparer.Ordinal);
+        foreach (var drive in drives)
         {
-            return false;
+            selected.TryAdd(NameStem(drive.Validated()), drive);
         }
 
-        var candidate = new DriveKey(fileName[0]);
-        if (!string.Equals(BlockFileName(candidate, parsedSerial), fileName, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        drive = candidate;
-        volumeSerial = parsedSerial;
-        return true;
+        return selected;
     }
 
     /// <summary>

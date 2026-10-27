@@ -5,16 +5,16 @@ namespace MFTLib.Tests.TestSupport;
 
 sealed record BrokerHostOptions
 {
-    public Func<DriveKey, UsnJournalCursor>? QueryCursor { get; init; }
+    public Func<VolumeKey, UsnJournalCursor>? QueryCursor { get; init; }
     public MftRecordBatchSource? ScanDrive { get; init; }
-    public Func<DriveKey, UsnJournalCursor, int,
+    public Func<VolumeKey, UsnJournalCursor, int,
         (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal
     { get; init; }
-    public Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken,
+    public Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken,
         IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? WatchDrive
     { get; init; }
-    public Func<DriveKey, NtfsVolumeInformation>? QueryVolumeInformation { get; init; }
-    public Func<DriveKey, long, long, UsnJournalSettings>? GrowUsnJournal { get; init; }
+    public Func<VolumeKey, NtfsVolumeInformation>? QueryVolumeInformation { get; init; }
+    public Func<VolumeKey, long, long, UsnJournalSettings>? GrowUsnJournal { get; init; }
     public int? ProcessorCount { get; init; } = 4;
     public TimeProvider? TimeProvider { get; init; }
 }
@@ -41,7 +41,7 @@ static class BrokerHostFactory
         return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 
-    public static NtfsVolumeInformation NoVolumeInformation(DriveKey drive)
+    public static NtfsVolumeInformation NoVolumeInformation(VolumeKey drive)
     {
         throw new NotSupportedException("Broker has no volume information source");
     }

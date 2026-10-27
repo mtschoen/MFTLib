@@ -22,7 +22,7 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
         Assert.IsFalse(index.Drives[0].Watch.IsSupported);
-        Assert.IsTrue(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial))));
+        Assert.IsTrue(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial))));
     }
 
     [TestMethod]
@@ -48,7 +48,7 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
         }
 
 
-        var cachedBlock = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var cachedBlock = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         Assert.IsFalse(File.Exists(cachedBlock));
     }
 
@@ -57,14 +57,14 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1)],
             CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
         Assert.IsNull(index.Drives[0].Block);
-        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Z'));
+        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, new VolumeKey('Z')));
     }
 
 
@@ -81,7 +81,7 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         await Assert.ThrowsExactlyAsync<ArgumentException>(
-            () => index.RescanAsync(['Q'], CancellationToken.None));
+            () => index.RescanAsync([new VolumeKey('Q')], CancellationToken.None));
     }
 
     [TestMethod]
@@ -105,12 +105,12 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var oldSnapshot = index.CurrentSnapshot;
-        Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
+        Assert.IsTrue(index.TryGetDriveOrdinal(new VolumeKey('T'), out var driveOrdinal));
         var oldEntry = FileEntry.Create(oldSnapshot[driveOrdinal], rowIndex: 0);
         var rowsBefore = index.HeaderOf().RowCount;
 
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         Assert.AreNotSame(oldSnapshot, index.CurrentSnapshot);
         Assert.IsTrue(oldEntry.IsDirectory);

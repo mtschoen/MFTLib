@@ -28,8 +28,8 @@ public sealed class TwoDriveQueryFixture : IDisposable
         {
             Drives =
             [
-                new IndexedDrive('T', FirstRoot, 1, ProducerKind.Enumeration),
-                new IndexedDrive('U', SecondRoot, 2, ProducerKind.Enumeration)
+                MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), FirstRoot, 1, ProducerKind.Enumeration),
+                MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), SecondRoot, 2, ProducerKind.Enumeration)
             ]
         }, CancellationToken.None);
     }

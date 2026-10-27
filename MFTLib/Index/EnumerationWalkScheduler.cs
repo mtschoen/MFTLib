@@ -14,7 +14,7 @@ using System.Threading.Channels;
 sealed class EnumerationWalkScheduler : IDisposable
 {
     readonly EnumerationDirectoryReader _reader;
-    readonly DriveKey _drive;
+    readonly RootKey _drive;
     readonly int _maximumReaders;
     readonly int _maximumOutstandingJobs;
     readonly CancellationTokenSource _stopSource;
@@ -34,7 +34,7 @@ sealed class EnumerationWalkScheduler : IDisposable
     /// <param name="drive">The drive reported to the walk hooks.</param>
     /// <param name="maximumReaders">Concurrent readers for this walk, including the one on the base permit.</param>
     /// <param name="cancellationToken">Stops the walk; joined with the scheduler's own stop.</param>
-    public EnumerationWalkScheduler(EnumerationDirectoryReader reader, DriveKey drive,
+    public EnumerationWalkScheduler(EnumerationDirectoryReader reader, RootKey drive,
         int maximumReaders, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(reader);

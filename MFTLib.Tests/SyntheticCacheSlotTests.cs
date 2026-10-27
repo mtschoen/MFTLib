@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 public sealed class SyntheticCacheSlotTests : IDisposable
 {
     const uint Serial = 0x1234;
-    static readonly DriveKey Drive = new('T');
+    static readonly VolumeKey Drive = new('T');
     TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 

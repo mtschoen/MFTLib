@@ -30,7 +30,7 @@ sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker could not query the drive.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(DriveKey drive, CancellationToken cancellationToken)
+    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(VolumeKey drive, CancellationToken cancellationToken)
     {
         drive = drive.Validated();
         var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, requestId, drive),
@@ -48,7 +48,7 @@ sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker refused or failed the change.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(DriveKey drive, UsnJournalSettings target,
+    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey drive, UsnJournalSettings target,
         CancellationToken cancellationToken)
     {
         drive = drive.Validated();

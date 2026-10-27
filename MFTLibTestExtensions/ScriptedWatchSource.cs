@@ -12,9 +12,9 @@ public sealed class ScriptedWatchSource
     readonly Lock _stateLock = new();
     readonly List<IndexWatchTarget> _targets = [];
     readonly List<ScriptedDriveWatch> _watches = [];
-    readonly Dictionary<DriveKey, HeldStart> _holdsByDrive = [];
-    readonly Dictionary<DriveKey, Exception> _failuresByDrive = [];
-    readonly Dictionary<DriveKey, List<StartWaiter>> _startWaiters = [];
+    readonly Dictionary<VolumeKey, HeldStart> _holdsByDrive = [];
+    readonly Dictionary<VolumeKey, Exception> _failuresByDrive = [];
+    readonly Dictionary<VolumeKey, List<StartWaiter>> _startWaiters = [];
     ScriptedWatchSourceAdapter? _indexSource;
     HeldStart? _nextHold;
     Exception? _nextFailure;
@@ -26,7 +26,7 @@ public sealed class ScriptedWatchSource
     ///     Consulted on every start: a non-null result is thrown instead of starting. Settable because a
     ///     test changes it while the index is running, to make a later restart fail.
     /// </summary>
-    public Func<DriveKey, Exception?>? StartFailure { get; set; }
+    public Func<VolumeKey, Exception?>? StartFailure { get; set; }
 
     /// <summary>Every start requested, in order, including starts that were then failed or held.</summary>
     public IReadOnlyList<ScriptedWatchStart> Starts
@@ -69,7 +69,7 @@ public sealed class ScriptedWatchSource
     /// <param name="drive">The drive to look up.</param>
     /// <returns>The most recent watch for that drive.</returns>
     /// <exception cref="InvalidOperationException">No watch was handed out for the drive.</exception>
-    public ScriptedDriveWatch WatchFor(DriveKey drive)
+    public ScriptedDriveWatch WatchFor(VolumeKey drive)
     {
         drive.Validated();
         return Watches.Last(watch => Same(watch.Drive, drive));
@@ -87,7 +87,7 @@ public sealed class ScriptedWatchSource
     /// <param name="cancellationToken">Ends the wait with <see cref="OperationCanceledException" />.</param>
     /// <returns>The watch the index received.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="startNumber" /> is less than one.</exception>
-    public Task<ScriptedDriveWatch> WaitForStartAsync(DriveKey drive, int startNumber,
+    public Task<ScriptedDriveWatch> WaitForStartAsync(VolumeKey drive, int startNumber,
         CancellationToken cancellationToken)
     {
         drive.Validated();
@@ -127,7 +127,7 @@ public sealed class ScriptedWatchSource
     /// <summary>Makes the next start of one drive throw <paramref name="failure" />, whichever call order the starts arrive in.</summary>
     /// <param name="drive">The drive whose next start fails.</param>
     /// <param name="failure">The exception the start throws.</param>
-    internal void FailNextStartFor(DriveKey drive, Exception failure)
+    internal void FailNextStartFor(VolumeKey drive, Exception failure)
     {
         lock (_stateLock)
         {
@@ -136,7 +136,7 @@ public sealed class ScriptedWatchSource
     }
 
     /// <summary>The targets requested for one drive, in order.</summary>
-    internal IReadOnlyList<IndexWatchTarget> TargetsFor(DriveKey drive) =>
+    internal IReadOnlyList<IndexWatchTarget> TargetsFor(VolumeKey drive) =>
         Targets.Where(target => Same(target.Drive, drive)).ToArray();
 
     /// <summary>
@@ -154,7 +154,7 @@ public sealed class ScriptedWatchSource
     }
 
     /// <summary>Parks the next start of one drive on <paramref name="gate" />, whichever call order the starts arrive in.</summary>
-    internal void HoldStartFor(DriveKey drive, TestGate gate, bool observeToken = true)
+    internal void HoldStartFor(VolumeKey drive, TestGate gate, bool observeToken = true)
     {
         lock (_stateLock)
         {
@@ -238,7 +238,7 @@ public sealed class ScriptedWatchSource
         return watch;
     }
 
-    static bool Same(DriveKey left, DriveKey right) => left == right;
+    static bool Same(VolumeKey left, VolumeKey right) => left == right;
 
     sealed record HeldStart(TestGate Gate, bool ObserveToken);
 

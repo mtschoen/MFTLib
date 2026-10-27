@@ -167,7 +167,10 @@ partial class SampleHost
                     WriteDriveDetail(index.Drives.Single(candidate => candidate.Drive == drive));
                     break;
                 case WatchVerb.Journal:
-                    await WriteJournalAsync(session, index, drive, parsed, cancellationToken).ConfigureAwait(false);
+                    var volume = drive.TryGetVolume(out var journalDrive)
+                        ? journalDrive
+                        : throw new InvalidOperationException($"Drive {drive} is a directory root with no USN journal.");
+                    await WriteJournalAsync(session, index, volume, parsed, cancellationToken).ConfigureAwait(false);
                     break;
             }
 

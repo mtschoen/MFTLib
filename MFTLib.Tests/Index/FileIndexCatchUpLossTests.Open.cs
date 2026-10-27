@@ -31,7 +31,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
         Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
-        await index.StartWatchingAsync(['T'], Token);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token);
         Assert.HasCount(1, cache.Source.TargetsFor('T'), "the retried block is resumable");
     }
 
@@ -54,7 +54,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.Contains("12288", drive.Watch.FailureMessage!);
         Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
-        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
+        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync([new VolumeKey('T')], Token));
         Assert.Contains("RescanAsync", refusal.Message);
     }
 
@@ -75,7 +75,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual("the retry scan failed", drive.Failure?.Message);
         Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
-        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
+        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync([new VolumeKey('T')], Token));
         Assert.Contains("RescanAsync", refusal.Message);
     }
 
@@ -99,7 +99,7 @@ public partial class FileIndexCatchUpLossTests
 
         public ScriptedWatchSource Source { get; } = new();
 
-        public static string CanonicalBlockName => CacheDirectory.BlockFileName('T', VolumeSerial);
+        public static string CanonicalBlockName => CacheDirectory.BlockFileName(new VolumeKey('T'), VolumeSerial);
 
         public FileIndexOptions Options() =>
             _fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft) with

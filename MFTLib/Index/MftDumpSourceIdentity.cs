@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 /// </summary>
 sealed record MftDumpSourceIdentity
 {
-    internal MftDumpSourceIdentity(string dumpFilePath, DriveKey drive)
+    internal MftDumpSourceIdentity(string dumpFilePath, VolumeKey drive)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dumpFilePath);
         DumpFilePath = Path.GetFullPath(dumpFilePath);
@@ -18,7 +18,7 @@ sealed record MftDumpSourceIdentity
     internal string DumpFilePath { get; }
 
     /// <summary>The letter the index files the dump under, in upper case; it names no live volume.</summary>
-    internal DriveKey Drive { get; }
+    internal VolumeKey Drive { get; }
 
     /// <summary>The prefix of every path this dump renders, which no host path can start with.</summary>
     internal string Root => MftDumpPaths.CanonicalRoot(Drive);

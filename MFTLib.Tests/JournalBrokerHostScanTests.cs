@@ -47,7 +47,7 @@ public class JournalBrokerHostScanTests
             ScanDrive = (drive, _, reporting, _, _, _) =>
             {
                 Assert.IsTrue(cursorArmed);
-                Assert.AreEqual(new DriveKey('C'), drive);
+                Assert.AreEqual(new VolumeKey('C'), drive);
                 reporting.Operation!.Processing("MFT parse");
                 reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
                 return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
@@ -744,7 +744,7 @@ public class JournalBrokerHostScanTests
         Assert.AreEqual(31u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
         var rootPath = Path.Combine(Path.GetDirectoryName(block.Path)!, "scan-oracle");
-        DriveBlock[] snapshot = [new DriveBlock('C', 0, block, rootPath)];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('C'), 0, block, rootPath)];
         try
         {
             (string RelativePath, uint Row, string Name, uint Parent, RowFlags Flags)[] expected =

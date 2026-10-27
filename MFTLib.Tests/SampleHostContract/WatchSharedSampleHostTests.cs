@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using MFTLib.Index;
 
 namespace MFTLib.Tests.SampleHostContract;
 
@@ -17,8 +18,8 @@ public sealed class WatchSharedSampleHostTests : SharedSampleHostTests
         using var output = new StringWriter();
         var reporter = new SampleProgram.Watch.SampleHost.DriveOpenedReporter(output);
 
-        reporter.Report(new MFTLib.Index.IndexDriveOpened('D', 2, 3));
-        reporter.Report(new MFTLib.Index.IndexDriveOpened('C', 1, 3));
+        reporter.Report(new IndexDriveOpened(new VolumeKey('D'), 2, 3));
+        reporter.Report(new IndexDriveOpened(new VolumeKey('C'), 1, 3));
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.AreSequenceEqual(["D: opened (2 of 3 drives)", "C: opened (1 of 3 drives)"], lines);

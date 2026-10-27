@@ -85,7 +85,7 @@ public sealed partial class FileIndex
         static bool HoldsCompleteBlock(string path, uint volumeSerial)
         {
             // Open reports an unreadable or invalid file as null rather than throwing.
-            using var block = BlockFile.Open(path, volumeSerial, out _);
+            using var block = BlockFile.OpenCanonical(path, volumeSerial, out _);
             return block is not null;
         }
 

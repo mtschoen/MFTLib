@@ -161,7 +161,7 @@ and terminal scan-progress contracts are in [watch lifetime](watch-lifetime.md).
 
 ## 4. Start and stop per-drive watches
 
-Each lifecycle verb accepts `IEnumerable<DriveKey>`, fans out concurrently and returns one
+Each lifecycle verb accepts `IEnumerable<RootKey>`, fans out concurrently and returns one
 `DriveOperationResult` per requested drive. Use the current status keys for all drives:
 
 ```csharp
@@ -208,8 +208,8 @@ To follow state without polling, subscribe to `WatchStateChanged`, then seed fro
 
 ```csharp
 var gate = new Lock();
-var applied = new Dictionary<DriveKey, long>();
-void ApplyWatchState(DriveKey driveLetter, DriveWatchStatus watch)
+var applied = new Dictionary<VolumeKey, long>();
+void ApplyWatchState(VolumeKey driveLetter, DriveWatchStatus watch)
 {
     // The check and the publication share one lock, so an older event
     // delivered concurrently can never publish after a newer one.

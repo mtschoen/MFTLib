@@ -57,8 +57,8 @@ public sealed class FileIndexScanShapeTests : IDisposable
     {
         Drives =
         [
-            new IndexedDrive('A', RootA, 1, ProducerKind.Enumeration),
-            new IndexedDrive('B', RootB, 2, ProducerKind.Enumeration)
+            SyntheticIndexedDrive.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration),
+            SyntheticIndexedDrive.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration)
         ],
         CacheDirectory = Cache,
         CacheMode = mode,
@@ -71,7 +71,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         }
     };
 
-    static BlockOrigin? OriginOf(FileIndex index, DriveKey drive) =>
+    static BlockOrigin? OriginOf(FileIndex index, VolumeKey drive) =>
         index.Drives.Single(status => status.Drive == drive).Block?.Origin;
 
     static bool RecordedWrongScanShape(List<string> diagnostics)
@@ -218,7 +218,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     FileIndexOptions MftOptions(bool includeFreed, IReadOnlyCollection<string>? retained, List<string> diagnostics,
         CacheMode mode = CacheMode.Persistent) => new()
         {
-            Drives = [new IndexedDrive('T', RootA, 123)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), RootA, 123)],
             CacheDirectory = Cache,
             CacheMode = mode,
             RetainedFileNames = retained,

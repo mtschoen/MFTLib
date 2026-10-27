@@ -84,7 +84,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     [TestMethod]
     public void Root_ReturnsTheDriveRoot()
     {
-        Assert.AreEqual(TreeRoot, _index!.Root('T', TestContext.CancellationToken).Path);
+        Assert.AreEqual(TreeRoot, _index!.Root(new VolumeKey('T'), TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
@@ -100,8 +100,8 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         char duplicateLetter, bool blocklessFirst)
     {
         var policy = blocklessState == DriveState.Offline ? ProducerKind.Enumeration : ProducerKind.Mft;
-        var ready = new IndexedDrive('T', TreeRoot, 1, policy);
-        var blockless = new IndexedDrive(duplicateLetter,
+        var ready = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, policy);
+        var blockless = SyntheticIndexedDrive.Create(new VolumeKey(duplicateLetter),
             blocklessState == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 2, policy);
         var producerCalls = 0;
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
@@ -145,7 +145,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         };
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', state == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), state == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1)],
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(producer)
         }, CancellationToken.None);
@@ -170,7 +170,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
                 outcome = await RootAfterAdmissionAsync(index, driveLetter, async () =>
                 {
                     canProduce = true;
-                    await index.RescanAsync(['T'], CancellationToken.None);
+                    await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
                     Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
                     Assert.IsNotNull(index.Drives.Single().Block);
                 }, rescanCancellation.Token);
@@ -197,7 +197,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
 
             Assert.IsInstanceOfType<ArgumentException>(outcome);
             var exception = (ArgumentException)outcome;
-            Assert.Contains($"Drive {new DriveKey(driveLetter)} has no block (state: {state}).", exception.Message);
+            Assert.Contains($"Drive {new VolumeKey(driveLetter)} has no block (state: {state}).", exception.Message);
             Assert.IsFalse(exception.Message.Contains("not part of this index", StringComparison.Ordinal));
             Assert.AreEqual("drive", exception.ParamName);
         }
@@ -227,7 +227,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
 
         Assert.IsInstanceOfType<ArgumentException>(outcome);
         var exception = (ArgumentException)outcome;
-        Assert.Contains($"Drive {new DriveKey(driveLetter)} is not part of this index.", exception.Message);
+        Assert.Contains($"Drive {new VolumeKey(driveLetter)} is not part of this index.", exception.Message);
         Assert.AreEqual("drive", exception.ParamName);
     }
 
@@ -235,7 +235,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     {
         try
         {
-            _ = index.Root(driveLetter, cancellationToken);
+            _ = index.Root(new VolumeKey(driveLetter), cancellationToken);
         }
         catch (Exception exception)
         {
@@ -331,7 +331,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     [TestMethod]
     public void Children_OfTheRootAreTheTopLevelDirectories()
     {
-        var names = _index!.Root('T', TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)
+        var names = _index!.Root(new VolumeKey('T'), TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
         Assert.AreSequenceEqual(["Documents", "Pictures"], names);
     }
@@ -349,7 +349,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     public void Search_AfterARescanSeesNewFiles()
     {
         File.WriteAllText(Path.Combine(TreeRoot, "Documents", "added.md"), "added");
-        _index!.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
+        _index!.RescanAsync([new VolumeKey('T')], CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.HasCount(1, _index!.Search(new SearchQuery("added"), TestContext.CancellationToken));
     }
@@ -358,7 +358,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     public void HandleFromAnOldSnapshot_StaysReadableAcrossARescan()
     {
         var before = _index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
-        _index!.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
+        _index!.RescanAsync([new VolumeKey('T')], CancellationToken.None).GetAwaiter().GetResult();
 
         // The old block stays mapped because this handle still references its snapshot.
         Assert.AreEqual("readme.md", before.Name);

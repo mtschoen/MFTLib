@@ -81,7 +81,7 @@ public class UsnJournalVolumeInteropTests
         return data;
     }
 
-    static SyntheticJournalWindow? ReadLive(DriveKey drive) =>
+    static SyntheticJournalWindow? ReadLive(VolumeKey drive) =>
         JournalCheckpointCheck.ReadLiveJournal(drive) is { } window
             ? new SyntheticJournalWindow(window.JournalIdentifier, window.FirstUsn,
                 window.NextUsn, window.AllocationDelta, window.MaximumSize)

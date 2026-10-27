@@ -10,7 +10,7 @@ sealed class CheckpointLossFixture : IDisposable
     public const long CachedNextUsn = 1_000_000;
     public static readonly DateTime FixedMoment = new(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc);
 
-    readonly Dictionary<DriveKey, IndexTreeFixture> _trees = [];
+    readonly Dictionary<VolumeKey, IndexTreeFixture> _trees = [];
 
     public CheckpointLossFixture(params char[] driveLetters) : this(true, driveLetters)
     {
@@ -23,7 +23,7 @@ sealed class CheckpointLossFixture : IDisposable
         {
             foreach (var letter in letters)
             {
-                var key = new DriveKey(char.ToUpperInvariant(letter));
+                var key = new VolumeKey(char.ToUpperInvariant(letter));
                 _trees[key] = new IndexTreeFixture(seedDocuments);
             }
         }
@@ -38,7 +38,7 @@ sealed class CheckpointLossFixture : IDisposable
 
     public IndexedDrive Drive(char driveLetter = 'T')
     {
-        var key = new DriveKey(char.ToUpperInvariant(driveLetter));
+        var key = new VolumeKey(char.ToUpperInvariant(driveLetter));
         var fixture = _trees[key];
         var serial = key.Letter == 'U' ? 0x0BADBEEFu : 0x0BADF00Du;
         return fixture.Drive(key.Letter, serial, producer: ProducerKind.Mft);
@@ -57,12 +57,15 @@ sealed class CheckpointLossFixture : IDisposable
         };
     }
 
+    static VolumeKey VolumeOf(RootKey root) =>
+        root.TryGetVolume(out var volume) ? volume : throw new InvalidOperationException($"Journal windows are volume-only, got {root}.");
+
     public async Task Seed(FileIndexOptions? options = null, CancellationToken cancellationToken = default)
     {
         options ??= Options();
         var drives = options.Drives.ToArray();
         using var journals = JournalWindows.ForDrives(
-            drives.ToDictionary(drive => drive.Drive, _ => HealthyWindow));
+            drives.ToDictionary(drive => VolumeOf(drive.Drive), _ => HealthyWindow));
         await using var index = await FileIndex.OpenAsync(options with { Drives = drives }, cancellationToken);
         foreach (var drive in index.Drives)
         {

@@ -572,7 +572,7 @@ public partial class BrokerSessionTests
     [TestMethod]
     public async Task GrowUsnJournalAsync_LaunchesOnFirstUseAndForwardsTheRequest()
     {
-        var received = new List<(DriveKey Drive, long MaximumSize, long AllocationDelta)>();
+        var received = new List<(VolumeKey Drive, long MaximumSize, long AllocationDelta)>();
         await using var handle = StartBroker((drive, target) =>
         {
             received.Add((drive, target.MaximumSize, target.AllocationDelta));
@@ -673,7 +673,7 @@ public partial class BrokerSessionTests
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('X', roots.Path, 123)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('X'), roots.Path, 123)],
             CacheDirectory = cache.Path,
             CacheMode = CacheMode.Disabled,
             MftSource = session.CreateIndexSource()
@@ -758,7 +758,7 @@ public partial class BrokerSessionTests
             BrokerTestHarness.CreateSession(null!));
     }
 
-    static InProcessBrokerHandle StartBroker(Func<DriveKey, UsnJournalSettings, UsnJournalSettings>? grow = null) =>
+    static InProcessBrokerHandle StartBroker(Func<VolumeKey, UsnJournalSettings, UsnJournalSettings>? grow = null) =>
         BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => throw new NotSupportedException("no scan in this test"),

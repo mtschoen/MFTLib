@@ -67,12 +67,12 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(included)));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
 
-        var result = CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char> { 'C' }.Select(letter => new DriveKey(letter)));
+        var result = CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char> { 'C' }.Select(letter => (RootKey)new VolumeKey(letter)));
 
         Assert.AreEqual(included, result.Single().File.Path);
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(included)));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
-        Assert.IsEmpty(CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char>().Select(letter => new DriveKey(letter))));
+        Assert.IsEmpty(CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char>().Select(letter => (RootKey)new VolumeKey(letter))));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
         AssertReleased(included);
     }
@@ -83,7 +83,7 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
         var enumeration = TestBlocks.WriteCache(_cacheDirectory, 'C');
         var mft = TestBlocks.WriteCache(_cacheDirectory, 'D', producer: ProducerKind.Mft);
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.Drive.Letter).ToArray();
+            .OrderBy(status => status.File.Drive).ToArray();
 
         Assert.HasCount(2, statuses);
         Assert.AreEqual(_cacheDirectory, statuses[0].RootDirectory);
@@ -112,7 +112,7 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
         var available = TestBlocks.WriteCache(_cacheDirectory, 'D');
 
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.Drive.Letter).ToArray();
+            .OrderBy(status => status.File.Drive).ToArray();
 
         Assert.HasCount(2, statuses);
         Assert.AreEqual(CachedBlockAvailability.InUse, statuses[0].Availability);
@@ -128,12 +128,12 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
     {
         TestBlocks.WriteCache(_cacheDirectory, 'C', mutate: block => block.Header.VolumeSerial++);
         TestBlocks.WriteCache(_cacheDirectory, 'D', mutate: block => block.Header.RowCount = 0);
-        var shortPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('E', VolumeSerial));
+        var shortPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName(new VolumeKey('E'), VolumeSerial));
         File.WriteAllText(shortPath, "short");
         TestBlocks.WriteCache(_cacheDirectory, 'F');
 
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.Drive.Letter).ToArray();
+            .OrderBy(status => status.File.Drive).ToArray();
 
         Assert.HasCount(4, statuses);
         var reasons = new[] { BlockValidationResult.WrongVolumeSerial,

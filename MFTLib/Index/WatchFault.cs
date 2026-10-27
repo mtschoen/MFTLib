@@ -68,7 +68,7 @@ public sealed record WatchFault
     /// <param name="kind">Which boundary raised the fault.</param>
     /// <param name="drive">The drive the fault names.</param>
     /// <param name="exception">The exception that ended or disturbed the watch.</param>
-    internal WatchFault(WatchFaultKind kind, DriveKey drive, Exception exception)
+    internal WatchFault(WatchFaultKind kind, VolumeKey drive, Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
         Kind = kind;
@@ -80,7 +80,7 @@ public sealed record WatchFault
     public WatchFaultKind Kind { get; init; }
 
     /// <summary>The drive whose watch or scan faulted; a fault always names one drive.</summary>
-    public DriveKey Drive { get; init => field = value.Validated(); }
+    public VolumeKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>The failure itself; its type depends on <see cref="Kind" />, for example a <see cref="JournalCatchUpLostException" /> for a lost catch-up.</summary>
     public Exception Exception { get; init; }

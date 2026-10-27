@@ -52,26 +52,27 @@ static class MftBlockCapacity
     /// </summary>
     /// <param name="volumeInformation">The NTFS volume information that sizes the block.</param>
     /// <param name="path">Where the block file is created.</param>
+    /// <param name="volume">The volume stored in the block as its root key.</param>
     /// <param name="volumeSerial">The volume serial number to stamp into the header.</param>
     /// <param name="deleteOnClose">Whether the operating system deletes the file when its last handle closes.</param>
-    /// <param name="cacheTag">The consumer cache tag copied into the header.</param>
-    /// <param name="scanShape">The scan shape copied into the header.</param>
+    /// <param name="identity">The consumer cache tag and scan shape copied into the header.</param>
     /// <returns>Options for <see cref="BlockFile.Create" />.</returns>
-    public static BlockFileCreateOptions CreateOptions(NtfsVolumeInformation volumeInformation, string path,
-        uint volumeSerial, bool deleteOnClose, CacheTag cacheTag, ulong scanShape)
+    public static BlockFileCreateOptions CreateOptions(NtfsVolumeInformation volumeInformation, VolumeKey volume,
+        string path, uint volumeSerial, bool deleteOnClose, BlockContentIdentity identity)
     {
         var (slotCapacity, namePoolCapacity) = Plan(volumeInformation);
         return new BlockFileCreateOptions
         {
             Path = path,
+            Root = volume,
             VolumeSerial = volumeSerial,
             DeleteOnClose = deleteOnClose,
             ProducerKind = ProducerKind.Mft,
             RootRow = 5,
             SlotCapacity = slotCapacity,
             NamePoolCapacity = namePoolCapacity,
-            CacheTag = cacheTag,
-            ScanShape = scanShape
+            CacheTag = identity.CacheTag,
+            ScanShape = identity.ScanShape
         };
     }
 

@@ -194,14 +194,14 @@ public class BrokerIndexWatchSourceTests
         using var harness = new WatchHarness(new HoldFirstDisposalSource(inner, teardown), 'T');
         var index = harness.Index;
         broker.Watch('T').IgnoreCancellationInNextRun();
-        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
         var first = await broker.Watch('T').RunAsync(1);
         await first.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The first watch's teardown is held at the handle's disposal, so the stop's wait for it
         // really runs out: the token is cancelled once the stop is waiting on that teardown.
         using var stopTimeout = new CancellationTokenSource();
-        var stop = index.StopWatchingAsync(['T'], stopTimeout.Token);
+        var stop = index.StopWatchingAsync([new VolumeKey('T')], stopTimeout.Token);
         await teardown.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(stop.IsCompleted, "the stop waits for the held teardown");
         await stopTimeout.CancelAsync();
@@ -212,7 +212,7 @@ public class BrokerIndexWatchSourceTests
         teardown.Release();
         await first.Cancelled.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync([new VolumeKey('T')], token);
         var second = await broker.Watch('T').RunAsync(2);
         var freshApplied = ChangeSignal.WhenApplied(index, "fresh.txt");
         second.Push(9, "fresh.txt", 300);

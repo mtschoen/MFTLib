@@ -62,7 +62,7 @@ sealed class WatchHarness : IDisposable
         {
             Index = FileIndex.OpenAsync(new FileIndexOptions
             {
-                Drives = _blockBuilders.Select(pair => new IndexedDrive(pair.Key,
+                Drives = _blockBuilders.Select(pair => SyntheticIndexedDrive.Create(new VolumeKey(pair.Key),
                     pair.Value.DirectoryPath, pair.Value.VolumeSerial)).ToArray(),
                 CacheDirectory = CacheDirectory,
                 MftSource = new MftIndexSource(Produce, watchSource ?? Source.IndexSource)
@@ -112,7 +112,7 @@ sealed class WatchHarness : IDisposable
     public BlockFile BlockFor(char driveLetter) => _producedBlocks[char.ToUpperInvariant(driveLetter)];
 
     public DriveStatus DriveFor(char driveLetter) =>
-        Index.Drives.Single(drive => drive.Drive == char.ToUpperInvariant(driveLetter));
+        Index.Drives.Single(drive => drive.Drive == new VolumeKey(char.ToUpperInvariant(driveLetter)));
 
     /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive, recorded or future.</summary>
     public Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter)
@@ -199,7 +199,7 @@ sealed class WatchHarness : IDisposable
         var held = 0;
         Index.Hooks.ApplyJournalEntriesEntered = letter =>
         {
-            if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
+            if (letter == new VolumeKey(driveLetter) && Interlocked.Exchange(ref held, 1) == 0)
             {
                 gate.MarkEntered();
                 gate.WaitForRelease();
@@ -297,7 +297,7 @@ sealed class WatchHarness : IDisposable
     {
         _faultStatuses.Record(Index, fault);
         List<TaskCompletionSource<WatchFault>> matched = [];
-        _ = Index.TryGetRecoveryCompletionForTest((fault.Drive).Letter, out var recovery);
+        _ = Index.TryGetRecoveryCompletionForTest(new VolumeKey((fault.Drive).Letter), out var recovery);
         lock (_faults)
         {
             _faults.Add(fault);

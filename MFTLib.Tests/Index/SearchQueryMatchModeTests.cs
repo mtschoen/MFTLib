@@ -27,7 +27,7 @@ public class SearchQueryMatchModeTests
         }
 
         _builder.Complete(Moment);
-        _snapshot = [new DriveBlock('T', 0, _builder.OpenForReading(out _)!)];
+        _snapshot = [new DriveBlock(new VolumeKey('T'), 0, _builder.OpenForReading(out _)!)];
     }
 
     [TestCleanup]

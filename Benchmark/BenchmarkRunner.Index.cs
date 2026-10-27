@@ -123,6 +123,7 @@ public partial class BenchmarkRunner
             using (var block = BlockFile.Create(new BlockFileCreateOptions
             {
                 Path = Path.Combine(directory, "T-00000000.mlix"),
+                Root = new VolumeKey('T'),
                 VolumeSerial = 0,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
@@ -157,7 +158,7 @@ public partial class BenchmarkRunner
         }
 
         var exitCode = 0;
-        foreach (var candidate in cached.OrderBy(candidate => candidate.File.Drive.Letter))
+        foreach (var candidate in cached.OrderBy(candidate => candidate.File.Drive))
         {
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
                 candidate.CacheTag is not { } cacheTag || candidate.ProducerKind is not { } producer ||
@@ -203,7 +204,7 @@ public partial class BenchmarkRunner
                 PrintIndexMetrics(index, drive, iterations, lines.Add);
             }
 
-            var input = new IndexMemoryInput(candidate.File.Drive.Letter, candidate.RootDirectory,
+            var input = new IndexMemoryInput(candidate.File.Drive.ToString(), candidate.RootDirectory,
                 candidate.File.VolumeSerial, producer, cacheTag.PackedFourCc, cacheTag.Version, storedShape);
             await AppendIndexMemoryAsync(lines, directory, iterations, input, log).ConfigureAwait(false);
         }

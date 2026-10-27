@@ -14,7 +14,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken);
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -28,7 +28,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken);
 
         // No FileShare.Delete, so Windows' best-effort delete inside cleanup hits a sharing
@@ -49,7 +49,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken);
         File.SetAttributes(staleRetiredPath, FileAttributes.ReadOnly);
 
@@ -83,7 +83,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
         var listings = new List<string>();
         var hooks = new FileIndex.IndexHooks
@@ -100,7 +100,7 @@ public partial class FileIndexResilienceTests
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         try
         {
-            Assert.AreSequenceEqual([CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"], listings);
+            Assert.AreSequenceEqual([CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*"], listings);
             Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
             Assert.IsTrue(File.Exists(staleRetiredPath), "the sweep that could not list deleted nothing");
         }

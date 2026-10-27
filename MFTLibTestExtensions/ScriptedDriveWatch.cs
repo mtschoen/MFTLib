@@ -31,7 +31,7 @@ public sealed class ScriptedDriveWatch
     }
 
     /// <summary>Identifies the watch the index requested, used by recorded starts and diagnostic messages.</summary>
-    public DriveKey Drive => Target.Drive;
+    public VolumeKey Drive => Target.Drive;
 
     /// <summary>How many times the index disposed this watch; the index owes exactly one, and a second disposal throws.</summary>
     internal int DisposeCount => Volatile.Read(ref _disposeCount);

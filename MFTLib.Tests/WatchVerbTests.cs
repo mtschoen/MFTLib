@@ -213,7 +213,7 @@ clearing, string.Join(Environment.NewLine, clearing));
     static string CreateCacheBlock(string directory, char letter)
     {
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, CacheDirectory.BlockFileName(letter, 1));
+        var path = Path.Combine(directory, CacheDirectory.BlockFileName(new VolumeKey(letter), 1));
         File.WriteAllText(path, "deliberately invalid block content");
         return path;
     }
@@ -308,7 +308,8 @@ clearing, string.Join(Environment.NewLine, clearing));
     }
 
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
-    IndexedDrive FixtureDrive(string letter) => new(letter[0], TemporaryDirectoryPath, 4242);
+    IndexedDrive FixtureDrive(string letter) =>
+        SyntheticIndexedDrive.Create(new VolumeKey(letter[0]), TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(Action<string> writeLine, TimeProvider? timeProvider = null)
     {

@@ -26,14 +26,14 @@ public sealed partial record IndexedDrive
     /// <exception cref="IOException">The volume serial could not be read.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadWindowsVolume; the target is covered.")]
-    public static IndexedDrive FromWindowsDrive(DriveKey drive) => ReadWindowsVolume(drive);
+    public static IndexedDrive FromWindowsDrive(VolumeKey drive) => ReadWindowsVolume(drive);
 
     /// <summary>
     ///     The logic behind <see cref="FromWindowsDrive" />. The test seam answers when set; otherwise the serial
     ///     comes from <c>GetVolumeInformationW</c>, and the read throws <see cref="PlatformNotSupportedException" />
     ///     off Windows.
     /// </summary>
-    internal static IndexedDrive ReadWindowsVolume(DriveKey drive)
+    internal static IndexedDrive ReadWindowsVolume(VolumeKey drive)
     {
         var rootDirectory = drive.Letter + @":\";
         var reader = Dependencies._volumeSerialReader ?? ReadVolumeSerial;

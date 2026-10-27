@@ -27,7 +27,7 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
     FileIndexOptions Options(string root, CacheTag cacheTag = default) =>
         Fixture.Options(volumeSerial: Serial) with
         {
-            Drives = [new IndexedDrive('T', root, Serial, ProducerKind.Enumeration)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration)],
             CacheTag = cacheTag
         };
 
@@ -37,7 +37,7 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
         var tag = new CacheTag("INSP", 2);
         await using var index = await FileIndex.OpenAsync(Options(TreeRoot, tag), Token);
 
-        var header = SyntheticIndexInspection.ReadHeader(index, 't');
+        var header = SyntheticIndexInspection.ReadHeader(index, new VolumeKey('t'));
 
         Assert.IsNotNull(header);
         Assert.AreEqual(ProducerKind.Enumeration, header.ProducerKind);
@@ -52,7 +52,7 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
             Options(Path.Combine(TreeRoot, "absent")), Token);
 
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
-        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'T'));
+        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, new VolumeKey('T')));
     }
 
     [TestMethod]
@@ -60,24 +60,24 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
 
-        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Q'));
+        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, new VolumeKey('Q')));
     }
 
     [TestMethod]
     public async Task ReadHeader_IsACopyThatOutlivesTheIndex()
     {
         var index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
-        var header = SyntheticIndexInspection.ReadHeader(index, 'T');
+        var header = SyntheticIndexInspection.ReadHeader(index, new VolumeKey('T'));
         await index.DisposeAsync();
 
         Assert.IsNotNull(header);
         Assert.AreEqual(ProducerKind.Enumeration, header.ProducerKind);
-        Assert.ThrowsExactly<ObjectDisposedException>(() => SyntheticIndexInspection.ReadHeader(index, 'T'));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => SyntheticIndexInspection.ReadHeader(index, new VolumeKey('T')));
     }
 
     [TestMethod]
     public void ReadHeader_OfNoIndex_Throws()
     {
-        Assert.ThrowsExactly<ArgumentNullException>(() => SyntheticIndexInspection.ReadHeader(null!, 'T'));
+        Assert.ThrowsExactly<ArgumentNullException>(() => SyntheticIndexInspection.ReadHeader(null!, new VolumeKey('T')));
     }
 }

@@ -22,7 +22,7 @@ sealed class BrokerDriveChannel : IAsyncDisposable
     readonly CancellationTokenSource _closing = new();
     int _disposed;
 
-    internal BrokerDriveChannel(DriveKey drive, BrokerPipeListener pipe, Stream stream, string tag,
+    internal BrokerDriveChannel(VolumeKey drive, BrokerPipeListener pipe, Stream stream, string tag,
         Action<BrokerDriveChannel> closed, TimeProvider timeProvider)
     {
         Drive = drive.Validated();
@@ -33,7 +33,7 @@ sealed class BrokerDriveChannel : IAsyncDisposable
         _closed = closed;
     }
 
-    public DriveKey Drive { get; }
+    public VolumeKey Drive { get; }
 
     /// <summary>Writes one frame; a pipe that cannot take it is a lost channel.</summary>
     public async Task WriteAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)

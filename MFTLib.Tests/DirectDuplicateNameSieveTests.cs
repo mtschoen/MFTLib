@@ -15,7 +15,7 @@ public class DirectDuplicateNameSieveTests
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = builders.Select(builder => new IndexedDrive(builder.Drive, builder.DirectoryPath,
+            Drives = builders.Select(builder => MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath,
                 builder.VolumeSerial, ProducerKind.Enumeration)).ToArray(),
             CacheDirectory = builders[0].DirectoryPath,
             CacheMode = CacheMode.ExistingOnly

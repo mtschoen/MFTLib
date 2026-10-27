@@ -10,16 +10,16 @@ namespace MFTLib;
 /// </summary>
 interface IVolumeAccess
 {
-    UsnJournalCursor QueryCursor(DriveKey drive);
+    UsnJournalCursor QueryCursor(VolumeKey drive);
     IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(
-        DriveKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+        VolumeKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted,
         CancellationToken cancellationToken);
     (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
-        DriveKey drive, UsnJournalCursor since, int maximumBufferReads);
+        VolumeKey drive, UsnJournalCursor since, int maximumBufferReads);
     IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchDrive(
-        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
         CancellationToken cancellationToken);
-    NtfsVolumeInformation QueryVolumeInformation(DriveKey drive);
-    UsnJournalSettings GrowUsnJournal(DriveKey drive, long maximumSize, long allocationDelta);
+    NtfsVolumeInformation QueryVolumeInformation(VolumeKey drive);
+    UsnJournalSettings GrowUsnJournal(VolumeKey drive, long maximumSize, long allocationDelta);
 }

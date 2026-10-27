@@ -1,30 +1,30 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     An ASCII drive letter, normalized to upper case. The default value is invalid;
-///     reading its letter, formatting it, or passing it to an index operation throws <see cref="ArgumentException" />.
+///     The identity of an NTFS volume: an ASCII drive letter normalized to upper case.
+///     The default value is invalid; reading its letter or formatting it throws <see cref="ArgumentException" />.
 /// </summary>
-public readonly record struct DriveKey
+public readonly record struct VolumeKey
 {
-    /// <summary>Creates a drive key from an ASCII letter in either case.</summary>
+    /// <summary>Creates a volume key from an ASCII letter in either case.</summary>
     /// <exception cref="ArgumentException"><paramref name="letter" /> is not an ASCII letter.</exception>
-    public DriveKey(char letter)
+    public VolumeKey(char letter)
     {
         if (!char.IsAsciiLetter(letter))
         {
-            throw new ArgumentException("The drive key must be an ASCII letter.", nameof(letter));
+            throw new ArgumentException("The volume key must be an ASCII letter.", nameof(letter));
         }
         Letter = char.ToUpperInvariant(letter);
     }
 
     /// <summary>
     ///     Parses one ASCII drive letter with an optional colon and an optional final slash or backslash,
-    ///     ignoring surrounding whitespace and letter case. Accepts drive specs, not paths beyond a root.
+    ///     ignoring surrounding whitespace and letter case.
     /// </summary>
-    /// <param name="text">The drive spec to parse; callers holding a path pass its root.</param>
+    /// <param name="text">The drive spec to parse.</param>
     /// <param name="result">The normalized key on success; the invalid default key on failure.</param>
     /// <returns>True for a valid drive spec; false for null or invalid input.</returns>
-    public static bool TryParse(string? text, out DriveKey result)
+    public static bool TryParse(string? text, out VolumeKey result)
     {
         result = default;
         var token = text.AsSpan().Trim();
@@ -47,22 +47,22 @@ public readonly record struct DriveKey
             return false;
         }
 
-        result = new DriveKey(token[0]);
+        result = new VolumeKey(token[0]);
         return true;
     }
 
     /// <summary>The normalized ASCII letter. Rejects the default key.</summary>
     public char Letter => field != '\0'
         ? field
-        : throw new ArgumentException("The default drive key is invalid.");
+        : throw new ArgumentException("The default volume key is invalid.");
 
     /// <summary>Creates a normalized key from an ASCII letter.</summary>
-    public static implicit operator DriveKey(char letter) => new(letter);
+    public static implicit operator VolumeKey(char letter) => new(letter);
 
     /// <summary>Returns the normalized letter. Rejects the default key.</summary>
     public override string ToString() => Letter.ToString();
 
-    internal DriveKey Validated()
+    internal VolumeKey Validated()
     {
         _ = Letter;
         return this;

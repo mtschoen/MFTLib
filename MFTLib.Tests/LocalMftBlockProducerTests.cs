@@ -27,8 +27,8 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         [[Record(5, ".", 3)], [Record(20, "file.txt"), Record(21, "other.md")]];
 
     static ScriptedVolumeAccess Scripted(
-        Func<DriveKey, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
-        Func<DriveKey, UsnJournalCursor>? queryCursor = null) => new()
+        Func<VolumeKey, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
+        Func<VolumeKey, UsnJournalCursor>? queryCursor = null) => new()
         {
             VolumeInformation = query ?? (_ => Volume),
             RecordBatches = scan ?? ((_, _, _, _, _, _) => Batches()),
@@ -104,7 +104,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         }
 
         var request = Request();
-        var queried = new List<DriveKey>();
+        var queried = new List<VolumeKey>();
         var producer = new LocalMftBlockProducer(timeProvider, null, Scripted(drive =>
         {
             queried.Add(drive);
@@ -114,7 +114,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         var result = await ProducerOf(producer)(request, TestContext.CancellationToken);
         var block = result.Block;
 
-        Assert.AreSequenceEqual([new DriveKey('T')], queried);
+        Assert.AreSequenceEqual([new VolumeKey('T')], queried);
         Assert.AreEqual(request.BlockPath, block.Path);
         Assert.AreEqual(RequestedTag, block.Header.CacheTag);
         Assert.AreEqual(123u, block.Header.VolumeSerial);
@@ -187,7 +187,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         }
 
         var canonicalPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', 0x0BADF00D));
+            CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         Assert.IsTrue(File.Exists(canonicalPath));
 
         await using (var reopenedIndex = await FileIndex.OpenAsync(CachingOptions(isCacheOnly: cacheOnly),
@@ -299,7 +299,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         var parsing = samples.Single(sample => sample.Phase == IndexScanPhase.ParsingMft);
         Assert.AreEqual(expected, parsing.WrittenRowCount);
         Assert.AreEqual(expected, parsing.ExpectedRowCount);
-        Assert.IsTrue(samples.All(sample => sample.Drive == 'T'));
+        Assert.IsTrue(samples.All(sample => sample.Drive == new VolumeKey('T')));
         Assert.AreEqual(IndexScanPhase.Transferring, samples[^1].Phase);
         Assert.IsNull(samples[^1].ExpectedRowCount);
     }
@@ -398,8 +398,8 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
     {
         var source = new LocalMftBlockProducer(TimeProvider.System, null, Scripted()).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
-        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['t'], CancellationToken.None));
-        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['t'], CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync([new VolumeKey('t')], CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync([new VolumeKey('t')], CancellationToken.None));
 
         Assert.IsFalse(index.Drives.Single().Watch.IsSupported);
         Assert.IsFalse(index.Drives.Single().Watch.IsRequested);

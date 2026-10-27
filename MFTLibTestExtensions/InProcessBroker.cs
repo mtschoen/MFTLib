@@ -41,7 +41,7 @@ sealed class TestBlockSections : IDisposable
     readonly ConcurrentDictionary<string, (BlockFile Block, RecordingLifetime Lifetime)> _sections =
         new(StringComparer.Ordinal);
 
-    public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(DriveKey drive,
+    public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(VolumeKey drive,
         BlockFileCreateOptions options)
     {
         var sectionName = NamedBlockSection.BuildSectionName(drive);
@@ -64,7 +64,7 @@ sealed class TestBlockSections : IDisposable
     public IReadOnlyList<(BlockFile Block, RecordingLifetime Lifetime)> All() => _sections.Values.ToList();
 
     /// <summary>The one section created so far for <paramref name="drive" />.</summary>
-    public (string SectionName, BlockFile Block, RecordingLifetime Lifetime) ForDrive(DriveKey drive)
+    public (string SectionName, BlockFile Block, RecordingLifetime Lifetime) ForDrive(VolumeKey drive)
     {
         drive = drive.Validated();
         var (sectionName, section) = _sections.Single(pair =>

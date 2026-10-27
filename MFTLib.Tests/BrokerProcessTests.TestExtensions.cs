@@ -94,7 +94,7 @@ public partial class BrokerProcessTests
             await scanStarted.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var scan = handleWithScan.Scans.Single();
-            Assert.AreEqual(new DriveKey('C'), scan.Drive);
+            Assert.AreEqual(new VolumeKey('C'), scan.Drive);
 
             var first = edge == HandleDisposalEdge.ProcessFirst
                 ? activeProcess.DisposeAsync().AsTask()
@@ -202,7 +202,7 @@ public partial class BrokerProcessTests
                 .WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("no scan source", failure.Message);
-        Assert.AreEqual(new DriveKey('C'), handle.Scans.Single().Drive);
+        Assert.AreEqual(new VolumeKey('C'), handle.Scans.Single().Drive);
     }
 
     public enum ScanRecordingCase
@@ -246,7 +246,7 @@ public partial class BrokerProcessTests
             await firstCallbackEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-            Assert.AreEqual(new DriveKey('D'), resultD.Drive);
+            Assert.AreEqual(new VolumeKey('D'), resultD.Drive);
 
             Assert.HasCount(2, handle.Scans);
             Assert.AreEqual('C', handle.Scans[0].Drive);
@@ -254,14 +254,14 @@ public partial class BrokerProcessTests
 
             firstCallbackRelease.Release();
             var resultC = await scanC.WaitAsync(HangGuard, TestContext.CancellationToken);
-            Assert.AreEqual(new DriveKey('C'), resultC.Drive);
+            Assert.AreEqual(new VolumeKey('C'), resultC.Drive);
             Assert.HasCount(2, handle.Scans);
             Assert.AreEqual('C', handle.Scans[0].Drive);
             Assert.AreEqual('D', handle.Scans[1].Drive);
             return;
         }
 
-        Func<DriveKey, SyntheticJournalCursor> queryCursor = recordingCase == ScanRecordingCase.CursorQueryFailure
+        Func<VolumeKey, SyntheticJournalCursor> queryCursor = recordingCase == ScanRecordingCase.CursorQueryFailure
             ? _ => throw new InvalidOperationException("scripted cursor failure")
             : _ => ArmedSynthetic;
 
@@ -298,7 +298,7 @@ public partial class BrokerProcessTests
         var result = await singleHandle.Process.ScanDriveAsync('c', target, options,
             null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(new DriveKey('C'), result.Drive);
+        Assert.AreEqual(new VolumeKey('C'), result.Drive);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.IsNull(result.CatchUpLoss);
         Assert.IsGreaterThan(0u, result.Block.Block.Header.RowCount);
@@ -337,7 +337,7 @@ public partial class BrokerProcessTests
         // The host throttles progress, so the scan waits until the client has seen the parse frame; the first
         // frame the host emits is never throttled, and the parse report is the first it is given.
         var parsedSeen = new TaskCompletionSource<BlockWriteProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var seen = new List<(DriveKey Drive, int ParseThreads, bool Cancelled)>();
+        var seen = new List<(VolumeKey Drive, int ParseThreads, bool Cancelled)>();
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes(scan =>
         {
             seen.Add((scan.Drive, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));

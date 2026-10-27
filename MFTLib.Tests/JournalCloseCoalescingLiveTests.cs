@@ -30,8 +30,8 @@ public class JournalCloseCoalescingLiveTests
         var tempPath = temporaryFile.Path;
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(tempPath));
         var drive = !string.IsNullOrEmpty(volumeRoot) && volumeRoot.Length >= 2 && volumeRoot[1] == ':'
-            ? new DriveKey(volumeRoot[0])
-            : new DriveKey('C');
+            ? new VolumeKey(volumeRoot[0])
+            : new VolumeKey('C');
         using var volume = MftVolume.Open(drive);
         var cursor = volume.Journal.QueryUsnJournalCursor();
         var tempFileName = Path.GetFileName(tempPath);

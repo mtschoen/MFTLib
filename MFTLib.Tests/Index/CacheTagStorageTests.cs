@@ -11,7 +11,7 @@ public sealed class CacheTagStorageTests : IDisposable
 {
     TempDirectory _directoryOwner = null!;
     string _directory = null!;
-    string BlockPath => Path.Combine(_directory, CacheDirectory.BlockFileName('T', 123));
+    string BlockPath => Path.Combine(_directory, CacheDirectory.BlockFileName(new VolumeKey('T'), 123));
 
     [TestInitialize]
     public void Initialize()

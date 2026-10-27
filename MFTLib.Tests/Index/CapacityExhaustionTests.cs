@@ -26,7 +26,7 @@ public sealed class CapacityExhaustionTests : IDisposable
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,
             RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks, SequenceNumber: 0));
         writer.Complete(Moment, null);
-        DriveBlock[] snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
         return (block, writer, snapshot);
     }
 

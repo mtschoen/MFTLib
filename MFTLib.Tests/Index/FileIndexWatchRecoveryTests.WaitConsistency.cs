@@ -33,7 +33,7 @@ public partial class FileIndexWatchRecoveryTests
         var observation = new RestartWindowObservation();
         harness.Index.Hooks.BeforeRestartDecision = letter =>
         {
-            if (letter != driveLetter || observation.Status is not null)
+            if (letter != new VolumeKey(driveLetter) || observation.Status is not null)
             {
                 return;
             }
@@ -41,7 +41,7 @@ public partial class FileIndexWatchRecoveryTests
             observation.Status = harness.DriveFor(driveLetter);
             try
             {
-                observation.Wait = harness.Index.WaitForCatchUpAsync([driveLetter], CancellationToken.None);
+                observation.Wait = harness.Index.WaitForCatchUpAsync([new VolumeKey(driveLetter)], CancellationToken.None);
             }
             catch (InvalidOperationException refusal)
             {
@@ -72,16 +72,16 @@ public partial class FileIndexWatchRecoveryTests
         {
             // Runs after the fault is recorded and before the recovery is queued. A wait issued
             // here must not have settled yet, or a consumer's fault path could read Faulted.
-            faultVisibleDuringCheckpointCheck ??= indexBox.Value!.WaitForCatchUpAsync(['T'], CancellationToken.None).IsCompleted;
+            faultVisibleDuringCheckpointCheck ??= indexBox.Value!.WaitForCatchUpAsync([new VolumeKey('T')], CancellationToken.None).IsCompleted;
             return new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024);
         });
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         indexBox.Value = index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var wait = index.WaitForCatchUpAsync(['T'], Token);
-        var observedWhenSettled = wait.ContinueWith(_ => index.Drives.Single(drive => drive.Drive == 'T'),
+        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var wait = index.WaitForCatchUpAsync([new VolumeKey('T')], Token);
+        var observedWhenSettled = wait.ContinueWith(_ => index.Drives.Single(drive => drive.Drive == new VolumeKey('T')),
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         var held = harness.HoldNextProduction('T');
@@ -97,17 +97,17 @@ public partial class FileIndexWatchRecoveryTests
         held.Release();
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.WaitForRecoveryAsync('T');
-        await harness.Index.StopWatchingAsync(['T'], Token);
+        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
     }
 
     [TestMethod]
     public async Task ManualRescan_BetweenRetireAndRestart_ReadsCatchingUpAndTheWaitFollowsTheReplacement()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var observation = ObserveRestartWindow(harness, 'T');
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         AssertWaitFollowsTheReplacement(observation);
         Assert.IsFalse(observation.Wait!.IsCompleted, "the replacement has not caught up yet");
@@ -115,25 +115,25 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await observation.Wait.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
-        await harness.Index.StopWatchingAsync(['T'], Token);
+        await harness.Index.StopWatchingAsync([new VolumeKey('T')], Token);
     }
 
     [TestMethod]
     public async Task ManualRescan_WhoseReplacementCannotStart_FaultsTheWaitIssuedBetweenWatches()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var startFailure = new IOException("rearm failed");
         harness.Source.FailNextStartFor('T', startFailure);
         var observation = ObserveRestartWindow(harness, 'T');
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         AssertWaitFollowsTheReplacement(observation);
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => observation.Wait!.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(startFailure, failure.InnerException);
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync(['T'], Token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync([new VolumeKey('T')], Token));
     }
 
     [TestMethod]
@@ -141,11 +141,11 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Task? stop = null;
-        var observation = ObserveRestartWindow(harness, 'T', () => stop = index.StopWatchingAsync(['T'], Token));
+        var observation = ObserveRestartWindow(harness, 'T', () => stop = index.StopWatchingAsync([new VolumeKey('T')], Token));
 
-        await index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         AssertWaitFollowsTheReplacement(observation);
         await stop!.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -161,11 +161,11 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Task? disposal = null;
         var observation = ObserveRestartWindow(harness, 'T', () => disposal = index.DisposeAsync().AsTask());
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         AssertWaitFollowsTheReplacement(observation);
         await disposal!.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -183,14 +183,14 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var producedBefore = harness.ProductionCount('T');
-        var wait = index.WaitForCatchUpAsync(['T'], Token);
+        var wait = index.WaitForCatchUpAsync([new VolumeKey('T')], Token);
         var stop = new TaskCompletionSource<Task<IReadOnlyList<DriveOperationResult>>>(TaskCreationOptions.RunContinuationsAsynchronously);
         index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             settle();
-            stop.TrySetResult(index.StopWatchingAsync(['T'], Token));
+            stop.TrySetResult(index.StopWatchingAsync([new VolumeKey('T')], Token));
         };
         var driveFailure = new IOException("T's journal wrapped");
 
@@ -217,14 +217,14 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await index.StartWatchingAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         harness.ScriptScans('T', Lost('T'), Held());
         var pumpParked = harness.TrackGate();
         var parked = 0;
         index.Hooks.BeforeWatchChanged = letter =>
         {
-            if (letter == 'T' && Interlocked.Exchange(ref parked, 1) == 0)
+            if (letter == new VolumeKey('T') && Interlocked.Exchange(ref parked, 1) == 0)
             {
                 pumpParked.MarkEntered();
                 pumpParked.WaitForRelease();
@@ -234,11 +234,11 @@ public partial class FileIndexWatchRecoveryTests
         await pumpParked.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         harness.SetNextProducedCursor('T', WatchHarness.JournalIdentifier, nextUsn: 9000);
 
-        var rescan = index.RescanAsync(['T'], Token);
+        var rescan = index.RescanAsync([new VolumeKey('T')], Token);
         await UntilAsync(() => harness.DriveFor('T').Watch.State != WatchState.CaughtUp);
         var status = harness.DriveFor('T');
         Assert.AreEqual(WatchState.CatchingUp, status.Watch.State);
-        var wait = index.WaitForCatchUpAsync(['T'], Token);
+        var wait = index.WaitForCatchUpAsync([new VolumeKey('T')], Token);
         pumpParked.Release();
         await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -246,7 +246,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.IsFalse(lost.IsRecoveryStopped);
         Assert.AreEqual(1, harness.CatchUpLossStatuses('T').Single().Watch.ConsecutiveLostCatchUps);
         Assert.HasCount(2, harness.Source.TargetsFor('T'), "the retry's block restarts the watch");
-        await index.StopWatchingAsync(['T'], Token);
+        await index.StopWatchingAsync([new VolumeKey('T')], Token);
     }
 
     /// <summary>Polls a condition another thread makes true, bounded by the hang guard.</summary>

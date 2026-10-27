@@ -21,7 +21,7 @@ public sealed partial record IndexedDrive
         WindowsVolume Classify(T drive)
         {
             var root = rootDirectory(drive);
-            var key = new DriveKey(root[0]);
+            var key = new VolumeKey(root[0]);
             var type = DriveType.Unknown;
             try
             {

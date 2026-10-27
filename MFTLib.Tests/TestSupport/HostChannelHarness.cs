@@ -53,7 +53,7 @@ sealed class HostChannelHarness : IAsyncDisposable
 
     public uint NextRequestId() => Interlocked.Increment(ref _nextRequestId);
 
-    public static string PipePrefix(DriveKey drive) =>
+    public static string PipePrefix(VolumeKey drive) =>
         $"{BrokerFrame.PipeNamePrefix}{(byte)drive.Validated().Letter:x2}";
 
     public string NextPipeName(char drive) =>
@@ -85,7 +85,7 @@ sealed class HostChannelHarness : IAsyncDisposable
     }
 
     /// <summary>Opens a drive channel and returns the client end of its pipe once ChannelOpened arrives.</summary>
-    public async Task<Stream> OpenChannelAsync(DriveKey drive)
+    public async Task<Stream> OpenChannelAsync(VolumeKey drive)
     {
         var requestId = NextRequestId();
         var pipeName = NextPipeName(drive.Letter);
@@ -96,7 +96,7 @@ sealed class HostChannelHarness : IAsyncDisposable
         return DrivePipe(pipeName);
     }
 
-    public async Task<Stream> OpenScanChannelAsync(DriveKey drive, string? sectionName = null,
+    public async Task<Stream> OpenScanChannelAsync(VolumeKey drive, string? sectionName = null,
         IReadOnlyCollection<string>? retainedFileNames = null)
     {
         var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(drive);
@@ -106,7 +106,7 @@ sealed class HostChannelHarness : IAsyncDisposable
         return pipe;
     }
 
-    public async Task<Stream> OpenWatchChannelAsync(DriveKey drive, UsnJournalCursor since)
+    public async Task<Stream> OpenWatchChannelAsync(VolumeKey drive, UsnJournalCursor since)
     {
         var pipe = await OpenChannelAsync(drive);
         await WriteFrameAsync(pipe, writer => BrokerProtocol.WriteStartWatch(writer, since));

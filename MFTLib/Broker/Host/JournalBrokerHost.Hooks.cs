@@ -14,7 +14,7 @@ sealed partial class JournalBrokerHost
         /// No pipe state/write lock is held; the scan holds its parse registration.
         /// Observers must be thread-safe, nonblocking and nonthrowing.
         /// </summary>
-        internal Action<DriveKey, IReadOnlyCollection<string>?>? ScanStarting { get; set; }
+        internal Action<VolumeKey, IReadOnlyCollection<string>?>? ScanStarting { get; set; }
 
         /// <summary>
         /// Runs on the dedicated sender thread after visiting its pipe snapshot,

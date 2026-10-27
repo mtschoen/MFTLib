@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 
 [TestClass]
 [DoNotParallelize]
-public class DriveKeyLifecycleTests
+public class RootKeyLifecycleTests
 {
     [TestMethod]
     [DataRow("StartWatchingAsync")]
@@ -18,7 +18,7 @@ public class DriveKeyLifecycleTests
     {
         var methods = typeof(FileIndex).GetMethods().Where(method => method.Name == name).ToArray();
         Assert.HasCount(1, methods);
-        Assert.AreSequenceEqual([typeof(IEnumerable<DriveKey>), typeof(CancellationToken)], [.. methods[0].GetParameters().Select(parameter => parameter.ParameterType)]);
+        Assert.AreSequenceEqual([typeof(IEnumerable<RootKey>), typeof(CancellationToken)], [.. methods[0].GetParameters().Select(parameter => parameter.ParameterType)]);
         Assert.AreEqual(typeof(Task<IReadOnlyList<DriveOperationResult>>), methods[0].ReturnType);
     }
 
@@ -28,26 +28,26 @@ public class DriveKeyLifecycleTests
     public async Task LifecycleVerbs_ReturnOneNormalizedResultPerRequestedKey(bool several)
     {
         using var harness = new WatchHarness('T', 'U');
-        DriveKey[] requested = several ? ['u', 't'] : ['t'];
+        RootKey[] requested = several ? [new VolumeKey('u'), new VolumeKey('t')] : [new VolumeKey('t')];
         var token = CancellationToken.None;
         var started = await harness.Index.StartWatchingAsync(requested, token);
         AssertResults(started, requested);
         var waiting = harness.Index.WaitForCatchUpAsync(requested, token);
         foreach (var key in requested)
         {
-            await harness.Source.WatchFor(key.Letter).Publish(new DriveCaughtUp());
+            await harness.Source.WatchFor(key.TryGetVolume(out var volume) ? volume : throw new ArgumentException("A volume is required.")).Publish(new DriveCaughtUp());
         }
         AssertResults(await waiting, requested);
         AssertResults(await harness.Index.RescanAsync(requested, token), requested);
         AssertResults(await harness.Index.StopWatchingAsync(requested, token), requested);
-        Assert.AreSequenceEqual(['T', 'U'], [.. harness.Index.Drives.Select(status => status.Drive)]);
+        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('U')], [.. harness.Index.Drives.Select(status => status.Drive)]);
     }
 
     [TestMethod]
     public async Task LifecycleVerbs_RejectDefaultKeyBeforeAnyOperation()
     {
         using var harness = new WatchHarness('T');
-        DriveKey[] requested = ['T', default];
+        RootKey[] requested = [new VolumeKey('T'), default];
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(requested, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(requested, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(requested, CancellationToken.None));
@@ -78,9 +78,9 @@ public class DriveKeyLifecycleTests
         harness.Index.HoldEveryRecovery();
         var changes = await harness.Index.ApplyJournalEntriesAsync('t', [WatchHarness.Create(9, "created.txt")],
             WatchHarness.JournalIdentifier, 200);
-        Assert.AreEqual('T', changes.Single().Entry.RecordKey.Drive);
-        Assert.AreEqual('T', harness.Index.Root('t', TestContext.CancellationToken).RecordKey.Drive);
-        await harness.Index.StartWatchingAsync(['t'], CancellationToken.None);
+        Assert.AreEqual(new VolumeKey('T'), changes.Single().Entry.RecordKey.Drive);
+        Assert.AreEqual(new VolumeKey('T'), harness.Index.Root(new VolumeKey('t'), TestContext.CancellationToken).RecordKey.Drive);
+        await harness.Index.StartWatchingAsync([new VolumeKey('t')], CancellationToken.None);
         harness.Source.WatchFor('t').FailDrive(new IOException("scripted drive failure"));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 't');
         Assert.AreEqual('T', fault.Drive);
@@ -92,21 +92,21 @@ public class DriveKeyLifecycleTests
     public async Task LifecycleVerbs_MaterializeEachSequenceOnceAndAcceptEmptySequences()
     {
         using var harness = new WatchHarness(new ScriptedWatchSource { CatchUpOnStart = true }.IndexSource, 'T');
-        AssertResults(await harness.Index.StartWatchingAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
-        AssertResults(await harness.Index.WaitForCatchUpAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
-        AssertResults(await harness.Index.RescanAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
-        AssertResults(await harness.Index.StopWatchingAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
+        AssertResults(await harness.Index.StartWatchingAsync(new SingleUseSequence(new VolumeKey('t')), CancellationToken.None), [new VolumeKey('T')]);
+        AssertResults(await harness.Index.WaitForCatchUpAsync(new SingleUseSequence(new VolumeKey('t')), CancellationToken.None), [new VolumeKey('T')]);
+        AssertResults(await harness.Index.RescanAsync(new SingleUseSequence(new VolumeKey('t')), CancellationToken.None), [new VolumeKey('T')]);
+        AssertResults(await harness.Index.StopWatchingAsync(new SingleUseSequence(new VolumeKey('t')), CancellationToken.None), [new VolumeKey('T')]);
         Assert.IsEmpty(await harness.Index.StartWatchingAsync([], CancellationToken.None));
         Assert.IsEmpty(await harness.Index.WaitForCatchUpAsync([], CancellationToken.None));
         Assert.IsEmpty(await harness.Index.RescanAsync([], CancellationToken.None));
         Assert.IsEmpty(await harness.Index.StopWatchingAsync([], CancellationToken.None));
     }
 
-    sealed class SingleUseSequence(DriveKey drive) : IEnumerable<DriveKey>
+    sealed class SingleUseSequence(RootKey drive) : IEnumerable<RootKey>
     {
         bool _enumerated;
 
-        public IEnumerator<DriveKey> GetEnumerator()
+        public IEnumerator<RootKey> GetEnumerator()
         {
             Assert.IsFalse(_enumerated, "the request must be enumerated exactly once");
             _enumerated = true;
@@ -116,7 +116,7 @@ public class DriveKeyLifecycleTests
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    static void AssertResults(IReadOnlyList<DriveOperationResult> results, DriveKey[] requested)
+    static void AssertResults(IReadOnlyList<DriveOperationResult> results, RootKey[] requested)
     {
         Assert.AreSequenceEqual(requested, [.. results.Select(result => result.Drive)]);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));

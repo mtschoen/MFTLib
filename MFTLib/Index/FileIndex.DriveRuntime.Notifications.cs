@@ -6,6 +6,34 @@ public sealed partial class FileIndex
 {
     sealed partial class DriveRuntime
     {
+        /// <summary>
+        ///     The <see cref="WatchState" /> last noted for the drive, which
+        ///     <see cref="NoteWatchStateLocked" /> compares the derived state against.
+        /// </summary>
+        WatchState _notedWatchState;
+
+        /// <summary>The drive's <see cref="DriveWatchStatus.StateVersion" />.</summary>
+        long _watchStateVersion;
+
+        /// <summary>
+        ///     Noted changes not yet delivered through <see cref="FileIndex.WatchStateChanged" />, in
+        ///     version order.
+        /// </summary>
+        List<WatchStateChange>? _pendingWatchStates;
+
+        /// <summary>
+        ///     Serializes delivery of this drive's <see cref="FileIndex.WatchStateChanged" />, held from
+        ///     taking <see cref="_pendingWatchStates" /> until the last handler returns. Taken before
+        ///     the state lock, never under it or under a write gate.
+        /// </summary>
+        Lock DeliveryLock { get; } = new();
+
+        /// <summary>
+        ///     Serializes delivery of this drive's <see cref="FileIndex.WatchFaulted" />, whichever thread
+        ///     raises it. Taken with no other lock held.
+        /// </summary>
+        Lock FaultDeliveryLock { get; } = new();
+
         long _contendedWatchStateDeliveries;
 
         public long ContendedWatchStateDeliveries => Interlocked.Read(ref _contendedWatchStateDeliveries);
@@ -29,7 +57,7 @@ public sealed partial class FileIndex
             _notedWatchState = state;
             _watchStateVersion++;
             (_pendingWatchStates ??= []).Add(
-                new WatchStateChange(Drive, DescribeWatchLocked(), cause));
+                new WatchStateChange(Volume, DescribeWatchLocked(), cause));
         }
 
         /// <summary>

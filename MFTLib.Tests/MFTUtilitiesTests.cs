@@ -13,7 +13,7 @@ public class MFTUtilitiesTests
     [DataRow('D', @"\\.\D:")]
     public void GetVolumePath_FormatsDrive(char character, string expected)
     {
-        Assert.AreEqual(expected, MFTUtilities.GetVolumePath(new DriveKey(character)));
+        Assert.AreEqual(expected, MFTUtilities.GetVolumePath(new VolumeKey(character)));
     }
 
     [TestMethod]

@@ -16,14 +16,14 @@ public partial class JournalBrokerHostTests
         var queryCallCount = 0;
         (UsnJournalEntry[], UsnJournalCursor)[] batchD = [([WatchEntry()], new UsnJournalCursor(2UL, 210L))];
 
-        UsnJournalCursor QueryCursor(DriveKey drive)
+        UsnJournalCursor QueryCursor(VolumeKey drive)
         {
             Interlocked.Increment(ref queryCallCount);
             return drive.Letter == 'C' ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
         }
 
         IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
-            DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+            VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
             CancellationToken cancellationToken)
         {
             if (drive.Letter == 'C' && since.JournalIdentifier == 7UL)

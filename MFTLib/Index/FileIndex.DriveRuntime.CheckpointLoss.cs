@@ -36,7 +36,7 @@ public sealed partial class FileIndex
         /// </remarks>
         void RecordCheckpointLossForFaultedDrive(WatchInstance instance)
         {
-            var drive = Drive;
+            var drive = Volume;
             var driveBlock = instance.ArmedBlock;
             ulong journalIdentifier;
             long watchPositionUsn;
@@ -147,10 +147,10 @@ public sealed partial class FileIndex
         }
 
         /// <summary>The watch target at the journal cursor persisted in the drive's block header.</summary>
-        static IndexWatchTarget BuildWatchTarget(DriveBlock driveBlock)
+        IndexWatchTarget BuildWatchTarget(DriveBlock driveBlock)
         {
             ref readonly var header = ref driveBlock.Block.Header;
-            return new IndexWatchTarget(driveBlock.Drive, header.UsnJournalIdentifier, header.UsnNextUsn);
+            return new IndexWatchTarget(Volume, header.UsnJournalIdentifier, header.UsnNextUsn);
         }
     }
 }

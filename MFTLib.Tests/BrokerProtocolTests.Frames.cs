@@ -45,7 +45,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);
-        Assert.AreEqual(new DriveKey('C'), frame.RequireDrive());
+        Assert.AreEqual(new VolumeKey('C'), frame.RequireDrive());
         Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
         Assert.IsEmpty(frame.Entries);
         Assert.IsNull(frame.RetainedFileNames);
@@ -67,7 +67,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.QueryVolume, frame.Kind);
         Assert.AreEqual(4u, frame.RequestId);
-        Assert.AreEqual(new DriveKey('D'), frame.RequireDrive());
+        Assert.AreEqual(new VolumeKey('D'), frame.RequireDrive());
     }
 
     [TestMethod]

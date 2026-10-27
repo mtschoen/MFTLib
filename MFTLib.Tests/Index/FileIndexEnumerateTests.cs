@@ -31,7 +31,7 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
     {
         await using var index = await OpenSyntheticIndexWithDeepCandidateAsync();
         var release = index.CurrentSnapshot[0].ReleaseState;
-        var query = new SearchQuery("candidate", Subtree: index.Root('T', TestContext.CancellationToken));
+        var query = new SearchQuery("candidate", Subtree: index.Root(new VolumeKey('T'), TestContext.CancellationToken));
 
         // Search materializes the whole match set and fails because it visits the deep candidate up front.
         try

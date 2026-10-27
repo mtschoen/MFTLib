@@ -54,7 +54,7 @@ readonly record struct BrokerFrame
     /// <summary>Nonzero on every control request and reply; zero on an Error written to a drive pipe.</summary>
     public uint RequestId { get; private init; }
 
-    public DriveKey? Drive { get; private init; }
+    public VolumeKey? Drive { get; private init; }
     public string? PipeName { get; private init; }
     public string? SectionName { get; private init; }
     public bool IncludeFreed { get; private init; }
@@ -81,7 +81,7 @@ readonly record struct BrokerFrame
     internal const string PipeNamePrefix = "mftlib-broker-";
     const int PipeNameLength = 14 + 32;
 
-    public DriveKey RequireDrive() =>
+    public VolumeKey RequireDrive() =>
         Drive ?? throw new InvalidDataException($"{Kind} frame is missing its drive field");
 
     public string RequirePipeName()
@@ -96,7 +96,7 @@ readonly record struct BrokerFrame
         return pipeName;
     }
 
-    public string RequireSectionName(DriveKey drive)
+    public string RequireSectionName(VolumeKey drive)
     {
         drive = drive.Validated();
         var sectionName = SectionName ?? throw new InvalidDataException($"{Kind} frame is missing its section name field");
@@ -134,7 +134,7 @@ readonly record struct BrokerFrame
     }
 
     /// <summary>The proven loss of a <see cref="BrokerFrameKind.CatchUpLost" /> frame, for the channel's drive.</summary>
-    internal JournalCheckpointLoss RequireCatchUpLoss(DriveKey drive)
+    internal JournalCheckpointLoss RequireCatchUpLoss(VolumeKey drive)
     {
         var loss = CatchUpLoss ?? throw new InvalidDataException($"{Kind} frame is missing its loss field");
         return new JournalCheckpointLoss(drive, JournalCheckpointLossDetection.ScanCatchUp, loss.Cause,
@@ -150,7 +150,7 @@ readonly record struct BrokerFrame
 
     // Per-kind factories initialize Entries. Retention stays null on full scans and non-scan frames.
 
-    public static BrokerFrame OpenChannel(uint requestId, DriveKey drive, string pipeName)
+    public static BrokerFrame OpenChannel(uint requestId, VolumeKey drive, string pipeName)
     {
         return Empty(BrokerFrameKind.OpenChannel, requestId) with { Drive = drive.Validated(), PipeName = pipeName };
     }
@@ -160,7 +160,7 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.ChannelOpened, requestId);
     }
 
-    public static BrokerFrame QueryVolume(uint requestId, DriveKey drive)
+    public static BrokerFrame QueryVolume(uint requestId, VolumeKey drive)
     {
         return Empty(BrokerFrameKind.QueryVolume, requestId) with { Drive = drive.Validated() };
     }
@@ -175,7 +175,7 @@ readonly record struct BrokerFrame
     }
 
     // The host refuses any requested maximum at or below the current one (grow only).
-    public static BrokerFrame GrowUsnJournal(uint requestId, DriveKey drive, long maximumSize, long allocationDelta)
+    public static BrokerFrame GrowUsnJournal(uint requestId, VolumeKey drive, long maximumSize, long allocationDelta)
     {
         return Empty(BrokerFrameKind.GrowUsnJournal, requestId) with
         {

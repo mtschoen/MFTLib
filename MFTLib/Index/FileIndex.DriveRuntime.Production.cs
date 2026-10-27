@@ -69,7 +69,7 @@ public sealed partial class FileIndex
         {
             var request = new MftBlockProduceRequest
             {
-                Drive = Drive,
+                Drive = Volume,
                 VolumeSerial = Configuration.VolumeSerial,
                 BlockPath = blockPath,
                 DeleteOnClose = deleteOnClose,
@@ -149,6 +149,7 @@ public sealed partial class FileIndex
             BlockFile.Create(new BlockFileCreateOptions
             {
                 Path = blockPath,
+                Root = Drive,
                 VolumeSerial = Configuration.VolumeSerial,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = slotCapacity,

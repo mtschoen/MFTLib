@@ -112,7 +112,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     {
         var enumerationOptions = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _fixture.CacheDirectory
         };
         await using (await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None))
@@ -199,7 +199,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         Assert.IsNotNull(drive.Watch.CheckpointLoss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.Watch.CheckpointLoss.Cause);
         Assert.IsNull(drive.Watch.CheckpointLoss.SizeThatWouldHaveRetained);
-        Assert.IsTrue(reopened.Root('T', TestContext.CancellationToken).IsValid, "the adopted block must still answer queries");
+        Assert.IsTrue(reopened.Root(new VolumeKey('T'), TestContext.CancellationToken).IsValid, "the adopted block must still answer queries");
     }
 
     [TestMethod]
@@ -215,7 +215,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         });
 
         Assert.AreSame(failure, observed);
-        var blockPath = Path.Combine(_fixture.CacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_fixture.CacheDirectory, CacheDirectory.BlockFileName(new VolumeKey('T'), 0x0BADF00D));
         await using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0, exclusive.Length);
     }

@@ -42,8 +42,24 @@ public class PublicMemberCallerTests
             "reached through string interpolation, which emits no member reference; file-wizard file-wizard/BlockCacheCatalog.cs:98 and git-wizard GitWizard/MftIndexCacheStatusFormatter.cs:50 print the stored and requested tags",
         ["property MFTLib.Index.DriveBlockStatus.Generation : System.UInt64"] =
             "file-wizard FileWizardMaui.Logic/DuplicateNameCounter.cs skips a duplicate-name recount when no drive's Generation changed (lands in file-wizard's 0.3.0 pin-bump pull request)",
-        ["method MFTLib.Index.DriveKey.TryParse(System.String, MFTLib.Index.DriveKey&) : System.Boolean"] =
-            "Owner-approved consumer migrations: file-wizard FileWizard/DriveSelectionParser.cs and FileWizard/FileWizardSettings.cs parse CLI and saved drive specs; git-wizard GitWizard/MftIndexSession.Windows.cs NormalizeVolume parses requested volumes",
+        ["method MFTLib.Index.VolumeKey.TryParse(System.String, MFTLib.Index.VolumeKey&) : System.Boolean"] =
+            "Owner-approved consumer migrations: file-wizard FileWizard/DriveSelectionParser.cs and FileWizard/FileWizardSettings.cs parse CLI and saved volume specs; git-wizard GitWizard/MftIndexSession.Windows.cs NormalizeVolume parses requested volumes",
+        ["property MFTLib.Index.VolumeKey.Letter : System.Char"] =
+            "file-wizard FileWizard/ContentHashSidecar.cs persists the letter of a volume key, and git-wizard GitWizard/Watch/IndexVolumeChangeSource.cs maps a volume key to its drive root",
+        ["method MFTLib.Index.IndexedDrive.FromDirectory(System.String) : MFTLib.Index.IndexedDrive"] =
+            "file-wizard FileWizard/FileIndexHost.cs DriveFor and git-wizard GitWizard/Discovery/EnumerationDiscovery.cs CreateIndexOptions create walked-folder roots through it",
+        ["method MFTLib.Index.RootKey.FromDirectory(System.String) : MFTLib.Index.RootKey"] =
+            "file-wizard FileWizard/FileIndexHost.cs DriveFor and git-wizard GitWizard/Discovery/EnumerationDiscovery.cs derive the key of a walked folder to select its drive",
+        ["method MFTLib.Index.RootKey.TryParse(System.String, MFTLib.Index.RootKey&) : System.Boolean"] =
+            "file-wizard FileWizard/FileIndexHost.cs DriveFor parses a drive spec or folder path into a root key",
+        ["property MFTLib.Index.RootKey.IsVolume : System.Boolean"] =
+            "file-wizard FileWizard/JournalCommand.cs and git-wizard GitWizard/Watch/IndexVolumeChangeSource.cs branch on whether a root is a volume before journal work",
+        ["method MFTLib.Index.RootKey.CompareTo(MFTLib.Index.RootKey) : System.Int32"] =
+            "file-wizard FileWizard/FileWizardSettings.cs orders saved roots by key (reached through IComparable<RootKey>)",
+        ["method MFTLib.Index.RootKey.Equals(MFTLib.Index.RootKey) : System.Boolean"] =
+            "reached through dictionary, set and equality use, which emits no member reference; both consumers key per-root state by RootKey",
+        ["method MFTLib.Index.RootKey.GetHashCode() : System.Int32"] =
+            "reached through dictionary and set keys, which emits no member reference; both consumers key per-root state by RootKey",
         ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =
             "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth",
         ["type MFTLib.Index.DirectoryWalkOptions"] =

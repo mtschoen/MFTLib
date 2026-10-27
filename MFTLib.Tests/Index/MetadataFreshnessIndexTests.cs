@@ -48,7 +48,7 @@ public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
         };
 
     string Seed() =>
-        SyntheticBlock.WriteCached(Fixture.CacheDirectory, 'T', Serial,
+        SyntheticBlock.WriteCached(Fixture.CacheDirectory, new VolumeKey('T'), Serial,
             new SyntheticBlockOptions { JournalCursor = Cursor, ScanTimestamp = ScannedMoment }, Rows());
 
     static SyntheticJournalRecord Record(ulong recordNumber, ulong parent, string name, SyntheticJournalReason reason,
@@ -239,7 +239,7 @@ public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
         ], Cursor);
         Assert.IsFalse(Named(index, "report.txt").IsLastWriteTimeKnown);
 
-        await index.RescanAsync(['T'], Token);
+        await index.RescanAsync([new VolumeKey('T')], Token);
 
         var rescanned = Named(index, "report.txt");
         Assert.IsTrue(rescanned.IsLastWriteTimeKnown);

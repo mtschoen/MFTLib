@@ -73,7 +73,7 @@ public class FileIndexBatchedWaitTests
 
         var results = await harness.Index.WaitForCatchUpAsync(harness.Index.Drives.Select(drive => drive.Drive), Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreSequenceEqual(['T', 'U'], [.. results.Select(result => result.Drive.Letter)]);
+        Assert.AreSequenceEqual(["T", "U"], [.. results.Select(result => result.Drive.ToString())]);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.NotApplicable));
     }
 
@@ -129,7 +129,7 @@ public class FileIndexBatchedWaitTests
         Assert.IsFalse(wait.IsCompleted);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
 
         await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
@@ -145,7 +145,7 @@ public class FileIndexBatchedWaitTests
 
         var wait = harness.Index.WaitForCatchUpAsync(harness.Index.Drives.Select(drive => drive.Drive), Token);
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Index.RescanAsync([new VolumeKey('T')], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
 
         var results = await wait.WaitAsync(HangGuard, TestContext.CancellationToken);

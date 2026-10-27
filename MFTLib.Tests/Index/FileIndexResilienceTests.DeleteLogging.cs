@@ -18,7 +18,7 @@ public partial class FileIndexResilienceTests
         {
         }
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var bytes = await File.ReadAllBytesAsync(blockPath, TestContext.CancellationToken);
         bytes[0] = 0xFF;
         await File.WriteAllBytesAsync(blockPath, bytes, TestContext.CancellationToken);
@@ -39,7 +39,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken);
 
         var deletions = new List<string>();
@@ -59,7 +59,7 @@ public partial class FileIndexResilienceTests
         {
         }
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var bytes = await File.ReadAllBytesAsync(blockPath, TestContext.CancellationToken);
         bytes[0] = 0xFF;
         await File.WriteAllBytesAsync(blockPath, bytes, TestContext.CancellationToken);
@@ -85,13 +85,13 @@ public partial class FileIndexResilienceTests
         var deletions = new List<string>();
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration)],
+            Drives = [MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = deletions.Add
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
         Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
@@ -107,7 +107,7 @@ public partial class FileIndexResilienceTests
         var oldSnapshot = index.CurrentSnapshot;
 
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
-        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
 
         await oldSnapshot.ReleaseNowAsync();
 
@@ -128,9 +128,9 @@ public partial class FileIndexResilienceTests
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         progress.Armed = true;
 
-        await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
+        await AssertThrowsCancellation(() => index.RescanAsync([new VolumeKey('T')], cancellationTokenSource.Token));
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath) && entry.Contains("partial"));
         Assert.IsNotNull(line,
             "the delete of the cancelled scan's partial replacement must be logged with its path");

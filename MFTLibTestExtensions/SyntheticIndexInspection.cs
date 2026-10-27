@@ -13,7 +13,7 @@ static class SyntheticIndexInspection
     /// <param name="drive">The drive whose block header is read.</param>
     /// <returns>The header values, or null when the drive has no block (offline, declined or failed).</returns>
     /// <exception cref="ObjectDisposedException">The index is disposed.</exception>
-    internal static SyntheticDriveHeader? ReadHeader(FileIndex index, DriveKey drive)
+    internal static SyntheticDriveHeader? ReadHeader(FileIndex index, RootKey drive)
     {
         ArgumentNullException.ThrowIfNull(index);
         using var borrow = index.BorrowCurrentSnapshot();

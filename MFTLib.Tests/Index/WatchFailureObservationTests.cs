@@ -66,14 +66,14 @@ public class WatchFailureObservationTests
         try
         {
             // The scripted host answers the channel open and reads StartWatch before the start can return.
-            var starting = index.StartWatchingAsync(['T'], token);
+            var starting = index.StartWatchingAsync([new VolumeKey('T')], token);
             await using var host = await broker.AcceptChannelAsync();
             Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
             await starting;
             if (caughtUpFirst)
             {
                 await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
-                await index.WaitForCatchUpAsync(['T'], token);
+                await index.WaitForCatchUpAsync([new VolumeKey('T')], token);
                 Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single().Watch.State);
             }
 
@@ -89,7 +89,7 @@ public class WatchFailureObservationTests
             if (requestLateWaits)
             {
                 var late = await DriveResultAssertions.FailureAsync<BrokerChannelLostException>(
-                    () => index.WaitForCatchUpAsync(['T'], token));
+                    () => index.WaitForCatchUpAsync([new VolumeKey('T')], token));
                 Assert.AreSame(fault.Exception, late);
                 var lateBatch = (await index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), token)).Single();
                 Assert.AreEqual(DriveOperationOutcome.Failed, lateBatch.Outcome);
@@ -97,7 +97,7 @@ public class WatchFailureObservationTests
             }
 
             var stopped = await DriveResultAssertions.FailureAsync<BrokerChannelLostException>(
-                () => index.StopWatchingAsync(['T'], token));
+                () => index.StopWatchingAsync([new VolumeKey('T')], token));
             Assert.AreSame(fault.Exception, stopped);
             return [new WeakReference(index), new WeakReference(source)];
         }

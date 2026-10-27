@@ -13,9 +13,9 @@ static class JournalWindows
         long nextUsn = 5_000, long maximumSize = 128L * 1024 * 1024, long allocationDelta = 64) =>
         Override(_ => Window(journalIdentifier, firstUsn, nextUsn, allocationDelta, maximumSize));
 
-    public static IDisposable Override(Func<DriveKey, SyntheticJournalWindow?> query) =>
+    public static IDisposable Override(Func<VolumeKey, SyntheticJournalWindow?> query) =>
         JournalIsolation.OverrideJournalWindow(query);
 
-    public static IDisposable ForDrives(IReadOnlyDictionary<DriveKey, SyntheticJournalWindow> windows) =>
+    public static IDisposable ForDrives(IReadOnlyDictionary<VolumeKey, SyntheticJournalWindow> windows) =>
         Override(drive => windows.TryGetValue(drive, out var window) ? window : null);
 }

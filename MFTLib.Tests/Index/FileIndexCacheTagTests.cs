@@ -16,7 +16,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
     IDisposable? _journalScope;
     string Root => Path.Combine(_directory, "root");
     string Cache => Path.Combine(_directory, "cache");
-    string BlockPath => Path.Combine(Cache, CacheDirectory.BlockFileName('T', 123));
+    string BlockPath => Path.Combine(Cache, CacheDirectory.BlockFileName(new VolumeKey('T'), 123));
 
     [TestInitialize]
     public void Initialize()
@@ -41,7 +41,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
 
     FileIndexOptions Options(CacheTag tag, bool cacheOnly = false) => new()
     {
-        Drives = [new IndexedDrive('T', Root, 123)],
+        Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), Root, 123)],
         CacheDirectory = Cache,
         CacheTag = tag,
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
@@ -97,14 +97,14 @@ public sealed class FileIndexCacheTagTests : IDisposable
     {
         var options = Options(OriginalTag) with
         {
-            Drives = [new IndexedDrive('T', Root, 123, producerKind)],
+            Drives = [SyntheticIndexedDrive.Create(new VolumeKey('T'), Root, 123, producerKind)],
             CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent
         };
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.AreEqual(OriginalTag, index.CurrentSnapshot.Single().Block.Header.CacheTag);
-            await index.RescanAsync(['T'], CancellationToken.None);
+            await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
             Assert.AreEqual(OriginalTag, index.CurrentSnapshot.Single().Block.Header.CacheTag);
         }
         if (cacheDisabled)
@@ -194,7 +194,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
                 {
                     Assert.AreEqual(stored, left?.Header.CacheTag, "a cache-only open leaves the rejected block in place");
                 }
-                await index.RescanAsync(['T'], CancellationToken.None);
+                await index.RescanAsync([new VolumeKey('T')], CancellationToken.None);
                 Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
                 Assert.IsNull(index.Drives.Single().Failure);
             }

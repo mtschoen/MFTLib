@@ -149,7 +149,7 @@ public sealed class WatchHostModeTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), session, _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), session, _ => SyntheticIndexedDrive.Create(new VolumeKey('Q'), Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None);
 
         Assert.Contains("Error on drive Q: The drive is offline; nothing was scanned.", lines,
             string.Join(Environment.NewLine, lines));
@@ -204,6 +204,6 @@ public sealed class WatchHostModeTests : IDisposable
     IndexedDrive ResolveDrive(string letter)
     {
         var driveLetter = char.ToUpperInvariant(letter[0]);
-        return new IndexedDrive(driveLetter, _directory, 4242);
+        return SyntheticIndexedDrive.Create(new VolumeKey(driveLetter), _directory, 4242);
     }
 }
