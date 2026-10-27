@@ -39,7 +39,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         return (block, new BlockWriter(block));
     }
 
-    DriveBlock[] Produce(out BlockFile block, out EnumerationResult result,
+    DriveBlock[] Produce(out BlockFile block,
         IReadOnlyCollection<string>? retainedFileNames = null, DirectoryWalkOptions? directoryWalk = null,
         string? rootDirectory = null, int maximumWorkers = int.MaxValue)
     {
@@ -55,7 +55,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         });
 
         using var lease = EnumerationWalkLimit.EnterAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers);
+        producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
         return [new DriveBlock('T', 0, block, rootDirectoryPath: root)];
     }
@@ -63,14 +63,13 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_WritesARootPlusEveryDirectoryAndFile()
     {
-        var snapshot = Produce(out var block, out var result);
+        var snapshot = Produce(out var block);
         try
         {
             // Root, Documents, Projects, Pictures, readme.md, report.pdf, holiday.jpg.
-            Assert.AreEqual(7u, result.RowCount);
             Assert.AreEqual(7u, block.Header.RowCount);
-            Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
-            Assert.IsFalse(result.CapacityExhausted);
+            Assert.AreEqual(0u, block.Header.AccessDeniedSubtreeCount);
+            Assert.IsFalse(block.Header.IsCapacityExhausted);
         }
         finally
         {
@@ -81,10 +80,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_NullRetainedFileNames_WritesEveryFile()
     {
-        var snapshot = Produce(out _, out var result, retainedFileNames: null);
+        var snapshot = Produce(out var block, retainedFileNames: null);
         try
         {
-            Assert.AreEqual(7u, result.RowCount);
+            Assert.AreEqual(7u, block.Header.RowCount);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg")).HasValue);
         }
@@ -97,11 +96,11 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_EmptyRetainedFileNames_WritesDirectoriesOnly()
     {
-        var snapshot = Produce(out _, out var result, retainedFileNames: []);
+        var snapshot = Produce(out var block, retainedFileNames: []);
         try
         {
             // Root, Documents, Projects, Pictures.
-            Assert.AreEqual(4u, result.RowCount);
+            Assert.AreEqual(4u, block.Header.RowCount);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects")).HasValue);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures")).HasValue);
             Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
@@ -116,11 +115,11 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_NonemptyRetainedFileNames_WritesDirectoriesAndMatchingFilesIgnoringCase()
     {
-        var snapshot = Produce(out _, out var result, retainedFileNames: ["REPORT.PDF", "no-such-file.txt"]);
+        var snapshot = Produce(out var block, retainedFileNames: ["REPORT.PDF", "no-such-file.txt"]);
         try
         {
             // Root, Documents, Projects, Pictures, report.pdf.
-            Assert.AreEqual(5u, result.RowCount);
+            Assert.AreEqual(5u, block.Header.RowCount);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf")).HasValue);
             Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg")).HasValue);
             Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
@@ -135,10 +134,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     public async Task Produce_RetainedFileNamesNeverMatchADirectory_AndTheRootRowIsAlwaysKept()
     {
         // A directory is kept whether or not its name is in the set, so the set naming one changes nothing.
-        var snapshot = Produce(out var block, out var result, retainedFileNames: ["Pictures"]);
+        var snapshot = Produce(out var block, retainedFileNames: ["Pictures"]);
         try
         {
-            Assert.AreEqual(4u, result.RowCount);
+            Assert.AreEqual(4u, block.Header.RowCount);
             Assert.AreEqual(_treeRoot, new string(NamePool.ReadRowName(block, 0)));
             Assert.IsTrue(block.Rows[0].IsDirectory);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents")).HasValue);
@@ -160,7 +159,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_BuildsPathsThatMatchTheRealTree()
     {
-        var snapshot = Produce(out _, out _);
+        var snapshot = Produce(out _);
         try
         {
             var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"));
@@ -178,7 +177,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_MarksDirectoriesAsDirectoriesWithZeroSize()
     {
-        var snapshot = Produce(out _, out _);
+        var snapshot = Produce(out _);
         try
         {
             var documents = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents"));
@@ -196,7 +195,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_RootRowIsRowZeroAndParentsItself()
     {
-        var snapshot = Produce(out var block, out _);
+        var snapshot = Produce(out var block);
         try
         {
             Assert.AreEqual(0u, block.Header.RootRow);
@@ -223,7 +222,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     {
         var rootMoment = new DateTime(2021, 3, 4, 5, 6, 7, DateTimeKind.Utc);
         Directory.SetLastWriteTimeUtc(_treeRoot, rootMoment);
-        var snapshot = Produce(out var block, out _);
+        var snapshot = Produce(out var block);
         try
         {
             ref readonly var root = ref block.Rows[0];
@@ -242,7 +241,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     {
         var existingRoot = _treeRoot;
         _treeRoot = Path.Combine(existingRoot, "missing");
-        var snapshot = Produce(out var block, out _);
+        var snapshot = Produce(out var block);
         try
         {
             ref readonly var root = ref block.Rows[0];
@@ -260,7 +259,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     [TestMethod]
     public async Task Produce_ProducerKindOnTheBlockIsEnumerationSoIdsCarryThatKind()
     {
-        var snapshot = Produce(out _, out _);
+        var snapshot = Produce(out _);
         try
         {
             var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg"));
@@ -321,9 +320,8 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var progress = new RecordingProgress();
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
-        var result = producer.Produce(created.Writer, progress, lease, CancellationToken.None, maximumWorkers: 1);
+        producer.Produce(created.Writer, progress, lease, CancellationToken.None, maximumWorkers: 1);
 
-        Assert.IsTrue(result.CapacityExhausted);
         Assert.IsTrue(created.Writer.CapacityExhausted);
 
         // Root (Documents, Pictures both fit in the 3-row capacity) is always walked, then
@@ -351,13 +349,12 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Assert.Inconclusive($"Could not create a directory symbolic link: {linkFailure.Message}");
         }
 
-        var snapshot = Produce(out var block, out var result);
+        var snapshot = Produce(out var block);
         try
         {
             // Root, Documents, Projects, Pictures, readme.md, report.pdf, holiday.jpg, RootLink.
-            Assert.AreEqual(8u, result.RowCount);
             Assert.AreEqual(8u, block.Header.RowCount);
-            Assert.IsFalse(result.CapacityExhausted);
+            Assert.IsFalse(block.Header.IsCapacityExhausted);
 
             var link = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "RootLink"));
             Assert.IsTrue(link.HasValue);
@@ -381,7 +378,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             File.SetAttributes(hiddenPath, File.GetAttributes(hiddenPath) | FileAttributes.Hidden);
         }
 
-        var snapshot = Produce(out _, out _);
+        var snapshot = Produce(out _);
         try
         {
             var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, hiddenName));
@@ -405,10 +402,13 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
-        var result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None);
+        Action<BlockWriter, IProgress<IndexScanProgress>?, EnumerationWalkLimit.Lease,
+            CancellationToken, int> produce = producer.Produce;
+        produce(created.Writer, null, lease, CancellationToken.None, int.MaxValue);
 
-        Assert.AreEqual(1u, result.RowCount);
-        Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
+        Assert.AreEqual(1u, created.Writer.RowCount);
+        Assert.AreEqual(1u, block.Header.AccessDeniedSubtreeCount);
+        Assert.IsFalse(created.Writer.CapacityExhausted);
     }
 
     [TestMethod]
@@ -536,15 +536,15 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             File.SetLastWriteTimeUtc(file, fixedTime);
         }
         var expected = EnumerationWalkTestSupport.FileSystemInventory(_treeRoot).ToHashSet();
-        var sequential = Produce(out _, out var first, maximumWorkers: 1);
+        var sequential = Produce(out var firstBlock, maximumWorkers: 1);
         try
         {
-            var parallel = Produce(out _, out var second, maximumWorkers: 2);
+            var parallel = Produce(out var secondBlock, maximumWorkers: 2);
             try
             {
-                Assert.IsFalse(first.CapacityExhausted);
-                Assert.IsFalse(second.CapacityExhausted);
-                Assert.AreEqual(first.AccessDeniedSubtreeCount, second.AccessDeniedSubtreeCount);
+                Assert.IsFalse(firstBlock.Header.IsCapacityExhausted);
+                Assert.IsFalse(secondBlock.Header.IsCapacityExhausted);
+                Assert.AreEqual(firstBlock.Header.AccessDeniedSubtreeCount, secondBlock.Header.AccessDeniedSubtreeCount);
                 Assert.IsTrue(EnumerationWalkTestSupport.Inventory(sequential[0])
                     .SetEquals(EnumerationWalkTestSupport.Inventory(parallel[0])));
                 Assert.IsTrue(expected.SetEquals(EnumerationWalkTestSupport.Inventory(sequential[0])));
@@ -869,10 +869,10 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         try
         {
             using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
-            var result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers: 2);
+            producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers: 2);
 
-            Assert.IsFalse(result.CapacityExhausted);
-            Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
+            Assert.IsFalse(created.Writer.CapacityExhausted);
+            Assert.AreEqual(1u, block.Header.AccessDeniedSubtreeCount);
             Assert.AreSequenceEqual([failingDir], failedDirectories);
             Assert.IsFalse(observation.Visits.ContainsKey(childOfFailing), "Descendant of skipped directory must not be visited");
             Assert.IsTrue(observation.Visits.ContainsKey(healthyDir), "Healthy sibling directory must be visited");
@@ -1037,7 +1037,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             ? CreateBlock(slotCapacity: 3, namePoolCapacity: 1048576)
             : CreateBlock(slotCapacity: 4096, namePoolCapacity: (uint)(_treeRoot.Length + (2 * "child-0".Length)) * sizeof(char));
         using var block = created.Block;
-        Task<EnumerationResult>? produceTask = null;
+        Task? produceTask = null;
         {
             try
             {
@@ -1045,12 +1045,11 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
                 await observation.Stopped.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsFalse(produceTask.IsCompleted, "Exhaustion must drain the held reader");
                 observation.WorkerExit.Release();
-                var result = await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
-                Assert.IsTrue(result.CapacityExhausted);
+                await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsTrue(created.Writer.CapacityExhausted);
-                Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
+                Assert.AreEqual(0u, block.Header.AccessDeniedSubtreeCount);
                 Assert.AreEqual(0, observation.Active);
-                Assert.AreEqual(3u, result.RowCount);
+                Assert.AreEqual(3u, created.Writer.RowCount);
                 Assert.HasCount(2, progress.Directories);
                 Assert.DoesNotContain(path => Path.GetFileName(path) == "deep", observation.Visited,
                     "Descendants of unwritten rows must never be scheduled");

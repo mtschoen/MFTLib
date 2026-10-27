@@ -6,12 +6,12 @@ namespace MFTLib.Tests.TestSupport;
 
 static class EnumerationWalkTestSupport
 {
-    internal static Task<EnumerationResult> ProduceAsync(EnumerationProducer producer, BlockWriter writer,
+    internal static Task ProduceAsync(EnumerationProducer producer, BlockWriter writer,
         IProgress<IndexScanProgress>? progress, CancellationToken cancellationToken,
         int maximumWorkers = int.MaxValue) => Task.Run(async () =>
     {
         using var lease = await EnumerationWalkLimit.EnterAsync(cancellationToken);
-        return producer.Produce(writer, progress, lease, cancellationToken, maximumWorkers);
+        producer.Produce(writer, progress, lease, cancellationToken, maximumWorkers);
     }, cancellationToken);
 
     internal static void GenerateBranchingTree(string root, int branches, int depth, int filesPerDirectory)

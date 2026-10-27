@@ -156,12 +156,13 @@ public partial class BenchmarkRunner
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None).ConfigureAwait(false);
         // The existing per-walk ceiling prevents taking any extra shared permits in sequential mode.
         var started = _timeProvider.GetTimestamp();
-        var result = producer.Produce(writer, null, lease, CancellationToken.None,
+        producer.Produce(writer, null, lease, CancellationToken.None,
             maximumWorkers: sequential ? 1 : int.MaxValue);
         var elapsed = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
-        if (result.CapacityExhausted || result.AccessDeniedSubtreeCount != 0 || result.RowCount != rows)
+        var header = block.Header;
+        if (header.IsCapacityExhausted || header.AccessDeniedSubtreeCount != 0 || header.RowCount != rows)
         {
-            throw new InvalidOperationException($"Incomplete enumeration: expected {rows} rows, produced {result.RowCount}, skipped {result.AccessDeniedSubtreeCount}, capacity exhausted {result.CapacityExhausted}.");
+            throw new InvalidOperationException($"Incomplete enumeration: expected {rows} rows, produced {header.RowCount}, skipped {header.AccessDeniedSubtreeCount}, capacity exhausted {header.IsCapacityExhausted}.");
         }
         return elapsed;
     }

@@ -34,7 +34,7 @@ sealed class EnumerationDrainObservation : IDisposable
     internal IEnumerable<string> Visited => _reads.Visits.Keys;
     internal string? FaultedPath { get; private set; }
 
-    internal static Task<EnumerationResult> Start(EnumerationProducer producer, BlockWriter writer,
+    internal static Task Start(EnumerationProducer producer, BlockWriter writer,
         IProgress<IndexScanProgress>? progress) =>
         EnumerationWalkTestSupport.ProduceAsync(producer, writer, progress, CancellationToken.None,
             maximumWorkers: MaximumReaders);

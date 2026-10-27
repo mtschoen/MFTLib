@@ -91,7 +91,8 @@ sealed class EnumerationProducer
     /// <summary>
     ///     Walks the tree concurrently, writing the root as row 0 and every entry after it into
     ///     the writer. A directory the walk options prune is written but not entered; the root is
-    ///     never pruned. The walk stores its access-denied count in the header but does not call
+    ///     never pruned. Row count, capacity exhaustion and the access-denied subtree count are
+    ///     stored in the resulting block's header. The walk does not call
     ///     <see cref="BlockWriter.Complete" />; the caller does. A row that does not fit asks
     ///     <see cref="GrowWriter" /> for a larger block and continues in it; the walk stops early only
     ///     when no larger block is available.
@@ -101,11 +102,10 @@ sealed class EnumerationProducer
     /// <param name="baseLease">The base lease for this walk from <see cref="EnumerationWalkLimit" />.</param>
     /// <param name="cancellationToken">Observed before the root row, each directory entry read and each row write.</param>
     /// <param name="maximumWorkers">Maximum concurrent directory readers for the walk, including the one on the base permit.</param>
-    /// <returns>The row count, the number of subtrees that could not be entered, and whether the block was too small.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="writer" /> or <paramref name="baseLease" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumWorkers" /> is less than 1.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled; the block is left partially written.</exception>
-    public EnumerationResult Produce(BlockWriter writer, IProgress<IndexScanProgress>? progress,
+    public void Produce(BlockWriter writer, IProgress<IndexScanProgress>? progress,
         EnumerationWalkLimit.Lease baseLease, CancellationToken cancellationToken, int maximumWorkers = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -117,7 +117,7 @@ sealed class EnumerationProducer
         var workers = Math.Min(maximumWorkers, Environment.ProcessorCount);
         if (!TryWriteRowGrowing(ref writer, 0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory)))
         {
-            return new EnumerationResult(writer.RowCount, 0, writer.CapacityExhausted);
+            return;
         }
 
         var state = (NextRow: 1u, SkippedCount: 0);
@@ -151,7 +151,6 @@ sealed class EnumerationProducer
         drainFailure?.Throw();
 
         writer.SetAccessDeniedSubtreeCount((uint)state.SkippedCount);
-        return new EnumerationResult(writer.RowCount, state.SkippedCount, writer.CapacityExhausted);
     }
 
     void DriveFrontier(ref BlockWriter writer, IProgress<IndexScanProgress>? progress,

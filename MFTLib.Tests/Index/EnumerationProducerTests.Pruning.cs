@@ -18,7 +18,7 @@ public sealed partial class EnumerationProducerTests
     {
         foreach (var maximumWorkers in new[] { 1, 2 })
         {
-            var snapshot = Produce(out _, out _, directoryWalk: walk, rootDirectory: rootDirectory, maximumWorkers: maximumWorkers);
+            var snapshot = Produce(out _, directoryWalk: walk, rootDirectory: rootDirectory, maximumWorkers: maximumWorkers);
             try
             {
                 foreach (var path in present)
@@ -49,18 +49,17 @@ public sealed partial class EnumerationProducerTests
     {
         foreach (var maximumWorkers in new[] { 1, 2 })
         {
-            var snapshot = Produce(out var block, out var result,
+            var snapshot = Produce(out var block,
                 directoryWalk: new DirectoryWalkOptions { PrunedDirectoryPaths = [TreePath("Documents")] },
                 maximumWorkers: maximumWorkers);
             try
             {
                 // Root, Documents, Pictures, holiday.jpg.
-                Assert.AreEqual(4u, result.RowCount);
+                Assert.AreEqual(4u, block.Header.RowCount);
                 var documents = EnumerationLookupTestAccess.FindByPath(snapshot, TreePath("Documents"));
                 Assert.IsTrue(documents.HasValue);
                 Assert.IsTrue(documents.GetValueOrDefault().IsDirectory);
                 Assert.IsEmpty(documents.GetValueOrDefault().Children(CancellationToken.None));
-                Assert.AreEqual(4u, block.Header.RowCount);
             }
             finally
             {
@@ -169,9 +168,8 @@ public sealed partial class EnumerationProducerTests
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
-        var result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None);
+        producer.Produce(created.Writer, progress: null, lease, CancellationToken.None);
 
-        Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
         Assert.AreEqual(1u, block.Header.AccessDeniedSubtreeCount);
     }
 }
