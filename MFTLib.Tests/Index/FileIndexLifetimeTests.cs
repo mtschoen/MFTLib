@@ -6,24 +6,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public sealed class FileIndexLifetimeTests : IDisposable
+public sealed class FileIndexLifetimeTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-    uint _volumeSerial;
-
-    [TestInitialize]
-    public void Initialize()
-    {
-        _volumeSerial = TestVolumeSerial.GetNext();
-        _fixture = new IndexTreeFixture();
-    }
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(bool cacheDisabled = false, ProducerKind producerKind = ProducerKind.Enumeration) =>
-        _fixture.Options(volumeSerial: _volumeSerial, producer: producerKind,
+        Fixture.Options(volumeSerial: UniqueVolumeSerial, producer: producerKind,
             cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent);
 
     [TestMethod]
@@ -36,7 +22,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
         Assert.IsFalse(index.Drives[0].Watch.IsSupported);
-        Assert.IsTrue(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial))));
+        Assert.IsTrue(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial))));
     }
 
     [TestMethod]
@@ -62,7 +48,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
         }
 
 
-        var cachedBlock = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var cachedBlock = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         Assert.IsFalse(File.Exists(cachedBlock));
     }
 

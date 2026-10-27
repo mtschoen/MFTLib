@@ -8,24 +8,15 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public sealed class LocalMftBlockProducerTests : IDisposable
+public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
 {
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
     static readonly CacheTag RequestedTag = new("LOCL", 3);
 
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
     public TestContext TestContext { get; set; } = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _fixture = new IndexTreeFixture();
-        Directory.CreateDirectory(CacheDirectoryPath);
-    }
-
-    public void Dispose() => _fixture.Dispose();
+    public void Initialize() => Directory.CreateDirectory(CacheDirectoryPath);
 
     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
     {
@@ -59,7 +50,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
     static MftBlockProducer ProducerOf(LocalMftBlockProducer producer) => producer.CreateIndexSource().Producer;
 
     FileIndexOptions Options(MftIndexSource source, IProgress<IndexScanProgress>? progress = null) =>
-        _fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+        Fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
         {
             MftSource = source,
             ScanProgress = progress
@@ -141,7 +132,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
 
         await using var enumeration = await FileIndex.OpenAsync(
             FileIndexTestAccess.WithTimeProvider(
-                _fixture.Options(volumeSerial: 123, cacheMode: CacheMode.Disabled),
+                Fixture.Options(volumeSerial: 123, cacheMode: CacheMode.Disabled),
                 timeProvider), TestContext.CancellationToken);
         Assert.AreEqual(timeProvider.GetUtcNow().UtcDateTime, enumeration.Drives.Single().Block!.ScanTimestamp);
     }
@@ -179,7 +170,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var source = producer.CreateIndexSource();
 
         FileIndexOptions CachingOptions(bool isCacheOnly) =>
-            _fixture.Options(producer: ProducerKind.Mft,
+            Fixture.Options(producer: ProducerKind.Mft,
                 cacheMode: isCacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
             {
                 MftSource = source

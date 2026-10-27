@@ -15,34 +15,28 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
+public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-    uint _volumeSerial;
-
-    [TestInitialize]
-    public void Initialize()
+    public override void Dispose()
     {
-        _volumeSerial = TestVolumeSerial.GetNext();
-        _fixture = new IndexTreeFixture();
-    }
-
-    public void Dispose()
-    {
-        CacheDirectory.Hooks.ResetToDefaults();
-        _fixture.Dispose();
+        try
+        {
+            CacheDirectory.Hooks.ResetToDefaults();
+        }
+        finally
+        {
+            base.Dispose();
+        }
     }
 
     FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null) =>
-        _fixture.Options(volumeSerial: _volumeSerial,
+        Fixture.Options(volumeSerial: UniqueVolumeSerial,
             cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             ScanProgress = progress
         };
 
-    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
 
     static string CreateDecoyBlock(string cacheDirectory, char letter)
     {

@@ -9,23 +9,16 @@ namespace MFTLib.Tests.Index;
 ///     applied mutation batch and every rescan, and a warm start adopts the cached block's value.
 /// </summary>
 [TestClass]
-public sealed class FileIndexGenerationTests : IDisposable
+public sealed class FileIndexGenerationTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-
     public TestContext TestContext { get; set; } = null!;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
 
     static ulong GenerationOf(FileIndex index) => index.Drives.Single().Block!.Generation;
 
     [TestMethod]
     public async Task OpenAsync_ColdScanWithNoPreviousBlock_StartsAtOne()
     {
-        await using var index = await FileIndex.OpenAsync(_fixture.Options(), TestContext.CancellationToken);
+        await using var index = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken);
 
         Assert.AreEqual(1ul, GenerationOf(index));
     }
@@ -33,7 +26,7 @@ public sealed class FileIndexGenerationTests : IDisposable
     [TestMethod]
     public async Task RescanAsync_StartsTheReplacementBlockAboveTheSupersededGeneration()
     {
-        await using var index = await FileIndex.OpenAsync(_fixture.Options(), TestContext.CancellationToken);
+        await using var index = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken);
 
         await index.RescanAsync(['T'], TestContext.CancellationToken);
         Assert.AreEqual(2ul, GenerationOf(index));
@@ -45,13 +38,13 @@ public sealed class FileIndexGenerationTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_WarmStart_AdoptsTheCachedBlocksGeneration()
     {
-        await using (var first = await FileIndex.OpenAsync(_fixture.Options(), TestContext.CancellationToken))
+        await using (var first = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken))
         {
             await first.RescanAsync(['T'], TestContext.CancellationToken);
             Assert.AreEqual(2ul, GenerationOf(first));
         }
 
-        await using var warm = await FileIndex.OpenAsync(_fixture.Options(), TestContext.CancellationToken);
+        await using var warm = await FileIndex.OpenAsync(Fixture.Options(), TestContext.CancellationToken);
 
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, warm.Drives.Single().Block!.Origin);
         Assert.AreEqual(2ul, GenerationOf(warm));

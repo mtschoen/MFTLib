@@ -12,13 +12,11 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FileIndexPerQueryBorrowTests : IDisposable
+public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
 {
     const int CollectionPassLimit = 50;
 
-    IndexTreeFixture _fixture = null!;
-    TempDirectory _secondTree = null!;
-    uint _firstSerial;
+    TempDirectory? _secondTree;
     uint _secondSerial;
     int _rescanCount;
 
@@ -26,18 +24,22 @@ public sealed class FileIndexPerQueryBorrowTests : IDisposable
     [TestInitialize]
     public void Initialize()
     {
-        _firstSerial = TestVolumeSerial.GetNext();
         _secondSerial = TestVolumeSerial.GetNext();
-        _fixture = new IndexTreeFixture();
         _secondTree = new TempDirectory("mftlib-tree");
         File.WriteAllText(Path.Combine(_secondTree.Path, "unchanged.md"), "unchanged");
     }
 
     /// <summary>Removes the trees and cached blocks.</summary>
-    public void Dispose()
+    public override void Dispose()
     {
-        _secondTree.Dispose();
-        _fixture.Dispose();
+        try
+        {
+            _secondTree?.Dispose();
+        }
+        finally
+        {
+            base.Dispose();
+        }
     }
 
     public TestContext TestContext { get; set; } = null!;
@@ -45,13 +47,13 @@ public sealed class FileIndexPerQueryBorrowTests : IDisposable
     FileIndexOptions TwoDriveOptions() => new()
     {
         Drives = [
-            new IndexedDrive('T', _fixture.TreeRoot, _firstSerial, ProducerKind.Enumeration),
-            new IndexedDrive('U', _secondTree.Path, _secondSerial, ProducerKind.Enumeration)
+            new IndexedDrive('T', TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
+            new IndexedDrive('U', _secondTree!.Path, _secondSerial, ProducerKind.Enumeration)
         ],
-        CacheDirectory = _fixture.CacheDirectory
+        CacheDirectory = CacheDirectoryPath
     };
 
-    string ReadmePath => Path.Combine(_fixture.TreeRoot, "Documents", "readme.md");
+    string ReadmePath => Path.Combine(TreeRoot, "Documents", "readme.md");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     static DriveBlockRelease ReleaseStateOf(FileIndex index, char drive) =>
@@ -59,7 +61,7 @@ public sealed class FileIndexPerQueryBorrowTests : IDisposable
 
     async Task RescanSecondDriveAsync(FileIndex index)
     {
-        await File.WriteAllTextAsync(Path.Combine(_secondTree.Path, $"added-{++_rescanCount}.md"), "added",
+        await File.WriteAllTextAsync(Path.Combine(_secondTree!.Path, $"added-{++_rescanCount}.md"), "added",
             TestContext.CancellationToken);
         await index.RescanAsync(['U'], TestContext.CancellationToken);
     }

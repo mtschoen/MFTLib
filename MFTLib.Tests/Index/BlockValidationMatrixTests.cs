@@ -5,18 +5,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public sealed class BlockValidationMatrixTests : IDisposable
+public sealed class BlockValidationMatrixTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(uint volumeSerial = 0x0BADF00D) =>
-        _fixture.Options(volumeSerial: volumeSerial);
+        Fixture.Options(volumeSerial: volumeSerial);
 
     string BlockPath(uint volumeSerial = 0x0BADF00D)
     {

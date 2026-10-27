@@ -14,25 +14,28 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FileIndexJournalSettingsTests : IDisposable
+public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
+    protected override bool SeedDocuments => false;
 
     [TestCleanup]
     public void ResetQueryOverride() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
 
-    public void Dispose()
+    public override void Dispose()
     {
-        JournalQueryFake.Reset();
-        FileUtilities.Hooks.ResetToDefaults();
-        _fixture.Dispose();
+        try
+        {
+            JournalQueryFake.Reset();
+            FileUtilities.Hooks.ResetToDefaults();
+        }
+        finally
+        {
+            base.Dispose();
+        }
     }
 
     Task<FileIndex> OpenIndexAsync() =>
-        FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
+        FileIndex.OpenAsync(Fixture.Options(), CancellationToken.None);
 
     [TestMethod]
     public async Task QueryUsnJournalSettings_ConfiguredDrive_ReturnsEngineResult()
@@ -67,7 +70,7 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
     {
         FileUtilities.Hooks._getVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
-        await using var index = await FileIndex.OpenAsync(_fixture.Options('C'), CancellationToken.None);
+        await using var index = await FileIndex.OpenAsync(Fixture.Options('C'), CancellationToken.None);
         using var volume = MftVolume.Open('C');
 
         var fromVolume = volume.Journal.QueryUsnJournalSettings();

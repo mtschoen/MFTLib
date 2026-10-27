@@ -12,25 +12,11 @@ namespace MFTLib.Tests.Index;
 ///     cache-mode rescan leftovers) must be cleaned up deterministically.
 /// </summary>
 [TestClass]
-public sealed partial class FileIndexResilienceTests : IDisposable
+public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-    uint _volumeSerial;
-
-    [TestInitialize]
-    public void Initialize()
-    {
-        _volumeSerial = TestVolumeSerial.GetNext();
-        _fixture = new IndexTreeFixture();
-    }
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(bool cacheDisabled = false, IProgress<IndexScanProgress>? progress = null,
         Action<string>? diagnostics = null) =>
-        _fixture.Options(volumeSerial: _volumeSerial, cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent) with
+        Fixture.Options(volumeSerial: UniqueVolumeSerial, cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent) with
         {
             ScanProgress = progress,
             Diagnostics = diagnostics
@@ -77,7 +63,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         if (File.Exists(blockPath))
         {
             // Proves the partial block is not still mapped: File.Delete would succeed even on a
@@ -207,7 +193,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
         Assert.IsEmpty(Directory.EnumerateFiles(Path.GetTempPath(),
-            $"mftlib-cache-disabled-*-{CacheDirectory.BlockFileName('T', _volumeSerial)}"));
+            $"mftlib-cache-disabled-*-{CacheDirectory.BlockFileName('T', UniqueVolumeSerial)}"));
     }
 
     [TestMethod]
@@ -247,10 +233,10 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
             await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
 
-            var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+            var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
             Assert.IsTrue(File.Exists(blockPath), "the canonical file must be restored, not left renamed aside");
             Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
+                CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"));
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -342,7 +328,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         Assert.AreEqual(canonicalPath, newPath, "the new block takes the same canonical cache path");
 
         var retiredPaths = Directory
-            .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
+            .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*")
             .ToList();
         Assert.HasCount(1, retiredPaths);
         Assert.IsTrue(File.Exists(retiredPaths[0]));
@@ -366,7 +352,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         await index.RescanAsync(['T'], CancellationToken.None);
 
         var retiredPaths = Directory
-            .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
+            .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*")
             .ToList();
         Assert.HasCount(2, retiredPaths, "each rescan should retire a distinctly named file");
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
@@ -411,7 +397,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
     public async Task RescanAsync_CanonicalCacheFileMissing_StillSucceedsWithoutRenamingAnything()
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
 
         // Simulates a canonical cache file removed out from under the index between opens, so
         // RenameAsideForRescan finds nothing to rename aside. Safe while the block is still
@@ -423,7 +409,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
         Assert.IsTrue(File.Exists(canonicalPath));
         Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
+            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"));
     }
 
     [TestMethod]
@@ -431,8 +417,8 @@ public sealed partial class FileIndexResilienceTests : IDisposable
     {
         var firstFixture = new FileIndexResilienceTests();
         var secondFixture = new FileIndexResilienceTests();
-        firstFixture.Initialize();
-        secondFixture.Initialize();
+        firstFixture.InitializeIndexTree();
+        secondFixture.InitializeIndexTree();
 
         try
         {

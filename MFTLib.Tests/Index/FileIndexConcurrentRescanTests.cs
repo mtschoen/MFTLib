@@ -13,24 +13,16 @@ namespace MFTLib.Tests.Index;
 ///     holds: both held steps are entered before either is released.
 /// </summary>
 [TestClass]
-public sealed class FileIndexConcurrentRescanTests : IDisposable
+public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
 {
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
+    protected override bool SeedDocuments => false;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _fixture = new IndexTreeFixture(seedDocuments: false);
-        Directory.CreateDirectory(CacheDirectoryPath);
-    }
-
-    public void Dispose() => _fixture.Dispose();
+    public void Initialize() => Directory.CreateDirectory(CacheDirectoryPath);
 
     [TestMethod]
     public async Task ConcurrentRescans_BothProducersInsideAtOnce_BothCommit_SnapshotHoldsBoth()

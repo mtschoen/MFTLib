@@ -6,16 +6,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public sealed class FileIndexQueryTests : IAsyncDisposable
+public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    FileIndex _index = null!;
+    FileIndex? _index;
 
     [TestInitialize]
     public async Task Initialize()
     {
-        _fixture = new IndexTreeFixture();
         Directory.CreateDirectory(Path.Combine(TreeRoot, "Documents", "Projects"));
         Directory.CreateDirectory(Path.Combine(TreeRoot, "Pictures"));
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "Projects", "report.pdf"), new string('x', 100),
@@ -25,25 +22,28 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Pictures", "holiday.jpg"), new string('y', 5000),
             TestContext.CancellationToken);
 
-        _index = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
+        _index = await FileIndex.OpenAsync(Fixture.Options(), CancellationToken.None);
     }
 
     public async ValueTask DisposeAsync()
     {
         try
         {
-            await _index.DisposeAsync();
+            if (_index is not null)
+            {
+                await _index.DisposeAsync();
+            }
         }
         finally
         {
-            _fixture.Dispose();
+            Dispose();
         }
     }
 
     [TestMethod]
     public void Find_ResolvesAPathToItsEntry()
     {
-        var entry = _index.Find(Path.Combine(TreeRoot, "Documents", "Projects", "report.pdf"), TestContext.CancellationToken);
+        var entry = _index!.Find(Path.Combine(TreeRoot, "Documents", "Projects", "report.pdf"), TestContext.CancellationToken);
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual(100L, entry.GetValueOrDefault().Size);
     }
@@ -51,14 +51,14 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Search_ExactMode_SpansTheWholeDrive()
     {
-        var results = _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken);
+        var results = _index!.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken);
         Assert.HasCount(2, results);
     }
 
     [TestMethod]
     public void Search_ReturnsTheWholeMatchSetForSlicing()
     {
-        var results = _index.Search(new SearchQuery("read"), TestContext.CancellationToken);
+        var results = _index!.Search(new SearchQuery("read"), TestContext.CancellationToken);
         Assert.HasCount(2, results);
 
         var firstPage = results.Take(1).ToArray();
@@ -68,8 +68,8 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Search_UnderRestrictsToASubtree()
     {
-        var pictures = _index.Find(Path.Combine(TreeRoot, "Pictures"), TestContext.CancellationToken)!.Value;
-        var results = _index.Search(new SearchQuery("readme", Subtree: pictures), TestContext.CancellationToken);
+        var pictures = _index!.Find(Path.Combine(TreeRoot, "Pictures"), TestContext.CancellationToken)!.Value;
+        var results = _index!.Search(new SearchQuery("readme", Subtree: pictures), TestContext.CancellationToken);
         Assert.HasCount(1, results);
         Assert.AreEqual(Path.Combine(TreeRoot, "Pictures", "readme.md"), results[0].Path);
     }
@@ -78,13 +78,13 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     public void Search_Under_DefaultAncestor_ThrowsArgumentException()
     {
         Assert.ThrowsExactly<ArgumentException>(
-            () => _index.Search(new SearchQuery("readme", Subtree: default(FileEntry)), TestContext.CancellationToken));
+            () => _index!.Search(new SearchQuery("readme", Subtree: default(FileEntry)), TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Root_ReturnsTheDriveRoot()
     {
-        Assert.AreEqual(TreeRoot, _index.Root('T', TestContext.CancellationToken).Path);
+        Assert.AreEqual(TreeRoot, _index!.Root('T', TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
@@ -217,8 +217,8 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     public async Task Root_UnconfiguredDrive_ReportsNotPartOfIndex(char driveLetter, string scenario)
     {
         var outcome = scenario == "normal"
-            ? RootFailure(_index, driveLetter, TestContext.CancellationToken)
-            : await RootAcrossDisposalAsync(_index, driveLetter, scenario == "dispose-at-drive-read");
+            ? RootFailure(_index!, driveLetter, TestContext.CancellationToken)
+            : await RootAcrossDisposalAsync(_index!, driveLetter, scenario == "dispose-at-drive-read");
         if (scenario == "dispose-at-admission")
         {
             Assert.IsInstanceOfType<OperationCanceledException>(outcome);
@@ -331,7 +331,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Children_OfTheRootAreTheTopLevelDirectories()
     {
-        var names = _index.Root('T', TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)
+        var names = _index!.Root('T', TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
         Assert.AreSequenceEqual(["Documents", "Pictures"], names);
     }
@@ -339,7 +339,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Open_ReadsTheRealFileBehindAnEnumerationEntry()
     {
-        var entry = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
+        var entry = _index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         using var stream = entry.Open(FileAccess.Read);
         using var reader = new StreamReader(stream);
         Assert.AreEqual("hello", reader.ReadToEnd());
@@ -349,16 +349,16 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     public void Search_AfterARescanSeesNewFiles()
     {
         File.WriteAllText(Path.Combine(TreeRoot, "Documents", "added.md"), "added");
-        _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
+        _index!.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
-        Assert.HasCount(1, _index.Search(new SearchQuery("added"), TestContext.CancellationToken));
+        Assert.HasCount(1, _index!.Search(new SearchQuery("added"), TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void HandleFromAnOldSnapshot_StaysReadableAcrossARescan()
     {
-        var before = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
-        _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
+        var before = _index!.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
+        _index!.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
         // The old block stays mapped because this handle still references its snapshot.
         Assert.AreEqual("readme.md", before.Name);

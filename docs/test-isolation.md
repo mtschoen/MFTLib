@@ -134,6 +134,18 @@ write their own data. Its `Drive` and `Options` methods retain explicit producer
 serial and cache-mode choices. `CheckpointLossFixture` adds MFT cache seeding and
 named drives; scenario code still owns watch and fault choreography.
 
+MSTest classes sharing an index tree inherit `IndexTreeTestBase`. Its inherited
+`InitializeIndexTree` creates the fixture and a unique serial before derived
+`TestInitialize` methods run. `TreeRoot` and `CacheDirectoryPath` expose the owned
+paths; `SeedDocuments` defaults to true and empty-tree scenarios override it to
+false. Scenarios needing a unique drive identity pass `UniqueVolumeSerial`
+explicitly to the fixture's options. Derived setup owns only scenario data.
+Derived disposal preserves hook resets and releases indexes and additional
+resources before calling `base.Dispose()` in a finally block. Async owners await
+index disposal before base cleanup; repeated directory disposal is safe. Helpers
+constructed inside tests keep explicit `IndexTreeFixture` composition and their
+own disposal scopes. Isolation attributes remain on the concrete test classes.
+
 `BrokerHostFactory` constructs scripted hosts, `ScriptedJournalStreams` owns the
 cancellable one-batch stream, and `JournalWindows` owns internal journal windows
 and overrides. Journal overrides still require class-level isolation and the

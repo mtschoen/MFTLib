@@ -10,21 +10,12 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="DriveBlockStatus.AccessDeniedSubtreeCount" /> reflecting the most recent scan.
 /// </summary>
 [TestClass]
-public sealed class FileIndexDriveStatusTests : IDisposable
+public sealed class FileIndexDriveStatusTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
     public TestContext TestContext { get; set; } = null!;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(IProgress<IndexScanProgress>? progress = null) =>
-        _fixture.Options() with
+        Fixture.Options() with
         {
             ScanProgress = progress
         };

@@ -12,33 +12,24 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
+public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 {
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;
 
     const uint VolumeSerial = 0x2970;
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
     string _canonicalPath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _fixture = new IndexTreeFixture();
         Directory.CreateDirectory(CacheDirectoryPath);
         _canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', VolumeSerial));
     }
 
-    public void Dispose()
-    {
-        _fixture.Dispose();
-    }
-
     FileIndexOptions Options(MftBlockProducer producer, List<string> diagnostics, bool cacheOnly = false) =>
-        _fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft, cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
+        Fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft, cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             MftSource = new MftIndexSource(producer),
             Diagnostics = diagnostics.Add

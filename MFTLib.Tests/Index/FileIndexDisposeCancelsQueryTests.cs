@@ -18,7 +18,7 @@ namespace MFTLib.Tests.Index;
 ///     </para>
 /// </summary>
 [TestClass]
-public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
+public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
 {
     static readonly DateTime FixedMoment = new(2026, 9, 14, 0, 0, 0, DateTimeKind.Utc);
 
@@ -27,13 +27,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     /// <summary>Fewer names than rows, so the duplicate-name scan has groups to find.</summary>
     const uint DistinctNameCount = 8;
 
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     /// <summary>The same through the parallel search path, with a pattern that matches every row.</summary>
     [TestMethod]
@@ -244,7 +238,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
         ReadAcrossDisposalAsync((index, root, _) => read(index, root));
 
     FileIndexOptions SyntheticDriveOptions() =>
-        _fixture.Options(producer: ProducerKind.Mft) with
+        Fixture.Options(producer: ProducerKind.Mft) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment),

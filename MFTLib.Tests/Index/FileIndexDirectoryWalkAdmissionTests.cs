@@ -9,26 +9,19 @@ namespace MFTLib.Tests.Index;
 ///     admission, before any cache directory exists or any scan starts.
 /// </summary>
 [TestClass]
-public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
+public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-
     public TestContext TestContext { get; set; } = null!;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
 
     async Task AssertRefusedBeforeAnySideEffect(DirectoryWalkOptions? walk, string expectedText)
     {
-        var options = _fixture.Options() with { DirectoryWalk = walk! };
+        var options = Fixture.Options() with { DirectoryWalk = walk! };
 
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             FileIndex.OpenAsync(options, TestContext.CancellationToken));
 
         Assert.Contains(expectedText, exception.Message);
-        Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
+        Assert.IsFalse(Directory.Exists(Fixture.CacheDirectory));
     }
 
     [TestMethod]
@@ -61,7 +54,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_NameWithTheReplacementCharacterOrAValidPair_IsAdmitted()
     {
-        var options = _fixture.Options() with
+        var options = Fixture.Options() with
         {
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = ["x\uFFFD", "x\uD83D\uDE00"] }
         };
@@ -90,7 +83,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
     [DataRow(0xD801)]
     public Task OpenAsync_PathWithAnUnpairedSurrogate_Throws(int codeUnit) =>
         AssertRefusedBeforeAnySideEffect(
-            new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(_fixture.TreeRoot, MalformedText.Make(codeUnit, true))] },
+            new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(Fixture.TreeRoot, MalformedText.Make(codeUnit, true))] },
             "unpaired surrogate");
 
     [TestMethod]
@@ -104,27 +97,27 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_MftDrivesStillAdmitTheWalkOptions()
     {
-        var options = _fixture.Options(producer: ProducerKind.Mft) with
+        var options = Fixture.Options(producer: ProducerKind.Mft) with
         {
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = ["bad/name", @"bad\name"] }
         };
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             FileIndex.OpenAsync(options, TestContext.CancellationToken));
-        Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
+        Assert.IsFalse(Directory.Exists(Fixture.CacheDirectory));
     }
 
     [TestMethod]
     public async Task OpenAsync_CopiesTheCollectionsOnceSoLaterEditsDoNotChangeTheWalk()
     {
         var names = new List<string> { "Documents" };
-        var options = _fixture.Options() with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = names } };
+        var options = Fixture.Options() with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = names } };
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         names.Clear();
 
-        Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents"), TestContext.CancellationToken));
-        Assert.IsNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
+        Assert.IsNotNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
     }
 
     [TestMethod]

@@ -13,7 +13,7 @@ namespace MFTLib.Tests.Index;
 ///     The index has no watch and no live journal: batches are applied through the test extensions.
 /// </summary>
 [TestClass]
-public sealed class MetadataFreshnessIndexTests : IDisposable
+public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
 {
     const uint Serial = 0x2468;
     static readonly DateTime ScannedMoment = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -21,16 +21,11 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
     static readonly DateTime EventMoment = new(2026, 10, 14, 0, 0, 0, DateTimeKind.Utc);
     static readonly SyntheticJournalCursor Cursor = new(7, 4096);
 
-    IndexTreeFixture _fixture = null!;
-
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     static SyntheticRow[] Rows() =>
     [
@@ -47,13 +42,13 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
     ];
 
     FileIndexOptions CacheOnly() =>
-        _fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft, cacheMode: CacheMode.ExistingOnly) with
+        Fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft, cacheMode: CacheMode.ExistingOnly) with
         {
             MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open"))
         };
 
     string Seed() =>
-        SyntheticBlock.WriteCached(_fixture.CacheDirectory, 'T', Serial,
+        SyntheticBlock.WriteCached(Fixture.CacheDirectory, 'T', Serial,
             new SyntheticBlockOptions { JournalCursor = Cursor, ScanTimestamp = ScannedMoment }, Rows());
 
     static SyntheticJournalRecord Record(ulong recordNumber, ulong parent, string name, SyntheticJournalReason reason,
@@ -233,7 +228,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
             ScanTimestamp = ScannedMoment
         };
         await using var index = await FileIndex.OpenAsync(
-            _fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
+            Fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
             {
                 MftSource = new MftIndexSource(producer.Producer)
             }, Token);

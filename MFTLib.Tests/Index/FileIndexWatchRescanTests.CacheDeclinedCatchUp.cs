@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>The no-list catch-up wait over a drive a cache-only open declined and a rescan adopted.</summary>
-public sealed partial class FileIndexWatchRescanTests : IDisposable
+public sealed partial class FileIndexWatchRescanTests
 {
     [TestMethod]
     public async Task RescanAsync_CacheDeclinedDriveWhileWatching_AggregateWaitForCatchUp_WaitsForAdoptedDrive()

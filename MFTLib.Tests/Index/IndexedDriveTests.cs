@@ -9,19 +9,20 @@ namespace MFTLib.Tests.Index;
 
 [TestClass]
 [DoNotParallelize]
-public sealed class IndexedDriveTests : IDisposable
+public sealed class IndexedDriveTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
+    protected override bool SeedDocuments => false;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose()
+    public override void Dispose()
     {
-        IndexedDrive.Dependencies.ResetToDefaults();
-        _fixture.Dispose();
+        try
+        {
+            IndexedDrive.Dependencies.ResetToDefaults();
+        }
+        finally
+        {
+            base.Dispose();
+        }
     }
 
     [TestMethod]

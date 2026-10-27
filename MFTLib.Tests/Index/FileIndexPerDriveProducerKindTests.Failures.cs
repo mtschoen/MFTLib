@@ -13,7 +13,7 @@ public partial class FileIndexPerDriveProducerKindTests
     [DataRow(CacheMode.Disabled)]
     public async Task MixedOpen_EnumerationFailureSettlesWithoutLosingHealthyMftSibling(CacheMode cacheMode)
     {
-        EnumerationWalkTestSupport.GenerateBranchingTree(_fixture.TreeRoot, 2, 2, 2);
+        EnumerationWalkTestSupport.GenerateBranchingTree(Fixture.TreeRoot, 2, 2, 2);
         var samples = new ConcurrentQueue<IndexScanProgress>();
         var failure = new IOException("enumeration progress failed");
         var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
@@ -48,7 +48,7 @@ public partial class FileIndexPerDriveProducerKindTests
     [DataRow(CacheMode.Disabled)]
     public async Task EnumerationRescan_ProducerFailurePreservesOldBlockAndRecordsFailure(CacheMode cacheMode)
     {
-        EnumerationWalkTestSupport.GenerateBranchingTree(_fixture.TreeRoot, 2, 2, 2);
+        EnumerationWalkTestSupport.GenerateBranchingTree(Fixture.TreeRoot, 2, 2, 2);
         var failure = new IOException("enumeration rescan failed");
         var progress = new FailingScanProgress();
         var options = Options(Drive('T', ProducerKind.Enumeration)) with

@@ -13,17 +13,11 @@ namespace MFTLib.Tests.Index;
 ///     counts, never on which drive settled first. <see cref="FileIndex.RescanAsync" /> stays silent.
 /// </summary>
 [TestClass]
-public sealed class FileIndexOpenProgressTests : IDisposable
+public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-
     public TestContext TestContext { get; set; } = null!;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     string CreateDriveRoot(string name)
     {
@@ -36,7 +30,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
     FileIndexOptions Options(IReadOnlyList<IndexedDrive> drives,
         IProgress<IndexDriveOpened>? openProgress = null, bool cacheOnly = false,
         ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null) =>
-        _fixture.Options(producer: producer,
+        Fixture.Options(producer: producer,
             cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             Drives = drives.Select(drive => drive with { Producer = producer }).ToArray(),

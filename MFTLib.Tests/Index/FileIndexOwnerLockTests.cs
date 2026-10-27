@@ -11,32 +11,18 @@ namespace MFTLib.Tests.Index;
 ///     scans into a private block and leaves the canonical cache alone.
 /// </summary>
 [TestClass]
-public sealed class FileIndexOwnerLockTests : IDisposable
+public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-    uint _volumeSerial;
-
-    [TestInitialize]
-    public void Initialize()
-    {
-        _volumeSerial = TestVolumeSerial.GetNext();
-        _fixture = new IndexTreeFixture();
-    }
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null,
         Action<string>? diagnostics = null) =>
-        _fixture.Options(volumeSerial: _volumeSerial,
+        Fixture.Options(volumeSerial: UniqueVolumeSerial,
             cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             ScanProgress = progress,
             Diagnostics = diagnostics
         };
 
-    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
 
     [TestMethod]
     public async Task OpenAsync_CacheOnly_SecondIndexReportsInUseAndLeavesTheFirstIndexsBlockAlone()
@@ -130,7 +116,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
 
             Assert.IsTrue(File.Exists(CanonicalPath), "the canonical file must be restored");
             Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
+                CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"));
         }
 
         await using var third = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -153,7 +139,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             await first.RescanAsync(['T'], CancellationToken.None);
 
             var retiredPaths = Directory
-                .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
+                .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*")
                 .ToList();
             Assert.HasCount(1, retiredPaths);
 
@@ -209,7 +195,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             Assert.AreNotEqual(firstPrivatePath, secondPrivatePath);
             Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the canonical cache still belongs to the first index, untouched by the rescan");
             Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
+                CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*"));
             Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
 
             // Once the owner is gone, the second index's next rescan takes the slot: the leftover
@@ -271,7 +257,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
     {
         var options = Options() with
         {
-            Drives = [new IndexedDrive('T', Path.Combine(TreeRoot, "missing"), _volumeSerial)]
+            Drives = [new IndexedDrive('T', Path.Combine(TreeRoot, "missing"), UniqueVolumeSerial)]
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
@@ -297,7 +283,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
     {
         var options = Options() with
         {
-            Drives = [new IndexedDrive('T', TreeRoot, _volumeSerial)],
+            Drives = [new IndexedDrive('T', TreeRoot, UniqueVolumeSerial)],
             MftSource = new MftIndexSource((_, _) => throw new IOException("Synthetic production failure"))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

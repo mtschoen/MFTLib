@@ -12,18 +12,12 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FreedRowsIndexTests : IDisposable
+public sealed class FreedRowsIndexTests : IndexTreeTestBase
 {
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
     static readonly DateTime FixedMoment = new(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
 
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     [TestMethod]
     public async Task VerifiedFreedRow_KeepsItsPlaceInTheTree()
@@ -195,7 +189,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         };
         var producer = new LocalMftBlockProducer(new FakeTimeProvider(new DateTimeOffset(FixedMoment)),
             new MftScanOptions { IncludeFreed = includeFreed }, access);
-        return FileIndex.OpenAsync(_fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+        return FileIndex.OpenAsync(Fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
         {
             MftSource = producer.CreateIndexSource()
         }, CancellationToken.None);

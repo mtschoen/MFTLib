@@ -8,28 +8,19 @@ namespace MFTLib.Tests.Index;
 // The partial fixture keeps the producer's content and concurrency contracts together with shared block ownership.
 [TestClass]
 [DoNotParallelize]
-public sealed partial class EnumerationProducerTests : IDisposable
+public sealed partial class EnumerationProducerTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
     string _treeRoot = null!;
-    string BlockDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
-        _fixture = new IndexTreeFixture();
-        _treeRoot = _fixture.TreeRoot;
-        Directory.CreateDirectory(BlockDirectoryPath);
-
+        _treeRoot = TreeRoot;
+        Directory.CreateDirectory(CacheDirectoryPath);
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents", "Projects"));
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Pictures"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"), new string('x', 100));
         File.WriteAllText(Path.Combine(_treeRoot, "Pictures", "holiday.jpg"), new string('y', 50));
-    }
-
-    public void Dispose()
-    {
-        _fixture.Dispose();
     }
 
     int _blockId;
@@ -38,7 +29,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
     {
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(BlockDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            Path = Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
             VolumeSerial = 1,
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = slotCapacity,

@@ -6,20 +6,14 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
+public sealed partial class FileIndexPerDriveProducerKindTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
     static readonly DateTime Moment = new(2026, 10, 13, 0, 0, 0, DateTimeKind.Utc);
 
-    [TestInitialize]
-    public void Initialize()
-    {
-        _fixture = new IndexTreeFixture(seedDocuments: false);
-        File.WriteAllText(Path.Combine(_fixture.TreeRoot, "walked.txt"), "owned tree");
-    }
+    protected override bool SeedDocuments => false;
 
-    public void Dispose() => _fixture.Dispose();
+    [TestInitialize]
+    public void Initialize() => File.WriteAllText(Path.Combine(TreeRoot, "walked.txt"), "owned tree");
 
     static SyntheticMftProducer Producer() => new(_ =>
     [
@@ -31,12 +25,12 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         JournalCursor = new SyntheticJournalCursor(7, 4096)
     };
 
-    IndexedDrive Drive(char letter, ProducerKind policy) => new(letter, _fixture.TreeRoot, 123, policy);
+    IndexedDrive Drive(char letter, ProducerKind policy) => new(letter, Fixture.TreeRoot, 123, policy);
 
     FileIndexOptions Options(params IndexedDrive[] drives) => new()
     {
         Drives = drives,
-        CacheDirectory = _fixture.CacheDirectory,
+        CacheDirectory = Fixture.CacheDirectory,
         MftSource = SyntheticIndexSource.Create(Producer())
     };
 
@@ -114,7 +108,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
     public async Task MixedOpen_NullMftSourceFailsOnlyTheDriveNeedingAScan()
     {
         await using var index = await FileIndex.OpenAsync(Options(
-            new IndexedDrive('T', _fixture.TreeRoot, 123), Drive('U', ProducerKind.Enumeration)) with
+            new IndexedDrive('T', Fixture.TreeRoot, 123), Drive('U', ProducerKind.Enumeration)) with
         {
             MftSource = null
         }, CancellationToken.None);
@@ -161,7 +155,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         var diagnostics = new List<string>();
         await using var index = await FileIndex.OpenAsync(options with
         {
-            Drives = [new IndexedDrive('T', _fixture.TreeRoot, 123, Producer: requested)],
+            Drives = [new IndexedDrive('T', Fixture.TreeRoot, 123, Producer: requested)],
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = requested == ProducerKind.Enumeration ? null : options.MftSource,
             Diagnostics = diagnostics.Add

@@ -11,16 +11,11 @@ namespace MFTLib.Tests.Index;
 ///     the last matching entry.
 /// </summary>
 [TestClass]
-public sealed class FileIndexEnumerateTests : IDisposable
+public sealed class FileIndexEnumerateTests : IndexTreeTestBase
 {
     static readonly DateTime FixedMoment = new(2026, 9, 16, 0, 0, 0, DateTimeKind.Utc);
 
-    IndexTreeFixture _fixture = null!;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     /// <summary>
     ///     The laziness contract: the call reads nothing and takes no borrow, and the first
@@ -139,7 +134,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
     }
 
     Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
-        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
+        FileIndex.OpenAsync(Fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
@@ -147,7 +142,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         }, CancellationToken.None);
 
     Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync() =>
-        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
+        FileIndex.OpenAsync(Fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request),

@@ -11,23 +11,17 @@ namespace MFTLib.Tests;
 ///     <see cref="BlockFile" /> read, so the block it writes is judged by the production reader.
 /// </summary>
 [TestClass]
-public sealed partial class SyntheticBlockTests : IDisposable
+public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 {
     const uint Serial = 0x1234;
     static readonly DateTime Moment = new(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc);
     static readonly SyntheticJournalCursor Cursor = new(7, 4096);
 
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     static SyntheticBlockOptions Options() => new() { JournalCursor = Cursor, ScanTimestamp = Moment };
 
@@ -51,7 +45,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         SyntheticBlock.WriteCached(CacheDirectoryPath, 'T', Serial, options ?? Options(), rows ?? SampleRows());
 
     FileIndexOptions CacheOnly(bool enumeration = false) =>
-        _fixture.Options(volumeSerial: Serial,
+        Fixture.Options(volumeSerial: Serial,
             producer: enumeration ? ProducerKind.Enumeration : ProducerKind.Mft,
             cacheMode: CacheMode.ExistingOnly) with
         {
@@ -59,7 +53,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         };
 
     FileIndexOptions Scanning(SyntheticMftProducer producer, CacheTag cacheTag = default) =>
-        _fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
+        Fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
         {
             MftSource = new MftIndexSource(producer.Producer),
             CacheTag = cacheTag

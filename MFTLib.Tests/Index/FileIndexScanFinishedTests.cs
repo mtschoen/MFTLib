@@ -11,18 +11,11 @@ namespace MFTLib.Tests.Index;
 ///     ended, for enumeration-backed and MFT-backed drives, in open and in rescans.
 /// </summary>
 [TestClass]
-public sealed class FileIndexScanFinishedTests : IDisposable
+public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
     public TestContext TestContext { get; set; } = null!;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     string CreateDriveRoot(string name)
     {

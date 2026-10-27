@@ -14,32 +14,16 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FileIndexBlockReleaseTests : IDisposable
+public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-    uint _volumeSerial;
-
-    /// <summary>Creates an isolated enumeration tree and cache location.</summary>
-    [TestInitialize]
-    public void Initialize()
-    {
-        _volumeSerial = TestVolumeSerial.GetNext();
-        _fixture = new IndexTreeFixture();
-    }
-
-    /// <summary>Removes the test tree and cached blocks.</summary>
-    public void Dispose() => _fixture.Dispose();
-
-    FileIndexOptions Options() => _fixture.Options(volumeSerial: _volumeSerial);
+    FileIndexOptions Options() => Fixture.Options(volumeSerial: UniqueVolumeSerial);
 
     FileIndexOptions TwoDriveOptions(string secondTreeRoot, uint secondVolumeSerial)
     {
         return new FileIndexOptions
         {
             Drives = [
-                new IndexedDrive('T', TreeRoot, _volumeSerial, ProducerKind.Enumeration),
+                new IndexedDrive('T', TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
                 new IndexedDrive('U', secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration)
             ],
             CacheDirectory = CacheDirectoryPath
@@ -50,7 +34,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     [TestMethod]
     public async Task DisposeAsync_AfterAQueryAndWhileAHandleIsHeld_ReleasesTheBlockFile()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         Assert.IsFalse(entry.IsDisposed);
@@ -78,7 +62,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
 
         Assert.IsTrue(retiredHandle.IsDisposed, "the retired snapshot must be released too");
         Assert.IsTrue(currentHandle.IsDisposed);
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         BlockFileHoldAssertions.AssertNotHeld(blockPath);
     }
 
@@ -142,7 +126,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     {
         var index = await OpenAndRescanWithoutRetainingThePreviousSnapshotAsync();
         var retiredBlockPath = Directory.EnumerateFiles(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Single();
+            CacheDirectory.BlockFileName('T', UniqueVolumeSerial) + ".retired-*").Single();
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
@@ -204,7 +188,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
                 CacheDirectory.BlockFileName('U', secondVolumeSerial)));
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial)));
+                CacheDirectory.BlockFileName('T', UniqueVolumeSerial)));
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
@@ -221,7 +205,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     [TestMethod]
     public async Task DisposeAsync_WhileABorrowIsHeld_WaitsForItAndThenReleasesTheBlockFile()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var borrow = new SnapshotBorrow(index.CurrentSnapshot);
         try
@@ -254,7 +238,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     [TestMethod]
     public async Task AQueryWhoseTokenSourceWasDisposed_LeavesNoBorrowOutstanding()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var release = index.CurrentSnapshot[0].ReleaseState;
         var cancellation = new CancellationTokenSource();
@@ -337,7 +321,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     [TestMethod]
     public async Task DisposeAsync_WhenACancellationCallbackThrows_StillReleasesTheBlock()
     {
-        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         await using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
@@ -375,7 +359,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
             await disposal;
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial)));
+                CacheDirectory.BlockFileName('T', UniqueVolumeSerial)));
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
@@ -426,7 +410,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
             GC.KeepAlive(retiredBlock);
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial)));
+                CacheDirectory.BlockFileName('T', UniqueVolumeSerial)));
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally

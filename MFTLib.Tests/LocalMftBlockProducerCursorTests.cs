@@ -8,16 +8,11 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public sealed class LocalMftBlockProducerCursorTests : IDisposable
+public sealed class LocalMftBlockProducerCursorTests : IndexTreeTestBase
 {
     public TestContext TestContext { get; set; } = null!;
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
-
-    public void Dispose() => _fixture.Dispose();
+    protected override bool SeedDocuments => false;
 
     [TestMethod]
     public async Task CachedScan_ArmsCursorBeforeBatchesAndStampsResult()
@@ -78,7 +73,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
         var source = new LocalMftBlockProducer(
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
             .CreateIndexSource();
-        await using var index = await FileIndex.OpenAsync(_fixture.Options(
+        await using var index = await FileIndex.OpenAsync(Fixture.Options(
             drive: 'T',
             volumeSerial: 123,
             producer: ProducerKind.Mft,

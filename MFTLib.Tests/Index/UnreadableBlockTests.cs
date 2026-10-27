@@ -15,19 +15,13 @@ namespace MFTLib.Tests.Index;
 ///     later open of that drive throw permanently.
 /// </summary>
 [TestClass]
-public sealed class UnreadableBlockTests : IDisposable
+public sealed class UnreadableBlockTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose()
+    public override void Dispose()
     {
         try
         {
-            _fixture.Dispose();
+            base.Dispose();
         }
         catch (UnauthorizedAccessException)
         {
@@ -35,7 +29,7 @@ public sealed class UnreadableBlockTests : IDisposable
         }
     }
 
-    FileIndexOptions Options() => _fixture.Options();
+    FileIndexOptions Options() => Fixture.Options();
 
     [TestMethod]
     public async Task OpenAsync_UnreadableBlockFile_IsDiscardedAndTheDriveIsColdScanned()

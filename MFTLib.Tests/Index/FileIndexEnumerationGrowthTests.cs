@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>An enumeration scan grows its block while the walk continues, until the whole tree fits.</summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FileIndexEnumerationGrowthTests : IDisposable
+public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
 {
     /// <summary>
     ///     The root holds sibling directories, so the first plan is the 4096-row minimum, whose name pool of about 1.2
@@ -15,13 +15,11 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
     /// </summary>
     const int FileCount = 5000;
 
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
+    protected override bool SeedDocuments => false;
 
     [TestInitialize]
     public void Initialize()
     {
-        _fixture = new IndexTreeFixture(seedDocuments: false);
         var crowded1 = Path.Combine(TreeRoot, "crowded1");
         var crowded2 = Path.Combine(TreeRoot, "crowded2");
         Directory.CreateDirectory(crowded1);
@@ -34,8 +32,6 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
         });
     }
 
-    public void Dispose() => _fixture.Dispose();
-
     [TestMethod]
     public async Task Open_ATreeBeyondTheFirstCapacityPlanProducesACompleteBlockReadingEachDirectoryOnce()
     {
@@ -45,7 +41,7 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
         try
         {
             var diagnostics = new List<string>();
-            var options = _fixture.Options() with { Diagnostics = diagnostics.Add };
+            var options = Fixture.Options() with { Diagnostics = diagnostics.Add };
 
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
             Assert.Contains(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase), diagnostics);
@@ -59,7 +55,7 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
                 .ToArray();
             Assert.AreSequenceEqual(
                 expectedFiles, [.. index.Search(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
-            Assert.Contains(line => line.Contains(_fixture.CacheDirectory) &&
+            Assert.Contains(line => line.Contains(Fixture.CacheDirectory) &&
                                                   line.Contains("capacity", StringComparison.OrdinalIgnoreCase), diagnostics);
         }
         finally

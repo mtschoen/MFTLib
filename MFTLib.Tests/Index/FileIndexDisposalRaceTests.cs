@@ -11,17 +11,11 @@ namespace MFTLib.Tests.Index;
 ///     publishing, and a call made after disposal is refused by the flag.
 /// </summary>
 [TestClass]
-public sealed class FileIndexDisposalRaceTests : IDisposable
+public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
 
     FileIndexOptions Options(IProgress<IndexScanProgress> progress) =>
-        _fixture.Options() with
+        Fixture.Options() with
         {
             ScanProgress = progress
         };

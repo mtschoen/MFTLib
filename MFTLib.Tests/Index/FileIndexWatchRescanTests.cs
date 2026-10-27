@@ -11,24 +11,16 @@ namespace MFTLib.Tests.Index;
 ///     and started again from the fresh cursor, and every other drive's pump keeps reading.
 /// </summary>
 [TestClass]
-public partial class FileIndexWatchRescanTests
+public partial class FileIndexWatchRescanTests : IndexTreeTestBase
 {
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
+    protected override bool SeedDocuments => false;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _fixture = new IndexTreeFixture(seedDocuments: false);
-        Directory.CreateDirectory(CacheDirectoryPath);
-    }
-
-    public void Dispose() => _fixture.Dispose();
+    public void Initialize() => Directory.CreateDirectory(CacheDirectoryPath);
 
     [TestMethod]
     public async Task RescanAsync_WhileWatching_RestartsOnlyTheRescannedDriveFromTheFreshCursorAndClearsItsFailure()

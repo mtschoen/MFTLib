@@ -6,21 +6,12 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>Tracks the origin of each drive's current block across opens and rescans.</summary>
 [TestClass]
-public sealed class FileIndexBlockOriginTests : IDisposable
+public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
 {
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
     public TestContext TestContext { get; set; } = null!;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null) =>
-        _fixture.Options(producer: producer) with
+        Fixture.Options(producer: producer) with
         {
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };

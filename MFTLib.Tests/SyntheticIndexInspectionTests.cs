@@ -11,28 +11,21 @@ namespace MFTLib.Tests;
 ///     longer reports.
 /// </summary>
 [TestClass]
-public sealed class SyntheticIndexInspectionTests : IDisposable
+public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
 {
     const uint Serial = 0x2345;
-
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
 
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    [TestInitialize]
-    public void Initialize()
-    {
-        _fixture = new IndexTreeFixture(seedDocuments: false);
-        File.WriteAllText(Path.Combine(TreeRoot, "readme.md"), "hello");
-    }
+    protected override bool SeedDocuments => false;
 
-    public void Dispose() => _fixture.Dispose();
+    [TestInitialize]
+    public void Initialize() => File.WriteAllText(Path.Combine(TreeRoot, "readme.md"), "hello");
 
     FileIndexOptions Options(string root, CacheTag cacheTag = default) =>
-        _fixture.Options(volumeSerial: Serial) with
+        Fixture.Options(volumeSerial: Serial) with
         {
             Drives = [new IndexedDrive('T', root, Serial, ProducerKind.Enumeration)],
             CacheTag = cacheTag

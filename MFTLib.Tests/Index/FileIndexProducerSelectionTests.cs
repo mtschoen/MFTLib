@@ -13,23 +13,14 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="BlockFile" /> and <see cref="BlockWriter" />, so these tests run on Linux too.
 /// </summary>
 [TestClass]
-public sealed class FileIndexProducerSelectionTests : IDisposable
+public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 {
     static readonly DateTime FixedMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    IndexTreeFixture _fixture = null!;
-    string TreeRoot => _fixture.TreeRoot;
-    string CacheDirectoryPath => _fixture.CacheDirectory;
-
     public TestContext TestContext { get; set; } = null!;
 
-    [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture();
-
-    public void Dispose() => _fixture.Dispose();
-
     FileIndexOptions Options(ProducerKind producer, MftBlockProducer? mftProducer) =>
-        _fixture.Options(producer: producer) with
+        Fixture.Options(producer: producer) with
         {
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
