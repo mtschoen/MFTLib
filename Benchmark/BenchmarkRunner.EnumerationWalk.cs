@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using MFTLib.Index;
 
 namespace Benchmark;
@@ -17,23 +16,13 @@ public partial class BenchmarkRunner
             return 1;
         }
 
-        var report = new StringBuilder();
-        void Log(string line)
-        {
-            _output.WriteLine(line);
-            report.AppendLine(line);
-        }
+        var report = new ReportWriter(_output);
 
         try
         {
-            LogSystemInfo(Log);
-            await MeasureEnumerationTreeAsync(directories, filesPerDirectory, iterations, Log).ConfigureAwait(false);
-            if (outputPath is not null)
-            {
-                var resolvedPath = Path.GetFullPath(outputPath);
-                await File.WriteAllTextAsync(resolvedPath, report.ToString()).ConfigureAwait(false);
-                await _output.WriteLineAsync($"Report saved to {resolvedPath}").ConfigureAwait(false);
-            }
+            LogSystemInfo(report.Log);
+            await MeasureEnumerationTreeAsync(directories, filesPerDirectory, iterations, report.Log).ConfigureAwait(false);
+            await report.SaveAsync(outputPath).ConfigureAwait(false);
             return 0;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException
@@ -179,9 +168,7 @@ public partial class BenchmarkRunner
 
     static double PrintEnumerationMedian(string mode, double[] samples, uint rows, Action<string> log)
     {
-        Array.Sort(samples);
-        var middle = samples.Length / 2;
-        var median = samples.Length % 2 == 0 ? (samples[middle - 1] + samples[middle]) / 2 : samples[middle];
+        var median = Median(samples, static (left, right) => (left + right) / 2);
         log($"--- enumeration-walk-{mode} ---");
         log(string.Create(CultureInfo.InvariantCulture, $"  Median: {median:F3} ms; Rows: {rows}"));
         return median;

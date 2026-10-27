@@ -93,10 +93,10 @@ public partial class BenchmarkRunner
             usedRecords = result.UsedRecords;
         }
 
-        var io = Median(samples, timings => timings.NativeIo);
-        var fixup = Median(samples, timings => timings.NativeFixup);
-        var parse = Median(samples, timings => timings.NativeParse);
-        var total = Median(samples, timings => timings.NativeTotal);
+        var io = Median(samples.Select(timings => timings.NativeIo), static (left, right) => (left + right) / 2);
+        var fixup = Median(samples.Select(timings => timings.NativeFixup), static (left, right) => (left + right) / 2);
+        var parse = Median(samples.Select(timings => timings.NativeParse), static (left, right) => (left + right) / 2);
+        var total = Median(samples.Select(timings => timings.NativeTotal), static (left, right) => (left + right) / 2);
         log("--- native-parse-timings ---");
         log($"  Records: {totalRecords} examined, {usedRecords} returned (median of {iterations} runs)");
         log(Phase("Native I/O", io, total));
@@ -105,13 +105,6 @@ public partial class BenchmarkRunner
         log(Phase("Native total", total, total));
         log($"  Bound: {(io > fixup + parse ? "the read (I/O) stage dominates" : "the parse (CPU) stage dominates")}");
         log("  Note: the read is a buffered read, so a warm page cache makes it faster than the disk.");
-    }
-
-    static TimeSpan Median(List<MftParseTimings> samples, Func<MftParseTimings, TimeSpan> select)
-    {
-        var ordered = samples.Select(select).Order().ToList();
-        var middle = ordered.Count / 2;
-        return ordered.Count % 2 == 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
     }
 
     static string Phase(string label, TimeSpan duration, TimeSpan total)

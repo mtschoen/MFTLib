@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text;
 using MFTLib.Index;
 
 namespace Benchmark;
@@ -27,25 +26,17 @@ public partial class BenchmarkRunner
             return 1;
         }
 
-        // Everything the run prints, so --out saves exactly what the console showed.
-        var report = new StringBuilder();
-        void Log(string line)
-        {
-            _output.WriteLine(line);
-            report.AppendLine(line);
-        }
+        var report = new ReportWriter(_output);
 
         try
         {
-            LogSystemInfo(Log);
+            LogSystemInfo(report.Log);
             var exitCode = cacheDirectory is null
-                ? await RunSyntheticIndexAsync(rows, iterations, Log)
-                : await RunCachedIndexAsync(cacheDirectory, iterations, Log);
-            if (exitCode == 0 && outputPath is not null)
+                ? await RunSyntheticIndexAsync(rows, iterations, report.Log)
+                : await RunCachedIndexAsync(cacheDirectory, iterations, report.Log);
+            if (exitCode == 0)
             {
-                var resolvedOutputPath = Path.GetFullPath(outputPath);
-                await File.WriteAllTextAsync(resolvedOutputPath, report.ToString()).ConfigureAwait(false);
-                await _output.WriteLineAsync($"Report saved to {resolvedOutputPath}").ConfigureAwait(false);
+                await report.SaveAsync(outputPath).ConfigureAwait(false);
             }
 
             return exitCode;
@@ -224,9 +215,7 @@ public partial class BenchmarkRunner
             matches = query().Count;
             samples[iteration] = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
         }
-        Array.Sort(samples);
-        var middle = iterations / 2;
-        var median = iterations % 2 == 0 ? (samples[middle - 1] + samples[middle]) / 2 : samples[middle];
+        var median = Median(samples, static (left, right) => (left + right) / 2);
         log($"--- {label} ---");
         log(string.Create(CultureInfo.InvariantCulture, $"  Median: {median:F3} ms; Matches: {matches}"));
     }
