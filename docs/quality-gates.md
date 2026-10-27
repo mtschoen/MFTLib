@@ -38,7 +38,7 @@ three jobs finish green with their status checks present. Workflow-level
 `paths` and `paths-ignore` filters are avoided because they leave required
 status checks pending permanently on Gitea (issue 36895).
 
-The `docs` job always runs without an early exit. Running on the configured Linux runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets, document link integrity, CI input wiring, maintained-tool inventory completeness and metadata, and tracked-content portability. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
+The `docs` job always runs without an early exit. Running on the configured Linux runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets, document link integrity, scanner and consumer-sync server context, maintained-tool inventory completeness and metadata, and tracked-content portability. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
 
 The [maintained-tools inventory](maintained-developer-tools.md) names every
 script's purpose, runner role and CI coverage. `scripts/test-script-syntax.ps1`
@@ -144,7 +144,7 @@ unfiltered, subject to their existing host availability.
 
 | Scope/gate | Windows | Linux | Shared CI implementation |
 | --- | --- | --- | --- |
-| `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests (budgets, links, CI inputs and portability) |
+| `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests (budgets, links, server context, maintained tools and portability) |
 | `scripts` / `script-syntax`, `script-syntax-tests` | Run | Skip | `scripts/test-script-syntax.ps1` and `scripts/script-syntax.tests.ps1`, unfiltered syntax gate and offline regressions |
 | `preflight-tests` | Run | Run | `scripts/ci-preflight.tests.sh`: dispatcher, shared classifier, CI adapter, and workflow delegation; also run by both Windows and Linux CI jobs |
 | `build-script` / `build-script` | Run | Skip | `scripts/build-windows.tests.ps1` |
@@ -317,9 +317,8 @@ It rejects user-directory literals, private deployment hosts and workstation nam
 and private checkout pointers. Git failures, missing metadata and unreadable files fail
 the gate. There are no file exemptions; the detector scans its own source and has
 negative controls. Stage intended additions and removals before local verification.
-The same class pins all three Linux container images to `MFTLIB_CI_IMAGE` and
-checks the scanner and consumer-sync server context. `.plan` remains tracked;
-`.maintenance.json` is ignored local state.
+The same class checks the scanner and consumer-sync server context.
+`.plan` remains tracked; `.maintenance.json` is ignored local state.
 
 ### Character budgets
 

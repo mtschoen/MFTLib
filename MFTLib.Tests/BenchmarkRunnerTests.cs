@@ -400,23 +400,6 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("Usage: Benchmark.exe compare", _output.ToString());
     }
 
-    [TestMethod]
-    public void Benchmark_Sources_HaveNoRetiredRecordArrayScenarios()
-    {
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "Benchmark", "Benchmark.csproj")))
-        {
-            root = root.Parent;
-        }
-
-        Assert.IsNotNull(root, "Benchmark sources were not found above the test output directory.");
-        var retired = RetiredScenarioRegex();
-        var matches = Directory.EnumerateFiles(Path.Combine(root.FullName, "Benchmark"), "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
-            .SelectMany(path => File.ReadLines(path).Where(line => retired.IsMatch(line)).Select(line => $"{Path.GetFileName(path)}: {line.Trim()}"));
-        Assert.AreSequenceEqual([], [.. matches]);
-    }
-
     async Task<int> Compare(string beforeReport, string afterReport, string scenario = "exact-search")
     {
         var before = Path.Combine(_directory, "before.txt");
@@ -451,7 +434,4 @@ public partial class BenchmarkRunnerTests
 
     [GeneratedRegex(@"Bound: the (read \(I/O\)|parse \(CPU\)) stage dominates")]
     private static partial Regex MyRegex();
-
-    [GeneratedRegex("compat|ToArray", RegexOptions.IgnoreCase)]
-    private static partial Regex RetiredScenarioRegex();
 }

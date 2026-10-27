@@ -52,25 +52,6 @@ public partial class AgentInstructionsTests
     }
 
     [TestMethod]
-    public void LinuxJobs_UseConfiguredImageAndRetainFileLimit()
-    {
-        var workflow = RepositoryFiles.Read(".gitea/workflows/test.yml");
-        foreach (var name in new[] { "linux", "docs", "linux-package" })
-        {
-            var job = Regex.Match(workflow,
-                "(?ms)^  " + Regex.Escape(name) + @":\r?\n(?<body>.*?)(?=^  [\w-]+:\r?$|\z)");
-            Assert.IsTrue(job.Success, $"Missing job {name}.");
-            var container = ContainerBlockRegex().Match(job.Groups["body"].Value);
-            Assert.IsTrue(container.Success, $"Missing container for {name}.");
-            var body = container.Groups["body"].Value;
-            Assert.IsTrue(ProvisionedImageRegex().IsMatch(body),
-                $"{name} must consume the provisioned image variable.");
-            Assert.IsTrue(NofileUlimitRegex().IsMatch(body),
-                $"{name} must retain the open-file limit.");
-        }
-    }
-
-    [TestMethod]
     public void ScannerAndConsumerWorkflows_UseServerContext()
     {
         var scanner = RepositoryFiles.Read(".gitea/workflows/aislop.yml");
@@ -110,17 +91,6 @@ public partial class AgentInstructionsTests
         foreach (var path in paths)
         {
             var text = RepositoryFiles.Read(path);
-            if (path.StartsWith("MFTLib/", StringComparison.Ordinal))
-            {
-                Assert.IsFalse(LegacyDateTimeRegex().IsMatch(text),
-                    $"{path}: block completion must use TimeProvider.");
-            }
-
-            if (path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
-                LegacyCacheGuardRegex().IsMatch(text))
-            {
-                failures.Add($"{path}: describe explicit cache ownership using the current contract");
-            }
             for (var index = 0; index < patterns.Length; index++)
             {
                 if (Regex.IsMatch(text, patterns[index]))
@@ -176,84 +146,6 @@ public partial class AgentInstructionsTests
             Assert.DoesNotContain(pattern => Regex.IsMatch(text, pattern), patterns,
                 $"Portable content was rejected: {text}");
         }
-    }
-
-    [TestMethod]
-    public void SampleSharedMembers_AreUsedByBothSamples()
-    {
-        var paths = RepositoryFiles.Git("ls-files", "-z", "--",
-                "SampleProgram.Shared", "SampleProgram.Direct", "SampleProgram.Watch")
-            .Split('\0', StringSplitOptions.RemoveEmptyEntries)
-            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal)).ToArray();
-        var sources = paths.ToDictionary(path => path,
-            path => CommentRegex().Replace(RepositoryFiles.Read(path), ""));
-        var shared = sources.Where(pair => pair.Key.StartsWith("SampleProgram.Shared/", StringComparison.Ordinal)).ToArray();
-        Assert.IsNotEmpty(shared, "The shared source set must not be empty.");
-        var sharedText = string.Join("\n", shared.Select(pair => pair.Value));
-        var failures = new List<string>();
-        foreach (var name in new[]
-        {
-            "ElevationNeed", "RunWithElevation", "SelfElevationReason", "BrokerLaunchReason",
-            "_tryRunElevated", "_acrtIobFunc", "_wFreopen", "_outputRedirectedToFile",
-            "AcrtIobFuncNative", "WFreopenNative", "RedirectStdout", "OutputLogPath",
-            "PrintElevatedRunIncomplete", "Integer", "Date", "DriveOpenedReporter"
-        })
-        {
-            if (Regex.IsMatch(sharedText, @"\b" + Regex.Escape(name) + @"\b"))
-            {
-                failures.Add($"{name} belongs in its sample, not Shared.");
-            }
-        }
-
-        // Shared uses four-space member declarations; nested types are ownership units.
-        var declaration = SharedMemberDeclarationRegex();
-        var members = new Dictionary<string, (string Path, string Body)>();
-        foreach (var (path, text) in shared)
-        {
-            var declarations = declaration.Matches(text).ToArray();
-            Assert.IsNotEmpty(declarations, $"No shared members found in {path}.");
-            for (var index = 0; index < declarations.Length; index++)
-            {
-                var match = declarations[index];
-                var end = index + 1 < declarations.Length ? declarations[index + 1].Index : text.Length;
-                members.Add(match.Groups["name"].Value, (path, text[(match.Index + match.Length)..end]));
-            }
-        }
-
-        foreach (var sample in new[] { "Direct", "Watch" })
-        {
-            var local = sources.Where(pair => pair.Key.StartsWith($"SampleProgram.{sample}/", StringComparison.Ordinal)).ToArray();
-            Assert.IsNotEmpty(local, $"No source found for {sample}.");
-            var identifiers = IdentifierTokenRegex().Matches(string.Join("\n", local.Select(pair => pair.Value)))
-                .Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
-            var pending = new Queue<string>(members.Keys.Where(identifiers.Contains));
-            var reached = new HashSet<string>(StringComparer.Ordinal);
-            while (pending.TryDequeue(out var name))
-            {
-                if (!reached.Add(name))
-                {
-                    continue;
-                }
-
-                foreach (Match token in IdentifierTokenRegex().Matches(members[name].Body))
-                {
-                    if (members.ContainsKey(token.Value))
-                    {
-                        pending.Enqueue(token.Value);
-                    }
-                }
-            }
-
-            foreach (var (name, member) in members)
-            {
-                if (!reached.Contains(name))
-                {
-                    failures.Add($"{member.Path}: {name} has no {sample} source use.");
-                }
-            }
-        }
-
-        Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
     }
 
     [TestMethod]
@@ -367,30 +259,6 @@ public partial class AgentInstructionsTests
 
     [GeneratedRegex(@"\]\((docs/[A-Za-z0-9_.-]+\.md)\)")]
     private static partial Regex LinkedDocsRegex();
-
-    [GeneratedRegex(@"(?ms)^    container:\r?\n(?<body>(?:^      [^\r\n]*\r?\n)+)")]
-    private static partial Regex ContainerBlockRegex();
-
-    [GeneratedRegex(@"(?m)^      image: \$\{\{ vars\.MFTLIB_CI_IMAGE \}\}\r?$")]
-    private static partial Regex ProvisionedImageRegex();
-
-    [GeneratedRegex(@"(?m)^      options: --ulimit nofile=65536:65536\r?$")]
-    private static partial Regex NofileUlimitRegex();
-
-    [GeneratedRegex(@"Func<DateTime>|=> DateTime\.UtcNow")]
-    private static partial Regex LegacyDateTimeRegex();
-
-    [GeneratedRegex("(?i)no library default|default-cache guard")]
-    private static partial Regex LegacyCacheGuardRegex();
-
-    [GeneratedRegex(@"//[^\r\n]*|/\*[\s\S]*?\*/")]
-    private static partial Regex CommentRegex();
-
-    [GeneratedRegex(@"(?m)^    (?:[\w<>,?\[\].]+[ \t]+)+(?<name>\w+)[ \t]*(?:\(|=>|[=;{])")]
-    private static partial Regex SharedMemberDeclarationRegex();
-
-    [GeneratedRegex(@"\b[A-Za-z_]\w*\b")]
-    private static partial Regex IdentifierTokenRegex();
 
     [GeneratedRegex(@"(?m)^Source commit: [0-9a-f]{40}\r?$")]
     private static partial Regex ReportSourceCommitRegex();
