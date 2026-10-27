@@ -212,21 +212,57 @@ public class UsnJournalVolumeInteropTests
     }
 
     /// <summary>
-    ///     With no override installed, the guard's state alone decides between reporting nothing
-    ///     and reading the live journal, so a process whose guard is off reads the real volume.
+    ///     Automatic checks honor the process guard; explicit reads can still obtain
+    ///     a journal window and supply it through an owned observation scope.
     /// </summary>
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
-    public void JournalReader_NoOverride_TheGuardAloneDecidesWhetherTheLiveJournalIsRead()
+    public void CheckpointCheck_GuardedAndExplicitReads_UseTheSameJournalWindow()
     {
-        Assert.IsNull(new JournalCheckpointCheck.JournalReader(() => true, JournalCheckpointCheck.ReadLiveJournal).Read('C'));
+        var openedVolumes = 0;
+        Kernel32.Hooks._createFile = (path, _, _, _, _, _, _) =>
+        {
+            Assert.AreEqual(@"C:\", path);
+            openedVolumes++;
+            return new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        };
+        ServeJournalData(BuildJournalData(
+            journalIdentifier: 0xFEED, firstUsn: 2_048, nextUsn: 9_216));
 
-        var journal = new JournalCheckpointCheck.JournalReader(() => false, JournalCheckpointCheck.ReadLiveJournal).Read('C');
+        JournalCheckpointLoss? Check() => JournalCheckpointCheck.Check(
+            'C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
+            JournalCheckpointLossDetection.DriveOpening);
 
-        Assert.IsNotNull(journal, "C: has a journal the unelevated handle can read");
-        Assert.AreNotEqual(0UL, journal.Value.JournalIdentifier);
-        Assert.IsGreaterThan(0, journal.Value.AllocationDelta);
+        Assert.IsNull(Check());
+        Assert.AreEqual(0, openedVolumes, "guarded checks must not open a volume");
+
+        var window = ReadLive('C');
+        Assert.IsNotNull(window);
+        Assert.AreEqual(new SyntheticJournalWindow(
+            0xFEED, 2_048, 9_216, 16L * 1024 * 1024, 128L * 1024 * 1024), window.Value);
+        Assert.AreEqual(1, openedVolumes);
+
+        using (JournalIsolation.OverrideJournalWindow(ReadLive))
+        {
+            var loss = Check();
+            Assert.IsNotNull(loss);
+            Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
+            Assert.AreEqual(2_048L, loss.FirstUsn);
+            Assert.AreEqual(9_216L, loss.NextUsn);
+            Assert.AreEqual(16L * 1024 * 1024, loss.JournalSettings.AllocationDelta);
+            Assert.AreEqual(128L * 1024 * 1024, loss.JournalSettings.MaximumSize);
+            Assert.AreEqual(2, openedVolumes);
+        }
+
+        using (JournalIsolation.OverrideJournalWindow(_ => null))
+        {
+            Assert.IsNull(Check());
+            Assert.AreEqual(2, openedVolumes, "unknown overrides must not fall back to live reads");
+        }
+
+        Assert.IsNull(Check());
+        Assert.AreEqual(2, openedVolumes, "scope disposal must preserve the process guard");
     }
 
     [TestMethod]

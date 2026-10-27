@@ -71,7 +71,7 @@ static class JournalCheckpointCheck
     static JournalCheckpointLoss? CheckObservation(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
-        if (ProcessJournal.Read(drive) is not { } observation)
+        if (ReadJournal(drive) is not { } observation)
         {
             return null;
         }
@@ -137,41 +137,24 @@ static class JournalCheckpointCheck
     }
 
     /// <summary>
-    ///     The reader <see cref="Check" /> uses: its guard is this process's one-way flag, and
-    ///     nothing can replace it or its guard.
+    ///     Uses an installed observation override first, otherwise reports nothing while
+    ///     automatic live reads are forbidden, otherwise reads the live journal.
     /// </summary>
-    static readonly JournalReader ProcessJournal = new(
-        () => Hooks.LiveReadsForbidden, ReadLiveJournal);
-
-    /// <summary>
-    ///     Reads the journal a check decides on, from a guard and a live read. The process reads
-    ///     through its own instance; a test builds another instance to exercise the unguarded
-    ///     path without touching the process's guard.
-    /// </summary>
-    internal sealed class JournalReader(Func<bool> liveReadsForbidden, Func<DriveKey, JournalWindow?> readLive)
+    static JournalWindow? ReadJournal(DriveKey drive)
     {
-        /// <summary>
-        ///     The override when one is installed, otherwise nothing while live reads are
-        ///     forbidden, otherwise the live journal.
-        /// </summary>
-        public JournalWindow? Read(DriveKey drive)
+        if (Hooks.ObservationOverride is { } journalOverride)
         {
-            if (Hooks.ObservationOverride is { } journalOverride)
-            {
-                return journalOverride(drive);
-            }
-
-            if (liveReadsForbidden())
-            {
-                // A test process reads no real volume unless a test asked for one. Answering null
-                // is the same answer a volume that cannot be queried already gives, so a warm
-                // start behaves identically on every machine instead of depending on whether the
-                // test's drive letter happens to name a real NTFS volume.
-                return null;
-            }
-
-            return readLive(drive);
+            return journalOverride(drive);
         }
+
+        if (Hooks.LiveReadsForbidden)
+        {
+            // Unknown matches a volume that cannot be queried and keeps synthetic tests
+            // independent of the host's mounted volumes.
+            return null;
+        }
+
+        return ReadLiveJournal(drive);
     }
 
     /// <summary>
