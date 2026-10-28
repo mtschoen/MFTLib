@@ -1,12 +1,12 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The verdict on one root of a batched <see cref="FileIndex" /> call. One root's failure is a verdict,
-///     not a throw, so the other roots' results survive it.
+///     The verdict of a <see cref="FileIndex" /> lifecycle call on its root. Operational failures
+///     are reported as <see cref="Failed" /> rather than thrown.
 /// </summary>
 public enum RootOperationOutcome
 {
-    /// <summary>Nothing failed and nothing was skipped: the root's part ran to its end.</summary>
+    /// <summary>Nothing failed and nothing was skipped: the root's operation ran to its end.</summary>
     Succeeded,
 
     /// <summary>The operation failed for the root; the result carries the exception.</summary>
@@ -19,7 +19,10 @@ public enum RootOperationOutcome
     NotApplicable
 }
 
-/// <summary>The result of one root's part of a batched <see cref="FileIndex" /> operation.</summary>
+/// <summary>
+///     The outcome and optional failure exception of a <see cref="FileIndex" /> lifecycle call on
+///     its root.
+/// </summary>
 public sealed record RootOperationResult
 {
     /// <summary>Creates the result of one root's operation.</summary>

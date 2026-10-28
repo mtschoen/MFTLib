@@ -476,52 +476,48 @@ the row resets the cycle, since the MFT segment was reused by a new file.
 
 ## Watch catch-up
 
-Each MFT-backed volume has its own watch handle and catch-up state. When
-`FileIndex.StartWatchingAsync([root], cancellationToken)` starts a root, or a rescan restarts
-one whose watch is still requested, that volume arms from the journal cursor persisted in its
-block header (`USN journal identifier` and `USN next USN`). Other volumes' handles and blocks are
-untouched.
+An MFT-backed `FileIndex` has one watch instance and catch-up state for its root. Each
+lifecycle method returns one `RootOperationResult` for the index's root. When
+`FileIndex.StartWatchingAsync(cancellationToken)` starts the root's watch, or a rescan restarts
+one whose watch is still requested, the root arms from the journal cursor persisted in its
+block header (`USN journal identifier` and `USN next USN`). `StartWatchingAsync` returns once
+the channel is connected and the start request is written; catch-up is observed separately.
 
 The source captures the journal tip for the arm. Backlog batches between the persisted
 cursor and that tip are streamed and applied to the block in place, advancing the header's
 `USN next USN` and updating `LiveRowCount` and file rows under the volume's write gate. A
 `VolumeCaughtUp` item transitions `RootWatchStatus.State` from
 `WatchState.CatchingUp` to `WatchState.CaughtUp`. Live mutations continue on
-the same handle.
+the same watch instance.
 
-`FileIndex.WaitForCatchUpAsync([root], cancellationToken)` follows that root's current
-handle. Its result succeeds immediately when the root is already caught up, is `Failed` with the
-root's exception when the watch failed or its last start was refused, and is `NotApplicable`
-when the root's watch is not requested and it has no current watch. Stop retires that handle
-with a cancelled per-root result; index disposal cancels the whole wait. A rescan
-keeps it attached during production and cancels it only when the replacement commits and
-retires the old handle; a wait issued after that commit and before the replacement registers
-follows the replacement handle.
-Failed or cancelled production leaves the watch and its waits untouched. Cancelling the wait's own
-token cancels only the wait, not the root's watch.
+`FileIndex.WaitForCatchUpAsync(cancellationToken)` returns one `RootOperationResult` for the
+index's root, following its current watch instance or pending replacement. Its result succeeds
+immediately when the root is already caught up, is `Failed` with the root's exception in
+`Failure` when the watch failed or its last start was refused, and is `NotApplicable` when the
+root's watch is not requested and it has no current watch. Stop or committed replacement retires
+a pending watch instance and settles its wait as `Failed` with an `OperationCanceledException`
+in `Failure`. A rescan keeps a healthy watch and its waits attached during production and retires
+the old watch only when the replacement commits; a wait issued after that commit and before the
+replacement registers follows the pending replacement. Failed or cancelled production leaves the
+healthy watch and its waits untouched. Caller cancellation cancels the wait task without
+stopping the root's watch; index disposal cancels the wait task through the index's disposal
+token.
 
 A `Volume` or `Apply` fault moves the root to `WatchState.Recovering` and starts an
-automatic rescan. A wait issued during recovery settles that root's result as `Failed` with
-the exception that ended the prior watch; a batched wait still waits for its other roots. After
-recovery starts the replacement handle and the root reads
-`CatchingUp`, call the wait again to follow that handle. If recovery fails, or the
-replacement handle faults before reaching `CaughtUp`, the index raises a `Recovery` fault
-and leaves the volume `Faulted` until a consumer starts or rescans it. A `Channel` fault does
-not recover automatically. A successful manual rescan whose replacement watch cannot start
-raises `RescanRestart` and leaves the root `Faulted` without automatic recovery; the scan
-returns normally. The fault and `RootWatchStatus.FailureMessage` name the rescan, and the start failure
-is the inner exception. Stop returns the fault once as `Failed`. Across a successful swap, old `Changed`
-events can arrive after publication and repeat during the new watch's catch-up; queries can
-lag until it reports `CaughtUp`.
+automatic rescan. A wait issued during recovery settles as `Failed` with the exception that
+ended the prior watch. After recovery starts the replacement watch and the root reads
+`CatchingUp`, call `WaitForCatchUpAsync(cancellationToken)` again to follow that instance. If
+recovery fails, or the replacement watch faults before reaching `CaughtUp`, the index raises a
+`Recovery` fault and leaves the volume `Faulted` until a consumer starts or rescans it. A
+`Channel` fault does not recover automatically. A successful manual rescan whose replacement
+watch cannot start raises `RescanRestart` and leaves the root `Faulted` without automatic
+recovery; the scan returns normally. The fault and `RootWatchStatus.FailureMessage` name the
+rescan, and the start failure is the inner exception. Stop returns the fault once as `Failed`.
+Across a successful swap, old `Changed` events can arrive after publication and repeat during
+the new watch's catch-up; queries can lag until it reports `CaughtUp`.
 
-`WaitForCatchUpAsync(CancellationToken)` returns one `RootOperationResult` for the index's
-root after its watch settles. A failed watch has `RootOperationOutcome.Failed` and carries the
-exception in `Failure`. A root with no watch is `NotApplicable`.
-Caller cancellation cancels the call; disposal cancels it through the
-index's disposal token.
-
-Calling the wait is optional. The index observes each handle's failure even when
-no caller waits; faults still reach `WatchFaulted`, `RootWatchStatus.FailureMessage`, and
+Calling the wait is optional. The index observes the watch's failure even when no caller waits;
+faults still reach `WatchFaulted`, `RootWatchStatus.FailureMessage`, and
 `RootWatchStatus.State`.
 
 ## Sidecars
