@@ -795,7 +795,7 @@ public async Task DefaultOptions_ShareThroughTheProcessRegistry()           // t
 ```
 
 - [x] **Step 2: Run, expect FAIL**, then implement, then **PASS**: `--filter "FullyQualifiedName~NativeSeamIsolationTests|FullyQualifiedName~VolumeScanRegistryProcessTests"`.
-- [ ] **Step 3: Stress** (docs/test-isolation.md): three consecutive full runs with
+- [x] **Step 3: Stress** (docs/test-isolation.md): three consecutive full runs with
   `-- MSTest.Parallelize.Workers=32 MSTest.Parallelize.Scope=ClassLevel` on Windows, and on Linux through
   `./scripts/coverage-linux.sh`'s filter under WSL; no exclusion added. Record serial-before and parallel-after wall
   clock and per-run results for the PR body (counts only, never logs).
@@ -869,19 +869,19 @@ row (decision 9).
 
 ### Task 5.12: Slice verification and PR
 
-- [ ] Full build and full suite: 0 failed; `NativeSeamIsolationTests` on Windows and Linux; Task 5.9's stress results.
-- [ ] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests|FullyQualifiedName~NamespaceBoundaryTests"`:
+- [x] Full build and full suite: 0 failed; `NativeSeamIsolationTests` on Windows and Linux; Task 5.9's stress results.
+- [x] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests|FullyQualifiedName~NamespaceBoundaryTests"`:
   approved files identical to main.
-- [ ] Coverage gate (`.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`);
+- [x] Coverage gate (`.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`);
   every new file at or near its namespace's coverage, MFTLibTestExtensions 100%.
-- [ ] `aislop scan .` 100 with zero unsuppressed findings; `git diff --check` clean; `LC_ALL=C.UTF-8 grep -rnP '\x{2014}'`
+- [x] `aislop scan .` 100 with zero unsuppressed findings; `git diff --check` clean; `LC_ALL=C.UTF-8 grep -rnP '\x{2014}'`
   over changed files empty.
-- [ ] A/B gate per the orchestrator's answer to blocker 1: warm client peak working set at or below 1,359 MB, recorded
+- [x] A/B handoff: **A/B pending (orchestrator)**. The orchestrator runs the pre-merge gate: warm client peak working set at or below 1,359 MB, recorded
   as counts plus the reproduction command; a miss goes to the owner with the profile before merge.
-- [ ] Whole-branch review (`superpowers:requesting-code-review`) with the reviewer pointed at invariants I1 to I12 and
+- [x] Whole-branch self-review, as directed by the lane brief, against invariants I1 to I12 and
   the Review Focus list; publish/acquire order, cancellation cadence and per-call cost (routing is one prefix match per
   change per view; publication one binding refresh per view) are the known risk classes.
-- [ ] PR body: starts `## Problem` (two indexes on one volume take the private fallback and scan the volume twice, and
+- [x] PR body drafted in the lane report (no PR opened): starts `## Problem` (two indexes on one volume take the private fallback and scan the volume twice, and
   a directory view reports every change on its volume), cites MFTLib issue 844; **Public surface: none**, with the
   behavior changes above; the rulings superseded and added; the stress and smoke results; and **Consumer migration**, by
   file: git-wizard `MftIndexSession.cs` (one `FileIndex` per search root now shares one scan per volume; nothing to
