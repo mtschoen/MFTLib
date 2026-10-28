@@ -26,7 +26,7 @@ namespace MFTLib.Index;
 ///     sequence number before it overwrites the columns. A reader that pauses between its identity check and
 ///     a column read can observe the replacement's columns; re-check <see cref="IsDeleted" /> after a read that
 ///     must be exact, or read the <see cref="FileChange" /> event fields.
-///     Handles compare equal when they name the same root block, row and sequence number, whichever
+///     Handles compare equal when they name the same view's root block, row and sequence number, whichever
 ///     query minted them.
 /// </remarks>
 /// <remarks>
@@ -44,11 +44,19 @@ public readonly partial record struct FileEntry
     readonly ushort _sequenceNumber;
 
     FileEntry(RootBlock rootBlock, uint rowIndex)
+        : this(rootBlock, rowIndex, SequenceNumberOf(rootBlock, rowIndex))
+    {
+    }
+
+    FileEntry(RootBlock rootBlock, uint rowIndex, ushort sequenceNumber)
     {
         NamedRootBlock = rootBlock;
         RowIndex = rowIndex;
-        _sequenceNumber = SequenceNumberOf(rootBlock, rowIndex);
+        _sequenceNumber = sequenceNumber;
     }
+
+    /// <summary>Routes an event to a view without re-reading a row's possibly replaced incarnation.</summary>
+    internal FileEntry WithRootBlock(RootBlock rootBlock) => new(rootBlock, RowIndex, _sequenceNumber);
 
     /// <summary>Internal factory. Handles are only ever minted by the index and its query engines.</summary>
     internal static FileEntry Create(RootBlock rootBlock, uint rowIndex)
@@ -131,7 +139,7 @@ public readonly partial record struct FileEntry
     internal bool IsSupersededWhileMapped => NamedRootBlock is { } rootBlock && IsSupersededIn(rootBlock);
 
     /// <summary>
-    ///     Compares the root block, row index and sequence number. A superseded handle never equals the
+    ///     Compares the view's root block, row index and sequence number. A superseded handle never equals the
     ///     handle of the file that reused its slot, and handles minted by different queries of one block
     ///     are equal. Available after the block is released.
     /// </summary>
