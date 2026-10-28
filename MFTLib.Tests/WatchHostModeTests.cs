@@ -16,11 +16,13 @@ namespace MFTLib.Tests;
 public sealed class WatchHostModeTests : IDisposable
 {
     [TestMethod]
-    [DataRow("add-root {source}\n\n", "Added root {source}: producer Mft")]
-    [DataRow("frobnicate\n\n", "Unknown command 'frobnicate'. Type add-root <path>, or press Enter to stop.")]
-    [DataRow("add-root relative/path\n\n", "Root 'relative/path' is neither a drive nor a full path.")]
-    [DataRow("", "Watching T. Type add-root <path> to watch another root, or press Enter to stop.")]
-    public async Task Watch_InteractiveCommands_KeepOneScanAndStopCleanly(string inputTemplate, string expectedTemplate)
+    [DataRow("add-root {source}\n\n", "Added root {source}: producer Mft", 0)]
+    [DataRow("frobnicate\n\n", "Unknown command 'frobnicate'. Type add-root <path>, or press Enter to stop.", 0)]
+    [DataRow("add-root relative/path\n\n", "Root 'relative/path' is neither a drive nor a full path.", 0)]
+    [DataRow("", "Watching T. Type add-root <path> to watch another root, or press Enter to stop.", 0)]
+    [DataRow("add-root T\n\n", "Error adding root T:", 1)]
+    [DataRow("add-root {source}/missing\n\n", "Error adding root ", 1)]
+    public async Task Watch_InteractiveCommands_KeepOneScanAndStopCleanly(string inputTemplate, string expectedTemplate, int expectedExitCode)
     {
         using var attended = new UnattendedEnvironmentScope(null);
         var source = Path.Combine(_directory, "src");
@@ -50,9 +52,10 @@ public sealed class WatchHostModeTests : IDisposable
             options => SyntheticVolumeFacts.Apply(options, 4242, volume: new VolumeKey('T'), volumeRootDirectory: _directory),
             CancellationToken.None);
 
-        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.AreEqual(expectedExitCode, result, string.Join(Environment.NewLine, lines));
         Assert.AreEqual(1, scans);
-        Assert.Contains(expectedTemplate.Replace("{source}", source, StringComparison.Ordinal), lines);
+        var expected = expectedTemplate.Replace("{source}", source, StringComparison.Ordinal);
+        Assert.Contains(line => line.StartsWith(expected, StringComparison.Ordinal), lines);
         Assert.Contains(line => line.StartsWith("Saw 0 changes", StringComparison.Ordinal), lines);
     }
 

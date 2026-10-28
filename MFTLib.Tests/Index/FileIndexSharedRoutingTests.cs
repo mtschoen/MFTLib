@@ -9,6 +9,24 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexSharedRoutingTests
 {
     [TestMethod]
+    public async Task DirectApply_TwoThrowingViews_DeliversBothAndAggregatesTheirFailures()
+    {
+        using var fixture = new SharedScanFixture();
+        await using var volume = await fixture.OpenAsync(fixture.Volume);
+        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        var first = new IOException("volume subscriber failed");
+        var second = new IOException("directory subscriber failed");
+        volume.Changed += _ => throw first;
+        source.Changed += _ => throw second;
+
+        var failure = await Assert.ThrowsExactlyAsync<AggregateException>(() => SharedScanFixture.ApplyAsync(volume,
+            SharedScanFixture.Record(40, 30, "new.txt", UsnReason.FileCreate)));
+
+        Assert.AreSequenceEqual(new Exception[] { first, second }, failure.InnerExceptions);
+        Assert.IsNotNull(source.Find(Path.Combine(fixture.SourcePath, "new.txt")));
+    }
+
+    [TestMethod]
     [DataRow(40, 5, 0, 0)]
     [DataRow(40, 34, 1, 1)]
     public async Task Route_OutsideAndNestedViews_UsesContainment(int row, int parent, int sourceCount, int nestedCount)

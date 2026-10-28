@@ -9,6 +9,42 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexSharedDisposalTests
 {
     [TestMethod]
+    public async Task Dispose_BeforeCapturedBatchDelivery_DropsOnlyTheClosedViewsDelivery()
+    {
+        var watches = new ScriptedWatchSource { CatchUpOnStart = true };
+        using var fixture = new SharedScanFixture(watches);
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
+        await volume.StartWatchingAsync(CancellationToken.None);
+        await source.StartWatchingAsync(CancellationToken.None);
+        var held = new TestGate();
+        var volumeChanges = 0;
+        var sourceChanges = 0;
+        volume.Changed += _ => Interlocked.Increment(ref volumeChanges);
+        source.Changed += _ => Interlocked.Increment(ref sourceChanges);
+        volume.Hooks.BeforeWatchChanged = _ =>
+        {
+            held.MarkEntered();
+            held.WaitForRelease();
+        };
+        var delivery = watches.Watches.Single().Publish(new JournalBatch(
+            [SharedScanFixture.Record(40, 30, "new.txt", UsnReason.FileCreate)], 7, 5001));
+        try
+        {
+            await held.Entered.WaitAsync(HangGuard);
+            await volume.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        }
+        finally
+        {
+            held.Release();
+        }
+        await delivery;
+        Assert.AreEqual(0, volumeChanges);
+        Assert.AreEqual(1, sourceChanges);
+    }
+
+    [TestMethod]
     public async Task Dispose_CancelsOnlyItsOwnQueries()
     {
         using var fixture = new SharedScanFixture();
