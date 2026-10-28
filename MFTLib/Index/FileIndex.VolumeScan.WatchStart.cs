@@ -4,8 +4,13 @@ public sealed partial class FileIndex
 {
     internal sealed partial class VolumeScan
     {
+        // I7 Watch requests: membership and the view flag change together under StateLock.
+        readonly HashSet<IndexView> _requesters = [];
+        bool AnyRequestLocked => _requesters.Count != 0;
+        Task? _consumerStart;
+
         /// <summary>Starts this root for an admitted consumer request; readiness is handle publication.</summary>
-        public Task StartRootWatchingAsync(CancellationToken cancellationToken)
+        public Task StartRootWatchingAsync(IndexView view, CancellationToken cancellationToken)
         {
             if (FileIndex.RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
             {
@@ -13,7 +18,54 @@ public sealed partial class FileIndex
             }
 
             ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
-            return StartConsumerWatchingAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            Task start;
+            lock (StateLock)
+            {
+                view.WatchRequested = true;
+                _requesters.Add(view);
+                if (Current is { State: WatchInstanceState.Running })
+                {
+                    return Task.CompletedTask;
+                }
+                if (_consumerStart is null)
+                {
+                    var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _consumerStart = completion.Task;
+                    _ = Task.Run(() => CompleteConsumerStartAsync(completion), CancellationToken.None);
+                }
+                start = _consumerStart;
+            }
+            return AwaitConsumerStartAsync(view, start, cancellationToken);
+        }
+
+        async Task CompleteConsumerStartAsync(TaskCompletionSource completion)
+        {
+            try
+            {
+                await StartConsumerWatchingAsync(ClosingToken).ConfigureAwait(false);
+                completion.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                // An independent source cancellation is a fault, preserving its original exception.
+                completion.TrySetException(exception);
+            }
+        }
+
+        async Task AwaitConsumerStartAsync(IndexView view, Task start, CancellationToken cancellationToken)
+        {
+            using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, view.DisposalToken);
+            try
+            {
+                await AwaitQueuedAsync(start, wait.Token).ConfigureAwait(false);
+                wait.Token.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException) when (wait.IsCancellationRequested && !IsClosing)
+            {
+                await StopRootWatchingAsync(view, CancellationToken.None).ConfigureAwait(false);
+                throw;
+            }
         }
 
         async Task StartConsumerWatchingAsync(CancellationToken cancellationToken)
@@ -21,12 +73,23 @@ public sealed partial class FileIndex
             await LifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                lock (StateLock)
+                {
+                    if (!AnyRequestLocked)
+                    {
+                        throw new OperationCanceledException("The watch request was withdrawn before startup.");
+                    }
+                }
                 await StartWatchingWithGateHeldAsync(restart: false, recovery: null, cancellationToken)
                     .ConfigureAwait(false);
             }
             finally
             {
                 LifecycleGate.Release();
+                lock (StateLock)
+                {
+                    _consumerStart = null;
+                }
             }
         }
 
@@ -175,6 +238,10 @@ public sealed partial class FileIndex
             lock (StateLock)
             {
                 ThrowIfClosing(CancellationToken.None);
+                if (!restart && !AnyRequestLocked)
+                {
+                    throw new OperationCanceledException("The watch request was withdrawn before registration.");
+                }
                 if (restart && !IsRestartStillRequestedLocked(recovery))
                 {
                     return null;
@@ -182,25 +249,22 @@ public sealed partial class FileIndex
 
                 // Its pump has ended and its teardown was awaited, so a faulted instance goes
                 // straight to drained. A manual rescan keeps its fault until the start settles.
-                if (Current is { State: WatchInstanceState.Faulted } faulted)
+                if (Current is { State: WatchInstanceState.Faulted })
                 {
-                    if (restart && recovery is null)
-                    {
-                        _rescanHandoffFault ??= faulted.OutstandingFault;
-                        faulted.OutstandingFault = null;
-                    }
-
                     _ = RetireCurrentLocked();
+                }
+
+                if (!restart)
+                {
+                    foreach (var view in _views)
+                    {
+                        view.OutstandingFault = null;
+                    }
                 }
 
                 var instance = new WatchInstance(Root, _nextGeneration++, armedBlock,
                     TakeRestartPendingWaiterLocked(), ClosingToken);
                 Current = instance;
-                if (!restart)
-                {
-                    _watchRequested = true;
-                }
-
                 _refusedStartFault = null;
                 _recoveryState = recovery is not null && ReferenceEquals(Recovery, recovery)
                     ? RecoveryState.RecoveredAwaitingCatchUp
@@ -212,7 +276,7 @@ public sealed partial class FileIndex
         }
 
         bool IsRestartStillRequestedLocked(RecoveryTicket? recovery) =>
-            _watchRequested && (recovery is null || ReferenceEquals(Recovery, recovery));
+            AnyRequestLocked && (recovery is null || ReferenceEquals(Recovery, recovery));
 
         void AbandonFailedStart(WatchInstance instance, Exception exception,
             RecoveryTicket? recovery, CancellationToken cancellationToken)
@@ -225,7 +289,6 @@ public sealed partial class FileIndex
                     WatchFault? cause = null;
                     if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
                     {
-                        _watchRequested = false;
                         instance.CatchUp.Cancel();
                     }
                     else
@@ -260,8 +323,6 @@ public sealed partial class FileIndex
 
                 instance.State = WatchInstanceState.Running;
                 NoteWatchStateLocked();
-                _rescanHandoffFault = null;
-                _retiring?.OutstandingFault = null;
 
                 // Queued rather than run inline, so no source code runs while this lock is held. The
                 // pump's own exit path completes the instance's drain, which is what every waiter

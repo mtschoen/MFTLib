@@ -108,7 +108,6 @@ public sealed partial class FileIndex
                 $"Root {rootBlock.Root} cannot be watched: {because} Call FileIndex.RescanAsync " +
                 "for this root before watching it.");
             _watchFailureMessage = failure.Message;
-            _watchRequested = true;
             _refusedStartFault = failure;
             FaultRestartPendingWaiterLocked(failure);
             return failure;
@@ -132,14 +131,14 @@ public sealed partial class FileIndex
                 return failure;
             }
 
-            _watchRequested = false;
+            ClearRequestsLocked();
             _refusedStartFault = null;
-            _rescanHandoffFault = null;
-            FaultRestartPendingWaiterLocked(failure);
-            if (RetireCurrentLocked() is { } superseded)
+            foreach (var view in _views)
             {
-                superseded.OutstandingFault = null;
+                view.OutstandingFault = null;
             }
+            FaultRestartPendingWaiterLocked(failure);
+            _ = RetireCurrentLocked();
 
             _watchFailureMessage = null;
 

@@ -17,6 +17,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task CatchUpLost_HandlerRunsWithLifecycleGateHeld()
     {
         using var harness = new WatchHarness('T');
+        await harness.Index.StartWatchingAsync(Token);
         var heldRetry = harness.TrackGate();
         harness.ScriptScans('T', Lost('T'), new WatchHarnessScan(Hold: heldRetry));
         var index = harness.Index;

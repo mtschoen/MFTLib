@@ -20,7 +20,7 @@ public sealed partial class FileIndex
         }
 
         return RunLifecycleOperationAsync(HasWatchableBlock,
-            () => _view.Scan.StartRootWatchingAsync(cancellationToken), cancellationToken);
+            () => _view.Scan.StartRootWatchingAsync(_view, cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -40,7 +40,7 @@ public sealed partial class FileIndex
         }
 
         return RunLifecycleOperationAsync(IsWatching,
-            () => _view.Scan.StopRootWatchingAsync(cancellationToken), cancellationToken);
+            () => _view.Scan.StopRootWatchingAsync(_view, cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -114,7 +114,7 @@ public sealed partial class FileIndex
     {
         lock (StateLock)
         {
-            return _view.Scan.HasWatchableBlockLocked();
+            return _view.OpenFailure is null && _view.Scan.HasWatchableBlockLocked();
         }
     }
 
@@ -122,7 +122,7 @@ public sealed partial class FileIndex
     {
         lock (StateLock)
         {
-            return _view.Scan.IsWatchingLocked();
+            return _view.Scan.IsWatchingLocked(_view);
         }
     }
 
@@ -168,7 +168,7 @@ public sealed partial class FileIndex
         var runtime = GetVolumeScan(root);
         var changes = await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn,
             CancellationToken.None).ConfigureAwait(false);
-        runtime.RaiseChanged(changes);
-        return changes;
+        runtime.DeliverChanges(changes, null);
+        return changes.FirstOrDefault(route => ReferenceEquals(route.View, _view)).Changes ?? [];
     }
 }

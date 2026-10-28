@@ -7,7 +7,7 @@ public sealed partial class FileIndex
     internal sealed partial class VolumeScan
     {
         /// <summary>Withdraws this root's request and drains its watch without taking the lifecycle gate.</summary>
-        public async Task StopRootWatchingAsync(CancellationToken cancellationToken)
+        public async Task StopRootWatchingAsync(IndexView view, CancellationToken cancellationToken)
         {
             if (FileIndex.RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
             {
@@ -20,19 +20,28 @@ public sealed partial class FileIndex
             Exception? outstandingFault;
             lock (StateLock)
             {
-                if (!IsWatchingLocked())
+                if (!IsWatchingLocked(view))
                 {
                     throw new InvalidOperationException(
                         $"Root {Root} is not watching, so there is no watch to stop.");
                 }
 
-                _watchRequested = false;
+                view.WatchRequested = false;
+                _requesters.Remove(view);
+                outstandingFault = TakeOutstandingFaultLocked(view);
+                if (AnyRequestLocked)
+                {
+                    if (outstandingFault is not null)
+                    {
+                        ExceptionDispatchInfo.Capture(outstandingFault).Throw();
+                    }
+                    return;
+                }
                 _refusedStartFault = null;
                 CancelRestartPendingWaiterLocked();
                 ClearRecoveryLocked();
                 previousDrain = _retiring?.Drained;
                 retired = RetireCurrentLocked();
-                outstandingFault = TakeOutstandingFaultLocked(retired);
                 NoteWatchStateLocked();
             }
 
@@ -48,7 +57,7 @@ public sealed partial class FileIndex
 
             lock (StateLock)
             {
-                outstandingFault ??= TakeOutstandingFaultLocked(retired);
+                outstandingFault ??= TakeOutstandingFaultLocked(view);
             }
 
             if (outstandingFault is not null)
@@ -57,19 +66,21 @@ public sealed partial class FileIndex
             }
         }
 
-        Exception? TakeOutstandingFaultLocked(WatchInstance? retired)
+        static Exception? TakeOutstandingFaultLocked(IndexView view)
         {
-            var fault = retired?.OutstandingFault ?? _retiring?.OutstandingFault ?? _rescanHandoffFault;
-            if (fault is null)
-            {
-                return null;
-            }
-
-            retired?.OutstandingFault = null;
-            _retiring?.OutstandingFault = null;
-
-            _rescanHandoffFault = null;
+            var fault = view.OutstandingFault;
+            view.OutstandingFault = null;
+            view.OutstandingFaultGeneration = null;
             return fault;
+        }
+
+        void ClearRequestsLocked()
+        {
+            foreach (var view in _requesters)
+            {
+                view.WatchRequested = false;
+            }
+            _requesters.Clear();
         }
 
         /// <summary>

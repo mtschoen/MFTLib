@@ -9,7 +9,7 @@ public sealed partial class FileIndex
         ///     <paramref name="cancellationToken" /> ends the wait for the gate; once the gate is
         ///     held the batch applies in full.
         /// </summary>
-        public async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesCoreAsync(WatchInstance? instance,
+        public async Task<IReadOnlyList<RoutedChanges>> ApplyJournalEntriesCoreAsync(WatchInstance? instance,
             IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn,
             CancellationToken cancellationToken)
         {
@@ -65,11 +65,7 @@ public sealed partial class FileIndex
                         bound.View.RefreshAfterBatch(bound, entries, ClosingToken);
                     }
                 }
-                var receivingBlock = ViewsSnapshot()[0].Block ?? throw new InvalidOperationException("The attached view has no published block.");
-                return changes.Select(change => change with
-                {
-                    Entry = change.Entry.WithRootBlock(receivingBlock)
-                }).ToArray();
+                return RouteLocked(changes, cancellationToken);
             }
             finally
             {

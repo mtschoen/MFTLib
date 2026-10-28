@@ -8,14 +8,6 @@ public sealed partial class FileIndex
         // also take WriteGate, ordering binding refresh against journal batches.
         readonly List<IndexView> _views = [];
 
-        internal void AttachFirstView(IndexView view)
-        {
-            lock (StateLock)
-            {
-                _views.Add(view);
-            }
-        }
-
         IndexView[] ViewsSnapshot()
         {
             lock (StateLock)

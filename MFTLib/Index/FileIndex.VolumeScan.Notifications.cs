@@ -24,9 +24,6 @@ public sealed partial class FileIndex
 
         public void RaiseWatchStateChanged() => ForEachView(view => view.RaiseWatchStateChanged());
 
-        void RaiseWatchFaulted(WatchFault fault) => ForEachView(view => view.RaiseWatchFaulted(fault));
 
-        public void RaiseChanged(IReadOnlyList<FileChange> changes) =>
-            ForEachView(view => view.RaiseChanged(changes));
     }
 }

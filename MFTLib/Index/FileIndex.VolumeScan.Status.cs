@@ -100,7 +100,7 @@ public sealed partial class FileIndex
                 return WatchState.Faulted;
             }
 
-            return _watchRequested ? WatchState.CatchingUp : WatchState.NotStarted;
+            return AnyRequestLocked ? WatchState.CatchingUp : WatchState.NotStarted;
         }
 
         /// <summary>
@@ -114,7 +114,7 @@ public sealed partial class FileIndex
             return new RootWatchStatus
             {
                 IsSupported = view.Kind.CanWatch && WatchSourceOrNull is not null,
-                IsRequested = _watchRequested,
+                IsRequested = view.WatchRequested,
                 State = GetWatchStateLocked(),
                 StateVersion = _watchStateVersion,
                 FailureMessage = _watchFailureMessage,
@@ -126,8 +126,8 @@ public sealed partial class FileIndex
 
         public bool HasWatchableBlockLocked() => WatchSourceOrNull is not null && Block is { Kind.CanWatch: true };
 
-        public bool IsWatchingLocked() =>
-            _watchRequested || Current is not null || _retiring is not null;
+        internal bool IsWatchingLocked(IndexView view) => view.WatchRequested ||
+            (!AnyRequestLocked && (Current is not null || _retiring is not null));
 
         public UsnJournalSettings QueryUsnJournalSettings()
         {

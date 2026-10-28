@@ -36,6 +36,7 @@ public sealed partial class BrokerCrossVolumeLivenessTests
         var token = scenario.Token;
         var hostClockAtStart = scenario.HostClock.GetUtcNow();
         var clientClockAtStart = scenario.ClientClock.GetUtcNow();
+        await indexT.StartWatchingAsync(token);
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
@@ -80,7 +81,7 @@ public sealed partial class BrokerCrossVolumeLivenessTests
         await indexT.RescanAsync(token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, scenario.RootOf('T').Watch.ConsecutiveLostCatchUps);
         await indexT.StartWatchingAsync(token);
-        Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since);
+        Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(2)).Since);
         Assert.AreEqual(hostClockAtStart, scenario.HostClock.GetUtcNow(), "no time passed on the host");
         Assert.AreEqual(clientClockAtStart, scenario.ClientClock.GetUtcNow(), "no time passed on the client");
     }
@@ -99,12 +100,13 @@ public sealed partial class BrokerCrossVolumeLivenessTests
         await using var scenario = await CrossRootScenario.OpenAsync(journal.ReadJournal);
         var indexT = scenario.IndexFor('T');
         var token = scenario.Token;
+        await indexT.StartWatchingAsync(token);
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailNextReads(1);
 
         await indexT.RescanAsync(token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(2, scenario.ChannelsOpenedFor('T') - channelsBefore, "the lost scan and the one that held");
+        Assert.AreEqual(3, scenario.ChannelsOpenedFor('T') - channelsBefore, "the lost scan, the one that held and the replacement watch");
         var fault = scenario.FaultsOf('T').Single();
         Assert.AreEqual(WatchFaultKind.CatchUpLost, fault.Kind);
         var loss = (JournalCatchUpLostException)fault.Exception;
@@ -117,7 +119,7 @@ public sealed partial class BrokerCrossVolumeLivenessTests
         Assert.HasCount(1, indexT.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token), "T's block is the second scan's");
         Assert.IsEmpty(indexT.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token));
         await indexT.StartWatchingAsync(token);
-        Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since,
+        Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(2)).Since,
             "the watch starts from the second block's cursor");
     }
 

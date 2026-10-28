@@ -88,7 +88,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the retry re-checks the watch request");
-        Assert.HasCount(1, CatchUpLosses(harness, 'T'));
+        Assert.IsEmpty(CatchUpLosses(harness, 'T'), "the stopped view held no watch request when the loss settled");
         Assert.HasCount(1, harness.Source.TargetsFor('T'));
         var root = harness.RootFor('T');
         Assert.AreEqual(WatchState.NotStarted, root.Watch.State);

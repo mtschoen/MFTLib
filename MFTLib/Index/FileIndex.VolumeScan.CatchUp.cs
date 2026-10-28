@@ -36,7 +36,7 @@ public sealed partial class FileIndex
                         return attempt;
                     }
 
-                    var lost = RecordLostCatchUp(catchUpLoss, attempt.ConsecutiveLostCatchUps);
+                    var lost = RecordLostCatchUp(catchUpLoss, attempt.ConsecutiveLostCatchUps, reportFault: true);
                     RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, Volume, lost));
                     if (lost.IsRecoveryStopped)
                     {
@@ -66,7 +66,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                return _watchRequested;
+                return AnyRequestLocked;
             }
         }
 
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
         ///     so it reads <see cref="WatchState.Faulted" /> with the exception's message.
         /// </summary>
         JournalCatchUpLostException RecordLostCatchUp(JournalCheckpointLoss catchUpLoss,
-            int consecutiveLostCatchUps)
+            int consecutiveLostCatchUps, bool reportFault = false)
         {
             var volume = Volume;
             var recoveryStopped = consecutiveLostCatchUps >= LostCatchUpRecoveryLimit;
@@ -158,7 +158,7 @@ public sealed partial class FileIndex
                 DescribeLostCatchUp(consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
             lock (StateLock)
             {
-                _retryingLostCatchUp = !recoveryStopped && _watchRequested;
+                _retryingLostCatchUp = !recoveryStopped && AnyRequestLocked;
                 _retriedLostCatchUp = _retryingLostCatchUp ? lost : null;
                 FaultRestartPendingWaiterLocked(lost);
                 if (recoveryStopped)
@@ -176,7 +176,12 @@ public sealed partial class FileIndex
                     _watchFailureMessage = lost.Message;
                 }
 
-                NoteWatchStateLocked(new WatchFault(WatchFaultKind.CatchUpLost, volume, lost));
+                var fault = new WatchFault(WatchFaultKind.CatchUpLost, volume, lost);
+                if (reportFault)
+                {
+                    CaptureFaultLocked(fault);
+                }
+                NoteWatchStateLocked(fault);
             }
 
             RaiseWatchStateChanged();

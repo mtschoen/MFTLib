@@ -44,10 +44,9 @@ public sealed partial class FileIndex
 
         public WatchInstanceState State = WatchInstanceState.Starting;
 
-        public bool SubscriberFaultAnnounced;
+        public HashSet<IndexView> SubscriberFaultAnnounced { get; } = [];
 
         /// <summary>Rethrown once by the stop that retires this instance.</summary>
-        public Exception? OutstandingFault;
 
         public WatchCatchUpSlot CatchUp { get; }
 

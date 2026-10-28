@@ -102,7 +102,7 @@ public sealed partial class FileIndex
         internal Action<Action>? PumpFaultSettlementWrapper { get; set; }
 
         /// <summary>
-        ///     Invoked after apply released the write gate, before <see cref="VolumeScan.RaiseChanged" />; no lifecycle/write/state lock.
+        ///     Invoked after apply released the write gate, before <see cref="VolumeScan.DeliverChanges" />; no lifecycle/write/state lock.
         ///     Cannot await a rescan that drains this same pump.
         /// </summary>
         internal Action<RootKey>? BeforeWatchChanged { get; set; }
