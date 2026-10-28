@@ -29,6 +29,7 @@ have Syntax as their baseline coverage.
 | --- | --- | --- | --- |
 | `scripts/Test-ReleasePackages.ps1` | Validate release ZIP assets, symbols and Windows runtime | release, agent via callers | Syntax; Windows test-release-package-validation.ps1 |
 | `scripts/WindowsNativeInstructions.ps1` | Validate disassembly attribution and x64 instruction baseline | release, agent via package validation | Syntax; Windows test-release-package-validation.ps1, including synthetic instruction cases |
+| `scripts/auto_bump_pull_request.sh` | Label consumer bump pull requests and request guarded auto-merge | release, CI via sync | Syntax; Linux sync_consumers.tests.sh |
 | `scripts/build-linux-native.ps1` | Build and validate Linux release native library through WSL | release | Syntax; WSL orchestration is hand-run |
 | `scripts/build-linux.sh` | Build Release Linux native library and managed Smoke tier | agent, release, CI | Syntax; Linux package build step |
 | `scripts/build-windows.ps1` | Restore and build native and managed Windows projects | attended, agent, release, CI | Syntax; Windows build-windows.tests.ps1 and coverage build |
