@@ -36,8 +36,8 @@ public sealed partial class FileIndex
                         return attempt;
                     }
 
-                    var lost = RecordLostCatchUp(catchUpLoss, attempt.ConsecutiveLostCatchUps, reportFault: true);
-                    RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, Volume, lost));
+                    var lost = RecordLostCatchUp(catchUpLoss, attempt.ConsecutiveLostCatchUps, out var recipients, reportFault: true);
+                    RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, Volume, lost), recipients);
                     if (lost.IsRecoveryStopped)
                     {
                         throw lost;
@@ -113,8 +113,19 @@ public sealed partial class FileIndex
                     return;
                 }
 
-                var (newlyAdopted, consecutiveLostCatchUps) = await AdoptOpenedRootAsync(
-                    block, settled, replacing: adopted).ConfigureAwait(false);
+                RootBlock newlyAdopted;
+                int consecutiveLostCatchUps;
+                try
+                {
+                    (newlyAdopted, consecutiveLostCatchUps) = await AdoptOpenedRootAsync(
+                        block, settled, replacing: adopted).ConfigureAwait(false);
+                }
+                catch
+                {
+                    block.Dispose();
+                    RestoreRetiredFile(retired);
+                    throw;
+                }
                 // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
                 if (adopted is not null)
                 {
@@ -134,7 +145,7 @@ public sealed partial class FileIndex
                 }
                 adopted = newlyAdopted;
                 if (settled.CatchUpLoss is not { } catchUpLoss ||
-                    RecordLostCatchUp(catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)
+                    RecordLostCatchUp(catchUpLoss, consecutiveLostCatchUps, out _).IsRecoveryStopped)
                 {
                     return;
                 }
@@ -150,7 +161,7 @@ public sealed partial class FileIndex
         ///     so it reads <see cref="WatchState.Faulted" /> with the exception's message.
         /// </summary>
         JournalCatchUpLostException RecordLostCatchUp(JournalCheckpointLoss catchUpLoss,
-            int consecutiveLostCatchUps, bool reportFault = false)
+            int consecutiveLostCatchUps, out IndexView[] recipients, bool reportFault = false)
         {
             var volume = Volume;
             var recoveryStopped = consecutiveLostCatchUps >= LostCatchUpRecoveryLimit;
@@ -177,10 +188,7 @@ public sealed partial class FileIndex
                 }
 
                 var fault = new WatchFault(WatchFaultKind.CatchUpLost, volume, lost);
-                if (reportFault)
-                {
-                    CaptureFaultLocked(fault);
-                }
+                recipients = reportFault ? CaptureFaultLocked(fault) : [];
                 NoteWatchStateLocked(fault);
             }
 

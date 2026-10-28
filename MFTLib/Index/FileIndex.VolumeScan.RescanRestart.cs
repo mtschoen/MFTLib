@@ -162,6 +162,7 @@ public sealed partial class FileIndex
                 $"A rescan replaced root {Root}'s block and the watch could not be started on it.",
                 startFailure);
             var fault = new WatchFault(WatchFaultKind.RescanRestart, Volume, failure);
+            IndexView[] recipients;
             lock (StateLock)
             {
                 if (IsClosing || !ReferenceEquals(Current, instance))
@@ -172,12 +173,12 @@ public sealed partial class FileIndex
                 instance.State = WatchInstanceState.Faulted;
                 instance.CatchUp.Fault(failure);
                 _watchFailureMessage = failure.Message;
-                CaptureFaultLocked(fault);
+                recipients = CaptureFaultLocked(fault);
                 NoteWatchStateLocked(fault);
             }
 
             CompleteInstanceDrain(instance);
-            RaiseWatchFaulted(fault);
+            RaiseWatchFaulted(fault, recipients);
             return true;
         }
     }

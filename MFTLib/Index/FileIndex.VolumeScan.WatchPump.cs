@@ -176,6 +176,7 @@ public sealed partial class FileIndex
             var recovers = fault.Kind is WatchFaultKind.Volume or WatchFaultKind.Apply;
             var recoveryFailed = false;
             var reported = fault;
+            IndexView[] recipients = [];
             TaskCompletionSource? faultedWaiter = null;
 
             void Settle()
@@ -201,7 +202,7 @@ public sealed partial class FileIndex
                         }
                     }
 
-                    CaptureFaultLocked(reported);
+                    recipients = CaptureFaultLocked(reported);
                     NoteWatchStateLocked(reported);
                 }
             }
@@ -234,7 +235,7 @@ public sealed partial class FileIndex
                 RaiseWatchStateChanged();
             }
 
-            RaiseWatchFaulted(reported);
+            RaiseWatchFaulted(reported, recipients);
             if (recovery is not null)
             {
                 StartRecovery(recovery);

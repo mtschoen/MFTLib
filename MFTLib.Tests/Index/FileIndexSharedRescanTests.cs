@@ -111,8 +111,9 @@ public sealed class FileIndexSharedRescanTests
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };
         using var fixture = new SharedScanFixture(watches);
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         var held = await HoldStartAsync(watches, volume);
         var first = volume.RescanAsync(CancellationToken.None);
         var second = source.RescanAsync(CancellationToken.None);
@@ -122,7 +123,6 @@ public sealed class FileIndexSharedRescanTests
         try
         {
             await production.Entered.WaitAsync(HangGuard);
-            // ReSharper disable once DisposeOnUsingVariable -- Disposal during an admitted rescan is the act; await using covers failure cleanup.
             await volume.DisposeAsync();
             var disposed = await first.WaitAsync(HangGuard);
             Assert.IsInstanceOfType<OperationCanceledException>(disposed.Failure);

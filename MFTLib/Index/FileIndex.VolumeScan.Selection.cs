@@ -13,21 +13,12 @@ public sealed partial class FileIndex
         /// </summary>
         RootKey BlockRoot => Resolved.BlockRoot;
 
-        /// <summary>The normalized host path of the root, which nesting between members of a set is judged by.</summary>
-        public string RootDirectory => Resolved.RootDirectory;
-
         /// <summary>
         ///     True when this root is read from the MFT block of <paramref name="volume" />: a volume root, or a directory
         ///     view of it. Journal records are addressed by volume, so a view receives its volume's batches.
         /// </summary>
         public bool ServesVolume(VolumeKey volume) =>
             Resolved is { IsDump: false, Producer: ProducerKind.Mft, Volume: { } own } && own == volume;
-
-        /// <summary>The path rules of the selected producer's blocks.</summary>
-        public RootKind Kind => RootKind.For(Resolved.Producer, Resolved.IsDump);
-
-        /// <summary>The root's own path in the form <c>LookupEngine.Find</c> matches, which a directory view scopes to.</summary>
-        public string? MatchableRootDirectoryPath => Kind.ToMatchablePrefix(Kind.NormalizeRoot(Resolved.RootDirectory));
 
         /// <summary>The lettered volume the MFT is read from; walks and unlettered roots have none.</summary>
         public VolumeKey Volume => Resolved.Volume

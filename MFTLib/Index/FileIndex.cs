@@ -49,10 +49,15 @@ public sealed partial class FileIndex : IAsyncDisposable
         CacheDirectoryPath = cacheDirectoryPath;
         Hooks = hooks;
         _view = new IndexView(this, resolved);
-        var creation = new VolumeScanCreation(resolved, options, cacheDirectoryPath, hooks);
         var key = Directory.Exists(resolved.RootDirectory)
             ? VolumeScanKey.For(resolved, options, cacheDirectoryPath)
             : null;
+        var scanRoot = key is null ? resolved : resolved with
+        {
+            Root = resolved.BlockRoot,
+            RootDirectory = resolved.RenderRootDirectory
+        };
+        var creation = new VolumeScanCreation(scanRoot, options, cacheDirectoryPath, hooks);
         _view.Scan = key is { } shareKey
             ? _view.Registry.Attach(shareKey, previous => new VolumeScan(creation, shareKey, previous))
             : new VolumeScan(creation);
@@ -158,7 +163,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                     nameof(options));
             }
 
-            cacheDirectoryPath = suppliedCacheDirectory;
+            cacheDirectoryPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(suppliedCacheDirectory));
             CacheDirectory.EnsureCreated(cacheDirectoryPath);
         }
 
@@ -169,7 +174,15 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
         catch
         {
-            await index.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await index.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception failure) when (cancellationToken.IsCancellationRequested)
+            {
+                DiagnosticsReport.Send(options.Diagnostics, $"Root {resolved.Root}: cleanup of the cancelled open failed: {failure.Message}");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
             throw;
         }
 

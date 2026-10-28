@@ -4,14 +4,17 @@ public sealed partial class FileIndex
 {
     internal sealed partial class IndexView
     {
-        internal bool DetachRegistry() => Scan.Key is not { } key || Registry.Detach(key, Scan);
+        int _registryDetached;
+
+        internal bool DetachRegistry() => Interlocked.Exchange(ref _registryDetached, 1) == 0 &&
+            (Scan.Key is not { } key || Registry.Detach(key, Scan));
 
         internal async Task DetachAsync()
         {
             Scan.RemoveView(this);
             if (DetachRegistry())
             {
-                await Scan.CloseAsync().ConfigureAwait(false);
+                await Scan.DisposeAsync().ConfigureAwait(false);
             }
         }
     }

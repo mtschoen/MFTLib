@@ -72,12 +72,20 @@ public sealed partial class FileIndex
 
             if (warmStart.Block is { } warmStartedBlock)
             {
-                _ = await AdoptOpenedRootAsync(warmStartedBlock, opened with
+                try
                 {
-                    Block = warmStartedBlock,
-                    Origin = BlockOrigin.WarmStartedFromCache,
-                    CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
-                }).ConfigureAwait(false);
+                    _ = await AdoptOpenedRootAsync(warmStartedBlock, opened with
+                    {
+                        Block = warmStartedBlock,
+                        Origin = BlockOrigin.WarmStartedFromCache,
+                        CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
+                    }).ConfigureAwait(false);
+                }
+                catch
+                {
+                    warmStartedBlock.Dispose();
+                    throw;
+                }
                 return;
             }
 
