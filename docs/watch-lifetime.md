@@ -72,7 +72,7 @@
       replacement and the failed watch start. The root stays `Faulted` without automatic
       recovery until a consumer starts or rescans it; stop returns that fault once as `Failed`.
       A failed automatic recovery, including its restart, reports `Recovery`.
-    - **Watch request**: `RootWatchStatus.IsRequested` exposes `RootRuntime.WatchRequested`. A
+    - **Watch request**: `RootWatchStatus.IsRequested` exposes `VolumeScan.WatchRequested`. A
       consumer start sets it before invoking the source, and it stays set when the source throws
       or when the start is refused because the block's journal cursor cannot be resumed; stop,
       disposal and a start its own caller cancelled clear it. A rescan restarts the watch only
@@ -117,7 +117,7 @@
       fault, which is how a consumer orders its own publication against the library's fault
       settlement without a callback under the lock. Disposal delivers the final change
       before `DisposeAsync` returns; `Status` already throws `ObjectDisposedException` then.
-    - **Runtime state machine**: each `FileIndex` has one `RootRuntime`; each start creates
+    - **Runtime state machine**: each `FileIndex` has one `VolumeScan`; each start creates
       a distinct `WatchInstance` with its own generation, cancellation sources, handle, pump,
       catch-up slot, armed block, fault, and `Drained` task. `Current` holds at most one instance,
       and `Retiring` holds its predecessor until teardown finishes. A pump applies a batch only
@@ -152,7 +152,7 @@
     - **Open and scan progress**: `OpenAsync` settles the configured root before returning the index or throwing.
       Open-time catch-up retries and the exhausted root's `Ready` unresumable block follow
       [checkpoint loss](checkpoint-loss.md).
-      `FileIndexOptions.ScanProgress` samples a scan while its producer runs, then `RootRuntime`
+      `FileIndexOptions.ScanProgress` samples a scan while its producer runs, then `VolumeScan`
       emits one `IndexScanPhase.Finished` sample after the producer's last sample for each
       scan, for MFT and enumeration producers, in opens and rescans.
       `IndexScanProgress.Outcome` is non-null only on that terminal sample: `Succeeded`,

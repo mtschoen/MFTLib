@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    readonly record struct WatchHandoff(WatchInstance? Retired, Task Drained)
+    internal readonly record struct WatchHandoff(WatchInstance? Retired, Task Drained)
     {
         /// <summary>Called after publication, with only the root's lifecycle gate held.</summary>
         public Task DrainAsync()
@@ -12,7 +12,7 @@ public sealed partial class FileIndex
         }
     }
 
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         /// Runs one admitted rescan under this root's lifecycle gate. Production keeps the current
@@ -143,9 +143,9 @@ public sealed partial class FileIndex
             bool requested;
             lock (StateLock)
             {
-                Index.ThrowIfCancelledByDisposal(CancellationToken.None);
+                ThrowIfClosing(CancellationToken.None);
 
-                requested = _watchRequested && !IsDisposed;
+                requested = _watchRequested && !IsClosing;
             }
 
             if (!requested)
@@ -170,7 +170,7 @@ public sealed partial class FileIndex
             var fault = new WatchFault(WatchFaultKind.RescanRestart, Volume, failure);
             lock (StateLock)
             {
-                if (IsDisposed || !ReferenceEquals(Current, instance))
+                if (IsClosing || !ReferenceEquals(Current, instance))
                 {
                     return false;
                 }

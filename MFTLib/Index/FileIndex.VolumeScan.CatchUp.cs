@@ -2,14 +2,14 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     The scan operation every rescan of a root runs with the root's lifecycle gate held:
         ///     produce, publish, and, when the published block's catch-up was lost, raise
         ///     <see cref="WatchFaultKind.CatchUpLost" /> and scan again at once while the root's count
         ///     is below <see cref="LostCatchUpRecoveryLimit" />. The fault is raised with no write gate
-        ///     and no <see cref="_stateLock" /> held, while this operation still holds the lifecycle
+        ///     and no <see cref="StateLock" /> held, while this operation still holds the lifecycle
         ///     gate; the first publication has retired and drained the old pump, so delivery between
         ///     retries stays serialized. Production before that publication keeps a healthy pump running. Only
         ///     the first attempt's publish of a manual rescan clears the root's checkpoint-loss report,
@@ -72,7 +72,7 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     The open's settle of a root it has to scan: the same scan operation a rescan runs, before
-        ///     any snapshot exists. Each attempt is adopted under <see cref="_stateLock" />; a retry after
+        ///     any snapshot exists. Each attempt is adopted under <see cref="StateLock" />; a retry after
         ///     a lost catch-up scans again at once, replaces the lost block, which nothing has published,
         ///     at the same ordinal and closes it, and keeps the loss as the root's report. At
         ///     <see cref="LostCatchUpRecoveryLimit" /> the root settles with its last block, unresumable,
@@ -113,8 +113,8 @@ public sealed partial class FileIndex
                     return;
                 }
 
-                var (newlyAdopted, consecutiveLostCatchUps) = AdoptOpenedRoot(
-                    block, settled, replacing: adopted);
+                var (newlyAdopted, consecutiveLostCatchUps) = await AdoptOpenedRootAsync(
+                    block, settled, replacing: adopted).ConfigureAwait(false);
                 // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
                 adopted?.ReleaseState.ReleaseUnborrowed();
                 adopted = newlyAdopted;

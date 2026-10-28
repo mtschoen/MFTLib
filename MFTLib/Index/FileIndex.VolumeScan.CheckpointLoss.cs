@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     Asks the live journal whether a volume whose watch just died is still inside it, and

@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     One root's pump: reads the root's handle until it is stopped or faults, applies each
@@ -193,7 +193,7 @@ public sealed partial class FileIndex
             {
                 lock (StateLock)
                 {
-                    if (IsDisposed || !ReferenceEquals(Current, instance) ||
+                    if (IsClosing || !ReferenceEquals(Current, instance) ||
                         instance.State != WatchInstanceState.Running)
                     {
                         return;

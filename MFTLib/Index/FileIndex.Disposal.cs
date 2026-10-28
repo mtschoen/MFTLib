@@ -51,14 +51,17 @@ public sealed partial class FileIndex
             throw rejection;
         }
 
-        lock (_stateLock)
+        VolumeScan scan;
+        lock (StateLock)
         {
-            if (_disposed)
+            if (IsDisposed)
             {
                 return;
             }
 
-            _disposed = true;
+            _view.MarkDisposedLocked();
+            _view.Scan.MarkClosingLocked();
+            scan = _view.Scan;
         }
 
         Hooks.DisposedFlagSet?.Invoke();
@@ -71,6 +74,7 @@ public sealed partial class FileIndex
         try
         {
             await _disposalCancellation.CancelAsync().ConfigureAwait(false);
+            await scan.CancelClosingAsync().ConfigureAwait(false);
         }
         catch (AggregateException exception)
         {
@@ -86,9 +90,9 @@ public sealed partial class FileIndex
         }
         finally
         {
-            lock (_stateLock)
+            lock (StateLock)
             {
-                _runtime.ReleaseCanonicalOwnershipLocked();
+                _view.Scan.ReleaseCanonicalOwnershipLocked();
             }
         }
 
@@ -102,27 +106,15 @@ public sealed partial class FileIndex
     Task StopWatchForDisposalAsync()
     {
         WatchHandoff handoff;
-        lock (_stateLock)
+        VolumeScan scan;
+        lock (StateLock)
         {
-            handoff = _runtime.PrepareDisposalLocked();
+            scan = _view.Scan;
+            handoff = scan.PrepareDisposalLocked();
         }
 
-        _runtime.RaiseWatchStateChanged();
+        scan.RaiseWatchStateChanged();
         return handoff.DrainAsync();
-    }
-
-    /// <summary>
-    ///     The checkpoint of an operation that was admitted before disposal began (a rescan, a
-    ///     recovery's scan, a start or a restart): once disposal has begun, the operation is
-    ///     cancelled by it and ends with <see cref="OperationCanceledException" />.
-    /// </summary>
-    void ThrowIfCancelledByDisposal(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (_disposed)
-        {
-            throw new OperationCanceledException("The index is being disposed.", DisposalToken);
-        }
     }
 
     /// <summary>
@@ -132,18 +124,25 @@ public sealed partial class FileIndex
     /// </summary>
     async Task ReleaseBlocksForDisposalAsync(ExceptionDispatchInfo? cancellationFailure)
     {
-        await _runtime.LifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        IndexView view;
+        lock (StateLock)
+        {
+            view = _view;
+        }
+        var scan = view.Scan;
+        await scan.LifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         Hooks.LifecycleGatesTakenForDisposal?.Invoke();
-        await _runtime.WriteGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        await scan.WriteGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
         try
         {
-            await _runtime.ReleaseRetiredBlocksAsync().ConfigureAwait(false);
+            await view.Borrows.CloseAndDrainAsync().ConfigureAwait(false);
+            await scan.ReleaseRetiredBlocksAsync().ConfigureAwait(false);
 
             RootBlock? current;
-            lock (_stateLock)
+            lock (StateLock)
             {
-                current = _runtime.DetachCurrentBlockLocked();
+                current = scan.DetachCurrentBlockLocked();
             }
 
             if (current is not null)
@@ -157,8 +156,8 @@ public sealed partial class FileIndex
         }
         finally
         {
-            _runtime.WriteGate.Release();
-            _runtime.LifecycleGate.Release();
+            scan.WriteGate.Release();
+            scan.LifecycleGate.Release();
         }
     }
 
@@ -167,9 +166,9 @@ public sealed partial class FileIndex
     /// </summary>
     void ReleaseUnpublishedBlocks()
     {
-        lock (_stateLock)
+        lock (StateLock)
         {
-            _runtime.ReleaseUnpublishedBlockLocked();
+            _view.Scan.ReleaseUnpublishedBlockLocked();
         }
     }
 }

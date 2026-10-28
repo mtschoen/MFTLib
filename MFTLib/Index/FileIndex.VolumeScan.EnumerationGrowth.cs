@@ -2,14 +2,14 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     Owns the enumeration block while a walk fills it. <see cref="Grow" /> replaces an exhausted
         ///     block with one whose exhausted regions have grown, holding the same rows; disposal releases
         ///     whatever block is current unless <see cref="Release" /> handed it to the caller.
         /// </summary>
-        sealed class EnumerationBlockGrowth(RootRuntime runtime, string blockPath, bool deleteOnClose,
+        sealed class EnumerationBlockGrowth(VolumeScan runtime, string blockPath, bool deleteOnClose,
             BlockCapacities capacities) : IDisposable
         {
             BlockCapacities _capacities = capacities;

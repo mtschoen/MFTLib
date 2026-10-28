@@ -20,7 +20,7 @@ public sealed partial class FileIndex
         }
 
         return RunLifecycleOperationAsync(HasWatchableBlock,
-            () => _runtime.StartRootWatchingAsync(cancellationToken), cancellationToken);
+            () => _view.Scan.StartRootWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -40,7 +40,7 @@ public sealed partial class FileIndex
         }
 
         return RunLifecycleOperationAsync(IsWatching,
-            () => _runtime.StopRootWatchingAsync(cancellationToken), cancellationToken);
+            () => _view.Scan.StopRootWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -61,7 +61,7 @@ public sealed partial class FileIndex
         }
 
         return RunLifecycleOperationAsync(applicable: null,
-            () => _runtime.RescanRootAsync(cancellationToken), cancellationToken);
+            () => _view.Scan.RescanRootAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -81,9 +81,9 @@ public sealed partial class FileIndex
         try
         {
             ThrowIfDisposed();
-            lock (_stateLock)
+            lock (StateLock)
             {
-                wait = _runtime.GetCatchUpWaitLocked();
+                wait = _view.Scan.GetCatchUpWaitLocked();
             }
 
             disposalToken = DisposalToken;
@@ -100,22 +100,22 @@ public sealed partial class FileIndex
             return rejected;
         }
 
-        return new CatchUpWait(_runtime.Root, wait, cancellationToken, disposalToken).Completion;
+        return new CatchUpWait(_view.Scan.Root, wait, cancellationToken, disposalToken).Completion;
     }
 
     bool HasWatchableBlock()
     {
-        lock (_stateLock)
+        lock (StateLock)
         {
-            return _runtime.HasWatchableBlockLocked();
+            return _view.Scan.HasWatchableBlockLocked();
         }
     }
 
     bool IsWatching()
     {
-        lock (_stateLock)
+        lock (StateLock)
         {
-            return _runtime.IsWatchingLocked();
+            return _view.Scan.IsWatchingLocked();
         }
     }
 
@@ -128,17 +128,17 @@ public sealed partial class FileIndex
         {
             if (applicable is not null && !applicable())
             {
-                result = new RootOperationResult(_runtime.Root, RootOperationOutcome.NotApplicable, null);
+                result = new RootOperationResult(_view.Scan.Root, RootOperationOutcome.NotApplicable, null);
             }
             else
             {
                 await operation().ConfigureAwait(false);
-                result = new RootOperationResult(_runtime.Root, RootOperationOutcome.Succeeded, null);
+                result = new RootOperationResult(_view.Scan.Root, RootOperationOutcome.Succeeded, null);
             }
         }
         catch (Exception failure)
         {
-            result = new RootOperationResult(_runtime.Root, RootOperationOutcome.Failed, failure);
+            result = new RootOperationResult(_view.Scan.Root, RootOperationOutcome.Failed, failure);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
     // ObjectDisposedException a disposed index reports.
     internal Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey volume,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn) =>
-        ApplyJournalEntriesAsync(_runtime.ServesVolume(volume) ? _runtime.Root : volume, entries, journalIdentifier,
+        ApplyJournalEntriesAsync(_view.Scan.ServesVolume(volume) ? _view.Scan.Root : volume, entries, journalIdentifier,
             nextUsn);
 
     internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(RootKey root,
@@ -158,7 +158,7 @@ public sealed partial class FileIndex
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(entries);
-        var runtime = GetRootRuntime(root);
+        var runtime = GetVolumeScan(root);
         var changes = await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn,
             CancellationToken.None).ConfigureAwait(false);
         runtime.RaiseChanged(changes);

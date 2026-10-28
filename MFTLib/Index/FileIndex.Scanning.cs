@@ -10,7 +10,7 @@ public sealed partial class FileIndex
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await Task.Run(() => _runtime.AddRootAsync(cancellationToken), CancellationToken.None)
+            await Task.Run(() => _view.Scan.AddRootAsync(cancellationToken), CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch when (cancellationToken.IsCancellationRequested)

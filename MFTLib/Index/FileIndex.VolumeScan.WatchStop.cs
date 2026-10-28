@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>Withdraws this root's request and drains its watch without taking the lifecycle gate.</summary>
         public async Task StopRootWatchingAsync(CancellationToken cancellationToken)
@@ -14,7 +14,7 @@ public sealed partial class FileIndex
                 throw rejection;
             }
 
-            ObjectDisposedException.ThrowIf(IsDisposed, Index);
+            ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             WatchInstance? retired;
             Task? previousDrain;
             Exception? outstandingFault;

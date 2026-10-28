@@ -9,7 +9,7 @@ public sealed partial class FileIndex
     ///     completes its continuations asynchronously, so no waiter's code runs on the recovery's
     ///     stack.
     /// </summary>
-    sealed class RecoveryTicket
+    internal sealed class RecoveryTicket
     {
         readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;

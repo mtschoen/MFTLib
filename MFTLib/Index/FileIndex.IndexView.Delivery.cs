@@ -4,17 +4,8 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class IndexView
     {
-        /// <summary>
-        ///     The <see cref="WatchState" /> last noted for the root, which
-        ///     <see cref="NoteWatchStateLocked" /> compares the derived state against.
-        /// </summary>
-        WatchState _notedWatchState;
-
-        /// <summary>The root's <see cref="RootWatchStatus.StateVersion" />.</summary>
-        long _watchStateVersion;
-
         /// <summary>
         ///     Noted changes not yet delivered through <see cref="FileIndex.WatchStateChanged" />, in
         ///     version order.
@@ -38,27 +29,7 @@ public sealed partial class FileIndex
 
         public long ContendedWatchStateDeliveries => Interlocked.Read(ref _contendedWatchStateDeliveries);
 
-        /// <summary>
-        ///     The one place a root's watch state change is recorded: derives the root's state, and
-        ///     when it differs from the state last noted, bumps the root's version and queues the
-        ///     change, with the fault that caused it, for <see cref="RaiseWatchStateChanged" />. Every
-        ///     section that changes an input of <see cref="GetWatchStateLocked" /> calls this
-        ///     before it releases the lock; a call that finds no change does nothing. The caller holds
-        ///     <see cref="FileIndex._stateLock" />.
-        /// </summary>
-        void NoteWatchStateLocked(WatchFault? cause = null)
-        {
-            var state = GetWatchStateLocked();
-            if (state == _notedWatchState)
-            {
-                return;
-            }
-
-            _notedWatchState = state;
-            _watchStateVersion++;
-            (_pendingWatchStates ??= []).Add(
-                new WatchStateChange(Volume, DescribeWatchLocked(), cause));
-        }
+        internal void QueueWatchStateLocked(WatchStateChange change) => (_pendingWatchStates ??= []).Add(change);
 
         /// <summary>
         ///     Delivers the root's noted changes to every subscriber, in version order, isolating
@@ -117,7 +88,7 @@ public sealed partial class FileIndex
             }
         }
 
-        void RaiseWatchFaulted(WatchFault fault)
+        internal void RaiseWatchFaulted(WatchFault fault)
         {
             RaiseWatchStateChanged();
             try

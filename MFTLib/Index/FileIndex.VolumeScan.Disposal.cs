@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         readonly List<RootBlockRelease> _retiredBlocks = [];
 
@@ -74,6 +74,10 @@ public sealed partial class FileIndex
         {
             var current = Block;
             Block = null;
+            foreach (var view in _views)
+            {
+                view.Block = null;
+            }
             _lastResult = null;
             return current;
         }

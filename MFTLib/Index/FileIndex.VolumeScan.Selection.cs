@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>The root the options named, which is what <see cref="RootStatus.Root" /> reports.</summary>
         public RootKey Root => Resolved.Root;

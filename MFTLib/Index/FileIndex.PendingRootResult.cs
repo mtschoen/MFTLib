@@ -7,7 +7,7 @@ public sealed partial class FileIndex
     ///     step records it. The publish step assigns the root's ordinal (the next free one for a root
     ///     with no block, its existing one otherwise), builds the <see cref="RootBlock" /> over
     ///     <see cref="Block" />, and writes the result on the root's runtime in one step under
-    ///     <see cref="_stateLock" />. A result with no block is recorded by root instead.
+    ///     <see cref="StateLock" />. A result with no block is recorded by root instead.
     /// </summary>
     internal sealed record PendingRootResult
     {

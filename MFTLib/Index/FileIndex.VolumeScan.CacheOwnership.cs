@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         enum CanonicalSlotOutcome
         {
@@ -30,7 +30,7 @@ public sealed partial class FileIndex
         }
 
         string CanonicalBlockPath() =>
-            Path.Combine(Index.CacheDirectoryPath, CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial));
+            Path.Combine(creation.CacheDirectoryPath, CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial));
 
         CacheLocation? DescribeCacheLocation(bool ownsCanonicalSlot) =>
             Options.CacheMode == CacheMode.Disabled
@@ -67,7 +67,7 @@ public sealed partial class FileIndex
             return true;
         }
 
-        /// <summary>The caller holds <see cref="_stateLock" />.</summary>
+        /// <summary>The caller holds <see cref="StateLock" />.</summary>
         public void ReleaseCanonicalOwnershipLocked()
         {
             var owned = _canonicalLock;
@@ -80,7 +80,7 @@ public sealed partial class FileIndex
             var pattern = CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial) + ".retired-*";
             try
             {
-                foreach (var path in Hooks.EnumerateCacheFiles(Index.CacheDirectoryPath, pattern))
+                foreach (var path in Hooks.EnumerateCacheFiles(creation.CacheDirectoryPath, pattern))
                 {
                     TryDeleteBestEffort(path,
                         "sweeping a stale \".retired-*\" sibling left by a killed process");

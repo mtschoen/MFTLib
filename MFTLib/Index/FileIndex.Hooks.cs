@@ -96,13 +96,13 @@ public sealed partial class FileIndex
         internal Action<RootKey>? ApplyJournalEntriesInsideWriteGate { get; set; }
 
         /// <summary>
-        ///     Wraps the Settle action in <see cref="RootRuntime.RecordPumpFault" />; pump holds no gate or state lock at entry.
+        ///     Wraps the Settle action in <see cref="VolumeScan.RecordPumpFault" />; pump holds no gate or state lock at entry.
         ///     Cannot wait for pump drainage or full stop completion.
         /// </summary>
         internal Action<Action>? PumpFaultSettlementWrapper { get; set; }
 
         /// <summary>
-        ///     Invoked after apply released the write gate, before <see cref="RootRuntime.RaiseChanged" />; no lifecycle/write/state lock.
+        ///     Invoked after apply released the write gate, before <see cref="VolumeScan.RaiseChanged" />; no lifecycle/write/state lock.
         ///     Cannot await a rescan that drains this same pump.
         /// </summary>
         internal Action<RootKey>? BeforeWatchChanged { get; set; }
