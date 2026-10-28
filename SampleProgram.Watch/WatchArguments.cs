@@ -11,7 +11,7 @@ enum WatchVerb { Scan, Watch, Rescan, Journal, Cache, ElevationStatus }
 /// </summary>
 sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Roots)
 {
-    /// <summary>How long an unattended watch runs when <c>--seconds</c> is not given; an attended one runs until a key press.</summary>
+    /// <summary>How long an unattended watch runs when <c>--seconds</c> is not given; an attended one accepts commands until Enter.</summary>
     internal const int DefaultSeconds = 10;
 
     // Task.Delay takes at most int.MaxValue milliseconds, and the connect timeout is held to the same bound.
@@ -21,7 +21,7 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Root
         "Usage: SampleProgram.Watch [verb] [root ...] [--producer automatic|mft|walk] [--connect-timeout N]" + Environment.NewLine +
         "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); a root is a drive letter or a full directory path; with no root, every ready local NTFS drive" + Environment.NewLine +
         "  --producer picks how a root is read: automatic (default) scans the MFT when the volume allows it and otherwise walks, mft never walks, walk never reads the MFT" + Environment.NewLine +
-        "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch runs until a key press, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
+        "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch accepts add-root <path> until Enter, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
         "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
         "  cache exits 0 when listing; --clear attempts every selected block and exits 1 if any is InUse or Failed, otherwise 0" + Environment.NewLine +
         "  --connect-timeout N waits N seconds (default 30) for the elevated broker to connect; one cache directory D serves every drive and scan shape; scan never caches and refuses --cache-directory";
@@ -37,7 +37,7 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Root
         [WatchVerb.ElevationStatus] = []
     };
 
-    /// <summary>The <c>--seconds</c> a watch runs for; null waits for a key press when attended.</summary>
+    /// <summary>The <c>--seconds</c> a watch runs for; null accepts commands until Enter when attended.</summary>
     internal int? Seconds { get; init; }
     /// <summary>The <c>--connect-timeout</c> in seconds the broker session waits for the elevated broker; null waits the library default.</summary>
     internal int? ConnectTimeoutSeconds { get; init; }

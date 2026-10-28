@@ -72,16 +72,19 @@ partial class SampleHost
             return 1;
         }
 
+        var ownedIndices = indices.ToList();
         try
         {
             var indexSet = new FileIndexSet(indices);
             return parsed.Verb is WatchVerb.Watch
-                ? await WatchIndexAsync(indexSet, parsed, cancellationToken).ConfigureAwait(false)
+                ? await WatchIndexAsync(indexSet, parsed, ownedIndices,
+                    (root, token) => FileIndex.OpenAsync(OptionsFor(source, parsed, root, new PhaseReporter(_output), prepareOptions), token),
+                    cancellationToken).ConfigureAwait(false)
                 : await RunEachRootAsync(session, indexSet.Indices, parsed, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            foreach (var index in indices)
+            foreach (var index in ownedIndices)
             {
                 await index.DisposeAsync().ConfigureAwait(false);
             }
