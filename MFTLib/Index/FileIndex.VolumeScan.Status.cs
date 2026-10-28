@@ -6,20 +6,21 @@ public sealed partial class FileIndex
     {
         public RootStatus DescribeLocked(IndexView view)
         {
+            var resolved = view.Resolved;
+            // The platform reports no serial as zero; the public status reports it as null.
+            uint? serial = resolved.VolumeSerial != 0 ? resolved.VolumeSerial : null;
             if (view.OpenFailure is { } declined)
             {
                 return new RootStatus(view.Root, RootState.Failed)
                 {
+                    VolumeSerial = serial,
                     Failure = declined.Failure,
-                    Producer = view.Resolved.Producer,
+                    Producer = resolved.Producer,
                     Watch = DescribeWatchLocked(view)
                 };
             }
-            var resolved = view.Resolved;
             var root = view.Root;
             var unavailable = resolved.MftUnavailable ?? _lastMftFailure;
-            // The platform reports no serial as zero; the public status reports it as null.
-            uint? serial = resolved.VolumeSerial != 0 ? resolved.VolumeSerial : null;
             if (view.Block is not { } rootBlock)
             {
                 // Offline here is a root absent at open, which never reached selection.
