@@ -36,43 +36,27 @@ public sealed partial class FileIndex
                 return;
             }
 
-            if (await SettleResolvedRootAsync(cancellationToken).ConfigureAwait(false) is { } fallback)
-            {
-                Resolved = Resolved.AsWalk(fallback);
-                foreach (var view in ViewsSnapshot())
-                {
-                    view.Resolved = view.Resolved.AsWalk(fallback);
-                }
-                lock (StateLock)
-                {
-                    // Nothing was published by the MFT attempt; its recorded outcome gives way to the walk's.
-                    _failure = null;
-                    _checkpointLoss = null;
-                    _lastResult = null;
-                }
-
-                // A walk never asks for a fallback, so this settle is the last.
-                _ = await SettleResolvedRootAsync(cancellationToken).ConfigureAwait(false);
-            }
+            await SettleResolvedRootAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         ///     One settle of the resolved root. Returns the reason to fall back to a walk, or null when the root
         ///     settled (with a block, or failed, or declined).
         /// </summary>
-        async Task<MftUnavailableReason?> SettleResolvedRootAsync(CancellationToken cancellationToken)
+        async Task SettleResolvedRootAsync(CancellationToken cancellationToken)
         {
             var rootKey = Root;
 
             var slotOutcome = ResolveCanonicalOwnership();
             if (slotOutcome == CanonicalSlotOutcome.DeclinedInUse)
             {
+                DeclineWarmStart(RootFailureKind.InUse);
                 RecordFailedRoot(RootFailureKind.InUse, new PendingRootResult
                 {
                     ProducerFailureMessage =
                         $"Root {rootKey}: cache block is in use by another FileIndex and CacheMode.ExistingOnly forbids a scan."
                 });
-                return null;
+                return;
             }
 
             var ownsCanonicalSlot = slotOutcome == CanonicalSlotOutcome.Owned;
@@ -94,63 +78,36 @@ public sealed partial class FileIndex
                     Origin = BlockOrigin.WarmStartedFromCache,
                     CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
                 }).ConfigureAwait(false);
-                return null;
+                return;
             }
 
-            if (Options.CacheMode == CacheMode.ExistingOnly)
+            var failureKind = warmStart.DiscardedBlock is BlockValidationResult.WrongCacheTag
+                or BlockValidationResult.WrongScanShape ? RootFailureKind.CacheIdentityMismatch : RootFailureKind.CacheDeclined;
+            DeclineWarmStart(failureKind);
+            if (!_settleWrites)
             {
-                var failureKind = warmStart.DiscardedBlock is BlockValidationResult.WrongCacheTag
-                    or BlockValidationResult.WrongScanShape
-                    ? RootFailureKind.CacheIdentityMismatch
-                    : RootFailureKind.CacheDeclined;
                 RecordFailedRoot(failureKind, opened with
                 {
                     ProducerFailureMessage =
                         $"Root {rootKey}: no usable cache (missing, corrupt, or incompatible) and CacheMode.ExistingOnly forbids a scan."
                 });
-                return null;
+                return;
             }
 
             // A missing source is judged here and only here at open: the open has to produce, and a cached block
             // would already have been adopted above.
             if (Resolved.Producer == ProducerKind.Mft && Options.MftSource is null)
             {
-                if (Options.Producer == ProducerSelection.Automatic)
-                {
-                    lock (StateLock)
-                    {
-                        ReleaseCanonicalOwnershipLocked();
-                    }
-
-                    return MftUnavailableReason.NoMftSource;
-                }
-
                 RecordFailedRoot(RootFailureKind.MftUnavailable,
                     DescribeUnavailable(MftUnavailableReason.NoMftSource) with
                     {
                         CheckpointLoss = opened.CheckpointLoss,
                         CacheLocation = opened.CacheLocation
                     });
-                return null;
+                return;
             }
 
             await ScanOpenedRootAsync(ownsCanonicalSlot, opened, cancellationToken).ConfigureAwait(false);
-            return TakeFallbackRequest();
-        }
-
-        /// <summary>
-        ///     The reason to settle the open again as a walk: an Automatic open whose cold scan ended with no block
-        ///     because the MFT could not be used. Anything else, a failed producer included, stays as recorded.
-        /// </summary>
-        MftUnavailableReason? TakeFallbackRequest()
-        {
-            lock (StateLock)
-            {
-                return Block is null && _failure is { Kind: RootFailureKind.MftUnavailable } &&
-                       Options.Producer == ProducerSelection.Automatic && Resolved.Producer == ProducerKind.Mft
-                    ? _lastMftFailure
-                    : null;
-            }
         }
 
         /// <summary>

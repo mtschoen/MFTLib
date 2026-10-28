@@ -101,10 +101,10 @@ public sealed partial class FileIndex
                 BlockPath = blockPath,
                 DeleteOnClose = deleteOnClose,
                 MinimumCapacities = GrowthMinimumLocked(),
-                Progress = Options.ScanProgress,
+                Progress = this,
                 CacheTag = Options.CacheTag,
                 ScanShape = ExpectedScanShape,
-                Diagnostics = Options.Diagnostics
+                Diagnostics = Diagnostics
             };
 
             var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
                 GrowWriter = growth.Grow
             };
 
-            producer.Produce(new BlockWriter(growth.Block), Options.ScanProgress, walkLease, cancellationToken);
+            producer.Produce(new BlockWriter(growth.Block), this, walkLease, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             new BlockWriter(growth.Block).Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
             return growth.Release();
@@ -167,7 +167,7 @@ public sealed partial class FileIndex
                 NameEntryCapacity = capacities.NameEntryCapacity,
                 NamePoolCapacity = capacities.NamePoolCapacity,
                 DeleteOnClose = deleteOnClose,
-                Diagnostics = Options.Diagnostics,
+                Diagnostics = Diagnostics,
                 CacheTag = Options.CacheTag,
                 ScanShape = ExpectedScanShape
             });

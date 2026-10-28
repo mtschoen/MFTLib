@@ -209,7 +209,7 @@ public sealed partial class FileIndex
         lock (StateLock)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
-            var current = _view.Block;
+            var current = _view.OpenFailure is null ? _view.Block : null;
             return new SnapshotBorrow(select is null ? current : select(current));
         }
     }

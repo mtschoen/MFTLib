@@ -61,7 +61,14 @@ public sealed partial class FileIndex
         }
 
         return RunLifecycleOperationAsync(applicable: null,
-            () => _view.Scan.RescanRootAsync(cancellationToken), cancellationToken);
+            async () =>
+            {
+                await _view.Scan.RescanRootAsync(cancellationToken).ConfigureAwait(false);
+                lock (StateLock)
+                {
+                    _view.OpenFailure = null;
+                }
+            }, cancellationToken);
     }
 
     /// <summary>
@@ -100,7 +107,7 @@ public sealed partial class FileIndex
             return rejected;
         }
 
-        return new CatchUpWait(_view.Scan.Root, wait, cancellationToken, disposalToken).Completion;
+        return new CatchUpWait(_view.Root, wait, cancellationToken, disposalToken).Completion;
     }
 
     bool HasWatchableBlock()
@@ -128,17 +135,17 @@ public sealed partial class FileIndex
         {
             if (applicable is not null && !applicable())
             {
-                result = new RootOperationResult(_view.Scan.Root, RootOperationOutcome.NotApplicable, null);
+                result = new RootOperationResult(_view.Root, RootOperationOutcome.NotApplicable, null);
             }
             else
             {
                 await operation().ConfigureAwait(false);
-                result = new RootOperationResult(_view.Scan.Root, RootOperationOutcome.Succeeded, null);
+                result = new RootOperationResult(_view.Root, RootOperationOutcome.Succeeded, null);
             }
         }
         catch (Exception failure)
         {
-            result = new RootOperationResult(_view.Scan.Root, RootOperationOutcome.Failed, failure);
+            result = new RootOperationResult(_view.Root, RootOperationOutcome.Failed, failure);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -150,7 +157,7 @@ public sealed partial class FileIndex
     // ObjectDisposedException a disposed index reports.
     internal Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey volume,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn) =>
-        ApplyJournalEntriesAsync(_view.Scan.ServesVolume(volume) ? _view.Scan.Root : volume, entries, journalIdentifier,
+        ApplyJournalEntriesAsync(_view.Scan.ServesVolume(volume) ? _view.Root : volume, entries, journalIdentifier,
             nextUsn);
 
     internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(RootKey root,

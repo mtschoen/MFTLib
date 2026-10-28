@@ -41,7 +41,7 @@ public sealed partial class FileIndex
                 _capacities = next;
                 _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, _capacities);
                 snapshot.RestoreInto(_block);
-                DiagnosticsReport.Send(runtime.Options.Diagnostics,
+                DiagnosticsReport.Send(runtime.Diagnostics,
                     $"Grew block file '{blockPath}': enumeration capacity exhausted at {snapshot.RowCount} rows; " +
                     $"the walk continues with {_capacities.SlotCapacity} slots, {_capacities.NameEntryCapacity} name entries " +
                     $"and {_capacities.NamePoolCapacity} name-pool bytes.");

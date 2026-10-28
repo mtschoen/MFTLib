@@ -8,6 +8,7 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record FileIndexOptions
 {
+    internal VolumeScanRegistry? ScanRegistry { get; init; }
     /// <summary>
     ///     The root to index. <see cref="FileIndex.OpenAsync" /> validates the root before creating a
     ///     cache directory or starting a scan. Required for ordinary sources; a dump source supplies

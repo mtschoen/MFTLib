@@ -49,8 +49,13 @@ public sealed partial class FileIndex : IAsyncDisposable
         CacheDirectoryPath = cacheDirectoryPath;
         Hooks = hooks;
         _view = new IndexView(this, resolved);
-        _view.Scan = new VolumeScan(new VolumeScanCreation(resolved, options, cacheDirectoryPath, hooks));
-        _view.Scan.AttachFirstView(_view);
+        var creation = new VolumeScanCreation(resolved, options, cacheDirectoryPath, hooks);
+        var key = Directory.Exists(resolved.RootDirectory)
+            ? VolumeScanKey.For(resolved, options, cacheDirectoryPath)
+            : null;
+        _view.Scan = key is { } shareKey
+            ? _view.Registry.Attach(shareKey, previous => new VolumeScan(creation, shareKey, previous))
+            : new VolumeScan(creation);
     }
 
     internal RootKey RootKey => _view.Root;
@@ -100,7 +105,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             lock (StateLock)
             {
                 ObjectDisposedException.ThrowIf(IsDisposed, this);
-                return _view.Block;
+                return _view.OpenFailure is null ? _view.Block : null;
             }
         }
     }
@@ -164,10 +169,14 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
         catch
         {
-            index.ReleaseUnpublishedBlocks();
+            await index.DisposeAsync().ConfigureAwait(false);
             throw;
         }
 
+        lock (index.StateLock)
+        {
+            index._view.CompleteOpenLocked();
+        }
         return index;
     }
 }
