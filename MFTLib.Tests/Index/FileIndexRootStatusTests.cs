@@ -21,6 +21,30 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
         };
 
     [TestMethod]
+    [DataRow(0x89ABCDEFu)]
+    [DataRow(0u)]
+    public async Task Status_ReportsResolvedVolumeSerialOrNull(uint serial)
+    {
+        await using var index = await FileIndex.OpenAsync(
+            Fixture.Options(volumeSerial: serial), TestContext.CancellationToken);
+
+        Assert.AreEqual(RootState.Ready, index.Status.State);
+        Assert.AreEqual(serial == 0 ? null : serial, index.Status.VolumeSerial);
+    }
+
+    [TestMethod]
+    [DataRow(0x89ABCDEFu)]
+    [DataRow(0u)]
+    public async Task Status_FailedWithoutABlock_ReportsResolvedVolumeSerialOrNull(uint serial)
+    {
+        await using var index = await FileIndex.OpenAsync(
+            Fixture.Options(volumeSerial: serial, cacheMode: CacheMode.ExistingOnly), TestContext.CancellationToken);
+
+        Assert.AreEqual(RootState.Failed, index.Status.State);
+        Assert.AreEqual(serial == 0 ? null : serial, index.Status.VolumeSerial);
+    }
+
+    [TestMethod]
     public async Task Status_ReportsOfflineWhenRootDirectoryIsAbsent()
     {
         var options = new FileIndexOptions
@@ -33,6 +57,7 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
 
         Assert.AreEqual(new VolumeKey('Z'), index.Status.Root);
         Assert.AreEqual(RootState.Offline, index.Status.State);
+        Assert.IsNull(index.Status.VolumeSerial);
         Assert.IsNull(index.Status.Block);
         Assert.AreEqual(WatchState.NotStarted, index.Status.Watch.State);
         Assert.IsFalse(index.Status.Watch.IsSupported);

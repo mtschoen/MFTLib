@@ -22,6 +22,7 @@ public class MftDumpApplicabilityTests
 
         var root = index.Status;
         Assert.AreEqual(RootState.Ready, root.State);
+        Assert.IsNull(root.VolumeSerial);
         Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
         Assert.IsFalse(root.Watch.IsSupported, "a dump volume does not support watching");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath, "a dump index resolves and creates no cache directory");
@@ -34,6 +35,7 @@ public class MftDumpApplicabilityTests
 
         var root = index.Status;
         Assert.AreEqual(RootState.Failed, root.State);
+        Assert.IsNull(root.VolumeSerial);
         Assert.AreEqual(RootFailureKind.ProducerFailed, root.Failure?.Kind);
         Assert.AreEqual("The dump file cannot be opened.", root.Failure?.Message);
         Assert.IsFalse(root.Watch.IsSupported);

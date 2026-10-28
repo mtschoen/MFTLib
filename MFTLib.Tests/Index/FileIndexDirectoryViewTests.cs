@@ -91,6 +91,7 @@ public sealed class FileIndexDirectoryViewTests : IndexTreeTestBase
         Assert.AreEqual(RootState.Ready, status.State);
         Assert.AreEqual(RootKey.FromDirectory(SourcePath), status.Root);
         Assert.AreEqual(ProducerKind.Mft, status.Producer);
+        Assert.AreEqual(UniqueVolumeSerial, status.VolumeSerial);
         var header = index.CurrentBlock!.Block.Header;
         Assert.AreEqual(5u, header.RootRow);
         Assert.AreEqual(ProducerKind.Mft, header.ProducerKind);
@@ -177,6 +178,7 @@ public sealed class FileIndexDirectoryViewTests : IndexTreeTestBase
 
         var away = index.Status;
         Assert.AreEqual(RootState.Offline, away.State);
+        Assert.AreEqual(UniqueVolumeSerial, away.VolumeSerial);
         Assert.IsNull(away.Block);
         Assert.AreEqual(ProducerKind.Mft, away.Producer);
         Assert.IsNull(index.Find(Path.Combine(SourcePath, "a.txt"), TestContext.CancellationToken));

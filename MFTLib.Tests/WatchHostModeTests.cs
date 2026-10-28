@@ -71,7 +71,9 @@ public sealed class WatchHostModeTests : IDisposable
     }
 
     [TestMethod]
-    public async Task Scan_PrintsTheProducerAndTheUnavailableReason()
+    [DataRow(4242u, "00001092")]
+    [DataRow(0u, "none")]
+    public async Task Scan_PrintsTheProducerAndTheUnavailableReason(uint serial, string expectedSerial)
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var lines = new List<string>();
@@ -81,11 +83,12 @@ public sealed class WatchHostModeTests : IDisposable
 
         // The volume is not NTFS, so Automatic walks the directory and says why.
         var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C')]), session,
-            options => SyntheticVolumeFacts.Apply(options, 4242, isNtfs: false, volume: new VolumeKey('C'),
+            options => SyntheticVolumeFacts.Apply(options, serial, isNtfs: false, volume: new VolumeKey('C'),
                 volumeRootDirectory: _directory), CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.Contains("producer Enumeration; MFT unavailable: NotNtfs", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains($"Volume serial: {expectedSerial}", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

@@ -142,6 +142,22 @@ predicate and one fallback rule remove the copies, and a fallback that is limite
 **Revisit only if:** a choice is needed that `ProducerKind` cannot identify in a block header, or a consumer needs
 a mid-scan fallback.
 
+## RootStatus publishes the reported volume serial
+
+**Decision (owner ruling 2026-10-28, issue 844 ruling 17):** `RootStatus.VolumeSerial` is `uint?`,
+publishing the containing volume's serial already resolved at open. Internal zero maps to null at the public
+boundary. Linux roots, network shares, unlettered mounts, volumes without a reported serial and dump sources
+report null, as does a root that is Offline at open. A directory view that becomes Offline after opening
+retains its resolved volume serial. No substitute identity is invented.
+
+**Reason:** git-wizard keys dismissed journal warnings by serial in
+`GitWizard/Watch/IndexVolumeChangeSource.Journals.cs` (`GitWizardConfiguration.IgnoredJournalWarnings`)
+and prints it in cache-status lines in `GitWizard/MftIndexCacheStatusFormatter.cs`.
+USN journals exist only on serial-bearing NTFS volumes; file-wizard reads no serial.
+The Watch sample prints the serial as eight uppercase hexadecimal digits or `none` in its status output.
+
+**Revisit only if:** a consumer needs a stable volume identity on a platform without serials.
+
 ## A directory root on an NTFS volume is an MFT view of the volume block
 
 **Decision (issue 844, slice 4):** a directory `RootKey` on an eligible volume is not walked: the index reads the

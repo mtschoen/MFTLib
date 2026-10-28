@@ -24,6 +24,14 @@ public sealed record RootStatus
     /// <summary>Identifies the root of this <see cref="FileIndex" />, including when it is failed or offline.</summary>
     public RootKey Root { get; init => field = value.Validated(); }
 
+    /// <summary>
+    ///     The containing volume's reported serial, or null before volume facts are read or when the platform
+    ///     reports none (including Linux roots, network shares, unlettered mounts, unavailable volumes and dump sources).
+    ///     A root that is <see cref="RootState.Offline" /> at open reports null. A reported zero is null;
+    ///     no substitute identity is generated.
+    /// </summary>
+    public uint? VolumeSerial { get; init; }
+
     /// <summary>Whether the root has a queryable block, is offline, or failed without a block. Capacity exhaustion is reported independently by <see cref="RootBlockStatus.IsCapacityExhausted" />.</summary>
     public RootState State { get; init; }
 

@@ -12,6 +12,7 @@ public sealed partial class FileIndex
                 var reachedSelection = BlocklessState != RootState.Offline;
                 return new RootStatus(Root, BlocklessState)
                 {
+                    VolumeSerial = reachedSelection && Resolved.VolumeSerial != 0 ? Resolved.VolumeSerial : null,
                     Failure = _failure,
                     Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss },
                     Producer = reachedSelection ? Resolved.Producer : null,
@@ -25,6 +26,7 @@ public sealed partial class FileIndex
                 // offline with no block: the volume block stays mapped and watched, and a later batch can bring it back.
                 return new RootStatus(Root, RootState.Offline)
                 {
+                    VolumeSerial = Resolved.VolumeSerial != 0 ? Resolved.VolumeSerial : null,
                     Watch = DescribeWatchLocked(),
                     Producer = Resolved.Producer,
                     MftUnavailable = ReportedMftUnavailable
@@ -36,6 +38,7 @@ public sealed partial class FileIndex
             ref readonly var header = ref rootBlock.Block.Header;
             return new RootStatus(Root, RootState.Ready)
             {
+                VolumeSerial = Resolved.VolumeSerial != 0 ? Resolved.VolumeSerial : null,
                 Failure = _failure,
                 Producer = Resolved.Producer,
                 MftUnavailable = ReportedMftUnavailable,
