@@ -2,11 +2,12 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// The watch mode: one FileIndex per drive is watched, and a FileIndexSet over all of them counts entries across the machine.
+// The watch mode attaches per-root views and queries their outermost available members through FileIndexSet.
 partial class SampleHost
 {
     // Returns how many root operations failed.
-    async Task<int> WatchIndexAsync(FileIndexSet indexSet, WatchArguments parsed, CancellationToken cancellationToken)
+    async Task<int> WatchIndexAsync(FileIndexSet indexSet, WatchArguments parsed, List<FileIndex> ownedIndices,
+        Func<RootKey, CancellationToken, Task<FileIndex>> openRoot, CancellationToken cancellationToken)
     {
         var failureCount = 0;
         var ready = new List<FileIndex>();
@@ -38,13 +39,15 @@ partial class SampleHost
         operations.AddRange(Report("start", await Task.WhenAll(ready.Select(index => index.StartWatchingAsync(cancellationToken))).ConfigureAwait(false)));
         operations.AddRange(Report("catch-up", await Task.WhenAll(ready.Select(index => index.WaitForCatchUpAsync(cancellationToken))).ConfigureAwait(false)));
 
-        var waited = await WaitWhileWatchingAsync(parsed, ready.Select(index => index.Status.Root.ToString()), cancellationToken).ConfigureAwait(false);
+        var run = new WatchRun(ownedIndices, ready, counter, operations, openRoot);
+        var waited = await WaitWhileWatchingAsync(parsed, run, cancellationToken).ConfigureAwait(false);
         operations.AddRange(Report("stop", await Task.WhenAll(ready.Select(index => index.StopWatchingAsync(cancellationToken))).ConfigureAwait(false)));
-        var rows = indexSet.Enumerate(new SearchQuery(null), cancellationToken).Count();
+        var finalSet = new FileIndexSet(ready);
+        var rows = finalSet.Enumerate(new SearchQuery(null), cancellationToken).Count();
         await _output.WriteLineAsync($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries").ConfigureAwait(false);
-        await ReportSetQueriesAsync(indexSet, ready[0], cancellationToken).ConfigureAwait(false);
+        await ReportSetQueriesAsync(finalSet, ready[0], cancellationToken).ConfigureAwait(false);
 
-        return failureCount + operations.Count(result => result.Outcome is RootOperationOutcome.Failed);
+        return failureCount + run.FailedAdds + operations.Count(result => result.Outcome is RootOperationOutcome.Failed);
     }
 
     // Queries every index through the set: Find routes the first ready root's own path back to its index, Search
@@ -69,10 +72,10 @@ partial class SampleHost
 
     bool IsInteractive => _interactive ?? !Console.IsInputRedirected;
 
-    // Waits for --seconds, or for a key press when attended at a console and no length was given; says how it waited.
-    async Task<string> WaitWhileWatchingAsync(WatchArguments parsed, IEnumerable<string> letters, CancellationToken cancellationToken)
+    // Timed/unattended runs read no input. An attended console accepts root additions until an empty line or EOF.
+    async Task<string> WaitWhileWatchingAsync(WatchArguments parsed, WatchRun run, CancellationToken cancellationToken)
     {
-        var drives = string.Join(", ", letters);
+        var drives = string.Join(", ", run.Ready.Select(index => index.Status.Root.ToString()));
         if (drives.Length == 0)
         {
             return "with no drive watched";
@@ -86,10 +89,25 @@ partial class SampleHost
             return $"in {length} seconds";
         }
 
-        await _output.WriteLineAsync($"Watching {drives}. Press any key to stop.").ConfigureAwait(false);
-        // A blocked read cannot be cancelled, so cancellation ends the wait and leaves the read behind.
-        await Task.Run(() => _input.Read(), CancellationToken.None).WaitAsync(cancellationToken).ConfigureAwait(false);
-        return "until a key was pressed";
+        await _output.WriteLineAsync($"Watching {drives}. Type add-root <path> to watch another root, or press Enter to stop.").ConfigureAwait(false);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Console reads cannot be interrupted; cancellation ends this wait and leaves only the read behind.
+            var line = await Task.Run(_input.ReadLine, CancellationToken.None).WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return line is null ? "until input ended" : "until Enter was pressed";
+            }
+            if (line.StartsWith("add-root ", StringComparison.OrdinalIgnoreCase))
+            {
+                await AddRootAsync(line[9..].Trim(), run, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _output.WriteLineAsync($"Unknown command '{line}'. Type add-root <path>, or press Enter to stop.").ConfigureAwait(false);
+            }
+        }
     }
 
     sealed class RootChangeCounter

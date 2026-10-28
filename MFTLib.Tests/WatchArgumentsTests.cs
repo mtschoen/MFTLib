@@ -125,7 +125,7 @@ public class WatchArgumentsTests
 
         Assert.AreEqual(45, parsed!.Seconds);
         Assert.IsTrue(WatchArguments.TryParse(["watch"], out var plain, out _));
-        Assert.IsNull(plain!.Seconds, "Without --seconds an attended watch runs until a key press.");
+        Assert.IsNull(plain!.Seconds, "Without --seconds an attended watch accepts commands until Enter.");
     }
 
     [TestMethod]

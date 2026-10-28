@@ -7,7 +7,7 @@ using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
-// A bare launch of the Watch sample: the roots it chooses, the watch that runs until a key press, and the exit
+// A bare launch of the Watch sample: the roots it chooses, the watch that runs until Enter, and the exit
 // code when a root fails. The root list, the key reader and the delay are seams, so nothing waits on a clock.
 [TestClass]
 [DoNotParallelize]
@@ -194,7 +194,7 @@ public sealed class WatchFirstRunTests : IDisposable
 
     [TestMethod]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task Run_BareLaunch_WatchesUntilAKeyIsPressedAndPrintsChangesMeanwhile()
+    public async Task Run_BareLaunch_WatchesUntilEnterIsPressedAndPrintsChangesMeanwhile()
     {
         var created = new SyntheticJournalRecord
         {
@@ -217,7 +217,7 @@ public sealed class WatchFirstRunTests : IDisposable
                 seen.TrySetResult();
             }
         });
-        using var keyReader = new GateKeyReader(seen.Task);
+        using var keyReader = new GateLineReader(seen.Task);
         var host = HostOver(notifyingWriter, keyReader, interactive: true);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
@@ -225,20 +225,20 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, [new VolumeKey('X')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureOptions, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result);
-        Assert.Contains("Watching X. Press any key to stop.", lines, string.Join(Environment.NewLine, lines));
-        Assert.Contains(line => line.StartsWith("Saw 1 changes until a key was pressed;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Watching X. Type add-root <path> to watch another root, or press Enter to stop.", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Saw 1 changes until Enter was pressed;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task Run_CancelledWhileWaitingForAKey_StopsWithoutTheKey()
+    public async Task Run_CancelledWhileWaitingForALine_StopsWithoutInput()
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         var neverPressed = new TaskCompletionSource();
         // The cancellation lands while the read is blocked, the way a stopped run meets a console nobody touches.
-        using var keyReader = new GateKeyReader(neverPressed.Task, cancellation.Cancel);
+        using var keyReader = new GateLineReader(neverPressed.Task, cancellation.Cancel);
         var host = HostOver(TextWriter.Null, keyReader, interactive: true);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
@@ -276,11 +276,11 @@ public sealed class WatchFirstRunTests : IDisposable
     }
 
     [TestMethod]
-    public async Task Run_SecondsGiven_WinsOverTheKeyPress()
+    public async Task Run_SecondsGiven_WinsOverInteractiveCommands()
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
         var clock = new AutoAdvanceClock(TimeSpan.FromSeconds(3));
-        var host = HostOver(TextWriter.Null, new FailingReader("--seconds replaces the key press."), timeProvider: clock, interactive: true);
+        var host = HostOver(TextWriter.Null, new FailingReader("--seconds replaces interactive commands."), timeProvider: clock, interactive: true);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
@@ -379,13 +379,13 @@ public sealed class WatchFirstRunTests : IDisposable
         return host;
     }
 
-    sealed class GateKeyReader(Task gate, Action? onRead = null) : TextReader
+    sealed class GateLineReader(Task gate, Action? onRead = null) : TextReader
     {
         public override int Read()
         {
             onRead?.Invoke();
             gate.GetAwaiter().GetResult();
-            return 'q';
+            return '\n';
         }
     }
 
