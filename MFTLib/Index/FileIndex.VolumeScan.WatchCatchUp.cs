@@ -28,7 +28,7 @@ public sealed partial class FileIndex
                 return Task.FromException(refused);
             }
 
-            return _watchRequested
+            return AnyRequestLocked
                 ? (_restartPendingWaiter ??=
                     new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
                 : null;

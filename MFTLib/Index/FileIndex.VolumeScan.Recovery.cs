@@ -50,7 +50,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                if (IsClosing || !_watchRequested || !IsCurrentWatchOverItsBlockLocked(instance) ||
+                if (IsClosing || !AnyRequestLocked || !IsCurrentWatchOverItsBlockLocked(instance) ||
                     instance.State != WatchInstanceState.Faulted)
                 {
                     return null;
@@ -125,7 +125,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                return !IsClosing && _watchRequested && ReferenceEquals(Recovery, ticket) &&
+                return !IsClosing && AnyRequestLocked && ReferenceEquals(Recovery, ticket) &&
                        ReferenceEquals(Current, ticket.FailedInstance) &&
                        ticket.FailedInstance.State == WatchInstanceState.Faulted &&
                        ReferenceEquals(FindWatchableRootBlockLocked(), ticket.FailedBlock);
@@ -181,6 +181,10 @@ public sealed partial class FileIndex
                     }
 
                     reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, Volume, failure);
+                    if (reported is not null)
+                    {
+                        CaptureFaultLocked(reported);
+                    }
                     NoteWatchStateLocked(reported);
                 }
             }

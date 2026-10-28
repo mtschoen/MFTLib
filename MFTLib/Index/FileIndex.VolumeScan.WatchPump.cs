@@ -94,7 +94,7 @@ public sealed partial class FileIndex
         async Task<Exception?> ApplyWatchBatchAsync(WatchInstance instance, JournalBatch batch,
             CancellationToken stopToken)
         {
-            IReadOnlyList<FileChange> changes;
+            IReadOnlyList<RoutedChanges> changes;
             try
             {
                 changes = await ApplyJournalEntriesCoreAsync(instance, batch.Entries, batch.JournalIdentifier,
@@ -106,15 +106,8 @@ public sealed partial class FileIndex
                 return exception;
             }
 
-            try
-            {
-                Hooks.BeforeWatchChanged?.Invoke(Root);
-                RaiseChanged(changes);
-            }
-            catch (Exception exception)
-            {
-                AnnounceSubscriberFault(instance, exception);
-            }
+            Hooks.BeforeWatchChanged?.Invoke(Root);
+            DeliverChanges(changes, instance);
 
             return null;
         }
@@ -124,28 +117,24 @@ public sealed partial class FileIndex
         ///     outstanding fault, unless one is already held. The root keeps watching. A delayed fault
         ///     from a watch retired during rescan publication is also retained for stop handoff.
         /// </summary>
-        void AnnounceSubscriberFault(WatchInstance instance, Exception exception)
+        void AnnounceSubscriberFault(WatchInstance instance, IndexView view, Exception exception)
         {
             bool first;
             lock (StateLock)
             {
-                first = !instance.SubscriberFaultAnnounced &&
+                first = !instance.SubscriberFaultAnnounced.Contains(view) &&
                         (ReferenceEquals(Current, instance) || ReferenceEquals(_retiring, instance) ||
                          instance.State == WatchInstanceState.Retiring);
                 if (first)
                 {
-                    instance.SubscriberFaultAnnounced = true;
-                    instance.OutstandingFault ??= exception;
-                    if (!ReferenceEquals(Current, instance))
-                    {
-                        _rescanHandoffFault ??= exception;
-                    }
+                    instance.SubscriberFaultAnnounced.Add(view);
+                    RecordViewFaultLocked(view, instance, exception);
                 }
             }
 
             if (first)
             {
-                RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, Volume, exception));
+                view.RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, Volume, exception));
             }
         }
 
@@ -200,7 +189,6 @@ public sealed partial class FileIndex
                     }
 
                     instance.State = WatchInstanceState.Faulted;
-                    instance.OutstandingFault ??= fault.Exception;
                     _watchFailureMessage = fault.Exception.Message;
                     faultedWaiter = instance.CatchUp.MarkFaulted(fault.Exception);
                     recoveryFailed = _recoveryState == RecoveryState.RecoveredAwaitingCatchUp;
@@ -213,6 +201,7 @@ public sealed partial class FileIndex
                         }
                     }
 
+                    CaptureFaultLocked(reported);
                     NoteWatchStateLocked(reported);
                 }
             }

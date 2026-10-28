@@ -6,6 +6,23 @@ public sealed partial class FileIndex
     {
         readonly List<RootBlockRelease> _retiredBlocks = [];
 
+        internal Task WithdrawViewForDisposalAsync(IndexView view)
+        {
+            WatchHandoff handoff;
+            lock (StateLock)
+            {
+                view.WatchRequested = false;
+                _requesters.Remove(view);
+                if (AnyRequestLocked)
+                {
+                    return Task.CompletedTask;
+                }
+                handoff = PrepareDisposalLocked();
+            }
+            RaiseWatchStateChanged();
+            return handoff.DrainAsync();
+        }
+
         /// <summary>
         ///     Keeps a replaced block's release state until its release completes, so disposal can
         ///     release it even after its last handle was collected. The caller holds
@@ -27,7 +44,7 @@ public sealed partial class FileIndex
         /// </summary>
         public WatchHandoff PrepareDisposalLocked()
         {
-            _watchRequested = false;
+            ClearRequestsLocked();
             _refusedStartFault = null;
             CancelRestartPendingWaiterLocked();
             ClearRecoveryLocked();
@@ -82,14 +99,5 @@ public sealed partial class FileIndex
             return current;
         }
 
-        /// <summary>
-        ///     Releases any uncommitted block and relinquishes canonical ownership. The caller holds
-        ///     <see cref="StateLock" />.
-        /// </summary>
-        public void ReleaseUnpublishedBlockLocked()
-        {
-            DetachCurrentBlockLocked()?.ReleaseState.ReleaseUnborrowed();
-            ReleaseCanonicalOwnershipLocked();
-        }
     }
 }

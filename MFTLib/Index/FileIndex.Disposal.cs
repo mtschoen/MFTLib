@@ -81,6 +81,7 @@ public sealed partial class FileIndex
             else
             {
                 await view.Borrows.CloseAndDrainAsync().ConfigureAwait(false);
+                await scan.WithdrawViewForDisposalAsync(view).ConfigureAwait(false);
             }
         }
         catch (Exception releaseFailure) when (failure is not null)

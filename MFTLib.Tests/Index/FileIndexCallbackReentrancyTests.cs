@@ -230,6 +230,7 @@ public class FileIndexCallbackReentrancyTests
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
+        await index.StartWatchingAsync(Token);
         harness.ScriptScans('T', new WatchHarnessScan(CatchUpLoss: CatchUpLossTestSupport.StandardCatchUpLoss('T')));
         var outcome = NewSignal<Exception?>();
         index.WatchFaulted += fault =>
@@ -250,6 +251,7 @@ public class FileIndexCallbackReentrancyTests
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
+        await index.StartWatchingAsync(Token);
         var other = harness.IndexFor('U');
         harness.ScriptScans('T', new WatchHarnessScan(CatchUpLoss: CatchUpLossTestSupport.StandardCatchUpLoss('T')));
         var outcome = NewSignal<Exception?>();

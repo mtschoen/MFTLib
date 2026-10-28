@@ -26,6 +26,9 @@ public sealed partial class FileIndex
         // open can later read a sibling's settle, so its retry mappings must retain handle lifetime.
         internal bool OpenCompleted { get; private set; }
         internal void CompleteOpenLocked() => OpenCompleted = true;
+        internal bool WatchRequested { get; set; }
+        internal Exception? OutstandingFault { get; set; }
+        internal long? OutstandingFaultGeneration { get; set; }
         internal bool IsDisposed { get; private set; }
         internal void MarkDisposedLocked() => IsDisposed = true;
         internal CancellationToken DisposalToken => Index.DisposalToken;

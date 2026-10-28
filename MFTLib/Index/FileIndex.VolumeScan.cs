@@ -132,14 +132,12 @@ public sealed partial class FileIndex
         ///     An outstanding fault from the watch a manual rescan retired. Kept through teardown
         ///     and restart until stop takes it or the replacement start supersedes it.
         /// </summary>
-        Exception? _rescanHandoffFault;
 
         /// <summary>
         ///     Set by a start, including one whose source threw or that was refused over an
         ///     unresumable block, and cleared by a stop, by disposal, or by a start its own caller
         ///     cancelled. A rescan restarts the root's watch only while it is set.
         /// </summary>
-        bool _watchRequested;
 
         /// <summary>
         ///     A catch-up wait issued while the watch is requested and no instance is current, the

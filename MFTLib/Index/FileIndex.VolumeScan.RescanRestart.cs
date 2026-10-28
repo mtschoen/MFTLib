@@ -71,7 +71,7 @@ public sealed partial class FileIndex
                         return false;
                     }
 
-                    if (_watchRequested)
+                    if (AnyRequestLocked)
                     {
                         _ = RecordUnresumableCheckpointWatchFailureLocked(rootBlock, reason);
                         NoteWatchStateLocked();
@@ -99,12 +99,6 @@ public sealed partial class FileIndex
             var retired = Current is { State: WatchInstanceState.Starting or WatchInstanceState.Running }
                 ? RetireCurrentLocked()
                 : null;
-            if (retired is not null)
-            {
-                _rescanHandoffFault ??= retired.OutstandingFault;
-                retired.OutstandingFault = null;
-            }
-
             return new WatchHandoff(retired, Task.WhenAll(predecessorDrain, currentDrain));
         }
 
@@ -145,7 +139,7 @@ public sealed partial class FileIndex
             {
                 ThrowIfClosing(CancellationToken.None);
 
-                requested = _watchRequested && !IsClosing;
+                requested = AnyRequestLocked && !IsClosing;
             }
 
             if (!requested)
@@ -176,10 +170,9 @@ public sealed partial class FileIndex
                 }
 
                 instance.State = WatchInstanceState.Faulted;
-                _rescanHandoffFault = null;
-                instance.OutstandingFault = failure;
                 instance.CatchUp.Fault(failure);
                 _watchFailureMessage = failure.Message;
+                CaptureFaultLocked(fault);
                 NoteWatchStateLocked(fault);
             }
 
