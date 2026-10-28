@@ -5,6 +5,16 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
+static class ProcessRegistryReferenceFixture
+{
+    public static object Reference() => VolumeScanRegistry.Process;
+}
+
+static class PrivateRegistryReferenceFixture
+{
+    public static object Reference() => new VolumeScanRegistry();
+}
+
 static class WalkHooksReferenceFixture
 {
     public static void Reference() => EnumerationWalkLimit.Hooks._walkQueued = null;
