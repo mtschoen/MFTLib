@@ -7,6 +7,7 @@ public sealed partial class FileIndex
         // I10 Rescans: StateLock protects the pending slot and waiter count. Taking LifecycleGate
         // and marking Started detach the slot in one state-lock section; later calls queue a new run.
         RescanRequest? _pendingRescan;
+        bool _manualRescanRunning;
         readonly HashSet<Task> _rescanDrains = [];
 
         sealed class RescanRequest : IDisposable
@@ -96,6 +97,7 @@ public sealed partial class FileIndex
                         lock (StateLock)
                         {
                             production.Token.ThrowIfCancellationRequested();
+                            _manualRescanRunning = true;
                             if (ReferenceEquals(_pendingRescan, request))
                             {
                                 _pendingRescan = null;
@@ -105,6 +107,10 @@ public sealed partial class FileIndex
                     }
                     finally
                     {
+                        lock (StateLock)
+                        {
+                            _manualRescanRunning = false;
+                        }
                         LifecycleGate.Release();
                     }
                 }

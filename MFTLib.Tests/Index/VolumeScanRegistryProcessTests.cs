@@ -8,6 +8,34 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public sealed class VolumeScanRegistryProcessTests
 {
+    [TestMethod]
+    public async Task RelativeCacheDirectory_StaysBoundToTheDirectoryResolvedAtOpen()
+    {
+        using var fixture = new SharedScanFixture();
+        using var firstDirectory = new TempDirectory("first-working-directory");
+        using var secondDirectory = new TempDirectory("second-working-directory");
+        Directory.CreateDirectory(Path.Combine(secondDirectory.Path, "cache"));
+        var previousDirectory = Environment.CurrentDirectory;
+        try
+        {
+            Environment.CurrentDirectory = firstDirectory.Path;
+            await using var index = await FileIndex.OpenAsync(fixture.Options(fixture.Volume) with
+            {
+                CacheDirectory = "cache"
+            }, CancellationToken.None);
+            Environment.CurrentDirectory = secondDirectory.Path;
+
+            Assert.AreEqual(RootOperationOutcome.Succeeded, (await index.RescanAsync(CancellationToken.None)).Outcome);
+
+            Assert.HasCount(1, Directory.GetFiles(Path.Combine(firstDirectory.Path, "cache"), "*.mlix"));
+            Assert.IsEmpty(Directory.GetFiles(Path.Combine(secondDirectory.Path, "cache"), "*.mlix"));
+        }
+        finally
+        {
+            Environment.CurrentDirectory = previousDirectory;
+        }
+    }
+
     readonly List<VolumeScanKey> _keys = [];
 
     [TestCleanup]

@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
@@ -51,16 +49,15 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     One root's watch and scan records. The fields are read and written under
-    ///     <see cref="FileIndex.StateLock" />; <see cref="LifecycleGate" /> and
+    ///     One scan's shared watch and production records. The fields are read and written under
+    ///     <see cref="StateLock" />; <see cref="LifecycleGate" /> and
     ///     <see cref="WriteGate" /> are not.
     /// </summary>
     /// <remarks>
-    ///     Lock order, outermost first: the root's <see cref="LifecycleGate" />, then its
-    ///     <see cref="WriteGate" />, then <see cref="FileIndex.StateLock" />, which is a
-    ///     <see cref="Lock" /> never held across an <c>await</c>. No code holds two roots'
-    ///     lifecycle gates or two roots' write gates except disposal, which takes every lifecycle
-    ///     gate and then every write gate in ascending root-key order. No code acquires a gate
+    ///     Lock order, outermost first: the scan's <see cref="LifecycleGate" />, then its
+    ///     <see cref="WriteGate" />, then <see cref="StateLock" />, which is a
+    ///     <see cref="Lock" /> never held across an <c>await</c>. A disposal takes gates only on
+    ///     its own scan, and only when its last view detaches. No code acquires a gate
     ///     while holding the state lock. <see cref="FileIndex.Changed" /> and
     ///     <see cref="FileIndex.WatchFaulted" /> are raised with no write gate and no state lock
     ///     held; a pump holds no gate at all when it raises, a recovery raises
@@ -69,10 +66,7 @@ public sealed partial class FileIndex
     ///     <see cref="WatchFaultKind.RescanRestart" /> after a failed restart holds the root's
     ///     lifecycle gate.
     /// </remarks>
-    [SuppressMessage("Design", "CA1001",
-        Justification = "FileIndex owns asynchronous scan teardown. The closing source, like the lifecycle gates, " +
-                        "stays readable by operations racing teardown and is intentionally not disposed.")]
-    internal sealed partial class VolumeScan(VolumeScanCreation creation, VolumeScanKey? key = null, Task? previousClosed = null)
+    internal sealed partial class VolumeScan(VolumeScanCreation creation, VolumeScanKey? key = null, Task? previousClosed = null) : IAsyncDisposable
     {
         internal VolumeScanKey? Key { get; } = key;
         internal Task PreviousClosed { get; } = previousClosed ?? Task.CompletedTask;
@@ -81,6 +75,7 @@ public sealed partial class FileIndex
         internal Lock StateLock { get; } = new();
         FileIndexOptions Options => creation.Options;
         IndexHooks Hooks => creation.Hooks;
+        // Like the gates, this source stays readable by operations racing completed teardown.
         readonly CancellationTokenSource _closing = new();
         internal CancellationToken ClosingToken => _closing.Token;
         bool _isClosing;
@@ -89,11 +84,10 @@ public sealed partial class FileIndex
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
         /// <summary>
-        ///     What the open resolved. Replaced once, by the open itself, when an Automatic selection falls back to a
-        ///     walk; that happens before <see cref="FileIndex.OpenAsync" /> returns the index, so no other thread can
-        ///     read it during the swap and the property needs no synchronization.
+        ///     The registered scan's volume root, or a private scan's own root. Automatic fallback
+        ///     detaches the view and creates a private walk scan; this owner's resolution is immutable.
         /// </summary>
-        ResolvedRoot Resolved { get; set; } = creation.Resolved;
+        ResolvedRoot Resolved { get; } = creation.Resolved;
 
         public RootBlock? Block;
         PendingRootResult? _lastResult;
@@ -127,17 +121,6 @@ public sealed partial class FileIndex
 
         /// <summary>The previous instance until its <see cref="WatchInstance.Drained" /> completes.</summary>
         WatchInstance? _retiring;
-
-        /// <summary>
-        ///     An outstanding fault from the watch a manual rescan retired. Kept through teardown
-        ///     and restart until stop takes it or the replacement start supersedes it.
-        /// </summary>
-
-        /// <summary>
-        ///     Set by a start, including one whose source threw or that was refused over an
-        ///     unresumable block, and cleared by a stop, by disposal, or by a start its own caller
-        ///     cancelled. A rescan restarts the root's watch only while it is set.
-        /// </summary>
 
         /// <summary>
         ///     A catch-up wait issued while the watch is requested and no instance is current, the

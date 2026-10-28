@@ -6,9 +6,7 @@ public sealed partial class FileIndex
     {
         // I8 Faults: settlement captures the requesters and their outstanding copies under StateLock.
         // Delivery consumes only that captured set outside the lock, even if requests change meanwhile.
-        readonly Dictionary<WatchFault, IndexView[]> _faultRecipients = [];
-
-        void CaptureFaultLocked(WatchFault fault)
+        IndexView[] CaptureFaultLocked(WatchFault fault)
         {
             lock (StateLock)
             {
@@ -17,7 +15,7 @@ public sealed partial class FileIndex
                 {
                     RecordViewFaultLocked(view, Current, fault.Exception, fault.Kind == WatchFaultKind.RescanRestart);
                 }
-                _faultRecipients.Add(fault, recipients);
+                return recipients;
             }
         }
 
@@ -31,13 +29,8 @@ public sealed partial class FileIndex
             }
         }
 
-        void RaiseWatchFaulted(WatchFault fault)
+        static void RaiseWatchFaulted(WatchFault fault, IReadOnlyList<IndexView> recipients)
         {
-            IndexView[] recipients;
-            lock (StateLock)
-            {
-                recipients = _faultRecipients.Remove(fault, out var captured) ? captured : [];
-            }
             foreach (var view in recipients)
             {
                 view.RaiseWatchFaulted(fault);

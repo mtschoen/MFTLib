@@ -170,6 +170,7 @@ public sealed partial class FileIndex
         void EndRecovery(RecoveryTicket ticket, Exception? failure)
         {
             WatchFault? reported = null;
+            IndexView[] recipients = [];
             lock (StateLock)
             {
                 if (ReferenceEquals(Recovery, ticket))
@@ -183,7 +184,7 @@ public sealed partial class FileIndex
                     reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, Volume, failure);
                     if (reported is not null)
                     {
-                        CaptureFaultLocked(reported);
+                        recipients = CaptureFaultLocked(reported);
                     }
                     NoteWatchStateLocked(reported);
                 }
@@ -194,7 +195,7 @@ public sealed partial class FileIndex
                 RaiseWatchStateChanged();
                 if (reported is not null)
                 {
-                    RaiseWatchFaulted(reported);
+                    RaiseWatchFaulted(reported, recipients);
                 }
             }
             finally

@@ -26,9 +26,9 @@ public sealed class FileIndexSetTests
     public async Task NestedSharedMembers_OuterDisposed_InnerCovers()
     {
         using var fixture = new SharedScanFixture();
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
-        // ReSharper disable once DisposeOnUsingVariable -- Explicit disposal is the act; await using guarantees failure cleanup.
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         await volume.DisposeAsync();
         var set = new FileIndexSet([source]);
 

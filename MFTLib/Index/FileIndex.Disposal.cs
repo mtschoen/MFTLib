@@ -76,7 +76,7 @@ public sealed partial class FileIndex
         {
             if (last)
             {
-                await scan.CloseAsync().ConfigureAwait(false);
+                await scan.DisposeAsync().ConfigureAwait(false);
             }
             else
             {

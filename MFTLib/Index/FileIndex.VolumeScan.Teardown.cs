@@ -6,9 +6,21 @@ public sealed partial class FileIndex
 {
     internal sealed partial class VolumeScan
     {
+        Task? _teardown;
+
+        public ValueTask DisposeAsync()
+        {
+            lock (StateLock)
+            {
+                MarkClosingLocked();
+                _teardown ??= Task.Run(CloseAsync, CancellationToken.None);
+                return new ValueTask(_teardown);
+            }
+        }
+
         // I12 Teardown: closing cancellation, watch/recovery drain, lifecycle then write gate,
         // retired and current mappings, canonical ownership, then Closed. No gate under StateLock.
-        internal async Task CloseAsync()
+        async Task CloseAsync()
         {
             ExceptionDispatchInfo? cancellationFailure = null;
             try

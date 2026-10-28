@@ -5,7 +5,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-// ReSharper disable DisposeOnUsingVariable -- Explicit disposal is the tested operation; await using guarantees cleanup when an assertion fails before it.
 [TestClass]
 public sealed class FileIndexSharedDisposalTests
 {
@@ -13,8 +12,9 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Dispose_CancelsOnlyItsOwnQueries()
     {
         using var fixture = new SharedScanFixture();
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         var firstGate = new TestGate();
         var secondGate = new TestGate();
         volume.Hooks.ReaderAdmitted = () =>
@@ -55,8 +55,9 @@ public sealed class FileIndexSharedDisposalTests
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };
         using var fixture = new SharedScanFixture(watches);
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         await volume.StartWatchingAsync(CancellationToken.None);
         await source.StartWatchingAsync(CancellationToken.None);
         await source.WaitForCatchUpAsync(CancellationToken.None);
@@ -74,7 +75,7 @@ public sealed class FileIndexSharedDisposalTests
         await second.DisposeAsync();
         Assert.IsTrue(mapped.ReleaseState.IsReleaseComplete);
         Assert.AreEqual(0, fixture.Registry.LiveScanCount);
-        await using var reopened = await fixture.OpenAsync(fixture.Volume);
+        var reopened = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
         Assert.AreEqual(CacheLocation.OwnedCanonical, reopened.Status.Block!.CacheLocation);
         GC.KeepAlive(mapped);
     }
@@ -83,8 +84,9 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Dispose_NotLast_DoesNotWaitForAnotherViewsBorrow()
     {
         using var fixture = new SharedScanFixture();
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         using var rows = source.Enumerate(new SearchQuery(null)).GetEnumerator();
         Assert.IsTrue(rows.MoveNext());
 
@@ -98,8 +100,9 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Dispose_Last_UnmapsAfterItsBorrowsDrain()
     {
         using var fixture = new SharedScanFixture();
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         var mapped = source.CurrentBlock!.Mapped;
         await volume.DisposeAsync();
         var rows = source.Enumerate(new SearchQuery(null)).GetEnumerator();
@@ -124,8 +127,9 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Dispose_HandlesOfTheDisposedView_ThrowWhileTheOtherViewsRead()
     {
         using var fixture = new SharedScanFixture();
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         var first = volume.Find(Path.Combine(fixture.SourcePath, "a.txt"))!.Value;
         var second = source.Find(Path.Combine(fixture.SourcePath, "a.txt"))!.Value;
 
@@ -140,8 +144,9 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Dispose_WaitsForADeliveryInsideItsHandler_AndNoHandlerRunsAfter()
     {
         using var fixture = new SharedScanFixture();
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
         var gate = new TestGate();
         var delivered = 0;
         volume.Changed += _ =>
@@ -171,7 +176,8 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Reopen_RacingTheLastDetach_OwnsTheCanonicalSlot()
     {
         using var fixture = new SharedScanFixture();
-        await using var index = await fixture.OpenAsync(fixture.Volume);
+        await using var cleanup = new IndexDisposalScope();
+        var index = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
         var gate = new TestGate();
         index.CurrentBlock!.ReleaseState.Hooks._releaseStarted = () =>
         {
@@ -199,7 +205,8 @@ public sealed class FileIndexSharedDisposalTests
     public async Task Dispose_TwiceAndConcurrently_IsIdempotent()
     {
         using var fixture = new SharedScanFixture();
-        await using var index = await fixture.OpenAsync(fixture.Volume);
+        await using var cleanup = new IndexDisposalScope();
+        var index = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
         var rows = index.Enumerate(new SearchQuery(null)).GetEnumerator();
         Task first;
         Task second;

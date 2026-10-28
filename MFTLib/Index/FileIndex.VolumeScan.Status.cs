@@ -12,7 +12,7 @@ public sealed partial class FileIndex
                 {
                     Failure = declined.Failure,
                     Producer = view.Resolved.Producer,
-                    Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss }
+                    Watch = DescribeWatchLocked(view)
                 };
             }
             var resolved = view.Resolved;
@@ -25,7 +25,7 @@ public sealed partial class FileIndex
                 return new RootStatus(root, BlocklessState)
                 {
                     Failure = _failure,
-                    Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss },
+                    Watch = DescribeWatchLocked(view),
                     Producer = reachedSelection ? resolved.Producer : null,
                     MftUnavailable = reachedSelection ? unavailable : null
                 };
@@ -108,7 +108,7 @@ public sealed partial class FileIndex
         {
             return new RootWatchStatus
             {
-                IsSupported = view.Kind.CanWatch && WatchSourceOrNull is not null,
+                IsSupported = Block is { Kind.CanWatch: true } && WatchSourceOrNull is not null,
                 IsRequested = view.WatchRequested,
                 State = GetWatchStateLocked(),
                 StateVersion = _watchStateVersion,

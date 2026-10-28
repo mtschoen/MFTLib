@@ -15,7 +15,11 @@ public sealed partial class FileIndex
         internal VolumeScan Scan
         {
             get => Volatile.Read(ref _scan) ?? throw new InvalidOperationException("The view has not attached to a scan.");
-            set => Volatile.Write(ref _scan, value);
+            set
+            {
+                _registryDetached = 0;
+                Volatile.Write(ref _scan, value);
+            }
         }
         internal RootBlock? Block { get; set; }
         internal ViewBorrows Borrows { get; } = new();

@@ -14,6 +14,8 @@ public sealed partial class FileIndex
             internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
             internal TaskCompletionSource<bool> WarmVerdict { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
             internal bool Writes { get; set; }
+            internal bool RequestedWrites { get; set; }
+            internal bool ModeSelected { get; set; }
             internal RootFailureKind Decline { get; set; } = RootFailureKind.CacheDeclined;
         }
 
@@ -30,6 +32,11 @@ public sealed partial class FileIndex
                     {
                         return null;
                     }
+                    if (Block is null && _manualRescanRunning && view.Options.CacheMode == CacheMode.ExistingOnly)
+                    {
+                        RecordViewDeclineLocked(view, RootFailureKind.CacheDeclined);
+                        return null;
+                    }
                     if (_settle is null)
                     {
                         _settle = new SettleRun();
@@ -37,6 +44,10 @@ public sealed partial class FileIndex
                         _ = Task.Run(() => RunSettleAsync(started), CancellationToken.None);
                     }
                     run = _settle;
+                    if (!run.ModeSelected && view.Options.CacheMode != CacheMode.ExistingOnly)
+                    {
+                        run.RequestedWrites = true;
+                    }
                 }
 
                 if (view.Options.CacheMode == CacheMode.ExistingOnly)
@@ -50,13 +61,7 @@ public sealed partial class FileIndex
                     {
                         lock (StateLock)
                         {
-                            var result = new PendingRootResult
-                            {
-                                ProducerFailureMessage = run.Decline == RootFailureKind.InUse
-                                    ? $"Root {view.Root}: cache block is in use by another FileIndex and CacheMode.ExistingOnly forbids a scan."
-                                    : $"Root {view.Root}: no usable cache (missing, corrupt, or incompatible) and CacheMode.ExistingOnly forbids a scan."
-                            };
-                            view.OpenFailure = (new RootFailure(run.Decline, result.ProducerFailureMessage), result);
+                            RecordViewDeclineLocked(view, run.Decline);
                         }
                     }
                     return null;
@@ -86,12 +91,18 @@ public sealed partial class FileIndex
                 await LifecycleGate.WaitAsync(ClosingToken).ConfigureAwait(false);
                 try
                 {
+                    bool needsSettle;
                     lock (StateLock)
                     {
-                        run.Writes = _views.Any(view => view.Options.CacheMode != CacheMode.ExistingOnly);
+                        run.Writes = run.RequestedWrites;
+                        run.ModeSelected = true;
                         _settleWrites = run.Writes;
+                        needsSettle = Block is null;
                     }
-                    await AddRootAsync(ClosingToken).ConfigureAwait(false);
+                    if (needsSettle)
+                    {
+                        await AddRootAsync(ClosingToken).ConfigureAwait(false);
+                    }
                 }
                 finally
                 {
@@ -125,6 +136,17 @@ public sealed partial class FileIndex
                     run.WarmVerdict.TrySetResult(false);
                 }
             }
+        }
+
+        static void RecordViewDeclineLocked(IndexView view, RootFailureKind kind)
+        {
+            var result = new PendingRootResult
+            {
+                ProducerFailureMessage = kind == RootFailureKind.InUse
+                    ? $"Root {view.Root}: cache block is in use by another FileIndex and CacheMode.ExistingOnly forbids a scan."
+                    : $"Root {view.Root}: no usable cache (missing, corrupt, or incompatible) and CacheMode.ExistingOnly forbids a scan."
+            };
+            view.OpenFailure = (new RootFailure(kind, result.ProducerFailureMessage), result);
         }
 
         internal async Task AttachToCurrentBlockAsync(IndexView view, CancellationToken cancellationToken)
