@@ -13,7 +13,7 @@ sealed class SnapshotBorrow : IDisposable
 
     internal SnapshotBorrow(RootBlock? rootBlock)
     {
-        if (rootBlock is not null && !rootBlock.ReleaseState.TryTakeBorrow())
+        if (rootBlock is not null && !rootBlock.TryTakeBorrow())
         {
             throw new ObjectDisposedException(nameof(RootBlock),
                 "This root block has been released and can no longer be read.");
@@ -47,7 +47,7 @@ sealed class SnapshotBorrow : IDisposable
     {
         if (Interlocked.Exchange(ref _acquired, 0) != 0)
         {
-            RootBlock?.ReleaseState.ReturnBorrow();
+            RootBlock?.ReturnBorrow();
             GC.SuppressFinalize(this);
         }
     }

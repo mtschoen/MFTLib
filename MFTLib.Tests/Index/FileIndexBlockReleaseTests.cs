@@ -410,7 +410,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     async Task<FileIndex> OpenAndRescanWithoutRetainingThePreviousSnapshotSuppressingFinalizeAsync()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        GC.SuppressFinalize(index.CurrentBlock!);
+        GC.SuppressFinalize(index.CurrentBlock!.Mapped);
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second",
             TestContext.CancellationToken);
         await index.RescanAsync(CancellationToken.None);

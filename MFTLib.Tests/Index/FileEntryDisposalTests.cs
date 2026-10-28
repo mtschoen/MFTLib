@@ -151,9 +151,22 @@ public class FileEntryDisposalTests
     }
 
     [TestMethod]
-    public async Task EveryDocumentedRead_ThrowsOnceTheSnapshotIsReleased()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task EveryDocumentedRead_ThrowsOnceTheSnapshotIsReleased(bool closeViewOnly)
     {
-        await _snapshot.ReleaseNowAsync();
+        if (closeViewOnly)
+        {
+            var borrows = new ViewBorrows();
+            var view = new RootBlock(_snapshot[0].Root, _snapshot[0].Mapped, borrows,
+                _snapshot[0].RootDirectoryPath, null, null);
+            _entry = _entry.WithRootBlock(view);
+            await borrows.CloseAndDrainAsync();
+        }
+        else
+        {
+            await _snapshot.ReleaseNowAsync();
+        }
         var entry = _entry;
 
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Name);

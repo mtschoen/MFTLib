@@ -314,11 +314,11 @@ and can be gated on a `TestGate` (`HoldProduction()`); rows 5 (root), 30 `src`, 
 
 **Files:** modify `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md`.
 
-- [ ] **Step 1:** delete the "# Slice 3" and "# Slice 4" sections (both merged) and replace "# Slice 5" with this text.
+- [x] **Step 1:** delete the "# Slice 3" and "# Slice 4" sections (both merged) and replace "# Slice 5" with this text.
   Leave the header sections, "# Slice 6" and "Execution notes" unchanged.
-- [ ] **Step 2:** `git diff --check`; `LC_ALL=C.UTF-8 grep -cP '\x{2014}' docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md`
+- [x] **Step 2:** `git diff --check`; `LC_ALL=C.UTF-8 grep -cP '\x{2014}' docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md`
   prints 0; `aislop scan --staged` 100.
-- [ ] **Step 3: Commit** `docs: expand slice 5 of the issue 844 plan`.
+- [x] **Step 3: Commit** `docs: expand slice 5 of the issue 844 plan`.
 
 ### Task 5.2: A mapped block shared by per-view root blocks
 
