@@ -18,7 +18,7 @@ sealed class SyntheticBlockBuilder : IDisposable
     uint _nextRow;
 
     public SyntheticBlockBuilder(char driveLetter = 'T', uint volumeSerial = 0x0BADF00D,
-        uint slotCapacity = 256, uint namePoolCapacity = 4096)
+        uint slotCapacity = 256, uint namePoolCapacity = 4096, uint? nameEntryCapacity = null)
     {
         try
         {
@@ -33,6 +33,7 @@ sealed class SyntheticBlockBuilder : IDisposable
                 VolumeSerial = volumeSerial,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = slotCapacity,
+                NameEntryCapacity = nameEntryCapacity ?? slotCapacity,
                 NamePoolCapacity = namePoolCapacity,
                 ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
             });

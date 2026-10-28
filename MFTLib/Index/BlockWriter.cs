@@ -40,7 +40,7 @@ sealed partial class BlockWriter
         }
     }
 
-    /// <summary>Determines whether the block has exhausted row or name-pool capacity.</summary>
+    /// <summary>Determines whether the block has exhausted row, name-entry or name-pool capacity.</summary>
     public bool CapacityExhausted
     {
         get

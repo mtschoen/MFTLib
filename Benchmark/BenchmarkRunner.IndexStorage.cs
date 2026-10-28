@@ -23,8 +23,9 @@ public partial class BenchmarkRunner
             _output.WriteLine("Timing: managed input generation and production row writes; excludes block allocation and completion flush");
             var geometry = new NtfsVolumeInformation(records * 1024L, 1024);
             var identity = new BlockContentIdentity(default, ScanShape.ForMft(includeFreed: false));
-            using var block = BlockFile.Create(MftBlockCapacity.CreateOptions(geometry, new VolumeKey('T'),
-                Path.Combine(directory.FullName, "T-00000000.mlix"), 0, deleteOnClose: true, identity));
+            var location = new MftBlockCapacity.FileLocation(new VolumeKey('T'),
+                Path.Combine(directory.FullName, "T-00000000.mlix"), 0, DeleteOnClose: true);
+            using var block = BlockFile.Create(MftBlockCapacity.CreateOptions(geometry, location, identity, default));
             var writer = new BlockWriter(block);
             var started = _timeProvider.GetTimestamp();
             var result = MftBlockRowWriter.WriteBatches(writer, StorageBatches(records), new MftScanOptions(), null,

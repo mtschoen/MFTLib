@@ -44,6 +44,7 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
         {
             var diagnostics = new List<string>();
             var options = Fixture.Options() with { Diagnostics = diagnostics.Add };
+            var firstPlan = BlockLayout.PlanCapacities(EnumerationProducer.EstimateRowCount(TreeRoot), default);
 
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
             Assert.Contains(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase), diagnostics);
@@ -52,6 +53,11 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
             Assert.AreEqual(RootState.Ready, index.Status.State);
             Assert.IsFalse(index.Status.Block!.IsCapacityExhausted);
             Assert.AreEqual((uint)FileCount + 3, index.Status.Block!.LiveRowCount);
+            var block = index.CurrentBlock!.Block;
+            Assert.AreEqual(firstPlan.SlotCapacity, block.SlotCapacity);
+            Assert.AreEqual(firstPlan.NameEntryCapacity, block.NameEntryCapacity);
+            Assert.IsGreaterThanOrEqualTo(2 * firstPlan.NamePoolCapacity, block.NamePoolCapacity);
+            Assert.IsNull(NamePoolIntegrity.Check(block));
             var expectedFiles = Directory.GetFiles(Path.Combine(TreeRoot, "crowded1"))
                 .Concat(Directory.GetFiles(Path.Combine(TreeRoot, "crowded2")))
                 .ToArray();
@@ -64,6 +70,9 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
                 expectedFiles, [.. index.Search(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
             Assert.Contains(line => line.Contains(Fixture.CacheDirectory) &&
                                                   line.Contains("capacity", StringComparison.OrdinalIgnoreCase), diagnostics);
+            Assert.Contains(line => line.Contains(
+                $"{block.SlotCapacity} slots, {block.NameEntryCapacity} name entries and {block.NamePoolCapacity} name-pool bytes",
+                StringComparison.Ordinal), diagnostics);
         }
         finally
         {

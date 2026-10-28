@@ -18,6 +18,7 @@ sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSectio
         ProducerKind = ProducerKind.Mft,
         RootRow = 5,
         SlotCapacity = 256,
+        NameEntryCapacity = 256,
         NamePoolCapacity = 4096,
         DeleteOnClose = true
     });

@@ -49,7 +49,7 @@ struct BlockHeader
     ///     close record that changed a live row's attributes while preserving its scanned size and last-write observations. Header-only writes
     ///     leave it unchanged: every batch advances the journal checkpoint
     ///     (<see cref="UsnJournalIdentifier" /> and <see cref="UsnNextUsn" />), and a rejection (record
-    ///     number past slot capacity, name pool exhausted, or parent record number out of range)
+    ///     number past slot capacity, name pool or name entry capacity exhausted, or parent record number out of range)
     ///     sets the capacity-exhausted flag without bumping the generation. Producer completion
     ///     stamps 1 on a block no batch has mutated.
     /// </summary>

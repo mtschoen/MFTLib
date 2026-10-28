@@ -688,6 +688,18 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     }
 
     [TestMethod]
+    public void EstimateFromCounts_ProductBeyondThirtyTwoBits_ClampsToTheLayoutMaximum()
+    {
+        Assert.AreEqual(1717986917u, EnumerationProducer.EstimateFromCounts(100000, 100000));
+    }
+
+    [TestMethod]
+    public void EstimateFromCounts_SmallTree_IsTheMinimum()
+    {
+        Assert.AreEqual(4096u, EnumerationProducer.EstimateFromCounts(3, 2));
+    }
+
+    [TestMethod]
     public async Task Produce_HonoursCancellation_MidWalkDrainsAllWorkers()
     {
         EnumerationWalkTestSupport.GenerateBranchingTree(_treeRoot, 3, 2, 2);

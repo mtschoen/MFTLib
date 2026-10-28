@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NamePool = MFTLibTestExtensions.SyntheticNamePool;
 
@@ -240,6 +241,74 @@ public class NamePoolTests
         Assert.IsTrue(NamePool.TryFindOrdinal(reopened, "readme.md", out var foundId));
         Assert.AreEqual(reopened.Rows[(int)lower].NameId, foundId);
         Assert.IsNull(NamePool.CheckIntegrity(reopened));
+    }
+
+    [TestMethod]
+    [DataRow(509u)]
+    [DataRow(510u)]
+    [DataRow(511u)]
+    [DataRow(512u)]
+    public void PoolRefusal_OfANtfsLengthName_LeavesAtMostTheExhaustionMargin(uint remaining)
+    {
+        const uint poolCapacity = 4096;
+        var filler = new string('f', (int)(poolCapacity - remaining));
+        using var utf16Block = TestBlocks.Create(slotCapacity: 64, namePoolCapacity: poolCapacity,
+            nameEntryCapacity: 64);
+        Assert.IsTrue(NamePool.TryGetOrAdd(utf16Block, filler, out _));
+        var utf16Added = NamePool.TryGetOrAdd(utf16Block, "é" + new string('a', 254), out _);
+        if (!utf16Added)
+        {
+            Assert.IsTrue(remaining <= BlockLayout.NamePoolExhaustionMarginBytes);
+            Assert.AreEqual(poolCapacity - remaining, utf16Block.NamePoolUsed);
+        }
+
+        if (remaining >= 511)
+        {
+            Assert.IsTrue(utf16Added);
+        }
+
+        using var asciiBlock = TestBlocks.Create(slotCapacity: 64, namePoolCapacity: poolCapacity,
+            nameEntryCapacity: 64);
+        Assert.IsTrue(NamePool.TryGetOrAdd(asciiBlock, filler, out _));
+        var asciiAdded = NamePool.TryGetOrAdd(asciiBlock, new string('b', 255), out _);
+        if (!asciiAdded)
+        {
+            Assert.IsTrue(remaining <= BlockLayout.NamePoolExhaustionMarginBytes);
+            Assert.AreEqual(poolCapacity - remaining, asciiBlock.NamePoolUsed);
+        }
+
+        if (remaining >= 511)
+        {
+            Assert.IsTrue(asciiAdded);
+        }
+    }
+
+    [TestMethod]
+    public void Restore_IntoABlockWithOnlyTheEntryCapacityDoubled_PreservesIdsAndIntegrity()
+    {
+        using var source = TestBlocks.Create(slotCapacity: 64, namePoolCapacity: 4096, nameEntryCapacity: 64);
+        var writer = new BlockWriter(source);
+        for (uint row = 0; row < 64; row++)
+        {
+            Assert.IsTrue(writer.TryWriteRow(row, $"name-{row}",
+                new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
+        }
+
+        var snapshot = BlockRowSnapshot.Capture(source);
+        using var target = TestBlocks.Create(slotCapacity: 64, namePoolCapacity: 4096, nameEntryCapacity: 128);
+        snapshot.RestoreInto(target);
+
+        Assert.AreEqual(BlockLayout.ComputeBucketCount(128), target.BucketCount);
+        for (var row = 0; row < 64; row++)
+        {
+            Assert.AreEqual(source.Rows[row].NameId, target.Rows[row].NameId);
+            Assert.AreEqual($"name-{row}", NamePool.ReadRowName(target, (uint)row).ToString());
+        }
+
+        Assert.IsNull(NamePool.CheckIntegrity(target));
+        Assert.IsTrue(NamePool.TryGetOrAdd(target, "name-64", out var nameId));
+        Assert.AreEqual(65u, nameId);
+        Assert.AreEqual(65u, target.NameEntryCount);
     }
 
     [TestMethod]

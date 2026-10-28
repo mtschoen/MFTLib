@@ -416,7 +416,7 @@ public sealed class MftDumpValidationTests : IDisposable
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(), $"{Guid.NewGuid():N}.mft");
         return new MftDumpBlockProducer(path, TimeProvider.System, (input, _, _) =>
         {
-            ulong capacity = MftBlockCapacity.Plan(input.VolumeInformation).SlotCapacity;
+            ulong capacity = MftBlockCapacity.Plan(input.VolumeInformation, default).SlotCapacity;
             return batches.Select(IReadOnlyList<MftRecord> (batch) =>
                 batch(capacity).Select(MftRecordFactory.Create).ToArray());
         });

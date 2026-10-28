@@ -13,4 +13,7 @@ sealed record BlockScanTarget(string Path, uint VolumeSerial, bool DeleteOnClose
 
     /// <summary>The scan shape the index requires, written into the header when the section is created.</summary>
     public ulong ScanShape { get; init; }
+
+    /// <summary>Regions the index needs larger than the volume plan.</summary>
+    public BlockCapacities MinimumCapacities { get; init; }
 }

@@ -8,15 +8,15 @@ static class TestBlocks
 {
     public static BlockFile Create(string? path = null,
         ProducerKind producer = ProducerKind.Enumeration,
-        uint slotCapacity = 64, uint namePoolCapacity = 512,
+        uint slotCapacity = 64, uint namePoolCapacity = 512, uint? nameEntryCapacity = null,
         uint volumeSerial = 0x0BADF00D, uint rootRow = 0,
         bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0)
-        => BlockFile.Create(Options(path, producer, slotCapacity, namePoolCapacity,
+        => BlockFile.Create(Options(path, producer, slotCapacity, namePoolCapacity, nameEntryCapacity,
             volumeSerial, rootRow, deleteOnClose, cacheTag, scanShape));
 
     public static BlockFileCreateOptions Options(string? path = null,
         ProducerKind producer = ProducerKind.Enumeration,
-        uint slotCapacity = 64, uint namePoolCapacity = 512,
+        uint slotCapacity = 64, uint namePoolCapacity = 512, uint? nameEntryCapacity = null,
         uint volumeSerial = 0x0BADF00D, uint rootRow = 0,
         bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0)
         => new()
@@ -26,6 +26,7 @@ static class TestBlocks
             VolumeSerial = volumeSerial,
             ProducerKind = producer,
             SlotCapacity = slotCapacity,
+            NameEntryCapacity = nameEntryCapacity ?? slotCapacity,
             NamePoolCapacity = namePoolCapacity,
             RootRow = rootRow,
             DeleteOnClose = deleteOnClose ?? (path is null),

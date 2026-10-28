@@ -36,9 +36,10 @@ sealed partial class BrokerProcess
                 $"Volume {volume} scan could not start: {exception.Message}", exception);
         }
 
+        var location = new MftBlockCapacity.FileLocation(volume, target.Path, target.VolumeSerial, target.DeleteOnClose);
         var (sectionName, block, lifetime) = _createBlockSection(volume,
-            MftBlockCapacity.CreateOptions(information, volume, target.Path, target.VolumeSerial, target.DeleteOnClose,
-                new BlockContentIdentity(target.CacheTag, target.ScanShape)));
+            MftBlockCapacity.CreateOptions(information, location,
+                new BlockContentIdentity(target.CacheTag, target.ScanShape), target.MinimumCapacities));
         var sectionLifetime = new ReleaseOnce(lifetime);
         var section = new VolumeBlockSection(sectionName, block, sectionLifetime);
         try

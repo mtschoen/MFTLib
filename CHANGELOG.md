@@ -56,7 +56,8 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Fixed
 
-- A directory-walk block that runs out of rows or name pool grows in place by doubling both capacities while the walk continues, so the index is never silently truncated and no directory is read twice.
+- A rescan of a capacity-exhausted block doubles only the exhausted region (rows, name entries or name bytes), for MFT volumes and directory walks alike.
+- A directory-walk block that runs out of rows, name entries or name pool grows in place by doubling only the exhausted region while the walk continues, so the index is never silently truncated and no directory is read twice.
 - A native failure inside the parser, including a failed allocation or thread start, fails the scan instead of terminating the host process.
 - A volume scan fails instead of returning a partial inventory when the `$MFT` attribute list or a `$DATA` extension record is unreadable or invalid.
 - The parser validates each record's update sequence array before decoding it, so a record with an invalid fixup is never read as data.

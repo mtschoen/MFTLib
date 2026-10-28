@@ -109,688 +109,923 @@ Inputs the spec implies that are most likely to bite a user; each line names the
 
 ---
 
-# Slice 1: Format 8 name encoding
+# Slice 3: Capacity growth for MFT rescans and independent entry capacity
 
-**Branch:** `feature/844-format-8-names` from main. **No public change** beyond orchestrator decision 2. First
-commit adds this plan file at `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md`.
+**Branch:** `feature/844-capacity-growth` from main after slice 1 merged (main at `b96f7daf` or later). One PR.
+Runs in parallel with slice 4. **First commit:** replace this plan file's "# Slice 3" section with this text and
+delete the completed "# Slice 1" and "# Slice 2" sections (slice 4 edits only its own section).
 
-**Spec location:** this branch starts before PR 845 (documentation only) merges, so the spec is not yet on main.
-Read it at the repository path on this plan's `Spec:` line from PR 845's branch:
-`git fetch origin docs/844-design` then
-`git show origin/docs/844-design:docs/superpowers/specs/2026-10-27-issue-844-volume-scan-and-name-encoding-design.md`.
-Once PR 845 lands, rebase onto main before opening the PR; Task 1.7's spec amendment then edits that file in your
-tree.
+**Blockers for the orchestrator:** none.
 
-**Meets slice 2 at:** `ScanShape.ForMft` (called by the new `Benchmark/BenchmarkRunner.IndexStorage.cs`),
-`MftBlockRowWriter` (called by the same verb) and these files both slices edit:
-`MFTLib.Tests/MftBlockRowWriterTests.cs`, `MFTLib.Tests/JournalBrokerHostScanTests.cs`,
-`MFTLib.Tests/Index/EnumerationProducerTests.cs`, `MFTLib.Tests/Index/NamedBlockSectionLayoutTests.cs`,
-`MFTLib.Tests/Index/RootKeyTests.cs`, `MFTLib.Tests/BenchmarkRunnerTests.cs`, `docs/index-format.md`,
-`docs/api-decisions.md`, `CHANGELOG.md`. Whichever slice merges second rebases and resolves; for slice 1 that
-means changing the benchmark's `ScanShape.ForMft(retainedFileNames: null, includeFreed: false)` to slice 2's
-`ScanShape.ForMft(includeFreed: false)`.
+**Goal:** one capacity planner serves both producers. A rescan of a capacity-exhausted block doubles each region
+whose use reached its capacity (rows at `S`, entries at `E`, pool within 510 bytes of `P`) and keeps the volume plan
+for the rest; the MFT plan is computed where the volume geometry is known (client side), so the index sends the
+grown regions as a minimum. Entry capacity becomes a creation option, so an entry-only exhaustion (a rename-heavy
+watch) grows `E` alone. Enumeration's mid-walk growth doubles only the exhausted regions.
 
-**Build and test commands used below:**
+**Public change:** none. Every added member is internal; no `*.approved.txt` file changes. The capacity-exhausted
+flag stays bit 2 and the block format stays version 8 (ruling "Capacity exhaustion names the state; rescan is the
+remedy" holds unchanged). No `api-decisions.md` ruling is added or superseded.
+
+## Decisions this slice makes (spec silent or literal reading fails)
+
+1. **Which region is exhausted is derived from the header, not recorded.** Entries are exhausted when
+   `NameEntryCount >= NameEntryCapacity`. The pool is exhausted when `NamePoolCapacity - NamePoolUsed <= 510`:
+   an interning refusal of a name of at most 255 UTF-16 units (the NTFS and Linux limit) needs at most 510 bytes
+   plus one byte of UTF-16 alignment, so a refusal always leaves at most 510 bytes (Task 3.2 pins this). Rows are
+   exhausted when `RowCount >= SlotCapacity`, **or** when the flag is set and neither entries nor pool reached
+   capacity: a row refusal is the only refusal that leaves no count at capacity, because an MFT write at a record
+   index past `S` leaves `RowCount` below `S`. When a row refusal coincides with an entry or pool exhaustion the
+   rows keep the volume plan, which for MFT already covers every current record (the fresh volume query sizes `S`
+   from today's MFT record count).
+2. **Growth is gated by the flag**, as today: a block whose flag is clear asks for no minimum even when a region is
+   full, because nothing was refused.
+3. **The volume plan sets `E = S` and `P = pageAlign(max(1 MiB, 24 * S))` from the planned `S` before any minimum
+   applies.** A row-only minimum therefore raises `S` and leaves `E` and `P` at the volume plan ("the rest keep the
+   volume plan").
+4. **Estimate clamp:** both estimates clamp at `BlockLayout.MaximumEstimatedRowCount = 1717986917`, the largest
+   estimate whose `ComputeSlotCapacity` is `int.MaxValue - 1` (the `DoubleCapacity` clamp), so every planned block
+   is creatable. This replaces `MftBlockCapacity`'s `uint.MaxValue / 2` clamp (slice 1 lane report, open question 2)
+   and fixes the enumeration estimate's unchecked `topLevel + directories * topLevel`.
+
+## Shared files with slice 4 (parallel)
+
+| File | Slice 3 change | Slice 4 change |
+| --- | --- | --- |
+| `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md` | replaces "# Slice 3", deletes slices 1 and 2 | replaces "# Slice 4" |
+| `MFTLib/Index/FileIndex.RootRuntime.Production.cs` | `PlanCapacities`, `RunMftProducerAsync` (request minimum), `CreateAndPopulateBlock`, `CreateEnumerationBlock` (entry capacity); `EnumerationBlockGrowth` moves out | `ProduceRootBlockCoreAsync` (selection, `MftUnavailable`), `Configuration.*` reads become the resolved root |
+| `MFTLib/Broker/Client/BrokerMftBlockProducer.cs` | copies `MinimumCapacities` onto the target | maps broker launch failures to `MftUnavailableException` |
+| `Benchmark/BenchmarkRunner.Index.cs` | `NameEntryCapacity` at the `BlockFileCreateOptions` site (line 129) | `IndexedRoot` construction (line 191) |
+| `MFTLib.Tests/Index/FileIndexMftRescanGrowthTests.cs` (new here) | opens MFT indexes through `IndexTreeFixture.Options(producer: ProducerKind.Mft)` | migrates every MFT open to `SyntheticVolumeFacts.Apply` |
+| `docs/index-format.md`, `CHANGELOG.md` | Capacity section; changelog line | file-name and cache sections; changelog lines |
+
+**Merge order:** slice 3 merges first (smaller). Slice 4 rebases and migrates `FileIndexMftRescanGrowthTests` with the
+rest of its fixtures. If slice 4 lands first instead, this slice rebases and opens its MFT indexes with
+`SyntheticVolumeFacts.Apply(options with { Root = new VolumeKey('T'), Producer = ProducerSelection.MftOnly }, serial)`.
+
+## Review Focus
+
+1. **A rename-heavy watch reaches `E` with rows and pool to spare:** the rescan doubles `E` only and keeps `S` and
+   `P` at the volume plan. Task 3.1 (`GrowthMinimum`), Task 3.4 (`Rescan_AfterOneRegionIsExhausted_...` "Entries").
+2. **A journal create for a record number past `S`:** flag set, `RowCount < S`; the rescan doubles rows. Task 3.1
+   (`GrowthMinimum_FlagWithNoRegionAtCapacity_DoublesRows`), Task 3.4 (`Rescan_AfterARecordIndexBeyondTheSlots_...`).
+3. **A pool refusal leaves just over the margin:** a refused name never leaves more than 510 bytes, so the pool is
+   always recognised as the exhausted region. Task 3.2 (`PoolRefusal_...`).
+4. **A huge MFT record count or a huge enumeration estimate:** planning never throws and never plans an
+   uncreatable block. Task 3.1.
+5. **The process restarted between exhaustion and rescan:** a warm-started exhausted block still grows on rescan,
+   because the counts and flag are in the header. Task 3.4 (`Rescan_OfAWarmStartedExhaustedBlock_...`).
+
+## File map
+
+| File | Responsibility |
+| --- | --- |
+| Create `MFTLib/Index/BlockCapacities.cs` | The three capacities as one value; elementwise `AtLeast` |
+| Modify `MFTLib/Index/BlockLayout.cs` | `PlanCapacities`, `GrowthMinimum`, the estimate clamp and the pool margin constant |
+| Modify `MFTLib/Index/BlockFileCreateOptions.cs`, `BlockFile.cs` (`Create`, `InitialHeader`), `NamedBlockSection.cs:33` | Entry capacity is a creation option |
+| Modify `MFTLib/Sources/MftBlockCapacity.cs`, `MFTLib/Sources/MftBlockProducerPipeline.cs`, `MFTLib/Index/MftBlockProducer.cs`, `MFTLib/Broker/Client/BlockScanTarget.cs`, `BrokerMftBlockProducer.cs`, `BrokerProcess.Scan.cs` | The minimum travels to client-side planning |
+| Modify `MFTLib/Index/EnumerationProducer.cs` | Overflow-free, clamped estimate |
+| Modify `MFTLib/Index/FileIndex.RootRuntime.Production.cs`; create `MFTLib/Index/FileIndex.RootRuntime.EnumerationGrowth.cs` | Root runtime plans both producers; mid-walk growth per region |
+| Modify `MFTLibTestExtensions/SyntheticBlock.cs`, `RecordingBlockSectionWriter.cs`, `MFTLib.Tests/TestSupport/TestBlocks.cs`, `MFTLib.Tests/Index/SyntheticBlockBuilder.cs`, `MFTLib.Tests/Index/BlockRootKeyStorageTests.cs`, `Benchmark/BenchmarkRunner.Index.cs`, `Benchmark/BenchmarkRunner.EnumerationWalk.cs` | Set the new required option |
+
+**Commands used below:**
 
 ```powershell
-.\scripts\build-windows.ps1 -NoRestore      # native + managed Release|x64 (after one restore)
+.\scripts\build-windows.ps1 -NoRestore
 dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64
 dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "<filter>"
 ```
 
-### File map
+### Task 3.1: The capacity planner
+
+**Files:**
+- Create: `MFTLib/Index/BlockCapacities.cs`
+- Modify: `MFTLib/Index/BlockLayout.cs`, `MFTLib/Sources/MftBlockCapacity.cs` (delete the local
+  `MaximumEstimatedRowCount`; clamp with the layout's), `MFTLib/Index/EnumerationProducer.cs:54-77`
+- Test: `MFTLib.Tests/Index/BlockLayoutTests.cs`, `MFTLib.Tests/MftBlockCapacityTests.cs`,
+  `MFTLib.Tests/Index/EnumerationProducerTests.cs`
+
+**Interfaces:**
+- Produces: `readonly record struct BlockCapacities(uint SlotCapacity, uint NameEntryCapacity, uint NamePoolCapacity)`
+  with `BlockCapacities AtLeast(BlockCapacities minimum)` (elementwise `Math.Max`). `default` means no minimum.
+- Produces in `BlockLayout`: `internal const uint MaximumEstimatedRowCount = 1717986917;`
+  `internal const uint NamePoolExhaustionMarginBytes = 510;`
+  `internal static BlockCapacities PlanCapacities(uint estimatedRowCount, BlockCapacities minimum)`: the volume plan
+  `S = ComputeSlotCapacity(Math.Min(estimatedRowCount, MaximumEstimatedRowCount))`, `E = S`,
+  `P = ComputeNamePoolCapacity(S)`, then `.AtLeast(minimum)`.
+  `internal static BlockCapacities GrowthMinimum(in BlockHeader header)`: `default` unless
+  `header.IsCapacityExhausted`; otherwise each exhausted region (decision 1) is `DoubleCapacity(S)`,
+  `DoubleCapacity(E)` or `DoubleNamePoolCapacity(P)` and every other region is 0.
+- Produces in `EnumerationProducer`: `internal static uint EstimateFromCounts(uint topLevel, uint directories)`
+  (`ulong` arithmetic, at least `MinimumEstimatedRowCount`, at most `BlockLayout.MaximumEstimatedRowCount`);
+  `EstimateRowCount(string)` counts and calls it.
+
+- [x] **Step 1: Write the failing tests** (`BlockLayoutTests`; build headers as `default(BlockHeader)` with the fields set)
+
+```csharp
+public void PlanCapacities_WithoutAMinimum_IsTheVolumePlan()
+// PlanCapacities(1000000, default) == new BlockCapacities(1250000, 1250000, 30003200)
+[DataRow(4000000u, 0u, 0u, 4000000u, 1250000u, 30003200u)]
+[DataRow(0u, 2500000u, 0u, 1250000u, 2500000u, 30003200u)]
+[DataRow(0u, 0u, 60006400u, 1250000u, 1250000u, 60006400u)]
+[DataRow(1000u, 1000u, 4096u, 1250000u, 1250000u, 30003200u)]   // a minimum below the plan changes nothing
+public void PlanCapacities_AMinimumRaisesOnlyItsRegion(uint minimumSlots, uint minimumEntries, uint minimumPool,
+    uint slots, uint entries, uint pool)                            // estimate 1000000 in every row
+public void PlanCapacities_AHugeEstimateClampsToACreatableSlotCapacity()
+// PlanCapacities(uint.MaxValue, default).SlotCapacity == int.MaxValue - 1; NamePoolCapacity == 0x7FFFF000
+public void GrowthMinimum_WithoutTheFlag_IsNone()                   // RowCount == S, flag clear -> default
+[DataRow("Rows")] [DataRow("Entries")] [DataRow("Pool")]
+public void GrowthMinimum_DoublesOnlyTheRegionAtCapacity(string region)
+// S = E = 64, P = 4096, flag set; Rows: RowCount 64 -> (128, 0, 0); Entries: NameEntryCount 64 -> (0, 128, 0);
+// Pool: NamePoolUsed 3586 (510 left) -> (0, 0, 8192)
+public void GrowthMinimum_PoolWithMoreThanTheMarginLeft_IsNotExhausted()   // 511 left, entries full -> (0, 128, 0)
+public void GrowthMinimum_FlagWithNoRegionAtCapacity_DoublesRows()         // RowCount 6 of 64 -> (128, 0, 0)
+public void GrowthMinimum_EntriesAndPoolTogether_DoublesBoth()             // -> (0, 128, 8192)
+public void GrowthMinimum_AtTheClamp_ReturnsTheClampedValue()              // S = int.MaxValue - 1 full -> SlotCapacity int.MaxValue - 1
+```
+
+  In `MftBlockCapacityTests`, change `EstimateRowCount_RecordCountBeyondThirtyTwoBits_ClampsBelowTheSlotHeadroom` to
+  expect `1717986917` and `Plan_RecordCountBeyondThirtyTwoBits_SurvivesTheSlotCapacityHeadroom` to expect slot capacity
+  `int.MaxValue - 1`. In `EnumerationProducerTests` add
+  `EstimateFromCounts_ProductBeyondThirtyTwoBits_ClampsToTheLayoutMaximum` (`EstimateFromCounts(100000, 100000)` ==
+  `1717986917`) and `EstimateFromCounts_SmallTree_IsTheMinimum`.
+
+- [x] **Step 2: Run, expect FAIL** (members missing):
+  `--filter "FullyQualifiedName~BlockLayoutTests|FullyQualifiedName~MftBlockCapacityTests|FullyQualifiedName~EnumerationProducerTests"`
+- [x] **Step 3: Implement** the Interfaces. `MftBlockCapacity.Plan` and the root runtime keep their current
+  signatures in this task (Tasks 3.3 and 3.4 switch them to `PlanCapacities`).
+- [x] **Step 4: Run, expect PASS** with the same filter.
+- [x] **Step 5: Commit** `feat: plan block capacities per region with a growth minimum` (with this plan file edit).
+
+### Task 3.2: Entry capacity is a creation option
+
+**Files:**
+- Modify: `MFTLib/Index/BlockFileCreateOptions.cs`, `MFTLib/Index/BlockFile.cs:199,392-413`,
+  `MFTLib/Index/NamedBlockSection.cs:33`, and every creation site the compiler lists once the option is `required`:
+  `MftBlockCapacity.CreateOptions`, `FileIndex.RootRuntime.Production.cs` (`CreateEnumerationBlock`),
+  `Benchmark/BenchmarkRunner.Index.cs:129`, `Benchmark/BenchmarkRunner.EnumerationWalk.cs:160`,
+  `MFTLibTestExtensions/SyntheticBlock.cs:126`, `MFTLibTestExtensions/RecordingBlockSectionWriter.cs`,
+  `MFTLib.Tests/TestSupport/TestBlocks.cs` (add `uint? nameEntryCapacity = null` to `Create` and `Options`, null
+  meaning `slotCapacity`), `MFTLib.Tests/Index/SyntheticBlockBuilder.cs`, `MFTLib.Tests/Index/BlockRootKeyStorageTests.cs`
+- Test: `MFTLib.Tests/Index/BlockFileTests.cs`, `MFTLib.Tests/Index/NamedBlockSectionLayoutTests.cs`,
+  `MFTLib.Tests/Index/NamePoolTests.cs`
+
+**Interfaces:**
+- Produces: `BlockFileCreateOptions.NameEntryCapacity : required uint` (XML: "Allocatable name entries, independent of
+  `SlotCapacity`; use `BlockLayout.PlanCapacities`"); the class summary's "Capacities are final: a block never grows"
+  stays true and gains "a rescan or a walk replaces it with a larger block".
+- `InitialHeader` sets `NameEntryCapacity = options.NameEntryCapacity`,
+  `BucketCount = ComputeBucketCount(options.NameEntryCapacity)`, and the bucket and pool offsets with `E`.
+  `BlockFile.Create` and `NamedBlockSection.Create` size the file with
+  `TotalBlockBytes(options.SlotCapacity, options.NameEntryCapacity, options.NamePoolCapacity)`.
+- Every production creation site passes `E = S` until Tasks 3.3 and 3.4 pass the planner's value.
+
+- [x] **Step 1: Write the failing tests**
+
+```csharp
+// BlockFileTests
+public void Create_WithAnEntryCapacityOtherThanTheSlotCapacity_LaysOutAndReopens()
+// S = 4096, E = 10000, P = 1048576: header NameEntryCapacity 10000, BucketCount 4096, Length ==
+// TotalBlockBytes(4096, 10000, 1048576); after Complete, BlockFile.Open (the reopen helper BlockFileTests already uses)
+// validates with no result; 10000 distinct names intern, the 10001st is refused and sets the flag.
+// NamedBlockSectionLayoutTests (Windows, as the class already is)
+public void Create_SizesTheSectionWithTheEntryCapacity()   // E = 3 * S: OpenExisting accepts the section; length as above
+// NamePoolTests (Review Focus 3)
+[DataRow(509u)] [DataRow(510u)] [DataRow(511u)] [DataRow(512u)]
+public void PoolRefusal_OfANtfsLengthName_LeavesAtMostTheExhaustionMargin(uint remaining)
+// P = 4096, S = E = 64: intern one ASCII filler of (P - remaining) bytes, then try "é" + 254 'a' (UTF-16) and,
+// in a fresh block, 255 ASCII 'b'. For each: refused implies remaining <= BlockLayout.NamePoolExhaustionMarginBytes;
+// remaining >= 511 implies both fit.
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~BlockFileTests|FullyQualifiedName~NamedBlockSection|FullyQualifiedName~NamePoolTests"`
+- [x] **Step 3: Implement**; fix every site the compiler lists.
+- [x] **Step 4: Run, expect PASS**, then `--filter TestCategory=Smoke`.
+- [x] **Step 5: Commit** `feat: make the name entry capacity a block creation option`.
+
+### Task 3.3: The minimum reaches client-side MFT planning
+
+**Files:**
+- Modify: `MFTLib/Index/MftBlockProducer.cs` (request), `MFTLib/Sources/MftBlockCapacity.cs`,
+  `MFTLib/Sources/MftBlockProducerPipeline.cs:35-37`, `MFTLib/Broker/Client/BlockScanTarget.cs`,
+  `MFTLib/Broker/Client/BrokerMftBlockProducer.cs:43-47`, `MFTLib/Broker/Client/BrokerProcess.Scan.cs:39-41`,
+  `Benchmark/BenchmarkRunner.IndexStorage.cs:26` (passes `default`)
+- Test: `MFTLib.Tests/MftBlockCapacityTests.cs`, `MFTLib.Tests/MftIndexSourcesDumpTests.cs`,
+  `MFTLib.Tests/BrokerProcessTests.Scan.cs`
+
+**Interfaces:**
+- Produces: `MftBlockProduceRequest.MinimumCapacities : BlockCapacities { get; init; }` (XML: "Regions the index needs
+  larger than the volume plan, from the block a rescan replaces; `default` asks for the plan. A custom producer that
+  plans its own block must honor it.").
+- Produces: `BlockScanTarget.MinimumCapacities : BlockCapacities { get; init; }`, copied from the request by
+  `BrokerMftBlockProducer`.
+- `MftBlockCapacity.Plan(NtfsVolumeInformation volumeInformation, BlockCapacities minimum) : BlockCapacities` returns
+  `BlockLayout.PlanCapacities(EstimateRowCount(volumeInformation), minimum)`.
+  `MftBlockCapacity.CreateOptions(..., BlockContentIdentity identity, BlockCapacities minimum)` sets all three
+  capacities from it. `MftBlockProducerPipeline.Write` passes `request.MinimumCapacities`; `ScanVolumeAsync` passes
+  `target.MinimumCapacities`. The broker host needs no change: it validates the section from its header, which now
+  carries `E`.
+
+- [x] **Step 1: Write the failing tests**
+
+```csharp
+// MftBlockCapacityTests
+public void Plan_AMinimumRaisesOnlyItsRegion()
+// geometry of 1,000,000 records: Plan(geometry, new(0, 2500000, 0)) == new(1250000, 2500000, 30003200)
+// MftIndexSourcesDumpTests (cross-platform, through the real pipeline)
+public async Task DumpProducer_ARequestMinimumRaisesOnlyThatRegion()
+// produce once with default; then with MinimumCapacities = new(0, 2 * first.NameEntryCapacity, 0):
+// second block SlotCapacity == first, NameEntryCapacity == 2 * first, NamePoolCapacity == first.
+// BrokerProcessTests.Scan
+public async Task ScanVolume_TheTargetMinimumSizesTheSection()
+// Target() with { MinimumCapacities = new(0, 0, 2 * baselinePool) }: the section's block has NamePoolCapacity
+// 2 * baselinePool and the baseline slot and entry capacities (baseline from a scan with the default target).
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MftBlockCapacityTests|FullyQualifiedName~MftIndexSourcesDumpTests|FullyQualifiedName~BrokerProcessTests"`
+- [x] **Step 3: Implement** the Interfaces; fix the remaining callers.
+- [x] **Step 4: Run, expect PASS** with the same filter.
+- [x] **Step 5: Commit** `feat: pass the rescan growth minimum to MFT block planning`.
+
+### Task 3.4: The root runtime plans both producers; walks grow only exhausted regions
+
+**Files:**
+- Modify: `MFTLib/Index/FileIndex.RootRuntime.Production.cs` (`PlanCapacities` at 93-107, `RunMftProducerAsync`
+  at 67-85, `CreateAndPopulateBlock`, `CreateEnumerationBlock`)
+- Create: `MFTLib/Index/FileIndex.RootRuntime.EnumerationGrowth.cs` (move `EnumerationBlockGrowth` here, out of the
+  file slice 4 also edits)
+- Test: create `MFTLib.Tests/Index/FileIndexMftRescanGrowthTests.cs`; modify
+  `MFTLib.Tests/Index/FileIndexEnumerationGrowthTests.cs`, `MFTLib.Tests/Index/NamePoolTests.cs`
+
+**Interfaces:**
+- Consumes: `BlockLayout.PlanCapacities`, `BlockLayout.GrowthMinimum`, `BlockCapacities` (Task 3.1);
+  `BlockFileCreateOptions.NameEntryCapacity` (Task 3.2); `MftBlockProduceRequest.MinimumCapacities` (Task 3.3).
+- `RootRuntime.GrowthMinimumLocked() : BlockCapacities`: `GrowthMinimum` of the current block's header, or `default`
+  with no block; read under `StateLock`. Replaces the private `PlanCapacities(uint)`.
+- `RunMftProducerAsync` sets `MinimumCapacities` from it. `CreateAndPopulateBlock` plans
+  `BlockLayout.PlanCapacities(EnumerationProducer.EstimateRowCount(rootDirectory), minimum)`.
+- `CreateEnumerationBlock(string blockPath, bool deleteOnClose, BlockCapacities capacities)`.
+- `EnumerationBlockGrowth(RootRuntime runtime, string blockPath, bool deleteOnClose, BlockCapacities capacities)`;
+  `Grow(BlockWriter exhausted)` computes `next = current.AtLeast(BlockLayout.GrowthMinimum(in exhausted.Block.Header))`,
+  returns null when `next == current` (every exhausted region is at its clamp), else snapshots, recreates with
+  `next`, restores. The diagnostics line reads
+  `Grew block file '{path}': enumeration capacity exhausted at {rows} rows; the walk continues with {S} slots, {E} name entries and {P} name-pool bytes.`
+
+- [x] **Step 1: Write the failing tests**
+
+```csharp
+// FileIndexMftRescanGrowthTests ([DoNotParallelize] only if it touches a process-global hook; it should not)
+// A recording MftBlockProducer stores each request. Production 1 creates its block from
+// TestBlocks.Options(request.BlockPath, ProducerKind.Mft, slotCapacity: 64, namePoolCapacity: 4096,
+// nameEntryCapacity: 64) with Root = request.Volume, RootRow = 5, VolumeSerial, CacheTag, ScanShape and DeleteOnClose
+// from the request; writes root row 5; exhausts the named region through BlockWriter; completes. Later productions
+// write a healthy block from MftBlockCapacity-sized options the same way.
+[DataRow("Rows", 128u, 0u, 0u)]        // rows 6..63 written, a write at row 64 refused
+[DataRow("Entries", 0u, 128u, 0u)]     // renames intern names until NameEntryCount == 64
+[DataRow("Pool", 0u, 0u, 8192u)]       // one ASCII name to 3996 bytes used, then a 255-unit UTF-16 name refused
+public async Task Rescan_AfterOneRegionIsExhausted_RequestsOnlyThatRegionDoubled(string region,
+    uint slots, uint entries, uint pool)
+// Requests[0].MinimumCapacities == default; after RescanAsync, Requests[1].MinimumCapacities == new(slots, entries, pool).
+public async Task Rescan_AfterARecordIndexBeyondTheSlots_RequestsTheRowsDoubled()   // only a write at row 1000 refused
+public async Task Rescan_OfAHealthyBlock_RequestsNoMinimum()                         // third request after a healthy rescan is default
+public async Task Rescan_OfAWarmStartedExhaustedBlock_RequestsTheGrowth()
+// Persistent cache: open, exhaust entries, dispose; reopen (warm start), RescanAsync: the request carries (0, 128, 0).
+// FileIndexEnumerationGrowthTests: extend Open_ATreeBeyondTheFirstCapacityPlan... (its pool is what runs out)
+// block = index.CurrentBlock!.Block: SlotCapacity and NameEntryCapacity equal the first plan's
+// (PlanCapacities(EnumerationProducer.EstimateRowCount(TreeRoot), default)); NamePoolCapacity is at least twice the
+// first plan's; NamePoolIntegrity.Check(block) is null; the diagnostics line names all three capacities.
+// NamePoolTests
+public void Restore_IntoABlockWithOnlyTheEntryCapacityDoubled_PreservesIdsAndIntegrity()
+// S = E = 64 filled to 64 entries; BlockRowSnapshot.Capture; restore into S = 64, E = 128: every row's NameId and Name
+// unchanged, BucketCount == ComputeBucketCount(128), NamePoolIntegrity.Check is null, a 65th name interns.
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexMftRescanGrowthTests|FullyQualifiedName~FileIndexEnumerationGrowthTests|FullyQualifiedName~NamePoolTests"`
+- [x] **Step 3: Implement** the Interfaces. Delete `BlockLayout.DoubleCapacity` and `DoubleNamePoolCapacity` callers
+  outside `GrowthMinimum` (the functions stay, used by it).
+- [x] **Step 4: Run, expect PASS** with the same filter, then
+  `--filter "TestCategory=Smoke|FullyQualifiedName~CapacityExhaustionTests|FullyQualifiedName~FileIndexProducerSelectionTests|FullyQualifiedName~EnumerationProducerTests"`.
+- [x] **Step 5: Commit** `feat: grow only the exhausted regions on rescan and mid-walk`.
+
+### Task 3.5: Documentation
+
+**Files:** `docs/index-format.md` ("Capacity" section, lines 403-420), XML comments on `BlockFileCreateOptions`,
+`MftBlockProduceRequest.MinimumCapacities`, `BlockLayout.PlanCapacities`, `GrowthMinimum`,
+`RootBlockStatus.IsCapacityExhausted` (says a rescan grows the exhausted region), `CHANGELOG.md` (0.3.0 section).
+
+- [x] **Step 1: Run the docs-update check.** Rewrite the Capacity section: the volume plan (`S`, `E = S`, `P`), the
+  estimate clamp at 1,717,986,917 rows, the three exhaustion tests of decision 1 with the 510-byte margin and why
+  rows are the fallback, rescan growth for both producers (doubling only exhausted regions, the minimum the index
+  sends to the MFT producer), and mid-walk growth doubling only exhausted regions with ids preserved and buckets
+  rebuilt for the new `E`. Delete "the entry capacity follows the slot capacity". `grep -n "follows the slot capacity\|both capacities doubled" docs/*.md MFTLib/**/*.cs`
+  returns nothing.
+- [x] **Step 2: CHANGELOG:** "A rescan of a capacity-exhausted block doubles only the exhausted region (rows, name
+  entries or name bytes), for MFT volumes and directory walks alike."
+- [x] **Step 3: Commit** `docs: describe per-region capacity growth`.
+
+### Task 3.6: Slice verification and PR
+
+- [x] Full build `.\scripts\build-windows.ps1 -NoRestore`; full suite
+  `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build`: 0 failed. Linux through CI
+  (`test / linux`); `./scripts/coverage-linux.sh` under WSL when available.
+- [x] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests"` passes with no
+  approved-file change.
+- [x] `.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`.
+- [x] `aislop scan .` is 100 with zero unsuppressed findings; `git diff --check` clean; `AGENTS.md` untouched.
+- [x] PR body starts `## Problem` (an MFT rescan after exhaustion recreates a block of the same size, so a watch
+  that exhausted entries or rows exhausts again; and a rename-heavy watch can only grow every region together),
+  cites MFTLib issue 844, states "no public member added; no approved file changed", and lists the shared files above.
+
+# Slice 4: Producer selection and directory MFT views without sharing
+
+**Branch:** `feature/844-producer-selection` from main after slice 1 merged (main at `b96f7daf` or later). One PR.
+Runs in parallel with slice 3. **First commit:** replace this plan file's "# Slice 4" section with this text (slice 3
+deletes slices 1 and 2 and replaces its own section; the second to merge resolves the plan file).
+
+## Orchestrator rulings for this slice
+
+1. **B1 accepted.** `SyntheticVolumeFacts.Apply(FileIndexOptions options, uint volumeSerial, bool isNtfs = true,
+   bool isLocal = true, VolumeKey? volume = null, string? volumeRootDirectory = null)`: with both optional parameters
+   set, synthetic volume `volume` is rooted at host directory `volumeRootDirectory` (a volume key for it resolves there,
+   and a directory key under that host path belongs to it); unset, the facts describe the real volume of
+   `options.Root`. The PR amends the spec's section 1 "Added (test package)" row with this signature.
+2. **Decision 3 below is overruled for the null-source case.** A null `MftSource` is not a volume fact: it is checked
+   last, and only when the open must produce. An eligible volume (every other check passes) with a cached MFT block that
+   the cache mode admits adopts it with `Producer = Mft` and no source; a later rescan or catch-up that needs the
+   source fails with `RootFailureKind.MftUnavailable` and `Status.MftUnavailable = NoMftSource`, keeps the retained
+   block, and never walks (the producer is fixed). Only when there is no adoptable block does a null source make
+   Automatic walk with `NoMftSource` (and MftOnly fail with it). Reason: file-wizard's cache-only host
+   (`FileWizard/FileIndexHost.cs`) opens with `CacheMode.ExistingOnly` and a null source to read cached MFT blocks;
+   it must keep doing so, and its `MftSourceMissing` display maps to `MftUnavailable` with `NoMftSource`. Record this
+   as part of the new "producer selection" ruling in `api-decisions.md`, with tests for: cached block plus null source
+   adopts as Mft; its rescan fails `NoMftSource` without walking; no block plus null source walks under Automatic;
+   `ExistingOnly` plus null source plus no block declines without walking.
+
+## Goal
+
+A consumer names a `RootKey` and a `ProducerSelection`. The library reads the volume facts once at open, before
+cache lookup, and picks the producer: Automatic takes the MFT when eligible and otherwise walks with the reason on
+`Status`; MftOnly fails with `RootFailureKind.MftUnavailable`; WalkOnly never touches the MFT source. A directory root
+on an eligible volume is an MFT view of the whole-volume block, rooted at its resolved row. `IndexedRoot` is deleted.
+A second index on the same volume still contends for the block's owner lock (private fallback) until slice 5.
+
+## Public surface changes (approved files updated in the commit that makes them)
+
+`MFTLib.Tests/PublicSurface/MFTLib.Index.approved.txt`:
+
+| Change | Approved lines | Consumer production caller of the added member (spec section 1, third column) |
+| --- | --- | --- |
+| Add `ProducerSelection` | `MFTLib.Index.ProducerSelection :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable` and fields `Automatic = 1`, `MftOnly = 2`, `WalkOnly = 3` | git-wizard `EnumerationDiscovery.cs` and `MftIndexSession.cs` (`--no-mft` is WalkOnly, otherwise Automatic); file-wizard `ScannerState.CreateRoot`; Watch sample `--producer` |
+| Add `FileIndexOptions.Producer` | `MFTLib.Index.FileIndexOptions :: property public Producer { get; init; } : MFTLib.Index.ProducerSelection` | same callers |
+| Add `RootStatus.Producer` | `MFTLib.Index.RootStatus :: property public Producer { get; init; } : MFTLib.Index.ProducerKind?` | git-wizard `MftIndexCacheStatusFormatter.cs` and discovery output; file-wizard `FileIndexHost.cs` drive card |
+| Add `RootStatus.MftUnavailable` | `MFTLib.Index.RootStatus :: property public MftUnavailable { get; init; } : MFTLib.Index.MftUnavailableReason?` | file-wizard `DriveDiscovery.SkipReason` text; git-wizard discovery diagnostics |
+| Add `MftUnavailableReason` | type line as for `ProducerSelection`; fields `PlatformWithoutMft = 1`, `VolumeNotReady = 2`, `NotLocalVolume = 3`, `NotNtfs = 4`, `NoMftSource = 5`, `BrokerUnavailable = 6`, `ElevationDeclined = 7` | same callers |
+| Replace `RootFailureKind.MftSourceMissing = 4` | `MFTLib.Index.RootFailureKind :: field public const MftUnavailable : MFTLib.Index.RootFailureKind = 4` | git-wizard and file-wizard failure display (switch on `RootFailureKind`) |
+| Add `WindowsVolume.EnumerateAll` | `MFTLib.Index.WindowsVolume :: method public static EnumerateAll() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>` | file-wizard `DriveDiscovery.cs:61`; Watch `SampleHost.Drives.cs:14` |
+| Change `FileIndexOptions.Root` | `... property public Root { get; init; } : MFTLib.Index.RootKey?` | |
+| Delete `IndexedRoot` | every `MFTLib.Index.IndexedRoot ::` line (15 lines, including `EnumerateWindowsVolumes`, `FromDirectory`, `FromWindowsDrive`) | |
+
+`MFTLib.Tests/PublicSurface/MFTLibTestExtensions.approved.txt`: delete both `MFTLibTestExtensions.SyntheticIndexedRoot ::`
+lines; add `MFTLibTestExtensions.SyntheticVolumeFacts :: type public static class` and
+`MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Apply(MFTLib.Index.FileIndexOptions options, uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default) : MFTLib.Index.FileIndexOptions`
+(per B1; callers MFTLib.Tests, and git-wizard and file-wizard tests replacing `SyntheticIndexedRoot.Create`).
+
+`MFTLib.Tests/PublicMemberCallerTests.cs`: delete the `IndexedRoot.FromDirectory` exemption. Every added member has a
+sample caller (Task 4.7), so no exemption is added.
+
+## Decisions this slice makes (spec silent)
+
+1. **Order of eligibility checks** (first failure wins): `PlatformWithoutMft`; no drive letter for the root's volume
+   (UNC, unlettered mount point) is `NotLocalVolume`; `VolumeNotReady`; drive type other than fixed or removable is
+   `NotLocalVolume`; format not `NTFS` by `OrdinalIgnoreCase` is `NotNtfs`; null `MftSource` is `NoMftSource`.
+   `WindowsVolume.IsIndexable` is the same function with a source assumed present.
+2. **Existence before selection.** A root directory missing at open settles `Offline` with `Producer` null, exactly
+   as today; selection runs only for an existing root. `Producer` is null only in that state. Unreadable volume facts
+   (an `IOException`, `UnauthorizedAccessException` or `SecurityException` from the facts reader) are
+   `VolumeNotReady` with serial 0, never an exception from `OpenAsync`.
+3. **MftOnly reports `Producer = Mft` even when ineligible**, because the producer is fixed for the index lifetime.
+   Its open fails before cache lookup; its rescan returns the same `MftUnavailable` failure without touching the
+   source (eligibility is decided once). The null-source case follows orchestrator ruling 2 above.
+4. **A broker launch or elevation failure during a rescan** (producer already fixed to MFT) settles as
+   `RootFailureKind.MftUnavailable` with `Status.MftUnavailable` set to `BrokerUnavailable` or `ElevationDeclined`,
+   keeping any retained block; it never walks. `RootStatus.MftUnavailable` therefore means "the MFT could not be
+   used at the last selection or scan attempt"; a successful MFT publication clears it. `ProducerFailed` stays "the
+   producer ran and failed".
+5. **Cache file names:** an MFT block is named for its volume (`<letter>-<serial>.mlix`) whatever the view's root; a
+   walk block keeps today's name for its root key (`<letter>-<serial>` for a walked volume root, `D<hash>-<serial>`
+   for a directory). Warm start still discards a block whose stored producer differs. The Automatic fallback of a
+   volume root therefore keeps its cache slot; a directory root's fallback releases the volume slot and takes its
+   directory slot.
+6. **Events on a directory view are volume-wide in this slice.** `Changed` delivers every change the watch applies;
+   routing to view scopes is slice 5 ("event routing" is in its file list). The ruling text says so until slice 5
+   rewrites it.
+7. **The anchor ruling is unchanged here.** With one index per block, "the anchor's block is the borrowed block"
+   already rejects every foreign anchor; slice 5 rewrites it per view when two views share a block.
+8. **The verdict cache is shared by a query's parallel partitions**: a row's `inside` bit is published with
+   `Interlocked.Or` before its `known` bit, and readers read `known` with `Volatile.Read` before `inside`; verdicts
+   are deterministic, so concurrent writers agree. The same membership test serves an explicit `Subtree` anchor,
+   replacing `IndexNavigation.IsUnder` in the query engines.
+
+## Shared files with slice 3 (parallel)
+
+| File | Slice 4 change | Slice 3 change |
+| --- | --- | --- |
+| `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md` | "# Slice 4" section | slices 1 to 3 |
+| `MFTLib/Index/FileIndex.RootRuntime.Production.cs` | `ProduceRootBlockCoreAsync`, `Configuration.*` reads | capacity planning; `EnumerationBlockGrowth` moves to `FileIndex.RootRuntime.EnumerationGrowth.cs` |
+| `MFTLib/Broker/Client/BrokerMftBlockProducer.cs` | connect-failure mapping | `MinimumCapacities` onto the target |
+| `Benchmark/BenchmarkRunner.Index.cs` | line 191 root construction | line 129 `NameEntryCapacity` |
+| `MFTLib.Tests/Index/FileIndexMftRescanGrowthTests.cs` (slice 3, new) | migrate its MFT opens to `SyntheticVolumeFacts.Apply` | creates it |
+| `docs/index-format.md`, `CHANGELOG.md` | file name, cache, root key text; changelog lines | Capacity section; one changelog line |
+
+**Merge order:** slice 3 merges first; this slice rebases onto it and migrates `FileIndexMftRescanGrowthTests`
+with Task 4.3's recipe. If this slice lands first, slice 3 rebases instead (its plan says how).
+
+## Review Focus
+
+1. **A removable NTFS drive (USB disk):** Automatic scans its MFT, and `WindowsVolume.IsIndexable` is true for it.
+   Task 4.1 (`ReadVolumeVerdicts_RemovableNtfsIsIndexable`), Task 4.2 (`Automatic_EligibleRemovableVolumeScansTheMft`).
+2. **The user declines the UAC prompt under Automatic:** the index walks, reports `Producer = Enumeration` and
+   `MftUnavailable = ElevationDeclined`, and concurrent opens see one prompt. Task 4.4.
+3. **The directory a view is rooted at is renamed away during a watch, then back:** the view reads `Offline` with no
+   block and empty queries, then `Ready` again, with no exception from any query. Task 4.5.
+4. **An unscoped search of a directory view on a large volume:** cost stays linear in rows, because each
+   directory's ancestry is climbed once per query. Task 4.6 (`Contains_ClimbsEachDirectoryOncePerQuery`).
+5. **A root path typed with other separators or casing** (`t:/SRC/` against the stored `T:\src`): it names the
+   same view on Windows, and `Find` accepts either spelling under the view. Task 4.5.
+
+## File map
 
 | File | Responsibility |
 | --- | --- |
-| Create `MFTLib/Index/NameFolding.cs` | The one fold: invariant simple uppercase per UTF-16 unit, `Rune` for valid pairs |
-| Create `MFTLib/Index/NameHash.cs` | FNV-1a 64 over folded UTF-16LE units (port, folding through `NameFolding`) |
-| Create `MFTLib/Index/NameEntry.cs` | 12-byte explicit-layout entry (port unchanged) |
-| Create `MFTLib/Index/NameView.cs` | Borrowed ASCII or UTF-16 name; ordinal equality, copy, `ToString` (port, ignore-case members removed) |
-| Rewrite `MFTLib/Index/NamePool.cs` | Ordinal interning, lazy-validated `Read`, chain walks, bucket rebuild |
-| Create `MFTLib/Index/NamePoolIntegrity.cs` | Full integrity pass, tests only (not called in production) |
-| Create `MFTLib/Index/BlockFile.Names.cs` | Entry, bucket and pool spans; access counter; diagnostics sink |
-| Modify `MFTLib/Index/BlockLayout.cs`, `BlockHeader.cs`, `BlockFile.cs`, `BlockFile.Layout.cs`, `FileRow.cs`, `RootKey.cs` | Format 8 geometry and the name-id descriptor |
-| Modify `MFTLib/Index/BlockWriter.cs`, `BlockWriter.RowMetadata.cs`, `BlockRowSnapshot.cs` | Interning writes, ordinal rename, growth preserving ids |
-| Create `MFTLib/Index/NamePattern.cs` | A query pattern folded and encoded once; per-entry match with ASCII and UTF-16 paths |
-| Create `MFTLib/Index/NameIdCandidates.cs` | Inline set of four ids, then a rented array |
-| Create `MFTLib/Index/NameQueryMatches.cs` | Entry pass into a bitset, or exact id candidates; row membership test |
-| Create `MFTLib/Index/RowEnumerationResources.cs` | Shared resource owner for `IndexRowEnumerator` copies (port) |
-| Modify `MFTLib/Index/NameMatching.cs`, `SearchEngine.cs`, `LookupEngine.cs`, `RowScanner.cs`, `IndexRowEnumerable.cs`, `IndexRow.cs`, `IndexNavigation.cs`, `FileEntry.cs` | Readers over `NameView` and two-pass matching |
-| Modify `MFTLib/Sources/MftBlockCapacity.cs`, `MFTLib/Index/EnumerationProducer.cs`, `MFTLib/Index/FileIndex.RootRuntime.Production.cs`, `MFTLib/Index/BlockFileCreateOptions.cs` | One pool reservation routine for both producers |
-| Modify `MFTLibTestExtensions/SyntheticBlock.cs`, `SyntheticBlockEditor.cs`; create `MFTLibTestExtensions/SyntheticNamePool.cs` (internal) | Test package forwarding |
-| Create `Benchmark/BenchmarkRunner.IndexStorage.cs`; modify `Benchmark/BenchmarkRunner.cs`, `BenchmarkRunner.Index.cs`, `BenchmarkRunner.EnumerationWalk.cs` | `index-storage` verb; new reservation routine |
-| Tests | `NameFoldingTests`, `NamePoolTests`, `NamePoolValidationTests`, `NameSpellingOracleTests`, `NameQueryLifetimeTests` (new); spike-modified tests ported |
+| Create `MFTLib/Index/ProducerSelection.cs`, `MftUnavailableReason.cs` | Public enums |
+| Create `MFTLib/Index/VolumeFacts.cs` | `VolumeFacts`, `VolumeFactsReader` and the platform reader |
+| Create `MFTLib/Index/MftEligibility.cs` | The one eligibility predicate |
+| Create `MFTLib/Index/WindowsVolume.Discovery.cs` (from `IndexedRoot.Discovery.cs`); modify `WindowsVolume.cs` | `EnumerateAll`, verdicts through the predicate |
+| Create `MFTLib/Index/ResolvedRoot.cs`, `RootResolution.cs` | What an open resolved: key, directories, volume, serial, producer, reason |
+| Create `MFTLib/Index/MftUnavailableException.cs`, `MFTLib/Broker/Client/BrokerLaunchDeclinedException.cs`, `BrokerEndedException.cs` | Typed launch failures |
+| Create `MFTLib/Index/ViewRoot.cs`, `SubtreeMembership.cs` | View root binding; two-bitset verdict cache |
+| Delete `MFTLib/Index/IndexedRoot.cs`, `IndexedRoot.Directory.cs`, `IndexedRoot.Windows.cs`, `IndexedRoot.Discovery.cs`, `MFTLibTestExtensions/SyntheticIndexedRoot.cs` | |
+| Create `MFTLibTestExtensions/SyntheticVolumeFacts.cs` | Test-package forwarding to the facts seam |
+| Modify `FileIndexOptions.cs`, `RootKind.cs`, `RootStatus.cs`, `RootFailureKind.cs`, `RootFailure.cs`, `ScanShape.cs`, `MftDumpSourceIdentity.cs`, `RootBlock.cs`, `FileIndex.cs`, `FileIndex.Queries.cs`, `FileIndex.PendingRootResult.cs`, `FileIndex.RootRuntime*.cs`, `LookupEngine.cs`, `SearchEngine.cs`, `IndexRowEnumerable.cs`, `IndexNavigation.cs`, `FileEntry.Navigation.cs`, `FileIndexSet.cs`, `FileIndex.JournalSettings.cs` | Selection, views, implicit subtree |
+| Modify `MFTLib/Broker/Client/BrokerProcess.Launch.cs`, `BrokerSession.cs`, `BrokerMftBlockProducer.cs` | Launch failures become eligibility reasons |
+| Modify samples, `Benchmark/BenchmarkRunner.Index.cs`, `BenchmarkRunner.Memory.cs` | Roots as `RootKey`, `--producer` |
 
-### Task 1.1: The fold routine and the hash
+**Commands:** as slice 3 (`.\scripts\build-windows.ps1 -NoRestore`, `dotnet build` of the test project, `dotnet test
+... --no-build --filter`).
+
+### Task 4.1: Volume facts, the eligibility predicate and `WindowsVolume.EnumerateAll`
 
 **Files:**
-- Create: `MFTLib/Index/NameFolding.cs`, `MFTLib/Index/NameHash.cs`
-- Test: `MFTLib.Tests/Index/NameFoldingTests.cs`
+- Create: `MFTLib/Index/MftUnavailableReason.cs`, `MFTLib/Index/VolumeFacts.cs`, `MFTLib/Index/MftEligibility.cs`,
+  `MFTLib/Index/WindowsVolume.Discovery.cs`
+- Modify: `MFTLib/Index/WindowsVolume.cs` (partial; XML for `IsIndexable`, `IsReady`, `Format`), delete
+  `MFTLib/Index/IndexedRoot.Discovery.cs`, `SampleProgram.Watch/SampleHost.Drives.cs:14`, both approved files' rows
+  for `EnumerateAll`, `EnumerateWindowsVolumes` and `MftUnavailableReason`
+- Test: create `MFTLib.Tests/Index/MftEligibilityTests.cs`, `MFTLib.Tests/Index/WindowsVolumeDiscoveryTests.cs` (move
+  `ReadVolumeVerdicts_*` out of `IndexedRootTests.cs`)
 
 **Interfaces:**
-- Produces: `static class NameFolding` with `internal static char Fold(char unit)`,
-  `internal static void Fold(ReadOnlySpan<char> source, Span<char> destination)` (same length; a valid surrogate
-  pair folds through `Rune.ToUpperInvariant`, any other unit through `char.ToUpperInvariant`),
-  `internal static bool IsAscii(ReadOnlySpan<char> text)`.
-- Produces: `static class NameHash` with `internal static ulong Compute(ReadOnlySpan<char> name)` and
-  `internal static ulong Compute(NameView name)` (Task 1.3 adds the `NameView` overload once `NameView` exists).
-  FNV-1a 64 (`14695981039346656037`, prime `1099511628211`) over the folded units, low byte then high byte, as
-  in the spike's `NameHash.cs`.
+- `public enum MftUnavailableReason : uint` with the seven values above, each with an XML line.
+- `internal readonly record struct VolumeFacts(bool PlatformHasMft, VolumeKey? Volume, string? VolumeRootDirectory,
+  uint VolumeSerial, bool IsReady, DriveType DriveType, string? Format)`.
+- `internal delegate VolumeFacts VolumeFactsReader(RootKey root, string rootDirectory);`
+- `static class PlatformVolumeFacts { internal static VolumeFacts Read(RootKey root, string rootDirectory) }`:
+  Windows reads the volume path (`HandleBoundFile.VolumePathOf`), its letter, `DriveInfo` type, readiness and format,
+  and the serial (`GetVolumeInformationW`, moved from `IndexedRoot.Windows.cs`); the three exception kinds of
+  decision 2 give `IsReady = false`. Elsewhere `PlatformHasMft = false`, serial 0. Reads no `MftSource`, opens no
+  volume handle.
+- `static class MftEligibility { internal static MftUnavailableReason? Evaluate(in VolumeFacts facts, bool hasMftSource) }`
+  in decision 1's order.
+- `public static IReadOnlyList<WindowsVolume> WindowsVolume.EnumerateAll()` (`[SupportedOSPlatform("windows")]`) and
+  `internal static IReadOnlyList<WindowsVolume> ReadVolumeVerdicts<T>(...)` (moved). Readiness and format are read for
+  fixed and removable roots; `IsIndexable = MftEligibility.Evaluate(facts, hasMftSource: true) is null`; the
+  `removable` reason is deleted.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```csharp
-[TestMethod] public void Fold_EveryAsciiPair_AgreesWithAsciiEqualsIgnoreCase()
-// for a in 0..127, b in 0..127:
-//   Assert.AreEqual(Ascii.EqualsIgnoreCase([ (byte)a ], [ (byte)b ]), NameFolding.Fold((char)a) == NameFolding.Fold((char)b));
-//   and NameFolding.Fold((char)a) is ASCII.
-[TestMethod] public void Fold_EveryBmpUnit_HashesAsItsFold()
-// for u in 0..0xFFFF: Assert.AreEqual(NameHash.Compute([NameFolding.Fold((char)u)]), NameHash.Compute([(char)u]));
-// lone surrogates (0xD800..0xDFFF) fold to themselves.
-[TestMethod] public void Fold_EverySupplementaryScalar_StaysSupplementaryAndHashesAsItsFold()
-// for scalar in 0x10000..0x10FFFF: folded = NameFolding.Fold(pair) has length 2, is a valid pair,
-// and NameHash.Compute(folded) == NameHash.Compute(pair).
-[TestMethod]
-[DataRow("ı", "I")]   // dotless i
-[DataRow("ſ", "S")]   // long s
-[DataRow("café", "CAFÉ")]
-public void Fold_NonAsciiThatFoldsToAscii(string input, string expected)
-[TestMethod] public void Compute_IsCaseInsensitiveAndStable()
-// NameHash.Compute("Makefile") == NameHash.Compute("MAKEFILE"); pin NameHash.Compute("a") to its literal FNV value
-// computed once from the formula (write the literal into the test).
+// MftEligibilityTests: one eligible baseline (Windows, T, ready, Fixed, "NTFS", source) and each departure
+[DataRow("Platform", MftUnavailableReason.PlatformWithoutMft)]
+[DataRow("NoLetter", MftUnavailableReason.NotLocalVolume)]
+[DataRow("NotReady", MftUnavailableReason.VolumeNotReady)]
+[DataRow("Network", MftUnavailableReason.NotLocalVolume)]
+[DataRow("Optical", MftUnavailableReason.NotLocalVolume)]
+[DataRow("ExFat", MftUnavailableReason.NotNtfs)]
+[DataRow("NoSource", MftUnavailableReason.NoMftSource)]
+public void Evaluate_ReportsTheFirstFailedFact(string departure, MftUnavailableReason expected)
+public void Evaluate_EligibleFixedAndRemovableNtfs_IsNull()        // "ntfs" lower case included
+public void Evaluate_PlatformBeatsEveryOtherReason()                 // every fact bad -> PlatformWithoutMft
+// WindowsVolumeDiscoveryTests (moved cases keep their expectations except removable)
+public void ReadVolumeVerdicts_RemovableNtfsIsIndexable()            // Review Focus 1: IsReady true, Format "NTFS", Reason null
+public void ReadVolumeVerdicts_RemovableNotReadyReportsNotReady()
+[TestCategory("Windows")] public void EnumerateAll_ReportsTheSystemVolumeIndexable()   // Windows-only, Inconclusive elsewhere
 ```
 
-- [ ] **Step 2: Run, expect FAIL** (types missing): `--filter FullyQualifiedName~NameFoldingTests`
-- [ ] **Step 3: Implement** `NameFolding` and `NameHash` as specified in Interfaces.
-- [ ] **Step 4: Run, expect PASS** with the same filter.
-- [ ] **Step 5: Commit** `feat: add the name fold routine and folded name hash` (with this plan file).
+- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MftEligibilityTests|FullyQualifiedName~WindowsVolumeDiscoveryTests"`
+- [ ] **Step 3: Implement**; the Watch sample calls `WindowsVolume.EnumerateAll()`.
+- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicSurfaceTests`.
+  `PublicMemberCallerTests` reports `MftUnavailableReason` unreferenced until Task 4.2's sample edit; run it from
+  Task 4.2 on.
+- [ ] **Step 5: Commit** `feat: read volume facts and decide MFT eligibility in one predicate` (with this plan edit).
 
-### Task 1.2: Format 8 geometry
+### Task 4.2: Producer selection replaces `IndexedRoot` (production code)
 
-One compile unit with Task 1.3: the row descriptor, header and pool change together. Do Task 1.2's test and
-layout steps, then continue into Task 1.3 before building the whole solution; commit once both are green.
+One compile unit with Task 4.3: do both, build, then commit once.
 
 **Files:**
-- Modify: `MFTLib/Index/BlockLayout.cs`, `MFTLib/Index/BlockHeader.cs`, `MFTLib/Index/RootKey.cs`,
-  `MFTLib/Index/BlockFileCreateOptions.cs`, `MFTLib/Sources/MftBlockCapacity.cs`, `MFTLib/Index/EnumerationProducer.cs`,
-  `MFTLib/Index/FileIndex.RootRuntime.Production.cs:94-110` (initial plan only; growth stays as is),
-  `Benchmark/BenchmarkRunner.Index.cs:129-130`, `Benchmark/BenchmarkRunner.EnumerationWalk.cs:160-161`,
-  `MFTLibTestExtensions/SyntheticBlock.cs:126-127`
-- Create: `MFTLib/Index/NameEntry.cs` (port)
-- Test: `MFTLib.Tests/Index/BlockLayoutTests.cs`, `BlockHeaderTests.cs`, `RootKeyTests.cs`, `BlockRootKeyStorageTests.cs`
+- Create: `MFTLib/Index/ProducerSelection.cs`, `MFTLib/Index/ResolvedRoot.cs`, `MFTLib/Index/RootResolution.cs`,
+  `MFTLibTestExtensions/SyntheticVolumeFacts.cs`
+- Delete: `MFTLib/Index/IndexedRoot.cs`, `IndexedRoot.Directory.cs`, `IndexedRoot.Windows.cs`,
+  `MFTLibTestExtensions/SyntheticIndexedRoot.cs`
+- Modify: `MFTLib/Index/FileIndexOptions.cs`, `RootKind.cs:89-106`, `RootStatus.cs`, `RootFailureKind.cs`,
+  `RootFailure.cs:18`, `ScanShape.cs:23`, `MftDumpSourceIdentity.cs:27`, `FileIndex.cs:46-55,105-125`,
+  `FileIndex.PendingRootResult.cs`, `FileIndex.RootRuntime.cs:70-85`, `FileIndex.RootRuntime.Open.cs:13-20`,
+  `FileIndex.RootRuntime.Production.cs:14-58,73,125,131,151`, `FileIndex.RootRuntime.CacheOwnership.cs:33,80`,
+  `FileIndex.RootRuntime.ScanFiles.cs:24,36,75`, `FileIndex.RootRuntime.Publication.cs:15`,
+  `FileIndex.RootRuntime.Status.cs` (`DescribeLocked`, `QueryUsnJournalSettings`),
+  `FileIndex.RootRuntime.WarmStart.cs:25-61`, `Benchmark/BenchmarkRunner.Index.cs:191`,
+  `Benchmark/BenchmarkRunner.Memory.cs:90`, `SampleProgram.Shared/SampleHost.Drive.cs`,
+  `SampleProgram.Direct/SampleHost.Run.cs:94-111`, `SampleProgram.Direct/SampleHost.Verbs.cs:16`,
+  `SampleProgram.Watch/SampleHost.Broker.cs:24,56-60,124,153`, `SampleProgram.Watch/SampleHost.Run.cs`, both approved
+  files (rows in the table above except `EnumerateAll`), `MFTLib.Tests/PublicMemberCallerTests.cs:49`
+- Test: rewrite `MFTLib.Tests/Index/FileIndexProducerSelectionTests.cs` (keep its rescan and invalid-block cases,
+  migrated); create `MFTLib.Tests/Index/FileIndexOptionsValidationTests.cs` (absorbs `IndexedRootTests` admission cases)
 
 **Interfaces:**
-- Produces in `BlockLayout`: `FormatVersion = 8`; `HeaderFieldBytes = 160`;
-  `uint ComputeNamePoolCapacity(uint slotCapacity)` returning `AlignUp(max(1048576, 24 * S), 4096)` clamped to
-  `MaximumNamePoolCapacity = 0x7FFFF000` (so a pool span length fits `int`);
-  `uint ComputeBucketCount(uint entryCapacity)` returning `RoundUpToPowerOf2(max(1024, ceil(E / 4)))`;
-  `long NameEntryRegionOffset(uint slotCapacity)`, `long NameEntryRegionBytes(uint entryCapacity)` (`12 * (E + 1)`
-  page-aligned), `long BucketRegionOffset(uint slotCapacity, uint entryCapacity)`,
-  `long BucketRegionBytes(uint entryCapacity)`, `long NamePoolOffset(uint slotCapacity, uint entryCapacity)`,
-  `long TotalBlockBytes(uint slotCapacity, uint entryCapacity, uint namePoolCapacity)`;
-  `uint DoubleCapacity(uint capacity)` clamps at `int.MaxValue - 1` (room for entry zero).
-  `MinimumNamePoolHeadroomBytes` and the estimate-taking `ComputeNamePoolCapacity(uint estimatedNameBytes)` are
-  deleted. `ComputeSlotCapacity` is unchanged.
-- Produces in `BlockHeader`: offsets 124 `NameEntryCount`, 128 `NameEntryCapacity`, 132 `BucketCount`,
-  136 `NameEntryRegionOffset` (u64), 144 `BucketRegionOffset` (u64), 152 `Reserved` (u64). Root key length at 160,
-  text at 162. `HasConsistentGeometry` checks every offset against the layout for the stored `S`, `E`, `P`;
-  `RowCount <= S`, `NameEntryCount <= E`, `NamePoolUsed <= P`; `S < int.MaxValue`, `E < int.MaxValue`;
-  `BucketCount == ComputeBucketCount(E)`. It does not require `E == S`.
-- `RootKey.MaximumTextUnits = (HeaderRegionBytes - HeaderFieldBytes - sizeof(ushort)) / sizeof(char)` (1,967).
-- `MftBlockCapacity.Plan` returns `(S, ComputeNamePoolCapacity(S))`; `AverageNameBytesPerRow` is deleted.
-  `EnumerationProducer.EstimatedNameBytesPerRow` and `EstimateNamePoolBytes` are deleted; the enumeration initial
-  plan uses `ComputeNamePoolCapacity(slotCapacity)`. Benchmarks use the routine. `SyntheticBlock` uses
-  `Math.Max(ComputeNamePoolCapacity(S), (uint)AlignUp(nameBytes, PageSize))` because its names are arbitrary.
+- `public enum ProducerSelection : uint { Automatic = 1, MftOnly = 2, WalkOnly = 3 }`; XML says the default value is
+  invalid.
+- `FileIndexOptions`: `public RootKey? Root { get; init; }`; `public ProducerSelection Producer { get; init; } =
+  ProducerSelection.Automatic;` `internal VolumeFactsReader? VolumeFacts { get; init; }` (null reads
+  `PlatformVolumeFacts.Read`). `MftSource` XML: a null source is checked last, only when the open must produce (orchestrator ruling 2).
+  `ValidateRoot` returns `RootKey`.
+- `RootKind.PrepareOpenOptions`, all before any side effect: `!Enum.IsDefined(options.Producer)` throws
+  `ArgumentOutOfRangeException` (0 included); a dump source runs `MftDumpSourceIdentity.ValidateOptions`, then
+  `Producer == WalkOnly` throws `ArgumentException("A dump source is an MFT inventory, so FileIndexOptions.Producer cannot be WalkOnly.")`;
+  otherwise a null `Root` throws (today's message) and a default `RootKey` throws `ArgumentException` through
+  `RootKey.Validated()`.
+- `internal sealed record ResolvedRoot`: `RootKey Root`, `string RootDirectory` (normalized host path of the root;
+  dump: its virtual root), `VolumeKey? Volume`, `string? VolumeRootDirectory`, `uint VolumeSerial`,
+  `ProducerKind Producer`, `MftUnavailableReason? MftUnavailable`, `MftIndexSource? MftSource` (non-null exactly when
+  `Producer == Mft` and `MftUnavailable` is null), `bool IsDump`; `RootKey BlockRoot` (MFT: `Volume`; walk: `Root`);
+  `string RenderRootDirectory` (MFT: `VolumeRootDirectory`; walk and dump: `RootDirectory`).
+- `static class RootResolution { internal static ResolvedRoot Resolve(FileIndexOptions prepared) }`: dump from its
+  identity (serial 0, MFT); otherwise `rootDirectory` is the facts' `VolumeRootDirectory` for a volume key and the
+  key text for a directory key, then WalkOnly selects Enumeration with `MftUnavailable` null, Automatic selects MFT or
+  Enumeration with the reason, MftOnly selects MFT with the reason (or null). The facts reader is called once.
+- `RootRuntime(FileIndex index, ResolvedRoot resolved)`; property `ResolvedRoot Resolved` replaces `Configuration`;
+  `Volume => Resolved.Volume ?? throw`; `Kind` and `MatchableRootDirectoryPath` move from `FileIndex`'s constructor
+  to the runtime (Task 4.4 can swap the resolved root during open), and `FileIndex.Kind` and
+  `FileIndex.MatchableRootDirectoryPath` forward to them.
+- `AddRootAsync`: the existence check uses `Resolved.RootDirectory` (dumps skip it, as today); then
+  `Resolved is { Producer: Mft, MftUnavailable: { } reason }` records `Failed` with `RootFailureKind.MftUnavailable`,
+  message `Root {root}: the MFT cannot serve this root ({reason}) and FileIndexOptions.Producer is MftOnly.`, before
+  any cache work. `ProduceRootBlockCoreAsync` returns that same failure for a rescan, picks the walk for Enumeration,
+  and otherwise reads `Resolved.MftSource`; the `MftSourceMissing` branch is deleted.
+- Block naming and creation use `Resolved.BlockRoot` and `Resolved.VolumeSerial`; the MFT request's `Volume` is
+  `Resolved.Volume`; `RootBlock`'s `rootDirectoryPath` is `Resolved.RenderRootDirectory`; `ScanShape.For(ResolvedRoot
+  root, FileIndexOptions options)`; warm start compares with `Resolved.Producer` and `Resolved.RootDirectory`.
+- `RootStatus`: `public ProducerKind? Producer { get; init; }`, `public MftUnavailableReason? MftUnavailable { get; init; }`;
+  `DescribeLocked` sets both (Producer null only for the open-time Offline of decision 2; MftUnavailable per decision 4).
+  `PendingRootResult.MftUnavailable : MftUnavailableReason?`. Class XML lists `Failed` with `MftUnavailable` and a
+  retained block with `ProducerFailed` or `MftUnavailable`.
+- `RootFailureKind.MftUnavailable` (4): "the MFT could not serve this root: MftOnly found it ineligible, or a broker
+  launch or elevation failed; `RootStatus.MftUnavailable` says why".
+- `QueryUsnJournalSettings`: `Resolved is { Producer: Mft, IsDump: false, Volume: { } volume }` queries that volume;
+  a walked root throws `InvalidOperationException` naming the root as walked; a dump keeps today's reason.
+- `SyntheticVolumeFacts.Apply(...)` per B1: returns `options with { VolumeFacts = reader }` (an internal init the test
+  package reaches through `InternalsVisibleTo`, as other forwarders do); `reader` reports `PlatformHasMft` true,
+  ready, `DriveType.Fixed` or `DriveType.Network` from `isLocal`, `"NTFS"` or `"exFAT"` from `isNtfs`, the serial,
+  and the mapping. Throws `ArgumentNullException` for null options and `ArgumentException` when only one of
+  `volume` and `volumeRootDirectory` is set.
+- Samples compile against the new options: Direct opens `Root = new VolumeKey(letter)` with
+  `Producer = ProducerSelection.MftOnly` (it demonstrates MFT scans and never walks) and prints
+  `Producer {status.Producer}`; Watch opens `Root = new VolumeKey(letter)` with Automatic and prints
+  `producer {status.Producer?.ToString() ?? "none"}` plus `MFT unavailable: {reason}` when set. The `resolveRoot`
+  seams (`Func<string, IndexedRoot>`) become `Func<FileIndexOptions, FileIndexOptions> prepareOptions`; production
+  passes `options => options`.
 
-- [ ] **Step 1: Write the failing tests** (port the spike's `BlockLayoutTests` and `BlockHeaderTests` edits, then
-  change them to the final formulas)
+- [ ] **Step 1: Write the failing tests** (`FileIndexProducerSelectionTests`, `FileIndexOptionsValidationTests`; a
+  recording `MftIndexSource` counts producer and watch-source calls; facts through `SyntheticVolumeFacts.Apply` or,
+  for platform and readiness, an internal `VolumeFacts` reader)
 
 ```csharp
-[DataRow(0u, 1024u)] [DataRow(4096u, 1024u)] [DataRow(4097u, 2048u)]
-[DataRow(2147483646u, 536870912u)]
-public void ComputeBucketCount_IsAPowerOfTwoAtOrAboveAQuarterOfTheEntries(uint entries, uint expected)
-
-[DataRow(0u, 1048576u)] [DataRow(43690u, 1048576u)] [DataRow(43691u, 1052672u)]  // 24 * 43691 = 1,048,584 -> next page
-[DataRow(1000000u, 24002560u)]                                                   // 24,000,000 page-aligned
-[DataRow(2147483646u, 0x7FFFF000u)]
-public void ComputeNamePoolCapacity_ReservesTwentyFourBytesPerSlotWithAOneMebibyteFloor(uint slots, uint expected)
-
-public void NameRegions_FollowTheRowsAndSequencesInOrder()    // entry region after sequences, buckets after entries, pool after buckets, all page-aligned
-public void TotalBlockBytes_DependsOnTheEntryCapacityIndependently()  // TotalBlockBytes(S, 2*S, P) > TotalBlockBytes(S, S, P)
-public void Header_FieldOffsetsMatchTheFormat8Table()                 // Marshal.OffsetOf for 124,128,132,136,144,152; size 160
-public void HasConsistentGeometry_RejectsABucketCountOffTheFormula()
-public void HasConsistentGeometry_AcceptsAnEntryCapacityOtherThanTheSlotCapacity()
-public void FromDirectory_AcceptsAt1967UnitsAndRejectsAt1968()       // RootKeyTests: replaces the 1983 case
-public void MftPlan_UsesTheSharedReservationRoutine()                // MftBlockCapacity.Plan(geometry).NamePoolCapacity == ComputeNamePoolCapacity(S)
+[DataRow(MftUnavailableReason.PlatformWithoutMft)] [DataRow(MftUnavailableReason.VolumeNotReady)]
+[DataRow(MftUnavailableReason.NotLocalVolume)] [DataRow(MftUnavailableReason.NotNtfs)]
+[DataRow(MftUnavailableReason.NoMftSource)]
+public async Task Automatic_AnIneligibleVolumeWalksAndReportsTheReason(MftUnavailableReason reason)
+// Ready; Producer Enumeration; MftUnavailable == reason; CurrentBlock header ProducerKind Enumeration; zero source calls
+// (same rows)
+public async Task MftOnly_AnIneligibleVolumeFailsBeforeCacheWork(MftUnavailableReason reason)
+// Failed; Failure.Kind MftUnavailable; MftUnavailable == reason; Producer Mft; no *.mlix in the cache directory; zero calls
+public async Task WalkOnly_TouchesNoMftSource()            // eligible facts, source present: Producer Enumeration, zero calls
+public async Task Automatic_EligibleVolumeScansTheMft()    // Producer Mft, MftUnavailable null, one producer call
+public async Task Automatic_EligibleRemovableVolumeScansTheMft()   // Review Focus 1 (facts DriveType.Removable)
+public async Task Automatic_MidScanFailureFailsAndNeverWalks()
+// producer throws IOException: Failed, ProducerFailed, Producer Mft, MftUnavailable null, no walk block written
+public async Task Rescan_KeepsTheWalkOfAnAutomaticIndex()  // NotNtfs walk; RescanAsync; still Enumeration; zero calls
+public async Task Rescan_OfAnIneligibleMftOnlyIndex_ReturnsTheSameFailureWithoutTheSource()
+public async Task Offline_AtOpen_HasNoProducer()           // missing directory: Offline, Producer null, MftUnavailable null
+public async Task Mft_CacheFileIsNamedForTheVolume()       // "T-<serial>.mlix" for a volume root
+// FileIndexOptionsValidationTests: each throws before the cache directory exists
+[DataRow(0u)] [DataRow(4u)] public async Task UndefinedProducerSelection_IsRejected(uint value)   // ArgumentOutOfRangeException
+public async Task NullRoot_IsRejected()  public async Task DefaultRootKey_IsRejected()
+public async Task Dump_WithWalkOnly_IsRejected()           // ArgumentException naming Producer
+[DataRow(ProducerSelection.Automatic)] [DataRow(ProducerSelection.MftOnly)]
+public async Task Dump_WithAnMftSelection_Opens(ProducerSelection selection)   // Producer Mft
+public void Apply_RejectsAVolumeWithoutItsRootDirectory()  // SyntheticVolumeFacts guard
 ```
 
-- [ ] **Step 2: Implement** the Interfaces above. Port `NameEntry.cs` unchanged from the spike.
-- [ ] **Step 3: Continue into Task 1.3** (the solution does not build until the descriptor and pool change land).
+- [ ] **Step 2: Continue into Task 4.3** (the suite does not compile until the tests migrate).
 
-### Task 1.3: Interned names in the block, ordinal identity
+### Task 4.3: Migrate the suite off `IndexedRoot`
+
+**Files:** every test file the compiler lists (a grep finds about 74 that reference `IndexedRoot`,
+`SyntheticIndexedRoot`, `MftSourceMissing` or a `ProducerKind` producer argument; the largest are `IndexedRootTests` 32,
+`FileIndexScanFinishedTests` 13, `FileIndexProducerSelectionTests` 9, `FileIndexPerRootProducerKindTests` 8,
+`DirectHostTests` 8, `WatchHostModeTests` 8), plus `MFTLib.Tests/TestSupport/IndexTreeFixture.cs`,
+`CheckpointLossFixture.cs`, `TestMftSources.cs`, `TwoRootQueryFixture.cs`, and slice 3's
+`FileIndexMftRescanGrowthTests.cs` when it is on main. Delete `MFTLib.Tests/Index/IndexedRootTests.cs` (its cases live
+in Tasks 4.1 and 4.2).
+
+**Recipe** (keep every behavior assertion unless the row says otherwise):
+
+| Old | New |
+| --- | --- |
+| `SyntheticIndexedRoot.Create(volume, directory, serial, ProducerKind.Mft)` | `Root = volume, Producer = ProducerSelection.MftOnly`, then `SyntheticVolumeFacts.Apply(options, serial, volume: volume, volumeRootDirectory: directory)` |
+| the same with `ProducerKind.Enumeration` | `Producer = ProducerSelection.WalkOnly`, same `Apply` |
+| `SyntheticIndexedRoot.Create(RootKey.FromDirectory(d), d, serial, Enumeration)` | `Root = RootKey.FromDirectory(d), Producer = WalkOnly`, `Apply(options, serial)` |
+| `IndexedRoot.FromDirectory(d)` | `Root = RootKey.FromDirectory(d), Producer = WalkOnly` |
+| `IndexTreeFixture.Root(...)`, `Options(char, uint, ProducerKind, CacheMode?)` | `Root(...)` deleted; `Options(char drive = 'T', uint volumeSerial = 0x0BADF00D, ProducerSelection producer = ProducerSelection.WalkOnly, CacheMode? cacheMode = null)` applies the mapping to `TreeRoot` |
+| `RootFailureKind.MftSourceMissing` | `RootFailureKind.MftUnavailable` with `Status.MftUnavailable == NoMftSource` |
+| a null `MftSource` warm-adopting a cached MFT block (`FileIndexPerRootProducerKindTests.WarmMftRoot_NullSourceNeedsNeitherScanNorWatchUntilStartIsRequested`, `MixedOpen_NullMftSourceFailsOnlyTheRootNeedingAScan`) | keep their behavior under orchestrator ruling 2 (adopt as Mft; the root needing a scan fails `MftUnavailable` with `NoMftSource`, never walks); migrate only the option and failure-kind spelling |
+| `MixedOpen_MftFailureNeverWalksItsTreeAndEnumerationSiblingIsReady` | keep, under MftOnly and under Automatic (both never walk on a producer failure) |
+| `OpenAsync_DirectoryWithMftProducer_IsRejectedBeforeSideEffects` | delete; a directory MFT view is legal (Task 4.5) |
+
+- [ ] **Step 1: Migrate** with the recipe; `grep -rn "IndexedRoot\|MftSourceMissing" --include=*.cs MFTLib MFTLibTestExtensions MFTLib.Tests SampleProgram.* Benchmark`
+  returns nothing.
+- [ ] **Step 2: Build and run**: `.\scripts\build-windows.ps1 -NoRestore`, then the full suite. Expected: 0 failed;
+  `PublicSurfaceTests`, `PublicMemberCallerTests`, `NamespaceBoundaryTests` and `NativeSeamIsolationTests` pass.
+- [ ] **Step 3: Commit** `feat!: select the producer from RootKey and ProducerSelection; delete IndexedRoot`.
+
+### Task 4.4: Broker launch failures are eligibility reasons; Automatic falls back at open
 
 **Files:**
-- Modify: `MFTLib/Index/FileRow.cs`, `BlockFile.cs`, `BlockFile.Layout.cs`, `BlockWriter.cs`, `BlockWriter.RowMetadata.cs`,
-  `BlockRowSnapshot.cs`, `RowScanner.cs`, `FileEntry.cs:182`, `IndexNavigation.cs:52,168`, `LookupEngine.cs` (temporary
-  per-row compare, replaced in Task 1.5), `SearchEngine.cs` (temporary), `NameMatching.cs`
-- Create: `MFTLib/Index/NameView.cs`, `MFTLib/Index/NamePool.cs` (rewrite), `MFTLib/Index/BlockFile.Names.cs`,
-  `MFTLibTestExtensions/SyntheticNamePool.cs`
-- Modify: `MFTLibTestExtensions/SyntheticBlockEditor.cs:163-171`, `MFTLib.Tests/Index/SyntheticBlockBuilder.cs`
-  (`MutateNameDescriptor(uint rowIndex, uint nameId)` replaces the offset/length form)
-- Test: `MFTLib.Tests/Index/NamePoolTests.cs` (port then correct), `BlockWriterTests.cs`, `BlockWriterTests.Rename.cs`,
-  `FileRowTests.cs`, `CapacityExhaustionTests.cs`, `FileIndexEnumerationGrowthTests.cs`, `BlockFileTests.cs`, and every
-  other test file the spike's diff touches (`git diff main...spike/name-dedup --stat` lists them)
+- Create: `MFTLib/Index/MftUnavailableException.cs`, `MFTLib/Broker/Client/BrokerLaunchDeclinedException.cs`,
+  `MFTLib/Broker/Client/BrokerEndedException.cs`
+- Modify: `MFTLib/Broker/Client/BrokerProcess.Launch.cs:53-57`, `MFTLib/Broker/Client/BrokerSession.cs` (`ThrowIfEnded`),
+  `MFTLib/Broker/Client/BrokerMftBlockProducer.cs:38-53`, `MFTLib/Index/FileIndex.RootRuntime.Production.cs`
+  (`ProduceRootBlockCoreAsync`), `FileIndex.RootRuntime.Open.cs` (`AddRootAsync`), `ResolvedRoot.cs`
+- Test: create `MFTLib.Tests/Index/FileIndexMftFallbackTests.cs`; add to `MFTLib.Tests/BrokerMftBlockProducerTests.cs`
 
 **Interfaces:**
-- `FileRow`: offset 8 `uint NameId`, 12 `ushort Reserved`, 14 `RowFlags Flags`;
-  `static ulong ReadDescriptorWord(ref readonly FileRow row)`, `static void WriteDescriptorWord(ref FileRow row, uint nameId, RowFlags flags)`
-  (clears reserved bits), `static uint DescriptorNameId(ulong)`, `static RowFlags DescriptorFlags(ulong)`.
-  `DescriptorNameOffsetBytes` and `DescriptorNameLengthUnits` are deleted.
-- `BlockFile` (internal): `uint NameEntryCapacity`, `uint BucketCount`, `uint NameEntryCount` (volatile read),
-  `void PublishNameEntryCount(uint)`, `Span<NameEntry> NameEntries` (length `E + 1`), `Span<uint> Buckets`,
-  `Span<byte> GetNamePoolBytes(uint offset, int length)`. `NamePoolCharacters` is deleted.
-  `InitialHeader` sets `E = S` and `BucketCount = ComputeBucketCount(E)`. `TryAdoptPublishedCursors` also checks
-  `E`, `BucketCount` and `NameEntryCount <= E`.
-- `readonly ref struct NameView(ReadOnlySpan<byte> bytes, bool isUtf16)`: `IsUtf16`, `Length`, `IsEmpty`,
-  `AsciiBytes`, `Utf16Characters`, `this[int]`, `bool EqualsOrdinal(ReadOnlySpan<char> name)`,
-  `void CopyTo(Span<char>)`, `string ToString()`. No ignore-case members: ignore-case goes through `NamePattern`
-  (Task 1.5) or `NameFolding`.
-- `NamePool` (internal static): `MaximumNameLengthUnits = 32767`;
-  `NameView Read(BlockFile block, uint nameId)`; `NameView ReadRowName(BlockFile block, uint rowIndex)`;
-  `bool TryFindOrdinal(BlockFile block, ReadOnlySpan<char> name, out uint nameId)`;
-  `bool TryGetOrAdd(BlockFile block, ReadOnlySpan<char> name, out uint nameId)`;
-  `void RebuildBuckets(BlockFile block)`;
-  `ChainWalker WalkChain(BlockFile block, ulong hash)` yielding ids by `Next` with the termination and bounds rules
-  of Task 1.4 (a `ref struct` with `bool MoveNext(out uint nameId, out NameEntry entry)`).
-  Identity: walk the chain for `hash`, compare `HashTag`, then `NameView.EqualsOrdinal`. A hit returns the existing
-  id even when entries or pool are full. A miss checks `NameEntryCount < E` and pool room, writes bytes (ASCII one
-  byte per unit, else UTF-16LE at an even offset), then the entry with `Next` = current head, then
-  `PublishNamePoolUsed`, `PublishNameEntryCount`, then `Volatile.Write` of the bucket head.
-- `BlockWriter.TryRenameRow`: when `currentName.EqualsOrdinal(name)` only the parent changes; otherwise intern and
-  publish the new id with the flags in one descriptor store. A case-only rename therefore swaps the id.
-- `BlockRowSnapshot`: copies used rows, sequences, entries `0..NameEntryCount` and pool bytes in 16 MiB chunks;
-  `RestoreInto` requires `target.E >= NameEntryCount`, copies, publishes counts and calls `RebuildBuckets`.
-- `SyntheticNamePool` (internal, test package): forwards `TryGetOrAdd`, `TryFindOrdinal`, `Read`, `ReadRowName`,
-  `Hash`, and (Task 1.4) `CheckIntegrity`, and (Task 1.5) `EnumerateRows`.
+- `internal sealed class MftUnavailableException(MftUnavailableReason reason, string message, Exception? innerException = null) : InvalidOperationException`
+  with `Reason`. Lives in `MFTLib.Index` so the index catches it without referencing the broker.
+- `internal sealed class BrokerLaunchDeclinedException(string message) : InvalidOperationException`, thrown by
+  `BrokerProcess.LaunchAsync` when the launcher returns false (today's message);
+  `internal sealed class BrokerEndedException(string message) : InvalidOperationException`, thrown by
+  `BrokerSession.ThrowIfEnded` (today's message). Public callers still see `InvalidOperationException`.
+- `BrokerMftBlockProducer.ProduceAsync` wraps only the `_connectAsync` call: `BrokerLaunchDeclinedException` becomes
+  `MftUnavailableException(ElevationDeclined, ...)`; `TimeoutException` and `BrokerEndedException` become
+  `BrokerUnavailable`; every other exception and everything after connect propagate unchanged (`ProducerFailed`).
+- `ProduceRootBlockCoreAsync` catches `MftUnavailableException` ahead of its general catch and returns
+  `ScanFailureKind = MftUnavailable`, `MftUnavailable = exception.Reason`, the exception's message.
+- `ResolvedRoot AsWalk(MftUnavailableReason reason)`: Enumeration, the reason, `MftSource` null.
+- `AddRootAsync`: when the open's scan settles with no block, `ScanFailureKind == MftUnavailable` and
+  `Options.Producer == Automatic`, release canonical ownership, replace `Resolved` with `AsWalk(reason)` (which also
+  resets `Kind` and the matchable path), clear the recorded failure, and run the open once more as a walk (one
+  retry, never a loop). A rescan never swaps (decision 4).
 
-- [ ] **Step 1: Write the failing tests** (in `NamePoolTests` and `BlockWriterTests.Rename`)
+- [ ] **Step 1: Write the failing tests** (`BrokerSession`'s internal launch-delegate constructor with
+  `CreateIndexSource()`; eligible facts through `SyntheticVolumeFacts.Apply`)
 
 ```csharp
-public void TryGetOrAdd_CaseVariantsAreDistinctEntriesInOneChainWithOneTag()
-// ids for "Makefile" and "makefile" differ; both entries share HashTag and bucket; Read(id).ToString() is each spelling.
-public void TryGetOrAdd_TheSameSpellingReturnsTheSameId()
-public void TryGetOrAdd_AsciiTakesOneBytePerUnitAndNonAsciiIsUtf16AtAnEvenOffset()
-// "a.txt" uses 5 pool bytes; then "café" starts at offset 6 (padded) and uses 8 bytes; IsUtf16 true.
-public void TryGetOrAdd_AnUnpairedSurrogateNameIsStoredUtf16AndReadsBackExactly()   // "\uD800x"
-public void TryGetOrAdd_AHitSucceedsWhenEntriesOrPoolAreFull()
-public void TryGetOrAdd_AMissFailsWhenEntriesOrPoolAreFull()                        // and the writer sets capacity exhausted
-public void Rename_CaseOnly_InternsTheNewSpellingAndSwapsTheId()
-// row "readme.md" renamed to "README.md": FileEntry.Name == "README.md"; NameEntryCount grew by one.
-public void Rename_PeersSharingTheOldNameKeepIt()
-// rows 10 and 11 both "notes.txt"; rename 10 to "Notes.txt"; row 11 still reads "notes.txt" with its old id.
-public void Rename_ParentOnlyMoveKeepsTheDescriptor()
-public void Growth_RestorePreservesIdsAndSpellings()
-// enumeration growth (FileIndexEnumerationGrowthTests): every row's id and Name equal before and after; TryFindOrdinal finds each name in the grown block.
-public void Reopen_PreservesIdsAndSpellings()
-// write case variants across two directories, complete, reopen via SyntheticBlockBuilder.OpenForReading: Names equal input spellings.
+// BrokerMftBlockProducerTests
+[DataRow("Declined", MftUnavailableReason.ElevationDeclined)]
+[DataRow("Timeout", MftUnavailableReason.BrokerUnavailable)]
+[DataRow("Ended", MftUnavailableReason.BrokerUnavailable)]
+public async Task Produce_AConnectFailureIsAnEligibilityReason(string failure, MftUnavailableReason expected)
+public async Task Produce_AnIOExceptionFromConnectPropagatesUnchanged()
+// FileIndexMftFallbackTests
+public async Task Automatic_ElevationDeclined_WalksAndReportsIt()
+// Ready, Producer Enumeration, MftUnavailable ElevationDeclined, Failure null, block header ProducerKind Enumeration
+public async Task Automatic_ConnectTimeout_WalksAsBrokerUnavailable()
+public async Task MftOnly_ElevationDeclined_Fails()        // Failed, MftUnavailable kind and reason, Producer Mft
+public async Task Automatic_ConcurrentOpensThatFallBack_ShareOneLaunch()
+// volumes T and U, launcher gated on a TaskCompletionSource then throwing BrokerLaunchDeclinedException:
+// launcher invoked once; both indexes walk with ElevationDeclined (Review Focus 2)
+public async Task Automatic_DirectoryRootFallback_TakesItsWalkSlotAndReleasesTheVolumeSlot()
+// root T\src: the cache directory holds D<hash>-<serial>.mlix and no T-<serial>.mlix; a second MftOnly open of T owns
+// the volume slot (no private fallback)
+public async Task Automatic_WarmMftBlock_LaunchesNoBroker()   // cached MFT block: Producer Mft, launcher never invoked
+public async Task Rescan_LaunchFailureOnAnMftIndex_KeepsTheBlockAndNeverWalks()
+// Ready, retained MFT block, Failure.Kind MftUnavailable, MftUnavailable ElevationDeclined; a later successful rescan
+// clears Failure and MftUnavailable
 ```
 
-- [ ] **Step 2: Run, expect FAIL** (compile errors are the expected failure here):
-  `--filter "FullyQualifiedName~NamePoolTests|FullyQualifiedName~BlockWriterTests"`
-- [ ] **Step 3: Port** `NameView`, `NamePool`, `BlockFile.Names`, `FileRow`, `BlockFile` and writer changes from the
-  spike, then apply the corrections: ordinal identity (`NamePool.cs:79` in the spike), ordinal rename
-  (`BlockWriter.cs:146-151`), `NameHash` through `NameFolding`, layout calls with `E`. Readers (`RowScanner.CurrentName`
-  returns `NameView`; `FileEntry.Name`, `IndexNavigation` use `.ToString()`). Keep `SearchEngine` and `LookupEngine`
-  compiling with a per-row `NamePattern`-free comparison for now: `SearchEngine.RowMatches` converts with
-  `NameView.ToString()` and calls the existing span `NameMatching.Matches`; Task 1.5 replaces it.
-- [ ] **Step 4: Update the existing tests** the spike updated (layout expectations, descriptor helpers,
-  `SyntheticBlockBuilder.MutateNameDescriptor(row, nameId)`), keeping every behavior assertion.
-- [ ] **Step 5: Build and run**: `.\scripts\build-windows.ps1 -NoRestore`, then
-  `--filter "TestCategory=Smoke|FullyQualifiedName~NamePoolTests|FullyQualifiedName~BlockWriterTests|FullyQualifiedName~BlockLayoutTests|FullyQualifiedName~BlockHeaderTests|FullyQualifiedName~BlockFileTests|FullyQualifiedName~RootKeyTests|FullyQualifiedName~CapacityExhaustionTests|FullyQualifiedName~FileIndexEnumerationGrowthTests"`.
-  Expected: PASS. `BlockFileTests` cases asserting `InvalidNameDescriptor` from row walks may fail here; Task 1.4
-  settles them.
-- [ ] **Step 6: Commit** `feat: store each distinct name once in a dual-width pool (format 8)`.
+- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexMftFallbackTests|FullyQualifiedName~BrokerMftBlockProducerTests"`
+- [ ] **Step 3: Implement** the Interfaces.
+- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~BrokerSession|FullyQualifiedName~BrokerProcessTests`.
+- [ ] **Step 5: Commit** `feat: fall back to a walk when Automatic cannot launch the broker`.
 
-### Task 1.4: Validation split, integrity checker and access counter
+### Task 4.5: Directory roots are MFT views of the volume block
 
 **Files:**
-- Modify: `MFTLib/Index/BlockFile.cs` (delete the row and chain walks from open), `BlockFile.Names.cs`, `NamePool.cs`,
-  `BlockHeader.cs`, the broker section validation that calls header validation (it already validates a private header
-  copy; confirm it calls the same `HasConsistentGeometry`), `FileIndex.RootRuntime.Production.cs` and
-  `FileIndex.RootRuntime.WarmStart.cs` (set the block's diagnostics sink)
-- Create: `MFTLib/Index/NamePoolIntegrity.cs`
-- Modify: `MFTLibTestExtensions/SyntheticNamePool.cs` (add `CheckIntegrity`)
-- Test: create `MFTLib.Tests/Index/NamePoolValidationTests.cs`; modify `BlockFileTests.cs:165,180`,
-  `BlockValidationMatrixTests.cs:109`, `CacheDirectoryInspectionTests.cs:53`, `MFTLib.Tests/SyntheticBlockTests.cs:232-244`
+- Create: `MFTLib/Index/ViewRoot.cs`
+- Modify: `MFTLib/Index/RootBlock.cs`, `LookupEngine.cs` (`Root`, `SelectPathBlock`, `Find`), `FileEntry.Navigation.cs`
+  (`Parent`), `FileIndex.Queries.cs` (`BorrowBlock`, `AdmitQuery`), `FileIndex.RootRuntime.Publication.cs`
+  (`BuildRootBlock`), `FileIndex.RootRuntime.Status.cs` (`DescribeLocked`), `FileIndex.RootRuntime.JournalMutation.cs`
+  (after each applied batch), `FileIndexSet.cs` (constructor)
+- Test: create `MFTLib.Tests/Index/FileIndexDirectoryViewTests.cs`; add to `MFTLib.Tests/Index/FileIndexSetTests.cs`,
+  `MFTLib.Tests/Index/CacheDirectoryInspectionTests.cs`
 
 **Interfaces:**
-- Eager (open and broker section validation, constant cost): magic, version, region offsets equal the layout for
-  stored `S`, `E`, `P`, total size, `RowCount <= S`, `NameEntryCount <= E`, `NamePoolUsed <= P`, `BucketCount`
-  formula, root key, file name, producer, cache tag, scan shape, plus `NamePoolUsed >= NameEntryCount`
-  (orchestrator decision 1). The four name-region checks (`NameEntryCount <= E`, `NamePoolUsed <= P`, `BucketCount`
-  equal to the formula for `E`, `NamePoolUsed >= NameEntryCount`) report `BlockValidationResult.InvalidNameDescriptor`;
-  the other geometry checks keep `InconsistentRegions`.
-- Lazy in `NamePool.Read`: `0 < id <= NameEntryCount`; length nonzero and `<= MaximumNameLengthUnits`; offset plus
-  bytes `<= NamePoolUsed`; UTF-16 offset even. Failure: `DiagnosticsReport.Send(block.Diagnostics, ...)` with a line
-  naming the block path, the id and the failed check, then `throw new InvalidDataException(...)`. Id zero returns an
-  empty view (a row with no name).
-- Chain walk: each step requires `id <= NameEntryCount` and `entry.Next < id`; a failed step ends the walk as not
-  found (no throw, no diagnostics).
-- `BlockFile`: `internal Action<string>? Diagnostics { get; set; }`; `internal long NameRegionAccessCount`
-  incremented (plain, non-atomic) by every `NameEntries`, `Buckets` and `GetNamePoolBytes` access. Exact under one
-  thread; documented as approximate under concurrency.
-- `NamePoolIntegrity.Check(BlockFile block) : string?` returns null or the first failure: every entry valid per
-  `Read`, ASCII entries pass `Ascii.IsValid`, every chain decreasing, every entry's bucket and tag equal its rehash,
-  visited count equals `NameEntryCount` (reachability), every row id `<= NameEntryCount` and reserved bits zero.
-  Not called by production code. `SyntheticNamePool.CheckIntegrity(BlockFile)` forwards to it.
+- `internal sealed class ViewRoot`: `static ViewRoot ForBlockRoot(uint rootRow)` (volume roots, walks, dumps; always
+  present); `static ViewRoot ForDirectory(string path, RootKind kind)`; `bool IsDirectoryView`; `string? MatchablePath`;
+  `bool IsPresent`, `uint Row`, `ushort Sequence` (volatile reads); `bool Refresh(RootBlock rootBlock,
+  CancellationToken cancellationToken)`: keeps the binding when the row is in use, not deleted, its sequence is
+  unchanged and `IndexNavigation.BuildPath(rootBlock, row)` equals the path under `kind.Comparison` (cost: path
+  depth); otherwise re-resolves by descending the path below the volume root from the header's `RootRow`, and
+  publishes row, sequence and presence. Returns presence.
+- `RootBlock(RootKey root, BlockFile block, ViewRoot view, string? rootDirectoryPath = null, MftIndexSource? mftSource = null)`;
+  `RootBlock.View`; `MatchableRootDirectoryPath` is the view's path (what `Find` accepts), `RootDirectoryPath` stays
+  the rendering root (the volume root for MFT, so paths are real full paths).
+- `BuildRootBlock` binds `ForDirectory(Resolved.RootDirectory, kind)` for an MFT root whose key is a directory and
+  `ForBlockRoot` otherwise, and refreshes it once at publication. The pump refreshes after each applied batch under
+  the write gate. `AdmitQuery` refreshes before borrowing (outside the state lock, holding a borrow).
+- `BorrowBlock` lends no block while `View.IsPresent` is false; `DescribeLocked` then reports `RootState.Offline` with
+  `Block` null, the producer facts and the watch status (the block stays mapped and watched).
+- `LookupEngine.Find` returns null for an absent view, matches `View.MatchablePath`, and descends from `View.Row`;
+  `LookupEngine.Root` returns `View.Row`; `FileEntry.Parent` is null when `RowIndex == RootBlock.View.Row`.
+- `FileIndexSet` rejects a member whose root directory lies under another member's (prefix test with the outer
+  member's `RootKind`, equal paths included): `ArgumentException("Root {inner} lies inside root {outer}; the indexes of a FileIndexSet must not nest.")`.
+  Dump members never nest with host paths.
 
-- [ ] **Step 1: Write the failing tests** (`NamePoolValidationTests`)
+- [ ] **Step 1: Write the failing tests** (`FileIndexDirectoryViewTests`: volume `T` mapped to `TreeRoot`, which
+  holds real directories `src` and `other`; a `SyntheticMftProducer` writes rows 5 (root), 30 `src`, 31 `src\a.txt`,
+  32 `other`, 33 `other\b.txt`; the view is `RootKey.FromDirectory(Path.Combine(TreeRoot, "src"))` with Automatic)
 
 ```csharp
-[DataRow("OutOfRangeId")] [DataRow("OddUtf16Offset")] [DataRow("PoolOverrun")] [DataRow("ZeroLength")]
-public void CorruptEntry_OpensThenFailsOnFirstNameRead(string corruption)
-// build with SyntheticBlockBuilder, corrupt through the builder's header/row mutators, OpenForReading succeeds with
-// null validation; ReadRowName throws InvalidDataException; the Diagnostics sink set on the block received one line.
-[DataRow("CyclicNext")] [DataRow("WrongTag")]
-public void CorruptChain_OpensAndExactLookupReturnsNotFoundWithoutLooping(string corruption)
-// TryFindOrdinal returns false (wrong tag: the name is missed, which the spec accepts); the call returns (bounded).
-public void Open_OfALargeBlock_TouchesNoEntryBucketOrPoolRegion()
-// 200,000 rows with distinct names; after OpenForReading, block.NameRegionAccessCount == 0.
-public void IntegrityCheck_PassesForEveryWriterProducedBlock()
-// called at the end of NamePoolTests, BlockWriterTests.Rename and the growth and reopen round-trip tests: Assert.IsNull(SyntheticNamePool.CheckIntegrity(block)).
-public void IntegrityCheck_ReportsEachCorruptionKind()
+public async Task Open_ADirectoryOnAnEligibleVolume_IsAnMftViewOfTheVolumeBlock()
+// Producer Mft; Status.Root is the directory key; block header RootRow 5 and root key T; cache file T-<serial>.mlix
+public async Task Find_AcceptsOnlyPathsUnderTheViewRoot()
+// Find(TreeRoot/src/a.txt).Path == that path; Find(TreeRoot/other/b.txt) null; Find(TreeRoot) null
+public async Task Root_IsTheViewRootAndItsParentIsNull()
+public async Task Children_OfTheViewRootAreItsDirectChildren()
+public async Task Watch_RenamingTheViewRootAwayAndBack_GoesOfflineThenReady()
+// scripted journal batches rename row 30 to "src2", then back: Status Offline with Block null and empty queries, then
+// Ready and Find works; no query throws (Review Focus 3)
+public async Task Open_DirectoryAbsentFromTheBlock_IsOfflineUntilTheJournalCreatesIt()
+public async Task RootTextWithOtherSeparatorsAndCase_NamesTheSameView()   // Review Focus 5; casing on Windows only
+public async Task QueryUsnJournalSettings_ServesADirectoryViewAndRefusesAWalk()
+// through UsnJournalSettingsQuery.Dependencies._queryOverride: process-global, so this test lives in a class with
+// [DoNotParallelize] and a cleanup reset (docs/test-isolation.md)
+// FileIndexSetTests
+public async Task Constructor_RejectsNestedRoots()   // T with T\src, and src with src\deeper: ArgumentException naming both
+public async Task Constructor_AcceptsSiblingViews()  // src and other
+// CacheDirectoryInspectionTests
+public async Task InspectCached_ListsADirectoryViewsMftBlockUnderItsVolumeOnly()
+// InspectCached under VolumeKey T lists the block; under the src directory key lists none
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter FullyQualifiedName~NamePoolValidationTests`
-- [ ] **Step 3: Implement** the split. Delete `BlockFile.ValidateNameDescriptors` and `NamePool.ValidateBuckets`.
-  Route the four name-region checks to `InvalidNameDescriptor` (orchestrator decision 1).
-  `SyntheticBlockTests`, `BlockValidationMatrixTests:109` and `CacheDirectoryInspectionTests:53` keep their
-  expectation. `BlockFileTests:165,180` replace their row-descriptor corruption with the four eager checks (one case
-  each: entry count over `E`, pool used over `P`, wrong bucket count, pool used below entry count). Add a
-  `NamePoolValidationTests` case asserting a corrupt per-entry descriptor no longer rejects at open. Update the
-  `InvalidNameDescriptor` XML comment to say it reports inconsistent name-region geometry in the header.
-- [ ] **Step 4: Wire the sink**: wherever the root runtime creates or adopts a `BlockFile`, set
-  `block.Diagnostics = Options.Diagnostics`.
-- [ ] **Step 5: Run, expect PASS**: `--filter "FullyQualifiedName~NamePoolValidationTests|FullyQualifiedName~BlockFileTests|FullyQualifiedName~BlockValidationMatrixTests|FullyQualifiedName~CacheDirectoryInspectionTests|FullyQualifiedName~SyntheticBlockTests|FullyQualifiedName~NamedBlockSectionLayoutTests"`
-- [ ] **Step 6: Commit** `feat: validate name reads lazily and keep block open constant-cost`.
+- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexDirectoryViewTests|FullyQualifiedName~FileIndexSetTests|FullyQualifiedName~CacheDirectoryInspectionTests"`
+- [ ] **Step 3: Implement** the Interfaces. Unscoped queries are narrowed in Task 4.6, which owns those tests.
+- [ ] **Step 4: Run, expect PASS** with the same filter plus `FullyQualifiedName~FileIndexWatch`.
+- [ ] **Step 5: Commit** `feat: open a directory root on an NTFS volume as a view of the volume block`.
 
-### Task 1.5: Two-pass queries with folded patterns
+### Task 4.6: Implicit subtree with the two-bitset verdict cache
 
 **Files:**
-- Create: `MFTLib/Index/NamePattern.cs`, `MFTLib/Index/NameIdCandidates.cs`, `MFTLib/Index/NameQueryMatches.cs`,
-  `MFTLib/Index/RowEnumerationResources.cs`
-- Modify: `MFTLib/Index/NameMatching.cs`, `SearchEngine.cs`, `LookupEngine.cs:132-150`, `IndexRowEnumerable.cs`,
-  `IndexRow.cs`, `MFTLibTestExtensions/SyntheticNamePool.cs` (add `EnumerateRows`)
-- Test: create `MFTLib.Tests/Index/NameSpellingOracleTests.cs` (replaces the spike's `NameDedupSearchTests.cs`),
-  `MFTLib.Tests/Index/NameQueryLifetimeTests.cs`; port the spike's `FileIndexEnumerateRowsTests.cs` additions
+- Create: `MFTLib/Index/SubtreeMembership.cs`
+- Modify: `MFTLib/Index/SearchEngine.cs` (`RootScan`, `SearchOneRoot`, the partition loop at 170-200, `EnumerateRoot`),
+  `MFTLib/Index/IndexRowEnumerable.cs:70-130,214` (membership and the unfiltered fast path), `MFTLib/Index/IndexNavigation.cs`
+  (delete `IsUnder` once unused)
+- Test: create `MFTLib.Tests/Index/SubtreeMembershipTests.cs`
 
 **Interfaces:**
-- `sealed class NamePattern` built once per query from `SearchQuery`: holds the original text, its fold
-  (`NameFolding.Fold`), `byte[]? OriginalAscii` (null when the original is not ASCII), `byte[]? FoldedAscii` (null when
-  the fold is not ASCII), the mode and the case setting. `bool Matches(NameView name, ref char[] scratch)`:
-  - ASCII entry, case-sensitive: `OriginalAscii` null means no match; exact `SequenceEqual`; substring
-    `ReadOnlySpan<byte>.IndexOf`; glob over bytes.
-  - ASCII entry, ignore case: `FoldedAscii` null means no match (constant time); exact `Ascii.EqualsIgnoreCase`;
-    substring `IndexOfAny(upper, lower)` of the first byte, then `Ascii.EqualsIgnoreCase` on the candidate window,
-    repeating from the next position; glob over bytes comparing ASCII uppercase.
-  - UTF-16 entry: case-sensitive ordinal ops on the characters against the original; ignore case folds the entry
-    into `scratch` (grown as needed) and runs ordinal ops against the fold.
-  - The recipe splits by `CaseSensitive` and `MatchMode`. Only ignore-case comparisons use the fold. Every
-    case-sensitive comparison (exact, substring, glob) uses the original pattern's units or bytes, so a
-    case-sensitive substring is an ordinal `IndexOf` of the original bytes. Glob is always wildcard matching, using
-    the existing iterative last-star backtracking algorithm over `ReadOnlySpan<char>` or `ReadOnlySpan<byte>`.
-    Literal runs between wildcards may be located with a vectorized `IndexOf`, but a glob is never reduced to one
-    literal test (`*.cs` is never `IndexOf(".cs")`).
-- `struct NameIdCandidates : IDisposable`: four inline `uint` slots, then an `ArrayPool<uint>` array;
-  `void Add(uint)`, `bool Contains(uint)`, `int Count`, `void Dispose()`.
-- `sealed class NameQueryMatches : IDisposable`, constructed `(BlockFile block, SearchQuery query, CancellationToken)`:
-  checks cancellation before setup; captures `NameEntryCount`.
-  - No pattern: all rows match.
-  - Exact, case-sensitive: walk the chain for `NameHash.Compute(pattern)`; the single ordinal match, if any.
-  - Exact, ignore case: walk the one chain; add every entry with a matching tag whose `NamePattern.Matches` is true.
-    Records `OrdinalMatchId` (the entry equal ordinally to the pattern, or 0) for `Find`.
-  - Substring and glob: rent `ulong[]` of `(count + 64) / 64` words; for ids `1..count`, check cancellation every
-    4096 ids, set the bit when `NamePattern.Matches`.
-  - `bool Matches(in FileRow row)`: id `<= capturedCount` and in the bitset or candidates.
-- `SearchEngine.RowMatches(in FileRow row, NameQueryMatches names, SearchQuery query)`: row columns first, then
-  `names.Matches`. `SearchOneRoot` and `EnumerateRoot` build one `NameQueryMatches` per root under the borrow.
-- `LookupEngine.TryFindChild`: build exact candidates for the segment under the descent's case setting; scan rows
-  for children of `parentRow` whose id is a candidate; return immediately on `OrdinalMatchId`; otherwise return the
-  lowest matching row after the scan (or the first match when `OrdinalMatchId == 0`, which is already lowest).
-- `RowEnumerationResources` (port): owns the active `NameQueryMatches` and the ASCII capture buffer;
-  `int Advance(int version)`, `void ValidateVersion(int)`, `void BeginRoot(BlockFile, SearchQuery, CancellationToken)`,
-  `void EndRoot()`, `ReadOnlySpan<char> Capture(NameView)`. Per orchestrator decision 2, advancing one enumerator copy invalidates
-  older copies with `InvalidOperationException`.
-- `NameMatching` keeps `ThrowIfUndefined` and the span `EqualsName` used by `FileIndex.RootRuntime.WarmStart.cs:49`;
-  the span `Matches`, `ContainsSubstring` and `MatchesGlob(ReadOnlySpan<char>, ...)` are deleted once no caller remains.
+- `internal sealed class SubtreeMembership(BlockFile block, uint anchorRow) : IDisposable`: captures `RowCount`, rents
+  two `ulong[]` of `(RowCount + 63) / 64` words (`known`, `inside`); `bool Contains(uint row)` climbs with
+  `IndexNavigation.TryGetParentRow` up to `BlockLayout.MaximumPathDepth` hops, stopping at the anchor (inside), a
+  known row (its verdict), no parent, or the depth limit (outside), then records the verdict for every row it visited
+  per decision 8; a row at or past the captured count is answered by climbing without caching;
+  `internal long ParentReads` (plain increment, exact single-threaded). `Dispose` returns the arrays.
+- The anchor row is `query.Subtree`'s resolved row when set, else `rootBlock.View.Row` for a directory view, else no
+  membership (every row qualifies). One membership per root scan, shared by its partitions. `IndexRowEnumerable`'s
+  fast path also requires `!View.IsDirectoryView`.
 
-- [ ] **Step 1: Write the failing oracle** (`NameSpellingOracleTests`). The expected name of each row is its input
-  spelling. The oracle for ignore case is ordinal on `NameFolding.Fold` of both sides; for case-sensitive it is
-  ordinal; glob uses the same iterative algorithm over the oracle strings (not `FileSystemName`, whose escape rules
-  differ).
+- [ ] **Step 1: Write the failing tests**
 
 ```csharp
-static readonly (string Directory, string Name)[] Input =
-[
-    ("a", "Makefile"), ("a", "makefile"),            // case-sensitive siblings
-    ("b", "README.md"), ("c", "readme.md"),          // case variants across directories
-    ("a", "café.txt"), ("b", "CAFÉ.TXT"),  // UTF-16 width, both casings
-    ("c", "ındex.js"), ("c", "ſetup.py"),  // folds to ASCII
-    ("a", "index.js"), ("b", "index.js"),            // duplicate spelling, one id
-    ("c", "\uD800lone.bin"),                         // unpaired surrogate
-    ("d", "readme.txt"), ("d", "README.txt"),        // case-sensitive substring pin
-    ("d", "Program.cs"), ("d", "Program.csx"),       // glob pin
-];
-[DataRow(NameMatchMode.Exact, false)] [DataRow(NameMatchMode.Exact, true)]
-[DataRow(NameMatchMode.Substring, false)] [DataRow(NameMatchMode.Substring, true)]
-[DataRow(NameMatchMode.Glob, false)] [DataRow(NameMatchMode.Glob, true)]
-public async Task EveryQueryPath_ReturnsInputSpellingsMatchingTheOracle(NameMatchMode mode, bool caseSensitive)
-// patterns: "makefile", "Makefile", "README.MD", "café", "INDEX", "I", "S", "*.js", "?ndex.*", "\uD800lone.bin", "missing", ""
-// plus "readme" and "*.cs".
-// Assert rows and names equal for SearchEngine.Search, SearchEngine.Enumerate and SyntheticNamePool.EnumerateRows.
-public async Task CaseSensitiveSubstring_UsesTheOriginalPattern()
-// Substring "readme", CaseSensitive: true returns the "readme.txt" row and not "README.txt"; ignore case returns both.
-public async Task Glob_MatchesWildcardsNotALiteralSubstring()
-// Glob "*.cs" under both case settings returns "Program.cs" and not "Program.csx".
-public async Task Find_IgnoreCase_PrefersTheOrdinalSpellingElseTheLowestRow()
-// Find("a\\makefile") under ignore case returns the "makefile" row; Find("a\\MAKEFILE") returns the lower of the two rows.
-public async Task Find_CaseSensitive_TakesTheSingleOrdinalMatch()
-public async Task Children_ReturnInputSpellings()
-public async Task CaseOnlyRename_IsVisibleToEveryQueryMode()
-public async Task Reopen_AndGrowth_PreserveTheOracle()   // run the oracle again after reopen and after an enumeration growth
+public void Contains_AgreesWithTheParentChainOnEveryRow()
+// 2000 synthetic rows with a detached row, a two-row cycle and a 130-deep chain; oracle: a test-local climb
+public void Contains_ClimbsEachDirectoryOncePerQuery()
+// a 100-deep directory chain holding 1000 files at its deepest level; Contains over every row: ParentReads <= rows + 100
+// (Review Focus 4)
+public void Contains_ConcurrentPartitionsAgreeWithASequentialPass()   // Parallel.For over rows vs a fresh sequential pass
+public void Contains_RowPastTheCapturedCount_IsAnsweredWithoutCaching()
+// FileIndexDirectoryViewTests (Task 4.5's fixture)
+public async Task UnscopedQueries_SeeOnlyTheView()   // Search, Enumerate, EnumerateRows for "*.txt": only a.txt
+public async Task ExplicitSubtreeInsideTheView_Narrows()
 ```
 
-- [ ] **Step 2: Write the lifetime tests** (`NameQueryLifetimeTests`, port the spike's cases from
-  `FileIndexEnumerateRowsTests.cs` and add):
+- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~SubtreeMembershipTests|FullyQualifiedName~FileIndexDirectoryViewTests"`
+- [ ] **Step 3: Implement**; every existing `Subtree` test keeps passing.
+- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~SearchEngine|FullyQualifiedName~Subtree|FullyQualifiedName~FileIndexEnumerateRowsTests|FullyQualifiedName~FileIndexSetTests`.
+- [ ] **Step 5: Commit** `feat: scope unscoped queries on a directory view with a verdict cache`.
 
-```csharp
-public void EntryPass_ObservesCancellationEvery4096Entries()     // a token cancelled by a counting callback, not a timer
-public void RenameToANewNameDuringAPass_IsNotMatchedAndDoesNotFault()
-public void AdvancingOneEnumeratorCopy_InvalidatesOlderCopies()
-public void DisposingAnyCopy_ReturnsTheBorrowAndTheBitset()
-```
+### Task 4.7: Samples select the producer and accept any root
 
-- [ ] **Step 3: Run, expect FAIL**: `--filter "FullyQualifiedName~NameSpellingOracleTests|FullyQualifiedName~NameQueryLifetimeTests"`
-- [ ] **Step 4: Implement** the Interfaces. Port `NameQueryMatches`, `RowEnumerationResources` and the
-  `IndexRowEnumerable`/`SearchEngine` changes from the spike, then apply the corrections (ordinal exact, candidate
-  sets, `NamePattern` replacing `NameView.Contains`'s scalar loop at spike `NameView.cs:60-76`).
-- [ ] **Step 5: Run, expect PASS**, then the Smoke tier: `--filter TestCategory=Smoke`
-- [ ] **Step 6: Commit** `feat: match interned names once per query with folded patterns`.
-
-### Task 1.6: `index-storage` benchmark verb
-
-**Files:**
-- Create: `Benchmark/BenchmarkRunner.IndexStorage.cs` (port, without `--keep-name`)
-- Modify: `Benchmark/BenchmarkRunner.cs` (dispatch and usage line)
-- Test: `MFTLib.Tests/BenchmarkRunnerTests.IndexStorage.cs` (port), `MFTLib.Tests/BenchmarkRunnerTests.cs` (usage text)
-
-**Interfaces:** `Task<int> RunIndexStorageAsync(string[] arguments)`, usage
-`Benchmark.exe index-storage --synthetic N`. Builds the block through `MftBlockCapacity.CreateOptions` with
-`ScanShape.ForMft(retainedFileNames: null, includeFreed: false)` (slice 2 rebase: `ScanShape.ForMft(includeFreed: false)`),
-writes with `MftBlockRowWriter.WriteBatches(writer, batches, new MftScanOptions(), null, cancellationToken)`. Timing
-through the runner's injected `TimeProvider`. Prints slot capacity, entry capacity, entry count, pool used and
-capacity, entry used and reserved bytes, bucket bytes, file bytes.
-
-- [ ] **Step 1: Port the tests**, dropping the `--keep-name` cases; add `Run_IndexStorage_WithoutSyntheticCount_PrintsUsage`.
-- [ ] **Step 2: Run, expect FAIL**: `--filter FullyQualifiedName~BenchmarkRunnerTests`
-- [ ] **Step 3: Port the verb.**
-- [ ] **Step 4: Run, expect PASS** with the same filter.
-- [ ] **Step 5: Commit** `feat: add the index-storage benchmark verb`.
-
-### Task 1.7: Documentation and rulings
-
-**Files:** `docs/index-format.md` (Layout, Header, Root key text, Row, Capacity, Name pool sections: port the
-spike's edits, then correct identity, reservation, bucket formula, `E`, the validation split table and "nothing is
-rebuilt or rehashed at open"), `docs/query-lifetime.md` (entry-pass cancellation cadence; enumerator copy rule),
-`docs/architecture.md` (the spike's two-line edit), `docs/api-decisions.md`, `CHANGELOG.md`, and the spec file
-(section 1 "Changed" table).
-
-- [ ] **Step 1: Run the docs-update check** across README, `docs/`, inline XML comments (`FileRow`, `BlockLayout`,
-  `IndexRow`, `IndexRowEnumerator`, `RootKey.FromDirectory`).
-- [ ] **Step 2: Add `api-decisions.md` rulings**: "Names are interned by exact spelling" (exact ordinal identity
-  under the folded hash; ignore-case lookups collect every casing; `Find` prefers the ordinal spelling, else the
-  lowest row; reason: consult converged ruling 2).
-  - "Row enumerator copies share one resource owner": advancing one copy invalidates older copies; reason: rows are
-    already valid only until the enumerator advances, and a per-copy buffer would cost an allocation per copy
-    (orchestrator decision 2).
-  - Note that `BlockValidationResult.InvalidNameDescriptor` now reports eager name-region geometry failures only:
-    the four header checks at open. Entry, row and chain faults are lazy: `InvalidDataException` on read, and not
-    found on a chain walk (ruling 9).
-  - Update the root-key ruling's 1,983 to 1,967.
-  - Do not touch rulings slice 2 owns (retention).
-- [ ] **Step 2a: Amend the spec and query lifetime** in this PR: add a row to the spec's section 1 "Changed" table
-  (`IndexRowEnumerator` copies: advancing one copy invalidates older copies with `InvalidOperationException`), and
-  make `docs/query-lifetime.md`'s enumerator paragraph say the same.
-- [ ] **Step 3: CHANGELOG** under the unreleased 0.3.0 section: format 8, cache blocks rebuilt on first open.
-- [ ] **Step 4: Commit** `docs: describe format 8 names and the two-pass query lifetime`.
-
-### Task 1.8: Slice verification and PR
-
-- [ ] Full build: `.\scripts\build-windows.ps1 -NoRestore`
-- [ ] Full suite: `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build`. Expected:
-  0 failed. Linux runs in CI (`test / linux`); run `./scripts/coverage-linux.sh` under WSL when available.
-- [ ] Public surface: `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests"`
-  passes with no approved-file change.
-- [ ] Rebased onto main after PR 845 merged; the spec amendment applies to the merged spec.
-- [ ] Coverage gate: `.\scripts\run-coverage.ps1 -NonInteractive` then
-  `pwsh -NoProfile -File scripts/test-coverage-status.ps1`.
-- [ ] `aislop scan .`: 100, zero unsuppressed findings; `git diff --check` clean.
-- [ ] Open the PR: body starts `## Problem` (the block stores each occurrence of a name in UTF-16, so storing every
-  name costs more than today's filtered block), lists the corrections applied to the spike, and records the
-  `index-storage` output for `--synthetic 3000000` as counts plus the command (never a log file).
-
----
-
-# Slice 2: Delete retention
-
-**Branch:** `feature/844-delete-retention` from main. Runs in parallel with slice 1. **Meets slice 1 at:**
-`ScanShape` (signature change below; slice 1's benchmark calls `ForMft`), `MftBlockRowWriter`, and the shared files
-listed under slice 1. Second to merge rebases.
-
-**Spec location:** this branch starts before PR 845 (documentation only) merges. Read the spec at the repository
-path on this plan's `Spec:` line from PR 845's branch: `git fetch origin docs/844-design` then
-`git show origin/docs/844-design:docs/superpowers/specs/2026-10-27-issue-844-volume-scan-and-name-encoding-design.md`.
-Rebase onto main once PR 845 lands, before opening the PR.
-
-**Public change:** `FileIndexOptions.RetainedFileNames` and `InProcessBrokerScan.RetainedFileNames` are deleted.
-No member is added, so no consumer-caller naming is needed. git-wizard and file-wizard migrate in their pin bumps
-(slice 6): git-wizard `MftIndexSession.cs` line 161 and `MftIndexCachePolicy.DirectoryScanFileNames`; file-wizard
-any `RetainedFileNames` assignment.
-
-### Task 2.1: Scan shape without retention
-
-**Files:**
-- Modify: `MFTLib/Index/ScanShape.cs`, `MFTLibTestExtensions/SyntheticScanShape.cs`
-- Test: `MFTLib.Tests/Index/FileIndexScanShapeTests.cs`, `MFTLib.Tests/BenchmarkRunnerTests.cs:165-172`,
-  `MFTLib.Tests/BenchmarkRunnerTests.CacheReplacement.cs:28-33`, `MFTLib.Tests/Index/FileIndexCacheTagTests.cs:87`
+**Files:** `SampleProgram.Watch/WatchArguments.cs`, `WatchArguments.Parse.cs`, `SampleHost.Broker.cs`,
+`SampleHost.Drives.cs`, `SampleHost.Verbs.cs`, `SampleHost.WatchDrives.cs`, `SampleHost.Run.cs`;
+`SampleProgram.Direct/SampleHost.Run.cs`; tests `MFTLib.Tests/WatchArgumentsTests.cs`, `WatchHostModeTests.cs`,
+`WatchFirstRunTests.cs`, `DirectHostTests.cs`.
 
 **Interfaces:**
-- `static ulong ScanShape.For(IndexedRoot root, FileIndexOptions options)`: enumeration
-  `ForEnumeration(options.DirectoryWalk, root.RootDirectory)`, MFT `ForMft(options.MftSource?.IncludeFreed ?? false)`.
-- `static ulong ForMft(bool includeFreed)`: u32 producer kind 1, then the include-freed flag byte.
-- `static ulong ForEnumeration(DirectoryWalkOptions walk, string rootDirectory)`: u32 kind 2, pruned names, pruned
-  attributes, dot-directory flag, pruned paths within the root, patterns (today's order, retention removed).
-- `WriteRetention` and `FoldForMft` are deleted.
+- `WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Roots)` (`Drives` renamed; tokens parse with
+  `RootKey.TryParse`, duplicates removed, an unparsable token reports `Root 'X' is neither a drive nor a full path.`);
+  `internal ProducerSelection Producer { get; init; } = ProducerSelection.Automatic`; `--producer automatic|mft|walk`
+  is read by scan, watch, rescan and journal (`VerbFlags`); another value reports
+  `Option --producer must be automatic, mft or walk.`; usage shows `[root ...]` and the flag.
+- Each open sets `Root = root` and `Producer = parsed.Producer`; status lines print the producer and, when set,
+  `MFT unavailable: {reason}`. With no root named, the host picks `WindowsVolume.EnumerateAll()` volumes whose
+  `IsIndexable` is true and says "every ready local NTFS drive". `SMPW` stays 3.
 
-- [ ] **Step 1: Write the failing tests**: `ForMft_DependsOnlyOnIncludeFreed` (`ForMft(false) != ForMft(true)`, each
-  stable across calls); `ForMft_HashesTheProducerKindThenTheFlag` (equals the first eight little-endian bytes of
-  SHA-256 over `01 00 00 00 00`, computed in the test); delete `ReplacementCharacterInARetainedName_...` and
-  `EnumerationRetentionCasingFollowsTheRootComparison`; reduce `ChangingAnMftOption_RecordsWrongScanShapeAndColdScans`
-  to its `includeFreed` cases.
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexScanShapeTests|FullyQualifiedName~BenchmarkRunnerTests"`
-- [ ] **Step 3: Implement** the signatures and update every caller (compiler errors list them).
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** `refactor: drop retention from scan shapes`.
-
-### Task 2.2: The ArmAndScan frame carries the section and include-freed only
-
-**Files:**
-- Modify: `MFTLib/Broker/Protocol/BrokerFrame.cs:65,214-220`, `MFTLib/Broker/Protocol/BrokerProtocol.cs:127-140`,
-  `MFTLib/Broker/Protocol/BrokerProtocol.Write.cs:86-108`, the payload reader's `NullableNameCount` (delete when unused),
-  `MFTLib/Broker/Client/BlockScanTarget.cs:18`, `MFTLib/Broker/Client/BrokerProcess.Scan.cs:46,65-68`,
-  `MFTLib/Broker/Client/BrokerMftBlockProducer.cs:35-64`, `MFTLib/Broker/Host/JournalBrokerHost.Scan.cs:103,117`,
-  `MFTLib/Broker/Host/JournalBrokerHost.Hooks.cs:17`, `MFTLibTestExtensions/ScriptedBrokerResources.cs:50-52`,
-  `MFTLibTestExtensions/InProcessBrokerScan.cs`, `MFTLibTestExtensions/BrokerTestHarness.cs:120`,
-  `MFTLib.Tests/PublicSurface/MFTLibTestExtensions.approved.txt:24`
-- Delete: `MFTLib.Tests/BrokerProtocolTests.Retention.cs`
-- Test: `BrokerProtocolTests.cs`, `.Frames.cs`, `.Scan.cs`, `.MalformedPayloads.cs`, `.GrowUsnJournalFrames.cs`,
-  `BrokerFrameLengthTests.cs`, `BrokerFrameWriteLimitTests.cs`, `BrokerMftBlockProducerProtocolTests.cs`,
-  `BrokerProcessTests.Scan.cs`, `BrokerProcessTests.TestExtensions.cs`, `JournalBrokerHostScanTests.cs`,
-  `JournalBrokerHostChannelTests.cs`, `JournalBrokerHostTests.cs`, `JournalBrokerHostLivenessTests.Progress.cs`,
-  `TestSupport/HostChannelHarness.cs`
-
-**Interfaces:**
-- `static BrokerFrame BrokerFrame.ArmAndScan(string sectionName, bool includeFreed)`.
-- Payload: `[sectionName string][includeFreed byte 0 or 1]`, then `RequireComplete`.
-- `ArmAndScanFrameLength` and `BrokerMftBlockProducer.ValidateRetainedFileNames` are deleted.
-- `JournalBrokerHost.Hooks.ScanStarting : Action<VolumeKey>?`; `ScriptedBrokerResources.RecordScan(VolumeKey volume)`;
-  `InProcessBrokerScan` keeps `Volume` only (internal constructor `(VolumeKey volume)`).
-- `BrokerProcess.ScanOnChannelAsync` loses its retained-names parameter.
-
-- [ ] **Step 1: Write the failing tests**: `ArmAndScan_RoundTripsSectionAndIncludeFreed` (both flag values);
-  `ArmAndScan_TrailingBytesAfterTheFlagAreMalformed` (append a legacy nullable count `00 00 00 00 01` and expect the
-  malformed-payload outcome the suite already asserts for other frames); `ArmAndScan_FrameLengthIsKindSectionAndFlag`
-  (in `BrokerFrameLengthTests`, `1 + 4 + 2 * section.Length + 1` bytes written).
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~BrokerProtocolTests|FullyQualifiedName~BrokerFrameLengthTests"`
-- [ ] **Step 3: Implement**; update the public approval for `InProcessBrokerScan`; fix every caller and test
-  double the compiler lists.
-- [ ] **Step 4: Run, expect PASS**: `--filter "FullyQualifiedName~Broker|FullyQualifiedName~JournalBrokerHost|FullyQualifiedName~PublicSurfaceTests"`
-- [ ] **Step 5: Commit** `refactor: drop retained names from the ArmAndScan frame`.
-
-### Task 2.3: Producers write every record; the option is deleted
-
-**Files:**
-- Modify: `MFTLib/Index/FileIndexOptions.cs:77,94,108-135`, `MFTLib/Index/RootKind.cs:79-113`,
-  `MFTLib/Index/MftIndexSource.cs:25-60`, `MFTLib/Index/MftBlockProducer.cs:66-69` (request field),
-  `MFTLib/Index/FileIndex.RootRuntime.Production.cs:80,134`, `MFTLib/Index/EnumerationProducerOptions.cs:20`,
-  `MFTLib/Index/EnumerationDirectoryReader.cs:8,20-22,50`, `MFTLib/Sources/MftBlockRowWriter.cs`,
-  `MFTLib/Sources/MftBlockScan.cs:28-32`, `MFTLib/Sources/LocalMftBlockProducer.cs:34`,
-  `MFTLib/Sources/MftDumpBlockProducer.cs:70`, `MFTLib/Sources/MftBlockProducerPipeline.cs:10`,
-  `MFTLib/Broker/SharedMemory/IBlockSectionWriter.cs:11`, `RealBlockSectionWriter.cs:13`,
-  `MFTLibTestExtensions/RecordingBlockSectionWriter.cs:26-32`, `MFTLib.Tests/TestSupport/CountingBlockSectionWriter.cs`,
-  `MFTLib.Tests/TestSupport/ScriptedScanSteps.cs`, `MFTLib/MftScanOptions.cs:5` (doc), `MFTLib/Index/BlockValidationResult.cs:43` (doc),
-  `MFTLib.Tests/PublicSurface/MFTLib.Index.approved.txt:175`
-- Delete: `MFTLib/Sources/MftRowSelection.cs`, `MFTLib.Tests/Index/FileIndexRetainedFileNamesAdmissionTests.cs`
-- Test: `MftBlockRowWriterTests.cs`, `Index/EnumerationProducerTests.cs`, `Index/FileIndexProducerSelectionTests.cs`,
-  `MftProducerEndToEndTests.cs`, `LiveScanInvalidFixupTests.cs`, `LiveVolumeSourcesIncludeFreedTests.cs`,
-  `Index/NamedBlockSectionLayoutTests.cs`, `Index/RootKeyTests.cs`, `Index/IndexNavigationTests.cs`
-
-**Interfaces:**
-- `IBlockSectionWriter.Write(..., MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken)`
-  replaces the `MftRowSelection` parameter (spec: include-freed moves onto the scan request);
-  `MftBlockProducerPipeline` carries `MftScanOptions ScanOptions` in place of `Selection`.
-- `MftBlockRowWriter.WriteBatches(BlockWriter writer, IEnumerable<IReadOnlyList<MftRecord>> batches, MftScanOptions scanOptions, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)`;
-  `ShouldKeepRecord` is deleted.
-- `MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null, MftDumpSourceIdentity? dumpIdentity = null, bool includeFreed = false)`.
-- `RecordingBlockSectionWriter.LastRetainedFileNames` is deleted (it is internal; check the approved file).
-
-- [ ] **Step 1: Write the failing tests**: `WriteBatches_WritesEveryInUseRecordWhateverItsName` (files `a.txt`,
-  `.git`, `HEAD` and a directory all become rows); `EnumerationWalk_WritesEveryFileWhateverItsName`; keep the
-  include-freed cases.
-- [ ] **Step 2: Run, expect FAIL** (compile errors until the parameter is gone):
-  `--filter "FullyQualifiedName~MftBlockRowWriterTests|FullyQualifiedName~EnumerationProducerTests"`
-- [ ] **Step 3: Delete** the option, its validation, the source callback, the request and options fields, the filters
-  and `MftRowSelection`; update the approval; fix every caller.
-- [ ] **Step 4: Run, expect PASS** with the filter plus
-  `FullyQualifiedName~FileIndexProducerSelectionTests|FullyQualifiedName~MftProducerEndToEndTests|FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests`.
-- [ ] **Step 5: Commit** `refactor: delete RetainedFileNames; every producer writes every record`.
-
-### Task 2.4: Watch sample drops the retention flags
-
-**Files:** `SampleProgram.Watch/WatchArguments.cs:20-34,39,56`, `SampleProgram.Watch/WatchArguments.Parse.cs:21-27,61-64`,
-`SampleProgram.Watch/SampleHost.Broker.cs:167`; test `MFTLib.Tests/WatchArgumentsTests.cs:207-209,224-225,243-246,303-312`.
-
-**Interfaces:** `VerbFlags` lose `--keep-name` and `--directories-only`; `Usage` loses
-`[--directories-only | --keep-name A,B]`; `Validate` loses its two retention arms and parameters;
-`WatchArguments.CacheTag => new("SMPW", 3)`.
-
-- [ ] **Step 1: Write the failing tests**: `[DataRow(new[] { "watch", "C", "--keep-name", "a" }, "Option --keep-name does not apply to watch.")]`
-  and the same for `--directories-only` (unknown flags already report through `NotApplicable`; confirm the exact
-  existing wording first), `CacheTag_IsSmpw3`; delete the retention-state tests.
-- [ ] **Step 2: Run, expect FAIL**: `--filter FullyQualifiedName~WatchArgumentsTests`
+- [ ] **Step 1: Write the failing tests**: `Parse_ProducerFlag_SelectsTheProducer` (three `DataRow`s),
+  `Parse_UnknownProducer_IsAUsageError`, `Parse_ADirectoryRoot_ParsesAsADirectoryKey` (a temp directory path),
+  `Parse_AnUnparsableRoot_IsAUsageError`, `Watch_PrintsTheProducerAndTheUnavailableReason` (WatchHostModeTests with a
+  NotNtfs facts reader through `prepareOptions`: output contains `producer Enumeration` and `MFT unavailable: NotNtfs`),
+  `Direct_PrintsTheProducer`.
+- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~WatchArguments|FullyQualifiedName~WatchHostModeTests|FullyQualifiedName~DirectHostTests|FullyQualifiedName~WatchFirstRunTests"`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** `refactor: drop the Watch sample's retention flags`.
+- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicMemberCallerTests` (no unreferenced
+  member, no stale exemption).
+- [ ] **Step 5: Commit** `feat: the Watch sample takes any root and a --producer choice`.
 
-### Task 2.5: Documentation and rulings
+### Task 4.8: Documentation and rulings
 
-**Files:** `docs/api-decisions.md` (supersede "Retention is an index option applied by every producer" (line 745);
-narrow "Retained names and pruning share the root comparison" (line 1077) to pruning; edit line 253 (sample-caller
-audit), 578 ("No privacy promise": the filter sentence goes), 738-739, 914-915 (vocabulary)), `docs/architecture.md:59,134,174,238`
-(and its `SMPW` version 2 text to 3), `docs/index-format.md:26,255-300` (scan-shape encodings), `docs/broker-lifetime.md:129`,
-`docs/broker-integration.md:92,123`, `docs/broker-testing.md:87,94`, `README.md:41`, `CHANGELOG.md` (a removal entry; leave
-past release entries as history).
+**Files:** `docs/api-decisions.md`, `docs/architecture.md` (lines 11, 12, 18, 151-164, 210),
+`docs/broker-integration.md` (80, 114, 129-156), `docs/broker-testing.md`, `docs/index-format.md` (11, 223, and the
+"File name" section: MFT blocks are named for their volume), `docs/test-isolation.md:326` (delete the
+`IndexedRoot.Dependencies` row; the facts seam is per options and needs no isolation), `docs/watch-lifetime.md:7`,
+`docs/query-lifetime.md` (implicit subtree; verdict cache), `README.md` (62, 76, 102, 170, 210, 211), `CHANGELOG.md`
+(0.3.0 lines naming `IndexedRoot`, `MftSourceMissing` and `EnumerateWindowsVolumes`), `AGENTS.md:111`
+(`` `IndexedRoot` `` to `` `RootKey` ``, net shorter), the spec's section 1 row for `SyntheticVolumeFacts` (B1).
 
-- [ ] **Step 1: Run the docs-update check**; `grep -rn "RetainedFileNames\|keep-name\|directories-only\|MftRowSelection" --include=*.md --include=*.cs .`
-  returns only `CHANGELOG.md` history lines and `docs/superpowers/` files.
-- [ ] **Step 2: Write the superseding ruling** ("Every MFT index stores every name", owner ruling 3 and 4 of MFTLib
-  issue 844, with the measured reason from ruling 3).
-- [ ] **Step 3: Commit** `docs: remove retention from the contracts`.
+- [ ] **Step 1: Run the docs-update check**; `grep -rn "IndexedRoot\|MftSourceMissing\|EnumerateWindowsVolumes\|FromWindowsDrive" --include=*.md --include=*.cs .`
+  returns only `docs/superpowers/` lines.
+- [ ] **Step 2: Supersede in `api-decisions.md`** (each rewritten in place with the new decision, its reason from
+  MFTLib issue 844 rulings 2 and 3 and owner answers 1 to 3, and a revisit condition):
+  - "One producer enum, selection and observation" becomes **"ProducerSelection selects, ProducerKind observes"**:
+    the three selections, the default invalid, eligibility facts and order (decision 1), fallback only for
+    eligibility reasons including `BrokerUnavailable` and `ElevationDeclined` at an open's cold scan, a mid-scan
+    failure never walks, the producer fixed for the index lifetime, `RootStatus.Producer` (null only when Offline at
+    open) and `MftUnavailable` (decisions 3 and 4), and `IndexedRoot` deleted (owner answer 1). Its old revisit
+    condition ("a choice that cannot identify a block's producer") is the reason.
+  - "OpenAsync validates root keys and producer choices before filesystem side effects": default `RootKey`, undefined
+    `ProducerSelection`, dump with WalkOnly.
+  - "Cold production failures settle per root across both producers" and "Source absence is typed; applications own
+    their wording": `MftUnavailable` with `NoMftSource` replaces `MftSourceMissing`.
+  - "The enumeration producer is a product feature, chosen per root": its rule becomes the eligibility-only fallback.
+  - "Two key types: VolumeKey and RootKey, one method per lifecycle verb": `FileIndexOptions.Root` is a `RootKey?`.
+  - "Windows volume discovery reports every volume with an MFT verdict": `WindowsVolume.EnumerateAll()`;
+    `IsIndexable` is Automatic's predicate, removable NTFS included (owner answer 2); the `removable` reason goes.
+  - "Windows-only annotations sit on the member that reaches Windows": the `FromWindowsDrive` clause goes;
+    `EnumerateAll` carries the annotation.
+  - "Windows volume construction is named for its volume key": deleted (no factory remains; the open reads the serial).
+  - "WindowsVolume.Reason stays as display-only text": the reason list.
+  - "One root per FileIndex, and FileIndexSet for multi-index queries": `Root` is `RootKey?`; `SyntheticVolumeFacts`
+    replaces `SyntheticIndexedRoot`; nested members are rejected (owner answer 3).
+  - Leave "A subtree anchor belongs to the queried index's current root block" (decision 7) and "Block Generation is a
+    per-root change version" for slice 5.
+- [ ] **Step 3: Add rulings** "A directory root on an NTFS volume is an MFT view of the volume block" (view root row
+  and sequence rechecked at publication, after each batch and at query admission; `Offline` and back; `Find` under the
+  view; implicit subtree with the verdict cache; `Parent` null at the view root; real full paths; MFT blocks named for
+  their volume; `Changed` reports every change on the volume) and "Every MFT block is named for its volume"
+  (decision 5), each with reason and revisit condition.
+- [ ] **Step 4: Check budgets**: `wc -m AGENTS.md` below 15000, then
+  `--filter FullyQualifiedName~AgentInstructionsTests`.
+- [ ] **Step 5: Commit** `docs: record producer selection and directory MFT views`.
 
-### Task 2.6: Slice verification and PR
+### Task 4.9: Slice verification and PR
 
-Same checklist as Task 1.8, with the public-surface step expecting exactly the two deletions above. PR body starts
-`## Problem` (retention exists only to shrink a block that format 8 makes small, and it blocks volume sharing), lists
-the consumer migration lines by file, and names no added member.
-
----
-
-# Slice 3: Capacity growth for MFT rescans and independent entry capacity
-
-Expand into tasks when slice 1 merges.
-
-- **Goal:** one `PlanCapacities` routine serves both producers: on rescan each region whose use reached its
-  capacity doubles (rows at `S`, entries at `E`, pool within 510 bytes of `P`), the rest keep the volume plan. Entries
-  get their own growth so a rename-heavy watch that reaches `E` rescans into a block with only `E` doubled.
-- **Depends on:** slice 1 (format 8, `E` in the header and layout).
-- **Files likely touched:** `MFTLib/Index/FileIndex.RootRuntime.Production.cs:94-110,183-184` (today's enumeration-only
-  doubling), `MFTLib/Index/BlockFileCreateOptions.cs` (add `NameEntryCapacity`), `MFTLib/Index/BlockFile.cs`
-  (`InitialHeader` takes `E` from options), `MFTLib/Sources/MftBlockCapacity.cs`, `MFTLib/Broker/Client/BrokerProcess.Scan.cs`
-  and `MFTLib/Sources/MftBlockProducerPipeline.cs` (the plan flows to client-side capacity planning as a minimum),
-  `MFTLib/Index/EnumerationBlockGrowth.cs` (double only exhausted regions, rebuild buckets for the new `E`, ids preserved),
-  `MFTLib/Index/MftBlockProducer.cs` (request carries the minimum plan), broker frames if the section size travels.
-- **Contract points:** spec section 4 rows "MFT rescan growth" and "Bucket count"; the paragraph "Entries are never
-  reclaimed..."; capacity-exhausted flag semantics in `docs/api-decisions.md` "Capacity exhaustion names the state;
-  rescan is the remedy"; `docs/index-format.md` Capacity section.
-- **Verification bar:** `BlockLayoutTests` pin `PlanCapacities` for each exhaustion combination; an MFT rescan after
-  entry, pool and row exhaustion (separately) grows only that region; enumeration mid-walk growth preserves ids and
-  passes `SyntheticNamePool.CheckIntegrity`; the slice-wide checklist of Task 1.8.
-
-# Slice 4: Producer selection and directory MFT views without sharing
-
-Expand into tasks when slice 2 merges (parallel with slices 1 and 3).
-
-- **Goal:** consumers name a `RootKey` and a `ProducerSelection`; the library decides eligibility once at open,
-  falls back to a walk only for eligibility reasons under Automatic, fails with `MftUnavailable` under MftOnly, and
-  reports `RootStatus.Producer` and `RootStatus.MftUnavailable`. A directory root on an NTFS volume is an MFT view
-  of the whole-volume block, rooted at its resolved row. A second same-volume index takes the private fallback until
-  slice 5.
-- **Depends on:** slice 2 (no retention in the shape or the options).
-- **Files likely touched:** delete `MFTLib/Index/IndexedRoot*.cs` (and `IndexedRoot.Discovery.cs`, moving
-  `EnumerateWindowsVolumes` to `WindowsVolume.EnumerateAll`), `MFTLib/Index/FileIndexOptions.cs` (`Root : RootKey?`,
-  `Producer : ProducerSelection`), new `ProducerSelection.cs`, `MftUnavailableReason.cs`, `RootFailureKind.cs`
-  (add `MftUnavailable`, delete `MftSourceMissing`), `RootStatus.cs`, `RootKind.cs` (admission), `ScanShape.For`,
-  `CacheDirectory.Names.cs` (MFT blocks always `<letter>-<serial>.mlix`), `FileIndex.RootRuntime.*` (eligibility, view
-  root row, `Offline` when the directory disappears), `LookupEngine.cs`, `SearchEngine.cs`, `IndexRowEnumerable.cs`
-  (implicit subtree with the two-bitset verdict cache), `FileEntry.cs` (`Parent` null at the view root),
-  `FileIndex.QueryUsnJournalSettings`, `WindowsVolume.cs` (`IsIndexable` is Automatic's predicate),
-  `FileIndexSet.cs` (reject nested members with `ArgumentException`, owner answer 3),
-  `MFTLibTestExtensions/SyntheticIndexedRoot.cs` (delete) and new `SyntheticVolumeFacts.cs`,
-  `SampleProgram.Watch` (`--producer automatic|mft|walk`, roots as `RootKey`, print `Producer` and `MftUnavailable`),
-  `SampleProgram.Shared/SampleHost.Drive.cs:14`, `SampleProgram.Direct` `SampleHost.Run.cs:94-111`, both PublicSurface
-  approvals, `PublicMemberCallerTests`.
-- **Contract points:** spec section 1 (whole table, the default `ProducerSelection` value invalid, validation before
-  side effects, dump with WalkOnly rejected, producer fixed for the index lifetime, shared UAC prompt through
-  `BrokerSession` launch sharing), section 2 "Roots, queries and anchors" minus sharing, section 3 file name and
-  `InspectCached`/`DeleteCached` keying, section 5 (walk producer); owner answers 1, 2 and 3. Rulings superseded in
-  `api-decisions.md`: "One producer enum, selection and observation", "The enumeration producer is a product feature,
-  chosen per root", "Windows volume discovery reports every volume with an MFT verdict", the anchor ruling (per view);
-  new ruling "producer selection".
-- **Verification bar:** each `MftUnavailableReason` through Automatic (walks) and MftOnly (`Failed`); WalkOnly touches
-  no source (a recording source); mid-scan failure stays `Failed` with `ProducerFailed`; producer fixed across rescan;
-  dump with WalkOnly rejected; directory view `Find`, unscoped queries, `Parent` and `Children`; view `Offline` and back;
-  nested `FileIndexSet` members rejected; `FileIndexProducerSelectionTests` rewritten; the PR body names the consumer
-  production caller of every added member (spec section 1 table, third column); Task 1.8 checklist.
+- [ ] Full build and full suite: 0 failed; `NativeSeamIsolationTests` on Windows; Linux through CI and
+  `./scripts/coverage-linux.sh` under WSL when available (on Linux, Automatic over a real directory reports
+  `PlatformWithoutMft` and walks; synthetic facts drive every MFT case).
+- [ ] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests|FullyQualifiedName~NamespaceBoundaryTests"`:
+  approved files differ from main by exactly the rows in "Public surface changes".
+- [ ] Coverage gate (`.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`).
+- [ ] `aislop scan .` 100 with zero unsuppressed findings; `git diff --check` clean; `wc -m AGENTS.md` below 15000.
+- [ ] PR body: starts `## Problem` (a consumer must classify each root and pick the producer itself, git-wizard's
+  `WindowsRootClassifier` already disagrees with MFTLib on removable NTFS, and a directory root can only be walked),
+  cites MFTLib issue 844; a **Public surface** section copying the table above, naming the consumer production caller
+  of every added member; the rulings superseded and added; and **Consumer migration** by file, from spec section 6:
+  git-wizard `WindowsRootClassifier.cs` (delete) and `RepositoryDiscoveryDependencies.cs:31`, `DiscoveryScope.cs`,
+  `MftIndexSession.cs`, `MftIndexSession.Windows.cs`, `EnumerationDiscovery.cs`, `RepositoryDiscoveryCoordinator.cs`,
+  `RepositoryDiscoveryCoordinator.Watch.cs:67`, `Watch/IndexVolumeChangeSource.*`, `GitWizardApi.IndexDiscovery.cs`,
+  `MftIndexCacheStatusFormatter.cs`, and every `SyntheticIndexedRoot.Create` test caller; file-wizard
+  `FileIndexHost.cs`, `IndexSession.cs:37`, `DriveDiscovery.cs`, `ScannerState.cs:28-46`, `DirectoryWalkRoot.cs`,
+  `FileIndexHostOptions.cs:11`, `ScanOperation.HostReplacement.cs:66`, `IndexHostOpening.cs:8`,
+  `RecentChangesBenchmarks.cs:39-43`. Note that a second index on one volume uses the private fallback until slice 5,
+  and that directory views report volume-wide `Changed` events until then.
 
 # Slice 5: Volume scan sharing
 
@@ -803,8 +1038,8 @@ Expand into tasks when slices 3 and 4 merge.
 - **Files likely touched:** split `MFTLib/Index/FileIndex.RootRuntime*.cs` into `VolumeScan*.cs` and `IndexView*.cs`,
   new `VolumeScanRegistry.cs`, `FileIndex.cs`, `FileIndex.Watch*.cs` (requests per view, one watch per scan),
   event routing in the pump, `FileIndex.Rescan*.cs` (coalescing), `RootBlock.cs` and borrow counting,
-  `FileEntry.cs` (carries its view; equality compares view, block, row, sequence), `NativeSeamIsolationTests`,
-  `MFTLibTestExtensions` registry reset helper, `SampleProgram.Watch` `add-root <path>` console command.
+  `FileIndexSet.cs`, `FileEntry.cs` (carries its view; equality compares view, block, row, sequence),
+  `NativeSeamIsolationTests`, `MFTLibTestExtensions` registry reset helper, `SampleProgram.Watch` `add-root <path>` console command.
 - **Contract points:** spec section 2 entire (share key: source instance, `VolumeKey`, serial, cache directory full
   path or `Disabled`, `CacheTag`; lifetime table; event routing including moves across a view boundary as `Renamed`
   to both views; fault fan-out; coalesced rescans; one recovery per scan); `docs/watch-lifetime.md`,

@@ -43,7 +43,8 @@ sealed class BrokerMftBlockProducer
         var target = new BlockScanTarget(request.BlockPath, request.VolumeSerial, request.DeleteOnClose)
         {
             CacheTag = request.CacheTag,
-            ScanShape = request.ScanShape
+            ScanShape = request.ScanShape,
+            MinimumCapacities = request.MinimumCapacities
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
         var result = await process.ScanVolumeAsync(request.Volume, target, options, progress, cancellationToken)

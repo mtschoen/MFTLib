@@ -105,6 +105,7 @@ public sealed class BlockRootKeyStorageTests : IDisposable
             VolumeSerial = Serial,
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = 16,
+            NameEntryCapacity = 16,
             NamePoolCapacity = 4096
         }));
 

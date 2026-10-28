@@ -164,9 +164,10 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | Name byte pool | after buckets | `name pool capacity`, rounded up to a page |
 
 Entry zero is reserved. The header stores the entry capacity `E`, the number of allocatable
-entries excluding that reserved entry; creation sets `E` to the slot capacity `S`, and every
-region offset and size is computed from the stored `S`, `E` and pool capacity `P`. The bucket
-count is the smallest power of two at least `max(1024, ceil(E / 4))`. New bucket heads are zero.
+entries excluding that reserved entry. The volume plan sets `E` to the slot capacity `S`, and a rescan
+or growing walk can create a block with a larger independent `E`. Every region offset and size is computed
+from the stored `S`, `E` and pool capacity `P`. The bucket count is the smallest power of two at least
+`max(1024, ceil(E / 4))`. New bucket heads are zero.
 
 ## Header
 
@@ -195,7 +196,7 @@ count is the smallest power of two at least `max(1024, ceil(E / 4))`. New bucket
 | 112 | scan shape | u64 | Library identity of the row-shaping options; see [Scan shape](#scan-shape) |
 | 120 | access-denied subtree count | u32 | Subtrees the enumeration producer could not enter; zero for MFT blocks |
 | 124 | name entry count | u32 | Published entries, excluding entry zero |
-| 128 | name entry capacity | u32 | Allocatable entries `E`, excluding entry zero; equal to slot capacity when the block is created |
+| 128 | name entry capacity | u32 | Allocatable entries `E`, excluding entry zero; equal to `S` in the volume plan, or larger after independent growth |
 | 132 | bucket count | u32 | `max(1024, ceil(E / 4))` rounded up to a power of two |
 | 136 | name entry region offset | u64 | |
 | 144 | bucket region offset | u64 | |
@@ -402,22 +403,34 @@ other block regions.
 
 ## Capacity
 
-Slot capacity is the estimated row count plus 25 percent or 65536 rows, whichever is larger.
-The name byte pool reserves `P = pageAlign(max(1 MiB, 24 * S))` bytes for that slot capacity `S`, with no second
-headroom, clamped to 2147479552 bytes (`0x7FFFF000`) so every pool span length fits an `int`; one layout routine
-serves the MFT and enumeration producers. The reservation is generous: measured use is 2.7 to 15.2 bytes per slot.
-Exhausting rows, name entries or name bytes sets the capacity-exhausted flag. An enumeration walk does not start again:
-FileIndex copies the exhausted block's used rows, sequence numbers, name entries and name bytes out, disposes
-and deletes it, and restores them into a block with the slot capacity and the pool capacity doubled (the entry
-capacity follows the slot capacity), capped at 2147483646 slots, which leaves room for reserved name entry zero in
-the int-indexed entry span, and at the pool clamp, while the walk continues from its frontier. Row indices and
-name identifiers are unchanged by the copy; bucket chains are rebuilt for the replacement bucket count,
-so no directory is read twice. Growth is geometric, so
-copies are bounded. Only an enumeration tree that still cannot fit at that maximum publishes an
-exhausted block.
-An MFT producer or mutator keeps what fits and the volume remains Ready and queryable.
-Read `RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
-failed or cancelled rescans retain the old block and its flag.
+The volume plan clamps the row estimate to 1,717,986,917 rows, then sets slot capacity `S` to the estimate plus
+25 percent or 65536 rows, whichever is larger. Entry capacity `E` starts equal to `S`. The name byte pool reserves
+`P = pageAlign(max(1 MiB, 24 * S))`, with no second headroom, clamped to 2147479552 bytes (`0x7FFFF000`) so every
+pool span length fits an `int`. One planner serves the MFT and enumeration producers. The reservation is generous:
+measured use is 2.7 to 15.2 bytes per slot.
+
+Exhausting rows, name entries or name bytes sets the capacity-exhausted flag. A clear flag asks for no growth, even
+when a region is full. With the flag set, the header identifies the exhausted regions: entries are exhausted when
+`NameEntryCount >= E`; the pool is exhausted when at most 510 bytes remain; and rows are exhausted when
+`RowCount >= S`, or when neither entries nor pool is exhausted. The row fallback covers a write at a record index
+past `S`, which leaves `RowCount` below `S`. A name of at most 255 UTF-16 units needs at most 510 bytes plus one
+alignment byte, so a pool refusal always leaves at most 510 bytes. When a row refusal coincides with entry or pool
+exhaustion, rows keep the volume plan: fresh MFT geometry already covers every current record.
+
+A rescan computes the volume plan, then doubles only the exhausted regions and applies those values as independent
+minima. Slot and entry capacities clamp at 2147483646, leaving room for reserved name entry zero in the int-indexed
+entry span; the pool clamps at `0x7FFFF000`. Every other region keeps its volume-plan value. For MFT, the index sends
+these minima to the producer, which combines them with fresh volume geometry where that geometry is known.
+
+An enumeration walk grows the same way without starting again: FileIndex copies the used rows, sequence numbers,
+name entries and name bytes out, disposes and deletes the exhausted block, and restores them into a block with only
+the exhausted regions doubled. Row indices and name identifiers are unchanged; bucket chains are rebuilt for the
+replacement `E`, and the walk continues from its frontier without reading a directory twice. Growth is geometric,
+so copies are bounded. Only a tree that still cannot fit at the clamps publishes an exhausted block.
+
+An MFT producer or mutator keeps what fits and the volume remains Ready and queryable. Read
+`RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a
+replacement without it; failed or cancelled rescans retain the old block and its flag.
 
 ## Name entries, byte pool and hash chains
 

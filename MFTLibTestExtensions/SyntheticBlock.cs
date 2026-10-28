@@ -128,6 +128,7 @@ public static class SyntheticBlock
             ProducerKind = options.ProducerKind,
             RootRow = options.RootRow,
             SlotCapacity = slotCapacity,
+            NameEntryCapacity = slotCapacity,
             NamePoolCapacity = namePoolCapacity,
             DeleteOnClose = deleteOnClose,
             CacheTag = options.CacheTag,

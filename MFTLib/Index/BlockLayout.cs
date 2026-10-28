@@ -31,6 +31,12 @@ static class BlockLayout
     /// <summary>Headroom is 25 percent of the estimate or this many rows, whichever is larger.</summary>
     const int MinimumSlotHeadroomRows = 65536;
 
+    /// <summary>Largest estimate whose slot headroom still produces a creatable block.</summary>
+    internal const uint MaximumEstimatedRowCount = 1717986917;
+
+    /// <summary>Pool bytes left after a refusal of any NTFS-length name.</summary>
+    internal const uint NamePoolExhaustionMarginBytes = 510;
+
     /// <summary>Floor of the pool reservation, so a small volume still has room for renames.</summary>
     const long MinimumNamePoolBytes = 1048576;
 
@@ -86,6 +92,42 @@ static class BlockLayout
     {
         var headroom = Math.Max(estimatedRowCount / 4, MinimumSlotHeadroomRows);
         return checked(estimatedRowCount + headroom);
+    }
+
+    /// <summary>
+    ///     Clamps the estimate, computes the volume plan (`S`, `E = S`, and `P` from `S`), then raises
+    ///     each region independently to its required minimum.
+    /// </summary>
+    /// <param name="estimatedRowCount">Rows the producer estimates, clamped to the largest creatable plan.</param>
+    /// <param name="minimum">Regional minima from the block being replaced; <see langword="default" /> asks for the volume plan.</param>
+    /// <returns>The three capacities of the replacement block.</returns>
+    internal static BlockCapacities PlanCapacities(uint estimatedRowCount, BlockCapacities minimum)
+    {
+        var slotCapacity = ComputeSlotCapacity(Math.Min(estimatedRowCount, MaximumEstimatedRowCount));
+        var plan = new BlockCapacities(slotCapacity, slotCapacity, ComputeNamePoolCapacity(slotCapacity));
+        return plan.AtLeast(minimum);
+    }
+
+    /// <summary>
+    ///     Returns no minimum when the capacity flag is clear; otherwise doubles each exhausted region,
+    ///     using rows as the fallback when neither the entry nor pool count reached its exhaustion test.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    internal static BlockCapacities GrowthMinimum(in BlockHeader header)
+    {
+        if (!header.IsCapacityExhausted)
+        {
+            return default;
+        }
+
+        var entriesExhausted = header.NameEntryCount >= header.NameEntryCapacity;
+        var poolExhausted = header.NamePoolCapacity - header.NamePoolUsed <= NamePoolExhaustionMarginBytes;
+        var rowsExhausted = header.RowCount >= header.SlotCapacity || (!entriesExhausted && !poolExhausted);
+        return new BlockCapacities(
+            rowsExhausted ? DoubleCapacity(header.SlotCapacity) : 0,
+            entriesExhausted ? DoubleCapacity(header.NameEntryCapacity) : 0,
+            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
     }
 
     /// <summary>Doubles a capacity while leaving room for reserved name entry zero in an int-indexed span.</summary>

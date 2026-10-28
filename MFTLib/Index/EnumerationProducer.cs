@@ -67,13 +67,18 @@ sealed class EnumerationProducer
                 }
             }
 
-            var estimate = topLevel + (directories * topLevel);
-            return Math.Max(estimate, MinimumEstimatedRowCount);
+            return EstimateFromCounts(topLevel, directories);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return MinimumEstimatedRowCount;
         }
+    }
+
+    internal static uint EstimateFromCounts(uint topLevel, uint directories)
+    {
+        var estimate = topLevel * (directories + 1UL);
+        return (uint)Math.Clamp(estimate, MinimumEstimatedRowCount, BlockLayout.MaximumEstimatedRowCount);
     }
 
     /// <summary>

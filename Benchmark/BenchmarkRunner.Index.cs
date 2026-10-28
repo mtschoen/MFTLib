@@ -127,6 +127,7 @@ public partial class BenchmarkRunner
                 VolumeSerial = 0,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
+                NameEntryCapacity = BlockLayout.ComputeSlotCapacity(rows),
                 NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(BlockLayout.ComputeSlotCapacity(rows)),
                 ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), directory)
             }))

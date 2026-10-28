@@ -146,4 +146,145 @@ public class BlockLayoutTests
         Assert.AreEqual(1u, (uint)ProducerKind.Mft);
         Assert.AreEqual(2u, (uint)ProducerKind.Enumeration);
     }
+
+    [TestMethod]
+    public void PlanCapacities_WithoutAMinimum_IsTheVolumePlan()
+    {
+        Assert.AreEqual(new BlockCapacities(1250000, 1250000, 30003200),
+            BlockLayout.PlanCapacities(1000000, default));
+    }
+
+    [TestMethod]
+    [DataRow(4000000u, 0u, 0u, 4000000u, 1250000u, 30003200u)]
+    [DataRow(0u, 2500000u, 0u, 1250000u, 2500000u, 30003200u)]
+    [DataRow(0u, 0u, 60006400u, 1250000u, 1250000u, 60006400u)]
+    [DataRow(1000u, 1000u, 4096u, 1250000u, 1250000u, 30003200u)]
+    public void PlanCapacities_AMinimumRaisesOnlyItsRegion(uint minimumSlots, uint minimumEntries, uint minimumPool,
+        uint slots, uint entries, uint pool)
+    {
+        var minimum = new BlockCapacities(minimumSlots, minimumEntries, minimumPool);
+        Assert.AreEqual(new BlockCapacities(slots, entries, pool),
+            BlockLayout.PlanCapacities(1000000, minimum));
+    }
+
+    [TestMethod]
+    public void PlanCapacities_AHugeEstimateClampsToACreatableSlotCapacity()
+    {
+        var capacities = BlockLayout.PlanCapacities(uint.MaxValue, default);
+        Assert.AreEqual(int.MaxValue - 1u, capacities.SlotCapacity);
+        Assert.AreEqual(0x7FFFF000u, capacities.NamePoolCapacity);
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_WithoutTheFlag_IsNone()
+    {
+        var header = new BlockHeader
+        {
+            RowCount = 64,
+            SlotCapacity = 64,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096
+        };
+        Assert.AreEqual(default(BlockCapacities), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    [DataRow("Rows")]
+    [DataRow("Entries")]
+    [DataRow("Pool")]
+    public void GrowthMinimum_DoublesOnlyTheRegionAtCapacity(string region)
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            RowCount = 6,
+            SlotCapacity = 64,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096
+        };
+        var expected = region switch
+        {
+            "Rows" => SetRowsAndExpect(ref header, new BlockCapacities(128, 0, 0)),
+            "Entries" => SetEntriesAndExpect(ref header, new BlockCapacities(0, 128, 0)),
+            "Pool" => SetPoolAndExpect(ref header, new BlockCapacities(0, 0, 8192)),
+            _ => throw new ArgumentOutOfRangeException(nameof(region))
+        };
+        Assert.AreEqual(expected, BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_PoolWithMoreThanTheMarginLeft_IsNotExhausted()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            SlotCapacity = 64,
+            NameEntryCount = 64,
+            NameEntryCapacity = 64,
+            NamePoolUsed = 3585,
+            NamePoolCapacity = 4096
+        };
+        Assert.AreEqual(new BlockCapacities(0, 128, 0), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_FlagWithNoRegionAtCapacity_DoublesRows()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            RowCount = 6,
+            SlotCapacity = 64,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096
+        };
+        Assert.AreEqual(new BlockCapacities(128, 0, 0), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_EntriesAndPoolTogether_DoublesBoth()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            SlotCapacity = 64,
+            NameEntryCount = 64,
+            NameEntryCapacity = 64,
+            NamePoolUsed = 3586,
+            NamePoolCapacity = 4096
+        };
+        Assert.AreEqual(new BlockCapacities(0, 128, 8192), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_AtTheClamp_ReturnsTheClampedValue()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            RowCount = int.MaxValue - 1u,
+            SlotCapacity = int.MaxValue - 1u,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096
+        };
+        Assert.AreEqual(new BlockCapacities(int.MaxValue - 1u, 0, 0), BlockLayout.GrowthMinimum(in header));
+    }
+
+    static BlockCapacities SetRowsAndExpect(ref BlockHeader header, BlockCapacities expected)
+    {
+        header.RowCount = header.SlotCapacity;
+        return expected;
+    }
+
+    static BlockCapacities SetEntriesAndExpect(ref BlockHeader header, BlockCapacities expected)
+    {
+        header.NameEntryCount = header.NameEntryCapacity;
+        return expected;
+    }
+
+    static BlockCapacities SetPoolAndExpect(ref BlockHeader header, BlockCapacities expected)
+    {
+        header.NamePoolUsed = header.NamePoolCapacity - BlockLayout.NamePoolExhaustionMarginBytes;
+        return expected;
+    }
 }

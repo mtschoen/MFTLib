@@ -196,7 +196,7 @@ sealed unsafe partial class BlockFile : IDisposable
     public static BlockFile Create(BlockFileCreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.SlotCapacity, options.NamePoolCapacity);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NameEntryCapacity, options.NamePoolCapacity);
         var (mappedFile, view) = OpenMapping(options.Path, FileMode.Create, length, length,
             options.DeleteOnClose ? FileOptions.DeleteOnClose : FileOptions.None);
         return BuildAndInitialize(options, length, mappedFile, view);
@@ -400,13 +400,13 @@ sealed unsafe partial class BlockFile : IDisposable
         header.RootRow = options.RootRow;
         header.SlotCapacity = options.SlotCapacity;
         header.NamePoolCapacity = options.NamePoolCapacity;
-        header.NameEntryCapacity = options.SlotCapacity;
-        header.BucketCount = BlockLayout.ComputeBucketCount(options.SlotCapacity);
+        header.NameEntryCapacity = options.NameEntryCapacity;
+        header.BucketCount = BlockLayout.ComputeBucketCount(options.NameEntryCapacity);
         header.RowRegionOffset = BlockLayout.RowRegionOffset;
         header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(options.SlotCapacity);
         header.NameEntryRegionOffset = (ulong)BlockLayout.NameEntryRegionOffset(options.SlotCapacity);
-        header.BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(options.SlotCapacity, options.SlotCapacity);
-        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity, options.SlotCapacity);
+        header.BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(options.SlotCapacity, options.NameEntryCapacity);
+        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity, options.NameEntryCapacity);
         header.CacheTagFourCc = options.CacheTag.PackedFourCc;
         header.CacheTagVersion = options.CacheTag.Version;
         header.ScanShape = options.ScanShape;

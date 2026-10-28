@@ -37,6 +37,12 @@ sealed record MftBlockProduceRequest
     public bool DeleteOnClose { get; init; }
 
     /// <summary>
+    ///     Regions the index needs larger than the volume plan, from the block a rescan replaces;
+    ///     <see langword="default" /> asks for the plan. A custom producer that plans its own block must honor it.
+    /// </summary>
+    public BlockCapacities MinimumCapacities { get; init; }
+
+    /// <summary>
     ///     Where the producer reports scan progress, taken from <see cref="FileIndexOptions.ScanProgress" />.
     ///     Null when the caller did not ask for progress.
     /// </summary>

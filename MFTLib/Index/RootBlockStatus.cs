@@ -47,7 +47,11 @@ public sealed record RootBlockStatus
     /// </summary>
     public ulong Generation { get; init; }
 
-    /// <summary>A producer write or mutation could not fit; the inventory is incomplete or stale and only a rescan repairs it.</summary>
+    /// <summary>
+    ///     A producer write or mutation could not fit; the inventory is incomplete or stale. A rescan
+    ///     doubles only each exhausted region (rows, name entries or name bytes) and clears this flag
+    ///     when it publishes a replacement without capacity exhaustion.
+    /// </summary>
     public bool IsCapacityExhausted { get; init; }
 
     /// <summary>

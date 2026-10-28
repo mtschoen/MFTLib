@@ -32,9 +32,10 @@ static class MftBlockProducerPipeline
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume, request.Volume,
-            request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
-            new BlockContentIdentity(request.CacheTag, request.ScanShape)));
+        var location = new MftBlockCapacity.FileLocation(request.Volume, request.BlockPath, request.VolumeSerial,
+            request.DeleteOnClose);
+        var block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume, location,
+            new BlockContentIdentity(request.CacheTag, request.ScanShape), request.MinimumCapacities));
         try
         {
             long recordsOmitted = 0;

@@ -87,6 +87,25 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
     }
 
     [TestMethod]
+    public void Create_SizesTheSectionWithTheEntryCapacity()
+    {
+        var options = TestBlocks.Options(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft,
+            SlotCapacity, NamePoolCapacity, rootRow: 5, deleteOnClose: true) with
+        {
+            NameEntryCapacity = 3 * SlotCapacity
+        };
+        var (creator, lifetime) = NamedBlockSection.Create(options, _sectionName);
+        using (lifetime)
+        using (creator)
+        {
+            using var opened = NamedBlockSection.OpenExisting(_sectionName);
+            Assert.AreEqual(BlockLayout.TotalBlockBytes(SlotCapacity, 3 * SlotCapacity, NamePoolCapacity), creator.Length);
+            Assert.AreEqual(creator.Length, opened.Length);
+            Assert.AreEqual(3 * SlotCapacity, opened.NameEntryCapacity);
+        }
+    }
+
+    [TestMethod]
     public void Write_HeaderRewrittenDuringTheWrite_KeepsEveryWriteInItsRegion()
     {
         var (creator, lifetime) = CreateSection();

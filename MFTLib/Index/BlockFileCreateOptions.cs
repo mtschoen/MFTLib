@@ -1,8 +1,9 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Everything needed to lay out a new block file. Capacities are final: a block never
-///     grows, and exhausting either one sets the capacity-exhausted flag instead.
+///     Everything needed to lay out a new block file. Capacities are final: a block never grows;
+///     a rescan or a walk replaces it with a larger block, and exhausting any region sets the
+///     capacity-exhausted flag instead.
 /// </summary>
 sealed record BlockFileCreateOptions
 {
@@ -24,11 +25,11 @@ sealed record BlockFileCreateOptions
     /// </summary>
     public uint RootRow { get; init; }
 
-    /// <summary>
-    ///     Rows the region can hold. Use <see cref="BlockLayout.ComputeSlotCapacity" />. The block's name entry
-    ///     capacity starts equal to this.
-    /// </summary>
+    /// <summary>Rows the region can hold. Use <see cref="BlockLayout.ComputeSlotCapacity" />.</summary>
     public required uint SlotCapacity { get; init; }
+
+    /// <summary>Allocatable name entries, independent of <see cref="SlotCapacity" />; use <see cref="BlockLayout.PlanCapacities" />.</summary>
+    public required uint NameEntryCapacity { get; init; }
 
     /// <summary>Name byte-pool capacity. Use <see cref="BlockLayout.ComputeNamePoolCapacity" /> with the slot capacity.</summary>
     public required uint NamePoolCapacity { get; init; }

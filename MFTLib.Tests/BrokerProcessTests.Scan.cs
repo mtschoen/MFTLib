@@ -42,6 +42,27 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
+    public async Task ScanVolume_TheTargetMinimumSizesTheSection()
+    {
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
+        var baselineResult = await broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+            null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+        using var baseline = baselineResult.Block.Block;
+        var target = TestBlockSections.Target() with
+        {
+            MinimumCapacities = new BlockCapacities(0, 0, 2 * baseline.NamePoolCapacity)
+        };
+
+        var grownResult = await broker.Process.ScanVolumeAsync('C', target, new MftScanOptions(),
+            null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+        using var grown = grownResult.Block.Block;
+
+        Assert.AreEqual(2 * baseline.NamePoolCapacity, grown.NamePoolCapacity);
+        Assert.AreEqual(baseline.SlotCapacity, grown.SlotCapacity);
+        Assert.AreEqual(baseline.NameEntryCapacity, grown.NameEntryCapacity);
+    }
+
+    [TestMethod]
     public async Task ScanVolume_ReportsProgress()
     {
         var reports = new List<BlockWriteProgress>();

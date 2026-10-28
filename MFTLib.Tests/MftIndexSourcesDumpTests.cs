@@ -1,3 +1,5 @@
+using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -85,4 +87,36 @@ public class MftIndexSourcesDumpTests
         Assert.AreNotSame(first, second);
         Assert.AreEqual(first.DumpIdentity, second.DumpIdentity);
     }
+
+    [TestMethod]
+    public async Task DumpProducer_ARequestMinimumRaisesOnlyThatRegion()
+    {
+        using var directory = new TempDirectory("mftlib-dump-minimum");
+        var dumpPath = MftDumpFixture.WriteFile(directory.Path, MftDumpFixture.Standard());
+        var producer = MftIndexSources.FromMftDumpFile(dumpPath, 'D').Producer;
+
+        using var first = (await ProduceAsync(producer, directory.Path, default, TestContext.CancellationToken)).Block;
+        using var second = (await ProduceAsync(producer, directory.Path,
+            new BlockCapacities(0, 2 * first.NameEntryCapacity, 0), TestContext.CancellationToken)).Block;
+
+        Assert.AreEqual(first.SlotCapacity, second.SlotCapacity);
+        Assert.AreEqual(2 * first.NameEntryCapacity, second.NameEntryCapacity);
+        Assert.AreEqual(first.NamePoolCapacity, second.NamePoolCapacity);
+
+        static Task<MftBlockProduceResult> ProduceAsync(MftBlockProducer producer, string directoryPath,
+            BlockCapacities minimum, CancellationToken cancellationToken)
+        {
+            var request = new MftBlockProduceRequest
+            {
+                Volume = 'D',
+                VolumeSerial = 0,
+                BlockPath = Path.Combine(directoryPath, $"{Guid.NewGuid():N}.mlix"),
+                DeleteOnClose = true,
+                MinimumCapacities = minimum
+            };
+            return producer(request, cancellationToken).WaitAsync(HangGuard, cancellationToken);
+        }
+    }
+
+    public TestContext TestContext { get; set; } = null!;
 }

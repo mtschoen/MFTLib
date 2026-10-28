@@ -232,6 +232,39 @@ public class BlockFileTests
     }
 
     [TestMethod]
+    public void Create_WithAnEntryCapacityOtherThanTheSlotCapacity_LaysOutAndReopens()
+    {
+        using var directoryOwner = new TempDirectory("mftlib-entry-capacity");
+        var path = Path.Combine(directoryOwner.Path, "entries.mlix");
+        var options = TestBlocks.Options(path, slotCapacity: 4096, namePoolCapacity: 1048576,
+            volumeSerial: 1) with
+        { NameEntryCapacity = 10000 };
+        var columns = new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0);
+        using (var block = BlockFile.Create(options))
+        {
+            Assert.AreEqual(10000u, block.Header.NameEntryCapacity);
+            Assert.AreEqual(4096u, block.Header.BucketCount);
+            Assert.AreEqual(BlockLayout.TotalBlockBytes(4096, 10000, 1048576), block.Length);
+            var writer = new BlockWriter(block);
+            Assert.IsTrue(writer.TryWriteRow(0, string.Empty, columns));
+            writer.Complete(ScanMoment, null);
+        }
+
+        using var reopened = BlockFile.Open(path, 1, out var validation);
+        Assert.IsNull(validation);
+        Assert.IsNotNull(reopened);
+        for (var index = 0; index < 10000; index++)
+        {
+            Assert.IsTrue(NamePool.TryGetOrAdd(reopened, $"name-{index}", out _));
+        }
+
+        var reopenedWriter = new BlockWriter(reopened);
+        Assert.IsFalse(reopenedWriter.TryWriteRow(1, "name-10000", columns));
+        Assert.AreEqual(10000u, reopened.NameEntryCount);
+        Assert.IsTrue(reopened.Header.IsCapacityExhausted);
+    }
+
+    [TestMethod]
     public void OpenMapping_MappedFileConstructionItselfFails_DisposesTheFileStreamBeforeRethrowing()
     {
         using var directoryOwner = new TempDirectory("mftlib-index");
