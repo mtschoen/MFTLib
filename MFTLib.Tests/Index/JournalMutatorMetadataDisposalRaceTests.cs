@@ -13,6 +13,71 @@ namespace MFTLib.Tests.Index;
 public class JournalMutatorMetadataDisposalRaceTests
 {
     [TestMethod]
+    public async Task ModificationPath_RacingDispose_KeepsTheViewMapped_Issue850()
+    {
+        using var builder = SyntheticBlockBuilder.MftShaped();
+        var block = builder.OpenForWriting();
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey(builder.Drive), block,
+            rootDirectoryPath: TestRootDirectory.For(builder.Drive))];
+        var mutator = new JournalMutator(new BlockWriter(block));
+        var beforePath = new TestGate();
+        var releasePath = new TestGate();
+        var disposeStarted = new TestGate();
+        mutator.Hooks._beforeModificationPath = () =>
+        {
+            beforePath.MarkEntered();
+            releasePath.WaitForRelease();
+        };
+        var disposeWillWait = false;
+        block.Hooks._disposeStarted = willWait =>
+        {
+            disposeWillWait = willWait;
+            disposeStarted.MarkEntered();
+        };
+
+        var timestamp = new DateTime(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
+        var applyTask = Task.Run(() => mutator.Apply(snapshot[0],
+            [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
+        Task? disposeTask = null;
+        try
+        {
+            await beforePath.Entered.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            disposeTask = Task.Run(block.Dispose, TestContext.CancellationToken);
+            await disposeStarted.Entered.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            Assert.IsTrue(disposeWillWait,
+                "dispose found no access scope before the modification path read and would unmap its name pool");
+            Assert.IsFalse(disposeTask.IsCompleted, "dispose must wait while path materialization is held");
+            Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, 7).ToString());
+        }
+        finally
+        {
+            // On the broken implementation, finish unmapping before resuming the mutation so its first
+            // checked access throws instead of risking a raw name read during the unmap.
+            if (disposeTask is not null && !disposeWillWait)
+            {
+                await disposeTask.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            }
+
+            releasePath.Release();
+            try
+            {
+                await applyTask.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Nested writer admission (the checkpoint write) can be refused after path materialization.
+            }
+
+            if (disposeTask is not null)
+            {
+                await disposeTask.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            }
+
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
     public void RowMetadataUpdate_RacingDispose_CompletesBeforeTheViewIsUnmapped()
     {
         using var builder = SyntheticBlockBuilder.MftShaped();

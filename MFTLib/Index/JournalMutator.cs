@@ -6,7 +6,8 @@ namespace MFTLib.Index;
 ///     its own event time, never the file's size or last-write time, so the mutator keeps those
 ///     scanned observations when an event cannot have changed them and marks them unknown when
 ///     it can have; every row write goes through <see cref="BlockWriter" />, which holds the
-///     block's access scope. Capacity exhaustion sets the
+///     block's access scope. The batch also holds an access scope across incarnation checks,
+///     handle creation and event path reads between writer calls. Capacity exhaustion sets the
 ///     capacity-exhausted flag, keeps applying what fits, and leaves the volume queryable rather
 ///     than crashing or silently dropping a record. NTFS closes every open cycle with a record
 ///     that repeats the cycle's reasons plus <see cref="UsnReason.Close" />; the mutator
@@ -31,6 +32,14 @@ sealed class JournalMutator
 
     public BlockWriter Writer { get; }
 
+    internal MutationHooks Hooks { get; } = new();
+
+    /// <summary>Per-mutator observation immediately before modification path materialization.</summary>
+    internal sealed class MutationHooks
+    {
+        internal Action? _beforeModificationPath;
+    }
+
     public bool CapacityExhausted => Writer.CapacityExhausted;
 
     /// <summary>
@@ -44,6 +53,9 @@ sealed class JournalMutator
         ArgumentNullException.ThrowIfNull(rootBlock);
         ArgumentNullException.ThrowIfNull(entries);
 
+        // Writer methods protect only their own accesses. Keep incarnation reads, handle creation
+        // and event path materialization mapped across the gaps between those methods as well.
+        using var access = Writer.Block.TakeAccess();
         var changes = new List<FileChange>();
         var rowMutated = false;
         foreach (var entry in entries)
@@ -258,6 +270,7 @@ sealed class JournalMutator
         }
 
         Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
+        Hooks._beforeModificationPath?.Invoke();
         return new FileChange(FileChangeKind.Modified, FileEntry.Create(rootBlock, rowIndex),
             IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
     }

@@ -122,3 +122,7 @@
       completes against mapped memory or, if it arrives after disposal began, fails with
       `ObjectDisposedException` instead of dereferencing an unmapped view. Raw `BlockFile`
       property reads are not serialized against disposal; readers go through snapshot borrows.
+      `JournalMutator.Apply` additionally holds one access scope for the whole batch, including
+      incarnation checks, handle creation and event path materialization between writer calls.
+      Disposal waits for that scope too; nested writer calls after disposal begins can still
+      throw `ObjectDisposedException`, returning the batch scope as application unwinds.

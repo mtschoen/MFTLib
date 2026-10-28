@@ -289,7 +289,7 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     Closes the view after every writer already inside the block has left it. Admission of
     ///     new writer scopes closes first; then this waits, outside the access gate because a
     ///     writer hands its access back through that gate, for the outstanding ones, bounded by
-    ///     one writer operation (a row write, or <see cref="BlockWriter.Complete" />'s flush);
+    ///     one writer operation or journal batch (including its event path reads);
     ///     only then is the pointer released and the view unmapped. A call after disposal has
     ///     begun returns without waiting, matching the long-standing contract that disposal is
     ///     idempotent and owned by a single disposer.
