@@ -1,23 +1,26 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     A managed copy of an unfinished block's used rows, sequence numbers and name pool. Row name
-///     offsets are relative to the name pool, so restoring the three regions into a larger block keeps
-///     every row index, parent link and name valid. An enumeration walk uses it to grow its block in
-///     place of starting the walk again.
+///     A managed copy of an unfinished block's used rows, sequence numbers, name entries and bytes.
+///     Restoring preserves identifiers and rebuilds chains for the replacement bucket count, so an
+///     enumeration walk can grow its block without restarting the walk.
 /// </summary>
 sealed class BlockRowSnapshot
 {
     readonly FileRow[] _rows;
     readonly ushort[] _sequenceNumbers;
-    readonly char[] _names;
+    const int PoolChunkBytes = 16 * 1024 * 1024;
+    readonly byte[][] _names;
+    readonly NameEntry[] _nameEntries;
     readonly uint _liveRowCount;
 
-    BlockRowSnapshot(FileRow[] rows, ushort[] sequenceNumbers, char[] names, uint namePoolUsed, uint liveRowCount)
+    BlockRowSnapshot(FileRow[] rows, ushort[] sequenceNumbers, byte[][] names, NameEntry[] nameEntries,
+        uint namePoolUsed, uint liveRowCount)
     {
         _rows = rows;
         _sequenceNumbers = sequenceNumbers;
         _names = names;
+        _nameEntries = nameEntries;
         NamePoolUsed = namePoolUsed;
         _liveRowCount = liveRowCount;
     }
@@ -35,11 +38,18 @@ sealed class BlockRowSnapshot
         ArgumentNullException.ThrowIfNull(block);
         using var access = block.TakeAccess();
         var rowCount = (int)block.RowCount;
-        var nameCharacters = (int)(block.NamePoolUsed / sizeof(char));
+        var chunks = new List<byte[]>();
+        for (uint offset = 0; offset < block.NamePoolUsed;)
+        {
+            var length = (int)Math.Min(PoolChunkBytes, block.NamePoolUsed - offset);
+            chunks.Add(block.GetNamePoolBytes(offset, length).ToArray());
+            offset += (uint)length;
+        }
         return new BlockRowSnapshot(
             [.. block.Rows[..rowCount]],
             [.. block.SequenceNumbers[..rowCount]],
-            [.. block.NamePoolCharacters[..nameCharacters]],
+            [.. chunks],
+            [.. block.NameEntries[..checked((int)block.NameEntryCount + 1)]],
             block.NamePoolUsed,
             block.Header.LiveRowCount);
     }
@@ -51,20 +61,29 @@ sealed class BlockRowSnapshot
     {
         ArgumentNullException.ThrowIfNull(target);
         using var access = target.TakeAccess();
-        if (target.RowCount != 0 || target.NamePoolUsed != 0)
+        if (target.RowCount != 0 || target.NamePoolUsed != 0 || target.NameEntryCount != 0)
         {
             throw new ArgumentException("A snapshot restores only into an empty block.", nameof(target));
         }
 
-        if (target.SlotCapacity < RowCount || target.NamePoolCapacity < NamePoolUsed)
+        if (target.SlotCapacity < RowCount || target.NamePoolCapacity < NamePoolUsed ||
+            target.NameEntryCapacity < _nameEntries.Length - 1)
         {
             throw new ArgumentException("The target block is smaller than the snapshot.", nameof(target));
         }
 
         _rows.CopyTo(target.Rows);
         _sequenceNumbers.CopyTo(target.SequenceNumbers);
-        _names.CopyTo(target.NamePoolCharacters);
+        uint offset = 0;
+        foreach (var chunk in _names)
+        {
+            chunk.CopyTo(target.GetNamePoolBytes(offset, chunk.Length));
+            offset += (uint)chunk.Length;
+        }
+        _nameEntries.CopyTo(target.NameEntries);
         target.PublishNamePoolUsed(NamePoolUsed);
+        target.PublishNameEntryCount((uint)_nameEntries.Length - 1);
+        NamePool.RebuildBuckets(target);
         target.Header.LiveRowCount = _liveRowCount;
         target.PublishRowCount(RowCount);
     }

@@ -95,6 +95,49 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task EnumerateRows_AdvancingOneCopyInvalidatesStaleCopies(bool readCurrent)
+    {
+        await using var index = await _fixture.OpenAsync();
+        AssertStaleCopyRejected(index, readCurrent);
+        Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
+    }
+
+    static void AssertStaleCopyRejected(FileIndex index, bool readCurrent)
+    {
+        using var enumerator = index.EnumerateRows(new SearchQuery("")).GetEnumerator();
+        Assert.IsTrue(enumerator.MoveNext());
+        using var copy = enumerator;
+        Assert.IsTrue(copy.MoveNext());
+        if (!readCurrent)
+        {
+            while (copy.MoveNext())
+            {
+                _ = copy.Current.Name.Length;
+            }
+        }
+
+        InvalidOperationException? caught = null;
+        try
+        {
+            if (readCurrent)
+            {
+                _ = enumerator.Current.Name.ToString();
+            }
+            else
+            {
+                _ = enumerator.MoveNext();
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            caught = exception;
+        }
+        Assert.IsNotNull(caught, "A stale copy must not expose another copy's name buffer or returned bitset.");
+    }
+
+    [TestMethod]
     public async Task EnumerateRows_RepeatedAndCopiedDispose_ReturnsExactlyOneBorrow()
     {
         await using var index = await _fixture.OpenAsync();
@@ -105,9 +148,10 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     static void AssertRepeatedDispose(FileIndex index)
     {
         using var source = new CancellationTokenSource();
-        using var enumerator = index.EnumerateRows(new SearchQuery(null), source.Token).GetEnumerator();
+        using var enumerator = index.EnumerateRows(new SearchQuery(""), source.Token).GetEnumerator();
         using var copy = enumerator;
         Assert.AreEqual(1, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
+        Assert.IsTrue(enumerator.MoveNext(), "Prepare the rented bitset after the copy was made.");
         copy.Dispose();
         Assert.AreEqual(0, index.CurrentBlock!.ReleaseState.Hooks.OutstandingBorrowCount);
         enumerator.Dispose();

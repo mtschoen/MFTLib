@@ -17,10 +17,10 @@ public class BlockLayoutTests
     }
 
     [TestMethod]
-    public void DoubleCapacity_DoublesAndClampsBelowTheOverflowOfLaterHeadroomArithmetic()
+    public void DoubleCapacity_DoublesAndLeavesRoomForReservedNameEntryZero()
     {
         Assert.AreEqual(8192u, BlockLayout.DoubleCapacity(4096));
-        Assert.AreEqual(uint.MaxValue / 2, BlockLayout.DoubleCapacity(uint.MaxValue - 1));
+        Assert.AreEqual((uint)int.MaxValue - 1, BlockLayout.DoubleCapacity(uint.MaxValue - 1));
     }
 
     [TestMethod]
@@ -46,29 +46,72 @@ public class BlockLayoutTests
     }
 
     [TestMethod]
-    public void ComputeNamePoolCapacity_SmallEstimate_UsesMinimumHeadroom()
+    [DataRow(0u, 1048576u)]
+    [DataRow(43690u, 1048576u)]
+    [DataRow(43691u, 1052672u)]
+    [DataRow(1000000u, 24002560u)]
+    [DataRow(2147483646u, 0x7FFFF000u)]
+    public void ComputeNamePoolCapacity_ReservesTwentyFourBytesPerSlotWithAOneMebibyteFloor(uint slots, uint expected)
     {
-        Assert.AreEqual(1024u + 1_048_576u, BlockLayout.ComputeNamePoolCapacity(1024));
+        Assert.AreEqual(expected, BlockLayout.ComputeNamePoolCapacity(slots));
+    }
+
+    [TestMethod]
+    [DataRow(0u, 1024u)]
+    [DataRow(4096u, 1024u)]
+    [DataRow(4097u, 2048u)]
+    [DataRow(2147483646u, 536870912u)]
+    public void ComputeBucketCount_IsAPowerOfTwoAtOrAboveAQuarterOfTheEntries(uint entries, uint expected)
+    {
+        Assert.AreEqual(expected, BlockLayout.ComputeBucketCount(entries));
+    }
+
+    [TestMethod]
+    public void DoubleNamePoolCapacity_ClampsBelowTwoGibibytes()
+    {
+        Assert.AreEqual(2097152u, BlockLayout.DoubleNamePoolCapacity(1048576));
+        Assert.AreEqual(BlockLayout.MaximumNamePoolCapacity, BlockLayout.DoubleNamePoolCapacity(0x7FFFF000));
+    }
+
+    [TestMethod]
+    public void Layout_AtTheLargestSlotCapacity_DoesNotOverflow()
+    {
+        const uint slots = int.MaxValue - 2;
+        var total = BlockLayout.TotalBlockBytes(slots, slots, BlockLayout.ComputeNamePoolCapacity(slots));
+        Assert.IsGreaterThan(0L, total);
+        Assert.AreEqual(0L, total % BlockLayout.PageSize);
+        Assert.IsGreaterThan(0u, BlockLayout.ComputeBucketCount(slots));
     }
 
     [TestMethod]
     public void NamePoolOffset_IsPageAlignedAfterRows()
     {
-        // 100 rows * 32 bytes = 3200, aligned up to 4096, then plus a
-        // 100 * 2-byte sequence region aligned to 4096.
-        Assert.AreEqual(12288L, BlockLayout.NamePoolOffset(100));
-        Assert.AreEqual(0L, BlockLayout.NamePoolOffset(100) % BlockLayout.PageSize);
+        // 100 rows * 32 bytes = 3200 -> 4096; 100 * 2-byte sequences -> 4096; 101 * 12-byte entries -> 4096;
+        // 1024 four-byte buckets -> 4096; plus the header page.
+        Assert.AreEqual(20480L, BlockLayout.NamePoolOffset(100, 100));
+        Assert.AreEqual(0L, BlockLayout.NamePoolOffset(100, 100) % BlockLayout.PageSize);
     }
 
     [TestMethod]
-    public void SequenceRegion_SitsBetweenTheRowRegionAndTheNamePool()
+    public void NameRegions_FollowTheRowsAndSequencesInOrder()
     {
         const uint slotCapacity = 1000;
         var sequenceOffset = BlockLayout.SequenceRegionOffset(slotCapacity);
         Assert.AreEqual(BlockLayout.RowRegionOffset + BlockLayout.RowRegionBytes(slotCapacity), sequenceOffset);
         Assert.AreEqual(0L, sequenceOffset % BlockLayout.PageSize);
         Assert.AreEqual(sequenceOffset + BlockLayout.SequenceRegionBytes(slotCapacity),
-            BlockLayout.NamePoolOffset(slotCapacity));
+            BlockLayout.NameEntryRegionOffset(slotCapacity));
+        Assert.AreEqual(BlockLayout.NameEntryRegionOffset(slotCapacity) + BlockLayout.NameEntryRegionBytes(slotCapacity),
+            BlockLayout.BucketRegionOffset(slotCapacity, slotCapacity));
+        Assert.AreEqual(BlockLayout.BucketRegionOffset(slotCapacity, slotCapacity) + BlockLayout.BucketRegionBytes(slotCapacity),
+            BlockLayout.NamePoolOffset(slotCapacity, slotCapacity));
+    }
+
+    [TestMethod]
+    public void TotalBlockBytes_DependsOnTheEntryCapacityIndependently()
+    {
+        Assert.IsGreaterThan(BlockLayout.TotalBlockBytes(1000, 1000, 4096),
+            BlockLayout.TotalBlockBytes(1000, 2000, 4096));
     }
 
     [TestMethod]
@@ -81,9 +124,9 @@ public class BlockLayoutTests
     [TestMethod]
     public void TotalBlockBytes_IsPageAligned()
     {
-        var total = BlockLayout.TotalBlockBytes(100, 1000);
+        var total = BlockLayout.TotalBlockBytes(100, 100, 1000);
         Assert.AreEqual(0L, total % BlockLayout.PageSize);
-        Assert.IsGreaterThanOrEqualTo(BlockLayout.NamePoolOffset(100) + 1000, total);
+        Assert.IsGreaterThanOrEqualTo(BlockLayout.NamePoolOffset(100, 100) + 1000, total);
     }
 
     [TestMethod]

@@ -71,7 +71,7 @@ public class JournalBrokerHostScanTests
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(21u, sectionWriter.Block.Header.RowCount);
         Assert.AreEqual(2, InUseRowCount(sectionWriter));
-        Assert.AreEqual(18u, sectionWriter.Block.Header.NamePoolUsed);
+        Assert.AreEqual(9u, sectionWriter.Block.Header.NamePoolUsed);
         Assert.AreEqual(sectionWriter.Block.Header.NamePoolUsed, finalProgress.BytesProcessed);
         Assert.IsTrue(sectionWriter.Block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, sectionWriter.Block.Header.ProducerKind);
@@ -343,6 +343,9 @@ public class JournalBrokerHostScanTests
             Assert.IsTrue(block.Header.IsComplete);
             Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
             Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
+            var published = block.Header;
+            Assert.IsNull(BlockHeader.ValidateSection(in published, block.Length));
+            Assert.IsTrue(block.TryAdoptPublishedCursors(published));
             Assert.AreEqual("nöte.txt", NamePool.ReadRowName(block, 100).ToString());
             Assert.AreEqual(2048L, block.Rows[100].Size);
         }
@@ -498,7 +501,7 @@ public class JournalBrokerHostScanTests
         var transfers = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress).ToArray();
         Assert.IsNotEmpty(transfers);
         Assert.IsTrue(transfers.All(frame => frame.Progress?.Phase == BrokerScanPhase.Transferring));
-        Assert.AreEqual(18L, transfers[^1].Progress?.BytesProcessed);
+        Assert.AreEqual(9L, transfers[^1].Progress?.BytesProcessed);
         Assert.AreEqual(transfers[^1].Progress?.BytesProcessed, transfers[^1].Progress?.TotalBytes);
         Assert.AreEqual(1000L, transfers[^1].Progress?.TotalRecords);
     }
@@ -739,7 +742,9 @@ public class JournalBrokerHostScanTests
             .. MemoryMarshal.AsBytes(new ReadOnlySpan<BlockHeader>(in header)),
             .. MemoryMarshal.AsBytes(block.Rows),
             .. MemoryMarshal.AsBytes(block.SequenceNumbers),
-            .. MemoryMarshal.AsBytes(block.NamePoolCharacters)
+            .. MemoryMarshal.AsBytes(block.NameEntries),
+            .. MemoryMarshal.AsBytes(block.Buckets),
+            .. block.NamePoolBytes
         ];
     }
 }

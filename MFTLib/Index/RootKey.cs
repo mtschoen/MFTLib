@@ -12,7 +12,7 @@ public readonly record struct RootKey : IComparable<RootKey>
 {
     enum Kind : byte { Volume = 1, Directory = 2 }
 
-    internal const int MaximumTextUnits = 1983;
+    internal const int MaximumTextUnits = (BlockLayout.HeaderRegionBytes - BlockLayout.HeaderFieldBytes - sizeof(ushort)) / sizeof(char);
 
     readonly Kind _kind;
     readonly VolumeKey _volume;
@@ -44,7 +44,7 @@ public readonly record struct RootKey : IComparable<RootKey>
 
     /// <summary>Creates a key from a fully qualified directory path, detecting a Windows volume root.</summary>
     /// <exception cref="ArgumentException">
-    ///     The path is blank, relative, not well-formed UTF-16, or longer than 1,983 UTF-16 code units after normalization.
+    ///     The path is blank, relative, not well-formed UTF-16, or longer than 1,967 UTF-16 code units after normalization.
     /// </exception>
     public static RootKey FromDirectory(string path) => FromDirectory(path, out _);
 

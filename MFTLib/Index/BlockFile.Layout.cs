@@ -6,14 +6,17 @@ namespace MFTLib.Index;
 ///     span and every writer bounds check uses that copy and never the mapped header. A broker
 ///     writes into a section whose header a less trusted process can rewrite at any moment, so a
 ///     header value is something this block publishes, not something it trusts. The row count and
-///     the used name-pool length are tracked here and published to the header after each change.
+///     the used name-pool length and name entry count are tracked here and published to the header after each change.
 /// </summary>
 sealed partial class BlockFile
 {
     readonly long _sequenceRegionOffset;
+    readonly long _nameEntryRegionOffset;
+    readonly long _bucketRegionOffset;
     readonly long _namePoolOffset;
     uint _rowCount;
     uint _namePoolUsed;
+    uint _nameEntryCount;
     ulong _generation;
 
     /// <summary>Row slot count from the validated layout this block was built from.</summary>
@@ -22,11 +25,29 @@ sealed partial class BlockFile
     /// <summary>Name-pool capacity, in bytes, from the validated layout this block was built from.</summary>
     internal uint NamePoolCapacity { get; }
 
+    /// <summary>Allocatable name entries, excluding reserved entry zero, from the validated layout.</summary>
+    internal uint NameEntryCapacity { get; }
+
+    /// <summary>Hash bucket heads from the validated layout.</summary>
+    internal uint BucketCount { get; }
+
+    /// <summary>Published name entries, excluding reserved entry zero.</summary>
+    internal uint NameEntryCount => Volatile.Read(ref _nameEntryCount);
+
+    /// <summary>Records a new name entry count and publishes it to the header.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count" /> exceeds <see cref="NameEntryCapacity" />.</exception>
+    internal void PublishNameEntryCount(uint count)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, NameEntryCapacity);
+        Volatile.Write(ref _nameEntryCount, count);
+        Header.NameEntryCount = count;
+    }
+
     /// <summary>Highest written row index plus one, as this block's writers have published it.</summary>
     internal uint RowCount => _rowCount;
 
     /// <summary>Used name-pool bytes, as this block's writers have published them.</summary>
-    internal uint NamePoolUsed => _namePoolUsed;
+    internal uint NamePoolUsed => Volatile.Read(ref _namePoolUsed);
 
     /// <summary>The change version, as this block's writers have published it; never re-read from the mapped header.</summary>
     internal ulong Generation => _generation;
@@ -52,7 +73,8 @@ sealed partial class BlockFile
     internal void PublishNamePoolUsed(uint usedBytes)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(usedBytes, NamePoolCapacity);
-        _namePoolUsed = usedBytes;
+        // Release: readers that acquire the entry count or a bucket head after this see the used length.
+        Volatile.Write(ref _namePoolUsed, usedBytes);
         Header.NamePoolUsed = usedBytes;
     }
 
@@ -67,13 +89,15 @@ sealed partial class BlockFile
     internal bool TryAdoptPublishedCursors(BlockHeader published)
     {
         if (published.SlotCapacity != SlotCapacity || published.NamePoolCapacity != NamePoolCapacity ||
-            published.RowCount > SlotCapacity || published.NamePoolUsed > NamePoolCapacity)
+            published.NameEntryCapacity != NameEntryCapacity || published.BucketCount != BucketCount ||
+            published.NameEntryCount > NameEntryCapacity || published.RowCount > SlotCapacity || published.NamePoolUsed > NamePoolCapacity)
         {
             return false;
         }
 
         _rowCount = published.RowCount;
         _namePoolUsed = published.NamePoolUsed;
+        Volatile.Write(ref _nameEntryCount, published.NameEntryCount);
         _generation = published.Generation;
         return true;
     }

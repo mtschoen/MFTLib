@@ -28,14 +28,19 @@ public class BlockHeaderTests
             Generation = 1,
             RowRegionOffset = BlockLayout.RowRegionOffset,
             SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(100),
-            NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100),
+            NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 100),
+            NameEntryCount = 2,
+            NameEntryCapacity = 100,
+            BucketCount = BlockLayout.ComputeBucketCount(100),
+            NameEntryRegionOffset = (ulong)BlockLayout.NameEntryRegionOffset(100),
+            BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(100, 100),
             LiveRowCount = 8
         };
     }
 
     static long ValidFileLength()
     {
-        return BlockLayout.TotalBlockBytes(100, 1000);
+        return BlockLayout.TotalBlockBytes(100, 100, 1000);
     }
 
     [TestMethod]
@@ -57,12 +62,17 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void Header_DeclaresOneHundredTwentyEightBytesEndingWithTheScanShapeAndAccessDeniedCount()
+    public void Header_DeclaresOneHundredSixtyBytesIncludingNameRegions()
     {
-        Assert.AreEqual(128, Marshal.SizeOf<BlockHeader>());
+        Assert.AreEqual(160, Marshal.SizeOf<BlockHeader>());
         Assert.AreEqual(112, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ScanShape)));
         Assert.AreEqual(120, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.AccessDeniedSubtreeCount)));
-        Assert.AreEqual(124, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Reserved)));
+        Assert.AreEqual(124, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NameEntryCount)));
+        Assert.AreEqual(128, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NameEntryCapacity)));
+        Assert.AreEqual(132, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.BucketCount)));
+        Assert.AreEqual(136, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NameEntryRegionOffset)));
+        Assert.AreEqual(144, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.BucketRegionOffset)));
+        Assert.AreEqual(152, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Reserved)));
     }
 
     [TestMethod]
@@ -149,11 +159,11 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void Validate_NamePoolUsedPastCapacity_IsInconsistent()
+    public void Validate_NamePoolUsedPastCapacity_IsAnInvalidNameDescriptor()
     {
         var header = ValidHeader();
         header.NamePoolUsed = header.NamePoolCapacity + 2;
-        Assert.AreEqual(BlockValidationResult.InconsistentRegions,
+        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor,
             BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
     }
 
@@ -192,7 +202,7 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsSeven()
+    public void FormatVersion_IsEight()
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
@@ -200,7 +210,27 @@ public class BlockHeaderTests
         using var block = builder.OpenForReading(out var validation);
         Assert.IsNull(validation);
         Assert.IsNotNull(block);
-        Assert.AreEqual(7u, block.Header.FormatVersion);
+        Assert.AreEqual(8u, block.Header.FormatVersion);
+    }
+
+    [TestMethod]
+    public void Validate_BucketCountOffTheFormula_IsAnInvalidNameDescriptor()
+    {
+        var header = ValidHeader();
+        header.BucketCount *= 2;
+        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor,
+            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+    }
+
+    [TestMethod]
+    public void Validate_AnEntryCapacityOtherThanTheSlotCapacity_IsAccepted()
+    {
+        var header = ValidHeader();
+        header.NameEntryCapacity = 2000;
+        header.BucketCount = BlockLayout.ComputeBucketCount(2000);
+        header.BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(100, 2000);
+        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 2000);
+        Assert.IsNull(BlockHeader.Validate(in header, 0xDEADBEEF, BlockLayout.TotalBlockBytes(100, 2000, 1000)));
     }
 
     [TestMethod]

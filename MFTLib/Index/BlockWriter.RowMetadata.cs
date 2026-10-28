@@ -68,8 +68,7 @@ sealed partial class BlockWriter
         var changed = updatedFlags != flags;
         if (changed)
         {
-            FileRow.WriteDescriptorWord(ref row, FileRow.DescriptorNameOffsetBytes(descriptor),
-                FileRow.DescriptorNameLengthUnits(descriptor), updatedFlags);
+            FileRow.WriteDescriptorWord(ref row, FileRow.DescriptorNameId(descriptor), updatedFlags);
         }
 
         if (invalidatesLastWrite && row.ModifiedTicks != 0)

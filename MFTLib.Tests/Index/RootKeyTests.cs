@@ -141,7 +141,7 @@ public class RootKeyTests
     [TestMethod]
     public void FromDirectory_AcceptsMaximumStoredKeyLength()
     {
-        var path = FullPathWithLength(1983);
+        var path = FullPathWithLength(1967);
 
         Assert.AreEqual(path, RootKey.FromDirectory(path).ToString());
     }
@@ -149,7 +149,7 @@ public class RootKeyTests
     [TestMethod]
     public void FromDirectory_RejectsPathBeyondStoredKeyLength()
     {
-        var path = FullPathWithLength(1984);
+        var path = FullPathWithLength(1968);
 
         Assert.ThrowsExactly<ArgumentException>(() => RootKey.FromDirectory(path));
     }

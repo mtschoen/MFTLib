@@ -192,7 +192,7 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("Root: U", output);
         Assert.Contains("Rows: 2", output);
         Assert.Contains("Matches: 1", output);
-        var usedNameBytes = (directory.Length + "file-0000000001".Length) * 2;
+        var usedNameBytes = directory.Length + "file-0000000001".Length;
         var fileBytes = new FileInfo(Path.Combine(directory, "T-00000001.mlix")).Length;
         Assert.Contains(string.Create(CultureInfo.InvariantCulture,
             $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"), output);
@@ -283,7 +283,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_NoVerb_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync([]));
-        Assert.Contains("Usage: Benchmark.exe <index|compare|native-timings|enumeration-walk>", _output.ToString());
+        Assert.Contains("Usage: Benchmark.exe <index|index-storage|compare|native-timings|enumeration-walk>", _output.ToString());
     }
 
     [TestMethod]

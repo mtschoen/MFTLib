@@ -45,7 +45,7 @@ public sealed partial class BlockWriterTests : IDisposable
         Assert.IsTrue(writer.TryWriteRow(1, "report.pdf", FileColumns(0, size: 4096, attributes: 32)));
 
         Assert.AreEqual(2u, writer.RowCount);
-        Assert.AreEqual("report.pdf", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual("report.pdf", NamePool.ReadRowName(block, 1).ToString());
         Assert.AreEqual(4096L, block.Rows[1].Size);
         Assert.AreEqual(0u, block.Rows[1].ParentRow);
     }
@@ -156,7 +156,7 @@ public sealed partial class BlockWriterTests : IDisposable
         Assert.IsFalse(writer.TryWriteRow(99, "far.txt", FileColumns(0)));
         Assert.IsTrue(writer.TryWriteRow(1, "near.txt", FileColumns(0)));
 
-        Assert.AreEqual("near.txt", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual("near.txt", NamePool.ReadRowName(block, 1).ToString());
         Assert.IsTrue(writer.CapacityExhausted);
     }
 
@@ -175,13 +175,11 @@ public sealed partial class BlockWriterTests : IDisposable
         Assert.IsTrue(writer.TryWriteRow(1, "reused.txt", FileColumns(0, size: 20, attributes: 32)));
 
         var descriptor = FileRow.ReadDescriptorWord(in block.Rows[1]);
-        var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
-        var lengthUnits = FileRow.DescriptorNameLengthUnits(descriptor);
+        var nameId = FileRow.DescriptorNameId(descriptor);
 
-        Assert.AreEqual((ushort)"reused.txt".Length, lengthUnits);
         Assert.AreEqual("reused.txt",
-            new string(NamePool.Read(block.NamePoolCharacters, offsetBytes, lengthUnits)));
-        Assert.AreEqual("reused.txt", new string(NamePool.ReadRowName(block, 1)));
+            NamePool.Read(block, nameId).ToString());
+        Assert.AreEqual("reused.txt", NamePool.ReadRowName(block, 1).ToString());
         Assert.AreEqual(RowFlags.InUse, FileRow.DescriptorFlags(descriptor));
         Assert.IsFalse(block.Rows[1].IsDeleted);
     }
@@ -215,7 +213,7 @@ public sealed partial class BlockWriterTests : IDisposable
         // name's offset and length through untouched rather than resetting them.
         Assert.IsTrue(block.Rows[1].IsDeleted);
         Assert.IsTrue(block.Rows[1].IsInUse);
-        Assert.AreEqual("after.txt", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual("after.txt", NamePool.ReadRowName(block, 1).ToString());
     }
 
     [TestMethod]
@@ -229,7 +227,7 @@ public sealed partial class BlockWriterTests : IDisposable
         writer.MarkSubtreeSkipped(1);
 
         Assert.IsTrue(block.Rows[1].SubtreeSkipped);
-        Assert.AreEqual("Locked", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual("Locked", NamePool.ReadRowName(block, 1).ToString());
         Assert.AreEqual(2u, block.Header.LiveRowCount);
     }
 
@@ -255,7 +253,7 @@ public sealed partial class BlockWriterTests : IDisposable
         writer.MarkTombstone(1);
 
         Assert.IsTrue(block.Rows[1].IsDeleted);
-        Assert.AreEqual("gone.tmp", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual("gone.tmp", NamePool.ReadRowName(block, 1).ToString());
     }
 
     [TestMethod]

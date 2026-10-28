@@ -44,6 +44,7 @@ serial and root directory at open, as `FromDirectory` and `FromWindowsDrive` do 
 | Changed | `WindowsVolume.IsIndexable` is the same predicate Automatic uses (see open question 2) | |
 | Changed | `FileIndex.QueryUsnJournalSettings()` serves any MFT view, including a directory root; walked roots still refuse | |
 | Changed | `FileEntry.Parent` is null at the view's root row, not only at the volume root | |
+| Changed | `IndexRowEnumerator` copies share one resource owner: advancing any copy invalidates older copies, whose `Current` and `MoveNext` throw `InvalidOperationException` (slice 1; see [API decisions](../../api-decisions.md)) | |
 | Changed | `RootBlockStatus.Generation`, `LiveRowCount`, `IsCapacityExhausted`, `SkippedRecordCount`: facts of the shared volume block, identical across views of one volume | |
 | Deleted | `FileIndexOptions.RetainedFileNames` | |
 | Deleted | `IndexedRoot` and its members `FromWindowsDrive`, `FromDirectory`, `EnumerateWindowsVolumes`, `Producer`, `Root`, `RootDirectory`, `VolumeSerial` | |

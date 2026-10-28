@@ -24,10 +24,13 @@ sealed record BlockFileCreateOptions
     /// </summary>
     public uint RootRow { get; init; }
 
-    /// <summary>Rows the region can hold. Use <see cref="BlockLayout.ComputeSlotCapacity" />.</summary>
+    /// <summary>
+    ///     Rows the region can hold. Use <see cref="BlockLayout.ComputeSlotCapacity" />. The block's name entry
+    ///     capacity starts equal to this.
+    /// </summary>
     public required uint SlotCapacity { get; init; }
 
-    /// <summary>Name pool bytes. Use <see cref="BlockLayout.ComputeNamePoolCapacity" />.</summary>
+    /// <summary>Name byte-pool capacity. Use <see cref="BlockLayout.ComputeNamePoolCapacity" /> with the slot capacity.</summary>
     public required uint NamePoolCapacity { get; init; }
 
     /// <summary>

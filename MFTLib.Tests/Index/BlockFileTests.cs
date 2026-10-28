@@ -39,7 +39,7 @@ public class BlockFileTests
         Assert.AreEqual(2u, block.Header.RowCount);
         Assert.AreEqual(2u, block.Header.LiveRowCount);
         Assert.AreEqual((ulong)BlockLayout.RowRegionOffset, block.Header.RowRegionOffset);
-        Assert.AreEqual((ulong)BlockLayout.NamePoolOffset(block.Header.SlotCapacity), block.Header.NamePoolOffset);
+        Assert.AreEqual((ulong)BlockLayout.NamePoolOffset(block.Header.SlotCapacity, block.Header.NameEntryCapacity), block.Header.NamePoolOffset);
         Assert.AreEqual(ScanMoment, block.Header.ScanTimestampUtc);
 
         var row = block.Rows[(int)childRow];
@@ -49,8 +49,7 @@ public class BlockFileTests
         Assert.IsTrue(row.IsInUse);
         Assert.IsFalse(row.IsDirectory);
 
-        var name = block.NamePoolCharacters.Slice((int)(row.NameOffsetBytes / sizeof(char)), row.NameLengthUnits);
-        Assert.AreEqual("report.pdf", new string(name));
+        Assert.AreEqual("report.pdf", NamePool.ReadRowName(block, childRow).ToString());
     }
 
     [TestMethod]
@@ -152,33 +151,35 @@ public class BlockFileTests
     }
 
     [TestMethod]
-    public void Open_NameDescriptorPastUsedPool_IsRejectedWithoutThrowing()
+    public void Open_NameDescriptorPastUsedPool_OpensAndTheNameReadThrows()
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
         var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment, sequenceNumber: 0);
         builder.Complete(ScanMoment);
-        builder.MutateNameDescriptor(childRow, uint.MaxValue - 1, ushort.MaxValue);
+        builder.MutateNameDescriptor(childRow, uint.MaxValue - 1);
 
         using var block = builder.OpenForReading(out var validation);
 
-        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, validation);
-        Assert.IsNull(block);
+        Assert.IsNull(validation);
+        Assert.IsNotNull(block);
+        Assert.ThrowsExactly<InvalidDataException>(() => MFTLibTestExtensions.SyntheticNamePool.ReadRowName(block, childRow));
     }
 
     [TestMethod]
-    public void Open_NameDescriptorWithOddByteOffset_IsRejectedWithoutThrowing()
+    public void Open_NameDescriptorWithUnpublishedId_OpensAndTheNameReadThrows()
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
         var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment, sequenceNumber: 0);
         builder.Complete(ScanMoment);
-        builder.MutateNameDescriptor(childRow, nameOffsetBytes: 1, nameLengthUnits: 1);
+        builder.MutateNameDescriptor(childRow, builder.OpenForWriting().NameEntryCount + 1);
 
         using var block = builder.OpenForReading(out var validation);
 
-        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, validation);
-        Assert.IsNull(block);
+        Assert.IsNull(validation);
+        Assert.IsNotNull(block);
+        Assert.ThrowsExactly<InvalidDataException>(() => MFTLibTestExtensions.SyntheticNamePool.ReadRowName(block, childRow));
     }
 
     [TestMethod]
@@ -226,7 +227,7 @@ public class BlockFileTests
         builder.Complete(ScanMoment);
 
         using var block = builder.OpenForReading(out _);
-        var expectedLength = BlockLayout.TotalBlockBytes(64, 512);
+        var expectedLength = BlockLayout.TotalBlockBytes(64, 64, 512);
         Assert.AreEqual(expectedLength, block!.Length);
     }
 
@@ -332,7 +333,7 @@ public class BlockFileTests
         var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "partial.mlix");
         var options = TestBlocks.Options(path, namePoolCapacity: 4096);
-        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.SlotCapacity, options.NamePoolCapacity);
         var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length, FileOptions.None);
 
         // Disposing the view before handing it over makes acquiring the base pointer in the

@@ -18,8 +18,8 @@ public class FileRowTests
     {
         Assert.AreEqual(0, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.ParentRow)));
         Assert.AreEqual(4, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.Attributes)));
-        Assert.AreEqual(8, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.NameOffsetBytes)));
-        Assert.AreEqual(12, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.NameLengthUnits)));
+        Assert.AreEqual(8, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.NameId)));
+        Assert.AreEqual(12, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.Reserved)));
         Assert.AreEqual(14, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.Flags)));
         Assert.AreEqual(16, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.Size)));
         Assert.AreEqual(24, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.ModifiedTicks)));
@@ -44,19 +44,17 @@ public class FileRowTests
     }
 
     [TestMethod]
-    public void DescriptorWord_CarriesNameOffsetLengthAndFlagsTogether()
+    public void DescriptorWord_CarriesNameIdAndFlagsTogether()
     {
         var row = default(FileRow);
-        FileRow.WriteDescriptorWord(ref row, 0x11223344, 0x5566,
+        FileRow.WriteDescriptorWord(ref row, 0x11223344,
             RowFlags.InUse | RowFlags.Tombstone);
 
-        Assert.AreEqual(0x11223344u, row.NameOffsetBytes);
-        Assert.AreEqual((ushort)0x5566, row.NameLengthUnits);
+        Assert.AreEqual(0x11223344u, row.NameId);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone, row.Flags);
 
         var descriptor = FileRow.ReadDescriptorWord(in row);
-        Assert.AreEqual(0x11223344u, FileRow.DescriptorNameOffsetBytes(descriptor));
-        Assert.AreEqual((ushort)0x5566, FileRow.DescriptorNameLengthUnits(descriptor));
+        Assert.AreEqual(0x11223344u, FileRow.DescriptorNameId(descriptor));
         Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone, FileRow.DescriptorFlags(descriptor));
     }
 
@@ -71,7 +69,7 @@ public class FileRowTests
             ModifiedTicks = 123456789
         };
 
-        FileRow.WriteDescriptorWord(ref row, 64, 8, RowFlags.InUse);
+        FileRow.WriteDescriptorWord(ref row, 64, RowFlags.InUse);
 
         Assert.AreEqual(7u, row.ParentRow);
         Assert.AreEqual(0x20u, row.Attributes);
@@ -112,11 +110,9 @@ public class FileRowTests
         var row = new FileRow
         {
             Flags = RowFlags.InUse | RowFlags.Tombstone,
-            NameOffsetBytes = 64,
-            NameLengthUnits = 8
+            NameId = 64
         };
         Assert.IsTrue(row.IsDeleted);
-        Assert.AreEqual(64u, row.NameOffsetBytes);
-        Assert.AreEqual((ushort)8, row.NameLengthUnits);
+        Assert.AreEqual(64u, row.NameId);
     }
 }

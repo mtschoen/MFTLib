@@ -52,7 +52,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
         Assert.AreEqual(0L, block.Rows[21].Size);
         Assert.AreEqual(RowFlags.None, block.Rows[19].Flags);
         Assert.AreEqual(22L, result.RowCount);
-        Assert.AreEqual(34L, result.NamePoolUsedBytes);
+        Assert.AreEqual(27L, result.NamePoolUsedBytes); // ASCII root, alignment byte, UTF-16 name, ASCII name.
         Assert.AreEqual(block.Header.RowCount, result.RowCount);
         Assert.AreEqual(block.Header.NamePoolUsed, result.NamePoolUsedBytes);
         Assert.AreEqual(0L, result.SkippedRecordCount);
@@ -83,7 +83,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(32L, result.RowCount);
-        Assert.AreEqual(8L, result.NamePoolUsedBytes);
+        Assert.AreEqual(4L, result.NamePoolUsedBytes);
         Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 
@@ -98,7 +98,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
 
         Assert.AreEqual(2L, result.SkippedRecordCount);
         Assert.AreEqual(8L, result.RowCount);
-        Assert.AreEqual(8L, result.NamePoolUsedBytes);
+        Assert.AreEqual(4L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[0].Flags);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
         Assert.IsFalse(block.Header.IsCapacityExhausted);
@@ -125,13 +125,13 @@ public sealed class MftBlockRowWriterTests : IDisposable
     public void WriteBatches_NamePoolOverflowContinuesWithRecordsThatFit()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
-            slotCapacity: 32, namePoolCapacity: 8, volumeSerial: 123, rootRow: 5);
+            slotCapacity: 32, namePoolCapacity: 4, volumeSerial: 123, rootRow: 5);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Record(5, "abc"), Record(6, "long"), Record(7, "z")]], new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(8L, result.RowCount);
-        Assert.AreEqual(8L, result.NamePoolUsedBytes);
+        Assert.AreEqual(4L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
         Assert.AreEqual("z", NamePool.ReadRowName(block, 7).ToString());
         Assert.IsTrue(block.Header.IsCapacityExhausted);
@@ -156,8 +156,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
             new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         Assert.HasCount(2, reports);
-        Assert.AreEqual(new BlockWriteProgress(1, 2, null, null), reports[0]);
-        Assert.AreEqual(new BlockWriteProgress(2, 10, null, null), reports[1]);
+        Assert.AreEqual(new BlockWriteProgress(1, 1, null, null), reports[0]);
+        Assert.AreEqual(new BlockWriteProgress(2, 5, null, null), reports[1]);
     }
 
     [TestMethod]
@@ -211,7 +211,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
 
         var result = MftBlockRowWriter.WriteBatches(writer, [], new MftScanOptions(), null, CancellationToken.None);
 
-        Assert.AreEqual(new BlockWriteResult(6, 2, 0), result);
+        Assert.AreEqual(new BlockWriteResult(6, 1, 0), result);
         Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 

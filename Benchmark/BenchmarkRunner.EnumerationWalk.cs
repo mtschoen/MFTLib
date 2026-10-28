@@ -158,7 +158,7 @@ public partial class BenchmarkRunner
             VolumeSerial = 0,
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked((rows * 20) + ((uint)root.Length * 2))),
+            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(BlockLayout.ComputeSlotCapacity(rows)),
             ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), root)
         });
         var writer = new BlockWriter(block);

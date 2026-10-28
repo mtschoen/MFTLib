@@ -49,7 +49,7 @@ static class IndexNavigation
         // A detached row has no verified ancestor, so a root prefix would invent one.
         if (rowIndex < rootBlock.Block.Header.RowCount && IsDetached(rootBlock.Block, rowIndex))
         {
-            return new string(NamePool.ReadRowName(rootBlock.Block, rowIndex));
+            return NamePool.ReadRowName(rootBlock.Block, rowIndex).ToString();
         }
 
         if (rootBlock.RootDirectoryPath is not { } rootDirectoryPath)
@@ -165,7 +165,7 @@ static class IndexNavigation
             var name = NamePool.ReadRowName(block, current);
             if (!name.IsEmpty)
             {
-                segments.Add(new string(name));
+                segments.Add(name.ToString());
             }
 
             current = block.Rows[(int)current].ParentRow;

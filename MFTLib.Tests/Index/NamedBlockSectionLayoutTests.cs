@@ -1,4 +1,5 @@
 using System.IO.MemoryMappedFiles;
+using System.Text;
 using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
@@ -24,7 +25,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
     const uint EvilRow = 6;
 
     static readonly long SequenceRegionOffset = BlockLayout.SequenceRegionOffset(SlotCapacity);
-    static readonly long NamePoolOffset = BlockLayout.NamePoolOffset(SlotCapacity);
+    static readonly long NamePoolOffset = BlockLayout.NamePoolOffset(SlotCapacity, SlotCapacity);
 
     TempDirectory _directory = null!;
     string _sectionName = null!;
@@ -48,7 +49,12 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
     [DataRow("SequenceRegionOffset", "InconsistentRegions")]
     [DataRow("NamePoolOffset", "InconsistentRegions")]
     [DataRow("RowCount", "InconsistentRegions")]
-    [DataRow("NamePoolUsed", "InconsistentRegions")]
+    [DataRow("NamePoolUsed", "InvalidNameDescriptor")]
+    [DataRow("NameEntryCapacity", "InconsistentRegions")]
+    [DataRow("BucketCount", "InvalidNameDescriptor")]
+    [DataRow("NameEntryRegionOffset", "InconsistentRegions")]
+    [DataRow("BucketRegionOffset", "InconsistentRegions")]
+    [DataRow("NameEntryCount", "InvalidNameDescriptor")]
     public void OpenExisting_HeaderRewrittenBeforeOpen_RefusesTheSection(string field, string reason)
     {
         var (creator, lifetime) = CreateSection();
@@ -103,7 +109,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
 
             view.Read(0, out BlockHeader header);
             Assert.AreEqual(EvilRow + 1, header.RowCount, "the broker publishes its own row count");
-            Assert.AreEqual((uint)(".".Length + "evil".Length) * sizeof(char), header.NamePoolUsed,
+            Assert.AreEqual((uint)(".".Length + "evil".Length), header.NamePoolUsed,
                 "the broker publishes its own name-pool cursor");
         }
     }
@@ -123,8 +129,13 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
             case "SlotCapacityWithMatchingOffsets":
                 header.SlotCapacity *= 2;
                 header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity);
-                header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity);
+                header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity);
                 break;
+            case "NameEntryCapacity": header.NameEntryCapacity *= 64; break;
+            case "BucketCount": header.BucketCount++; break;
+            case "NameEntryRegionOffset": header.NameEntryRegionOffset = 0; break;
+            case "BucketRegionOffset": header.BucketRegionOffset = 0; break;
+            case "NameEntryCount": header.NameEntryCount = header.NameEntryCapacity + 1; break;
             case "NamePoolCapacity": header.NamePoolCapacity += BlockLayout.PageSize; break;
             case "RowRegionOffset": header.RowRegionOffset = 0; break;
             case "SequenceRegionOffset": header.SequenceRegionOffset = BlockLayout.RowRegionOffset; break;
@@ -169,8 +180,12 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
     {
         view.Read(BlockLayout.RowRegionOffset + rowIndex * BlockLayout.RowBytes, out FileRow row);
         var descriptor = FileRow.ReadDescriptorWord(in row);
-        var characters = new char[FileRow.DescriptorNameLengthUnits(descriptor)];
-        view.ReadArray(NamePoolOffset + FileRow.DescriptorNameOffsetBytes(descriptor), characters, 0, characters.Length);
-        return new string(characters);
+        var nameId = FileRow.DescriptorNameId(descriptor);
+        view.Read(BlockLayout.NameEntryRegionOffset(SlotCapacity) + nameId * 12, out NameEntry entry);
+        var length = entry.LengthAndEncoding & 0x7fff;
+        var utf16 = (entry.LengthAndEncoding & 0x8000) != 0;
+        var bytes = new byte[length * (utf16 ? sizeof(char) : 1)];
+        view.ReadArray(NamePoolOffset + entry.PoolOffsetBytes, bytes, 0, bytes.Length);
+        return (utf16 ? Encoding.Unicode : Encoding.ASCII).GetString(bytes);
     }
 }

@@ -179,7 +179,7 @@ public readonly partial record struct FileEntry
     /// <summary>Gets the current file or directory name. This allocates a managed string.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    public string Name => new(NamePool.ReadRowName(CurrentBlock(), RowIndex));
+    public string Name => NamePool.ReadRowName(CurrentBlock(), RowIndex).ToString();
 
     /// <summary>
     ///     Gets the file length in bytes, or zero for directories and unknown sizes. This is the length the

@@ -165,8 +165,7 @@ public sealed class SyntheticBlockEditor
         using var access = _block.TakeAccess();
         ref var stored = ref _block.Rows[(int)rowIndex];
         var descriptor = FileRow.ReadDescriptorWord(in stored);
-        FileRow.WriteDescriptorWord(ref stored, FileRow.DescriptorNameOffsetBytes(descriptor),
-            FileRow.DescriptorNameLengthUnits(descriptor), FileRow.DescriptorFlags(descriptor) | RowFlags.SizeUnknown);
+        FileRow.WriteDescriptorWord(ref stored, FileRow.DescriptorNameId(descriptor), FileRow.DescriptorFlags(descriptor) | RowFlags.SizeUnknown);
         stored.Size = 0;
     }
 

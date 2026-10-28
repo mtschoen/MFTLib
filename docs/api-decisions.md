@@ -393,7 +393,7 @@ containing volume's serial or zero, and the library owns that derivation.
 
 **Implementation note:** the default value of either struct is invalid; `Letter`, `ToString` and public key-accepting
 operations reject it with `ArgumentException`. Key-bearing record constructors and `Root` and `Volume` init accessors validate it
-too. Members carrying a `RootKey` are named `Root` and members carrying a `VolumeKey` are named `Volume`. A directory key whose normalized text exceeds 1,983 UTF-16 code units is rejected by
+too. Members carrying a `RootKey` are named `Root` and members carrying a `VolumeKey` are named `Volume`. A directory key whose normalized text exceeds 1,967 UTF-16 code units is rejected by
 `RootKey.FromDirectory`, the limit of the key text stored in each cache block (see [index format](index-format.md)).
 These choices keep identity and admission in one owner without adding a string conversion.
 
@@ -1155,3 +1155,38 @@ and dispose independently while `FileIndexSet` provides the cross-index read que
 `EnumerateRows`) that file-wizard and the Watch sample need.
 
 **Revisit only if:** a consumer requires a cross-index atomic snapshot borrow across multiple roots at once.
+
+## Names are interned by exact spelling
+
+**Decision:** a block stores each distinct name once, keyed by its exact ordinal UTF-16 spelling. The hash folds case
+(one `NameFolding` routine: invariant simple uppercase per UTF-16 unit, `Rune` casing for valid pairs), so every casing
+of a name shares one chain and one tag, but identity is the ordinal comparison of the text. `FileEntry.Name` and
+`IndexRow.Name` return the spelling the row was written with, a case-only rename interns the new spelling and swaps the
+row's identifier, and rows that share an old spelling keep it. An ignore-case lookup collects every casing in the chain;
+`Find` under ignore case prefers the child whose name matches ordinally, else the lowest row. Case-sensitive queries
+compare the original pattern ordinally. Ignore-case matching is the ordinal match of the fold of both sides, whatever the
+width of the stored name. `BlockValidationResult.InvalidNameDescriptor` now reports only the eager name-region geometry
+failures in the header (counts past capacities, a bucket count off the formula, fewer pool bytes than entries); a corrupt
+entry or identifier is found lazily by the read that touches it, which throws `InvalidDataException` and writes a
+`Diagnostics` line.
+
+**Reason:** the name-encoding consult converged on exact spelling: the first-spelling-wins rule of the spike would have
+changed the name a consumer reads back after a case-only rename and would have made case-sensitive roots lose a
+spelling. The cost is one entry per extra casing, estimated at 1 to 3 percent of distinct names.
+
+**Revisit only if:** the real-drive count of ordinal-distinct names exceeds the ignore-case-distinct count by enough
+to matter for block size.
+
+## Row enumerator copies share one resource owner
+
+**Decision:** every struct copy of an `IndexRowEnumerator` shares one resource owner holding the active name pass and one
+reusable buffer for ASCII names. Advancing any copy invalidates older copies: their `Current` and `MoveNext` throw
+`InvalidOperationException`. Disposing through any copy returns the borrow and the resources and makes every copy throw
+`ObjectDisposedException`.
+
+**Reason:** a row is valid only until the enumerator advances, so an older copy can never be valid again; a per-copy
+buffer would cost an allocation per copy, and a shared buffer without invalidation would let a stale copy read another
+copy's name.
+
+**Revisit only if:** a consumer needs two independent cursors over one enumerator, which `GetEnumerator` already gives
+with a separate borrow.

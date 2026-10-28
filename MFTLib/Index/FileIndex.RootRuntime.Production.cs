@@ -93,13 +93,13 @@ public sealed partial class FileIndex
         (uint SlotCapacity, uint NamePoolCapacity) PlanCapacities(uint estimatedRows)
         {
             var slotCapacity = BlockLayout.ComputeSlotCapacity(estimatedRows);
-            var namePoolCapacity = BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows));
+            var namePoolCapacity = BlockLayout.ComputeNamePoolCapacity(slotCapacity);
             lock (StateLock)
             {
                 if (Block?.Block.Header is { IsCapacityExhausted: true } exhausted)
                 {
                     slotCapacity = Math.Max(slotCapacity, BlockLayout.DoubleCapacity(exhausted.SlotCapacity));
-                    namePoolCapacity = Math.Max(namePoolCapacity, BlockLayout.DoubleCapacity(exhausted.NamePoolCapacity));
+                    namePoolCapacity = Math.Max(namePoolCapacity, BlockLayout.DoubleNamePoolCapacity(exhausted.NamePoolCapacity));
                 }
             }
 
@@ -179,7 +179,7 @@ public sealed partial class FileIndex
             public BlockWriter? Grow(BlockWriter exhausted)
             {
                 var nextSlotCapacity = BlockLayout.DoubleCapacity(_slotCapacity);
-                var nextNamePoolCapacity = BlockLayout.DoubleCapacity(_namePoolCapacity);
+                var nextNamePoolCapacity = BlockLayout.DoubleNamePoolCapacity(_namePoolCapacity);
                 if (nextSlotCapacity == _slotCapacity && nextNamePoolCapacity == _namePoolCapacity)
                 {
                     return null;

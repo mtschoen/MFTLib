@@ -78,10 +78,10 @@ sealed class SyntheticBlockBuilder : IDisposable
             _nextRow = rowIndex + 1;
         }
 
-        var nameOffsetBytes = _block.NamePoolUsed;
-        var poolCharacterIndex = (int)(nameOffsetBytes / sizeof(char));
-        name.AsSpan().CopyTo(_block.NamePoolCharacters.Slice(poolCharacterIndex, name.Length));
-        _block.PublishNamePoolUsed(nameOffsetBytes + (uint)(name.Length * sizeof(char)));
+        if (!NamePool.TryGetOrAdd(_block, name, out var nameId))
+        {
+            throw new InvalidOperationException("The synthetic name does not fit in the block.");
+        }
 
         ref var row = ref _block.Rows[(int)rowIndex];
         row = new FileRow
@@ -93,8 +93,8 @@ sealed class SyntheticBlockBuilder : IDisposable
         };
 
         // Goes through the descriptor-word helper for the same reason the production writer
-        // does: the name offset, the name length, and the flags are one 64-bit value.
-        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
+        // does: the name identifier and the flags are one 64-bit value.
+        FileRow.WriteDescriptorWord(ref row, nameId, columns.Flags);
 
         if (_block.RowCount <= rowIndex)
         {
@@ -111,12 +111,11 @@ sealed class SyntheticBlockBuilder : IDisposable
         _block.Flush(null);
     }
 
-    public void MutateNameDescriptor(uint rowIndex, uint nameOffsetBytes, ushort nameLengthUnits)
+    public void MutateNameDescriptor(uint rowIndex, uint nameId)
     {
         ref var row = ref _block.Rows[(int)rowIndex];
         var descriptor = FileRow.ReadDescriptorWord(in row);
-        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, nameLengthUnits,
-            FileRow.DescriptorFlags(descriptor));
+        FileRow.WriteDescriptorWord(ref row, nameId, FileRow.DescriptorFlags(descriptor));
         _block.Flush(null);
     }
 

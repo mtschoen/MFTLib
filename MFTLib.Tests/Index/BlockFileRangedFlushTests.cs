@@ -79,8 +79,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         var bytes = new byte[reopened.Length];
         reopened.ReadExactly(bytes);
         Assert.AreEqual(BlockLayout.Magic, BitConverter.ToUInt32(bytes, 0));
-        Assert.IsTrue(System.Text.Encoding.Unicode.GetString(bytes, (int)BlockLayout.NamePoolOffset(64), 16)
-            .StartsWith("root", StringComparison.Ordinal));
+        Assert.AreEqual("root", System.Text.Encoding.ASCII.GetString(bytes, (int)BlockLayout.NamePoolOffset(64, 64), 4));
     }
 
     [TestMethod]

@@ -24,6 +24,7 @@ public sealed partial class FileIndex
             // which releases it through its DriveBlockRelease state, not through IDisposable.
             if (BlockFile.OpenCanonical(path, Configuration.VolumeSerial, out var validation) is { } block)
             {
+                block.Diagnostics = Options.Diagnostics;
                 if (block.Header.ProducerKind != Configuration.Producer)
                 {
                     var storedProducerKind = block.Header.ProducerKind;
@@ -45,7 +46,18 @@ public sealed partial class FileIndex
 
                 if (block.Header.ProducerKind == ProducerKind.Enumeration)
                 {
-                    var cachedRoot = NamePool.ReadRowName(block, 0);
+                    string cachedRoot;
+                    try
+                    {
+                        cachedRoot = NamePool.ReadRowName(block, 0).ToString();
+                    }
+                    catch (InvalidDataException)
+                    {
+                        block.Dispose();
+                        DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.InvalidNameDescriptor}");
+                        return new WarmStartResult(null, BlockValidationResult.InvalidNameDescriptor);
+                    }
+
                     if (!NameMatching.EqualsName(cachedRoot, Configuration.RootDirectory, caseSensitive: !OperatingSystem.IsWindows()))
                     {
                         block.Dispose();

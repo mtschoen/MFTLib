@@ -71,7 +71,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
 
         Assert.AreEqual(FileChangeKind.Deleted, changes[0].Kind);
         Assert.IsTrue(_block.Rows[2].IsDeleted);
-        Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
+        Assert.AreEqual("existing.txt", NamePool.ReadRowName(_block, 2).ToString());
         Assert.IsTrue(changes[0].Entry.IsDeleted);
     }
 
@@ -80,7 +80,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
     {
         var mutator = new JournalMutator(_writer);
         var generationBefore = _block.Header.Generation;
-        var nameTooLargeForTheRemainingPool = new string('n', 300);
+        var nameTooLargeForTheRemainingPool = new string('n', 600);
 
         var changes = mutator.Apply(_snapshot[0],
         [
@@ -109,7 +109,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
 
         Assert.AreEqual(FileChangeKind.Renamed, changes[0].Kind);
         Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "Documents", "existing.txt"), changes[0].PreviousPath);
-        Assert.AreEqual("renamed.txt", new string(NamePool.ReadRowName(_block, 2)));
+        Assert.AreEqual("renamed.txt", NamePool.ReadRowName(_block, 2).ToString());
     }
 
     [TestMethod]
@@ -222,7 +222,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             journalIdentifier: 7, nextUsn: 2000);
 
         Assert.IsEmpty(changes);
-        Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
+        Assert.AreEqual("existing.txt", NamePool.ReadRowName(_block, 2).ToString());
     }
 
     [TestMethod]
@@ -271,7 +271,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
     public void ExhaustedNamePool_SetsCapacityExhaustedAndDoesNotThrow()
     {
         var mutator = new JournalMutator(_writer);
-        var longName = new string('n', 300);
+        var longName = new string('n', 600);
         var entries = new List<UsnJournalEntry>();
         for (var recordNumber = 5ul; recordNumber < 12; recordNumber++)
         {
@@ -303,7 +303,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
         var mutator = new JournalMutator(_writer);
         // Longer than the whole 512-byte name pool, so the append this rename needs can
         // never fit regardless of what else has or has not been written yet.
-        var hugeName = new string('a', 300);
+        var hugeName = new string('a', 600);
 
         var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, hugeName, UsnReason.RenameNewName | UsnReason.RenameOldName | UsnReason.Close,
@@ -312,7 +312,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
 
         Assert.IsEmpty(changes);
         Assert.IsTrue(_block.Header.IsCapacityExhausted);
-        Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
+        Assert.AreEqual("existing.txt", NamePool.ReadRowName(_block, 2).ToString());
     }
 
     [TestMethod]
@@ -371,6 +371,6 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
         Assert.IsFalse(_block.Rows[2].SizeKnown);
         Assert.IsFalse(_block.Rows[2].LastWriteTimeKnown);
         Assert.AreEqual(0L, _block.Rows[2].ModifiedTicks);
-        Assert.AreEqual(fileName, new string(NamePool.ReadRowName(_block, 2)));
+        Assert.AreEqual(fileName, NamePool.ReadRowName(_block, 2).ToString());
     }
 }

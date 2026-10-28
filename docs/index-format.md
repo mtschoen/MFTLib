@@ -156,10 +156,17 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 | Region | Offset | Size |
 | --- | --- | --- |
-| Header | 0 | 4096 (128-byte declared header, including alignment padding) |
+| Header | 0 | 4096 (160-byte declared header, including alignment padding) |
 | Rows | 4096 | `slot capacity * 32`, rounded up to a page |
 | Sequence region | after rows | `slot capacity * 2`, rounded up to a page |
-| Name pool | after sequence region | `name pool capacity`, rounded up to a page |
+| Name entry table | after sequence region | `(entry capacity + 1) * 12`, rounded up to a page |
+| Bucket directory | after name entries | `bucket count * 4`, rounded up to a page |
+| Name byte pool | after buckets | `name pool capacity`, rounded up to a page |
+
+Entry zero is reserved. The header stores the entry capacity `E`, the number of allocatable
+entries excluding that reserved entry; creation sets `E` to the slot capacity `S`, and every
+region offset and size is computed from the stored `S`, `E` and pool capacity `P`. The bucket
+count is the smallest power of two at least `max(1024, ceil(E / 4))`. New bucket heads are zero.
 
 ## Header
 
@@ -187,9 +194,14 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 108 | consumer version | u32 | Opaque consumer-owned version; compared exactly |
 | 112 | scan shape | u64 | Library identity of the row-shaping options; see [Scan shape](#scan-shape) |
 | 120 | access-denied subtree count | u32 | Subtrees the enumeration producer could not enter; zero for MFT blocks |
-| 124 | reserved | u32 | Written as zero |
+| 124 | name entry count | u32 | Published entries, excluding entry zero |
+| 128 | name entry capacity | u32 | Allocatable entries `E`, excluding entry zero; equal to slot capacity when the block is created |
+| 132 | bucket count | u32 | `max(1024, ceil(E / 4))` rounded up to a power of two |
+| 136 | name entry region offset | u64 | |
+| 144 | bucket region offset | u64 | |
+| 152 | reserved | u64 | Written as zero |
 
-The format version is 7. The declared header ends at byte 128 within a
+The format version is 8. The declared header ends at byte 160 within a
 4096-byte header page; the root key text follows it. A version mismatch rejects the block: normal opens
 rebuild it, and cache-only opens decline the root and leave the block in place.
 
@@ -199,17 +211,17 @@ Page 0 holds the block's root key after the declared header, for every block:
 
 | Offset | Field | Type | Notes |
 | --- | --- | --- | --- |
-| 128 | key text length | u16 | UTF-16 code units, 1 to 1983 |
-| 130 | key text | UTF-16 code units | The volume letter (`C`) or the normalized directory path, without a trailing separator |
+| 160 | key text length | u16 | UTF-16 code units, 1 to 1967 |
+| 162 | key text | UTF-16 code units | The volume letter (`C`) or the normalized directory path, without a trailing separator |
 
-A reader accepts the key only when the count fits the page (`130 + 2 * count <= 4096`), the text
+A reader accepts the key only when the count fits the page (`162 + 2 * count <= 4096`), the text
 parses to a root key whose own text is exactly the stored text, and the file name equals the name derived from that key
 and the header's volume serial. Malformed text reports `InconsistentRegions`; a name that is not the derived one reports
 `WrongRootDirectory`. Either discards the block and cold-scans. The text is written once when the block is created and
 never changes.
 
 The path length limit follows from the page: `RootKey.FromDirectory` throws `ArgumentException` for a normalized
-directory path longer than 1983 UTF-16 code units, so no walked root can produce a block whose key does not fit.
+directory path longer than 1967 UTF-16 code units, so no walked root can produce a block whose key does not fit.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
@@ -305,8 +317,8 @@ is no lookup table.
 | --- | --- | --- | --- |
 | 0 | parent row | u32 | Row index of the parent; the root points at itself |
 | 4 | attributes | u32 | NTFS file attributes |
-| 8 | name offset | u32 | Bytes into the name pool (descriptor word low 32 bits) |
-| 12 | name length | u16 | UTF-16 code units (descriptor word bits 32..47) |
+| 8 | name identifier | u32 | Index into the name entry table; zero means no name (descriptor word low 32 bits) |
+| 12 | reserved | u16 | Zero (descriptor word bits 32..47) |
 | 14 | row flags | u16 | 1 in use, 2 directory, 4 tombstone, 8 size unknown, 16 subtree skipped, 32 last-write time unknown (descriptor word bits 48..63) |
 | 16 | size | i64 | Bytes; zero for directories and size-unknown rows |
 | 24 | modified | i64 | UTC ticks of the last-write time a scan observed; zero for last-write-unknown rows |
@@ -347,7 +359,7 @@ and `FileEntry.Children` return live rows only.
 
 Deleted rows are reverse-indexed by parent slot in memory only. `DeletedChildLinks`, owned by `BlockFile`, is built lazily once per block, kept current at every row write, rename, tombstone and detach, and consulted when a journal create reuses a slot, so only that slot's deleted descendants are detached. Each parent holds a hash set of its deleted children, so linking and unlinking a row is constant time however many deleted siblings share the parent. The index is not persisted in the block format: a block opened from a cache file carries no links until the first create that needs them.
 
-Name offset, name length, and row flags sit adjacent at byte offset 8 to form
+Name identifier, reserved bits, and row flags sit adjacent at byte offset 8 to form
 an 8-byte aligned 64-bit descriptor word. Rows are 32 bytes and the row region
 starts at 4096 (a 4 KB boundary), so byte offset 8 in every row is 8-byte
 aligned. A rename or flag update publishes via a single atomic 64-bit store
@@ -356,22 +368,21 @@ aligned. A rename or flag update publishes via a single atomic 64-bit store
 The read rule is narrower than the write rule, and the difference is the whole
 point of the layout:
 
-- **The name offset and the name length must come from one
-  `FileRow.ReadDescriptorWord` on a live block.** Reading the two fields
-  separately can straddle a concurrent rename and pair a new offset with an old
-  length, which is exactly the torn read this layout exists to prevent. Never
-  pair a direct `NameOffsetBytes` read with a direct `NameLengthUnits` read.
+- **Read the name identifier with one `FileRow.ReadDescriptorWord` on a live
+  block.** Resolve that identifier through its immutable name entry, which supplies
+  the byte offset, character length and encoding together. A rename publishes either
+  the old identifier or the new one.
 - **The flags may be read on their own.** The field is 2-byte aligned, so it
   cannot tear by itself, and the scan loops read it directly through `IsInUse`,
   `IsDirectory`, `IsDeleted`, `SizeKnown` and `SubtreeSkipped`. Pairing such a
-  read with a separate name read is safe because the name pool is append-only: a
+  read with a separate name read is safe because entries and the name pool are append-only: a
   span built from a descriptor that is one rename stale still points at valid,
   immutable characters. Routing the flag predicates through the descriptor word
   would cost a 64-bit read plus three shifts per row on the hottest loop in the
   library and buy no correctness.
 - **Every write goes through `FileRow.WriteDescriptorWord`**, including a write
-  that only means to change the flags, which must round-trip the offset and the
-  length through the same call.
+  that only means to change the flags, which must round-trip the name identifier
+  through the same call.
 - **A `BlockWriter` operation and `BlockFile.Dispose` never overlap.** Every
   writer operation holds a block access scope for its full duration; disposal
   refuses new scopes when it begins and waits for outstanding ones before
@@ -384,7 +395,7 @@ point of the layout:
 ## Sequence region
 
 One `ushort` per row slot, densely stored after the row region and before the
-name pool. The sequence region stores one sequence number per slot so readers can
+name entry table. The sequence region stores one sequence number per slot so readers can
 derive a 64-bit file identifier in the form `(sequenceNumber << 48) | recordNumber`.
 For slot capacity *N*, the region uses `N * 2` bytes, then aligns to 4 KB like all
 other block regions.
@@ -392,25 +403,101 @@ other block regions.
 ## Capacity
 
 Slot capacity is the estimated row count plus 25 percent or 65536 rows, whichever is larger.
-Name pool capacity uses the same ratio with a floor of one mebibyte (1048576 bytes).
-Exhausting either sets the capacity-exhausted flag. An enumeration walk does not start again:
-FileIndex copies the exhausted block's used rows, sequence numbers and name pool out, disposes
-and deletes it, and restores them into a block with both capacities doubled, capped at the
-layout's maximum of 2147483647 each, while the walk continues from its frontier. Row indices and
-name offsets are unchanged by the copy, so no directory is read twice. Growth is geometric, so
+The name byte pool reserves `P = pageAlign(max(1 MiB, 24 * S))` bytes for that slot capacity `S`, with no second
+headroom, clamped to 2147479552 bytes (`0x7FFFF000`) so every pool span length fits an `int`; one layout routine
+serves the MFT and enumeration producers. The reservation is generous: measured use is 2.7 to 15.2 bytes per slot.
+Exhausting rows, name entries or name bytes sets the capacity-exhausted flag. An enumeration walk does not start again:
+FileIndex copies the exhausted block's used rows, sequence numbers, name entries and name bytes out, disposes
+and deletes it, and restores them into a block with the slot capacity and the pool capacity doubled (the entry
+capacity follows the slot capacity), capped at 2147483646 slots, which leaves room for reserved name entry zero in
+the int-indexed entry span, and at the pool clamp, while the walk continues from its frontier. Row indices and
+name identifiers are unchanged by the copy; bucket chains are rebuilt for the replacement bucket count,
+so no directory is read twice. Growth is geometric, so
 copies are bounded. Only an enumeration tree that still cannot fit at that maximum publishes an
 exhausted block.
 An MFT producer or mutator keeps what fits and the volume remains Ready and queryable.
 Read `RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
 failed or cancelled rescans retain the old block and its flag.
 
-## Name pool
+## Name entries, byte pool and hash chains
 
-UTF-16, append only. A rename appends the new name to the name pool and then
-atomically updates the row descriptor word (name offset, name length, and row
-flags) with a single 64-bit store, so a concurrent reader sees the old name or
-the new one and never a torn descriptor. Names are not interned. Maximum
-name length is 32767 UTF-16 code units.
+Names are interned by exact spelling: two rows share a name entry exactly when their names are equal as ordinal
+UTF-16 text, so `Makefile` and `makefile` are two entries and a case-only rename interns the new spelling and swaps
+the row's identifier. Peers that kept the old spelling keep it, because entries are immutable. Each nonzero
+identifier selects one append-only 12-byte entry:
+
+| Entry offset | Field | Type | Meaning |
+| --- | --- | --- | --- |
+| 0 | pool byte offset | u32 | Offset within the byte pool |
+| 4 | length and encoding | u16 | Low 15 bits: UTF-16 code-unit count; high bit: UTF-16 encoding |
+| 6 | hash tag | u16 | High 16 bits of the name hash |
+| 8 | next identifier | u32 | Previous head of this bucket; zero ends the chain |
+
+An all-ASCII name stores one byte per character (0 through 127). Any other name, including one with an unpaired
+surrogate, stores UTF-16LE, starting at an even byte offset; pool usage includes alignment padding. Maximum
+name length is 32767 UTF-16 code units. `FileEntry.Name` constructs a string from either encoding exactly as written.
+`IndexRow.Name` borrows UTF-16 text directly or uses the enumerator's reusable character buffer for ASCII text.
+
+The stable hash is FNV-1a 64 over the little-endian UTF-16 units after the one fold routine: invariant simple
+uppercase per UTF-16 unit, with `Rune` casing for a valid surrogate pair and an unpaired surrogate folding to
+itself. Every casing of a name therefore hashes alike and shares one chain and one tag. A bucket is
+`hash & (bucket count - 1)`. An exact lookup walks the bucket's decreasing identifier chain, compares the tag, then
+compares the text ordinally; hash and tag collisions never establish identity without comparing the text.
+
+The single writer runs under the root's existing write gate. On a hit it reuses the identifier, even when storage is
+full. On a miss it checks pool and entry capacity, writes the bytes, writes the whole entry with its previous-head
+link, publishes pool usage and entry count, and finally publishes the bucket head with a volatile write. Readers
+acquire the published count or head before reading the immutable storage. The row descriptor is published afterwards
+in one aligned 64-bit store. An interruption before bucket publication leaves unreachable storage, not a link to
+unwritten bytes. Entries and bytes remain valid after rename or deletion.
+
+### Validation
+
+| Stage | Checks |
+| --- | --- |
+| Eager at open, constant cost | Magic and version, every region offset equal to the layout for the stored `S`, `E` and `P`, total size, `RowCount <= S`, `NameEntryCount <= E`, `NamePoolUsed <= P`, `NamePoolUsed >= NameEntryCount`, the bucket count the formula gives for `E`, root key, file name, producer, cache tag and scan shape. Section validation in the broker runs the same set on a private header copy. The four name-region facts report `BlockValidationResult.InvalidNameDescriptor`; the other geometry checks report `InconsistentRegions` |
+| Lazy at each read | `NamePool.Read`: the identifier is within the published entry count, the length is nonzero, the offset plus bytes lie within the used pool, and a UTF-16 offset is even. A failure writes a `Diagnostics` line naming the block, the identifier and the failed check, then throws `InvalidDataException` to the query. A chain walk requires each identifier within the published count and each `Next` strictly smaller; a failed step ends the walk as not found |
+| Not run in production | Tag correctness, bucket membership, reachability, ASCII validity and per-name rehash. A corrupt chain can only cause a missed exact match or a duplicate entry, never an out-of-bounds read. Tests run the full pass through an internal integrity checker |
+
+Nothing is rebuilt or rehashed at open: an open of a block touches no name entry, bucket or pool page. The writer
+trusts the chains it finds; a block written by MFTLib under the owner-only cache directory is the only input, and the
+next rescan rewrites it.
+
+## Name query passes
+
+A query resolves the matching name entries once and then tests each row's atomically read identifier. An exact,
+case-sensitive query walks the chain for the pattern and takes the single ordinal match. An exact, ignore-case query
+walks that one chain and collects every entry the fold matches (an inline set of four identifiers, then a rented
+array); `Find` under ignore case prefers the child spelled exactly as the segment, else the lowest row. Substring and
+glob queries first scan the published name entries into a rented `ulong[]` bitset, then scan rows by testing the bit
+for each row's identifier. The same setup serves materialized search and both enumeration APIs. A query without a name
+predicate skips name matching.
+
+Ignore-case matching is defined once: a name matches a pattern exactly when the ordinal match of the fold of the name
+against the fold of the pattern succeeds. The pattern is folded and encoded once per query. An ASCII entry uses
+byte operations when the folded pattern is ASCII (a pattern whose fold is not ASCII cannot match it, which is decided
+in constant time); a UTF-16 entry is folded into a reusable buffer and matched as characters. A case-sensitive query
+compares the original pattern ordinally, so a case-sensitive substring is an ordinal search for the original text. A
+glob is always wildcard matching (`?` one unit, `*` any run), never reduced to one literal test. `ı` (U+0131) keeps its
+own fold because .NET leaves it alone under invariant casing; `ſ` (U+017F) folds to ASCII `S`.
+
+The entry pass captures its count once, so identifiers appended afterwards do not match that pass. Contents are not
+frozen: an existing row can change between matching and consumption. Borrow ownership spans both passes.
+Cancellation is checked before setup, at least every 4096 name entries, before the first row and at least every 4096
+scanned rows, including rejected rows. Bitsets are returned on completion, disposal and failed setup. See
+[query lifetime](query-lifetime.md).
+
+## Measuring name storage
+
+`Benchmark.exe index-storage --synthetic 3000000` measures managed synthetic input generation and the production MFT
+row writer. The run uses seed 42: random 20-character ASCII names, every tenth record a directory, `.git` and `HEAD`
+once per hundred records, and root record 5. These mostly distinct random names give little deduplication benefit;
+real-drive name repetition is a different workload.
+
+The reported scan write time excludes block allocation, completion flush and cleanup. Storage output separates pool
+usage, occupied name entries (12 bytes per entry, excluding reserved entry zero), page-rounded reserved entry storage
+and the whole bucket directory. A single run is a throughput observation, not a statistical performance comparison.
+The temporary block is deleted after measurement.
 
 ## Enumeration blocks
 
@@ -442,13 +529,14 @@ before completion leaves a block the client discards.
 The section header is shared with a less trusted process, so the broker treats it
 as input. `NamedBlockSection.OpenExisting` maps the whole section, takes one private
 copy of the header and validates it with `BlockHeader.ValidateSection`: magic,
-version, row count and name-pool used within their capacities, every region offset
+version, row and name-entry counts and name-pool used within their capacities, the
+bucket count the formula gives for the entry capacity, every region offset
 equal to the `BlockLayout` value for those capacities, and a total block size equal
 to the mapped length. A rejected section fails the scan request with an `Error`
 frame naming the `BlockValidationResult`. Every `BlockFile` keeps the capacities of
 the copy it was built from and derives its region offsets from them; spans and
 writer bounds checks never read the mapped header. The writer tracks row count and
-name-pool used itself and publishes each change to the header without reading it
+name-pool used and name-entry count itself and publishes each change to the header without reading it
 back: the creator writes the header's capacities and offsets once, the writer
 publishes its cursors, and only validation and display read them. After the broker reports the scan
 ready, the client validates the completed header and adopts its published cursors

@@ -99,7 +99,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Enumerates the rows matching <paramref name="query" /> as non-allocating <see cref="IndexRow" /> views:
-    ///     the name is a span over the mapped name pool, and no <see cref="FileEntry" />, name string or path
+    ///     the name is a span over mapped text or the enumerator's reusable buffer, and no <see cref="FileEntry" />, name string or path
     ///     is built unless the caller asks a row for one. Consume the result with <c>foreach</c>.
     /// </summary>
     /// <remarks>

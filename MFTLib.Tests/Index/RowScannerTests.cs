@@ -43,7 +43,7 @@ public class RowScannerTests
         var scanner = new RowScanner(_snapshot[0]);
         while (scanner.MoveNext())
         {
-            names.Add(new string(scanner.CurrentName));
+            names.Add(scanner.CurrentName.ToString());
         }
 
         Assert.AreSequenceEqual(["", "alpha.txt", "beta.txt", "gamma.txt"], names);
@@ -80,7 +80,7 @@ public class RowScannerTests
         var scanner = new RowScanner(_snapshot[0], startRow: 2, endRowExclusive: 4);
         while (scanner.MoveNext())
         {
-            names.Add(new string(scanner.CurrentName));
+            names.Add(scanner.CurrentName.ToString());
         }
 
         Assert.AreSequenceEqual(["beta.txt", "gamma.txt"], names);

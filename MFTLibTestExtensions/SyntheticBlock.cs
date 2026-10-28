@@ -116,6 +116,10 @@ public static class SyntheticBlock
         var planned = rows as IReadOnlyList<SyntheticRow> ?? rows.ToList();
         var highestRow = planned.Count == 0 ? 0u : planned.Max(row => row.Row);
         var nameBytes = planned.Sum(row => (long)row.Name.Length * sizeof(char));
+        var slotCapacity = BlockLayout.ComputeSlotCapacity(Math.Max(highestRow, options.RootRow) + 1);
+        // Synthetic names are arbitrary, so the pool also covers the worst case of every name stored as UTF-16.
+        var namePoolCapacity = Math.Max(BlockLayout.ComputeNamePoolCapacity(slotCapacity),
+            checked((uint)BlockLayout.AlignUp(nameBytes, BlockLayout.PageSize)));
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = path,
@@ -123,8 +127,8 @@ public static class SyntheticBlock
             VolumeSerial = volumeSerial,
             ProducerKind = options.ProducerKind,
             RootRow = options.RootRow,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(Math.Max(highestRow, options.RootRow) + 1),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked((uint)nameBytes)),
+            SlotCapacity = slotCapacity,
+            NamePoolCapacity = namePoolCapacity,
             DeleteOnClose = deleteOnClose,
             CacheTag = options.CacheTag,
             ScanShape = options.ResolveScanShape()

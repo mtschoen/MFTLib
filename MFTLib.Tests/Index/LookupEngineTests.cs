@@ -167,7 +167,7 @@ public class LookupEngineTests
         {
             ref readonly var row = ref scanner.Current;
             if (row.IsInUse && !row.IsDeleted &&
-                NameMatching.EqualsName(scanner.CurrentName, name, caseSensitive))
+                NameMatching.EqualsName(scanner.CurrentName.ToString(), name, caseSensitive))
             {
                 reference.Add(FileEntry.Create(rootBlock, scanner.CurrentRowIndex));
             }

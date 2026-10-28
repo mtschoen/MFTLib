@@ -62,7 +62,10 @@ sealed unsafe partial class BlockFile : IDisposable
     BlockFile(string path, long length, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view, BlockHeader layout, RootKey root)
     {
-        if (BlockLayout.TotalBlockBytes(layout.SlotCapacity, layout.NamePoolCapacity) > length ||
+        if (BlockLayout.TotalBlockBytes(layout.SlotCapacity, layout.NameEntryCapacity, layout.NamePoolCapacity) > length ||
+            layout.SlotCapacity >= int.MaxValue || layout.NameEntryCapacity >= int.MaxValue ||
+            layout.NameEntryCount > layout.NameEntryCapacity ||
+            layout.BucketCount != BlockLayout.ComputeBucketCount(layout.NameEntryCapacity) ||
             layout.RowCount > layout.SlotCapacity || layout.NamePoolUsed > layout.NamePoolCapacity)
         {
             throw new ArgumentException("The block layout does not fit the mapped view.", nameof(layout));
@@ -75,8 +78,13 @@ sealed unsafe partial class BlockFile : IDisposable
         _view = view;
         SlotCapacity = layout.SlotCapacity;
         NamePoolCapacity = layout.NamePoolCapacity;
+        NameEntryCapacity = layout.NameEntryCapacity;
+        BucketCount = layout.BucketCount;
+        _nameEntryCount = layout.NameEntryCount;
         _sequenceRegionOffset = BlockLayout.SequenceRegionOffset(layout.SlotCapacity);
-        _namePoolOffset = BlockLayout.NamePoolOffset(layout.SlotCapacity);
+        _nameEntryRegionOffset = BlockLayout.NameEntryRegionOffset(layout.SlotCapacity);
+        _bucketRegionOffset = BlockLayout.BucketRegionOffset(layout.SlotCapacity, layout.NameEntryCapacity);
+        _namePoolOffset = BlockLayout.NamePoolOffset(layout.SlotCapacity, layout.NameEntryCapacity);
         _rowCount = layout.RowCount;
         _namePoolUsed = layout.NamePoolUsed;
         _generation = layout.Generation;
@@ -97,7 +105,7 @@ sealed unsafe partial class BlockFile : IDisposable
 
     /// <summary>
     ///     Gets the fixed mapped-file length in bytes, including the header, rows, sequence
-    ///     numbers, and name pool.
+    ///     numbers, name entries, hash buckets and name byte pool.
     /// </summary>
     public long Length { get; }
 
@@ -180,16 +188,6 @@ sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
-    /// <summary>The whole name pool as UTF-16 code units. Row name offsets are in bytes.</summary>
-    public Span<char> NamePoolCharacters
-    {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return new Span<char>(_base + _namePoolOffset, (int)(NamePoolCapacity / sizeof(char)));
-        }
-    }
-
     /// <summary>
     ///     Creates and maps a new empty block whose layout is sized from <paramref name="options" />.
     /// </summary>
@@ -198,7 +196,7 @@ sealed unsafe partial class BlockFile : IDisposable
     public static BlockFile Create(BlockFileCreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.SlotCapacity, options.NamePoolCapacity);
         var (mappedFile, view) = OpenMapping(options.Path, FileMode.Create, length, length,
             options.DeleteOnClose ? FileOptions.DeleteOnClose : FileOptions.None);
         return BuildAndInitialize(options, length, mappedFile, view);
@@ -358,7 +356,6 @@ sealed unsafe partial class BlockFile : IDisposable
                 block = new BlockFile(path, length, mappedFile, view, header, storedRoot);
                 view = null;
                 mappedFile = null;
-                validation = block.ValidateNameDescriptors();
             }
 
             if (validation is null)
@@ -392,24 +389,6 @@ sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
-    BlockValidationResult? ValidateNameDescriptors()
-    {
-        var usedBytes = (ulong)NamePoolUsed;
-        var rows = Rows;
-        for (var rowIndex = 0u; rowIndex < RowCount; rowIndex++)
-        {
-            var descriptor = FileRow.ReadDescriptorWord(in rows[(int)rowIndex]);
-            var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
-            var lengthBytes = (ulong)FileRow.DescriptorNameLengthUnits(descriptor) * sizeof(char);
-            if ((offsetBytes & (sizeof(char) - 1)) != 0 || offsetBytes + lengthBytes > usedBytes)
-            {
-                return BlockValidationResult.InvalidNameDescriptor;
-            }
-        }
-
-        return null;
-    }
-
     static BlockHeader InitialHeader(BlockFileCreateOptions options)
     {
         var header = default(BlockHeader);
@@ -421,9 +400,13 @@ sealed unsafe partial class BlockFile : IDisposable
         header.RootRow = options.RootRow;
         header.SlotCapacity = options.SlotCapacity;
         header.NamePoolCapacity = options.NamePoolCapacity;
+        header.NameEntryCapacity = options.SlotCapacity;
+        header.BucketCount = BlockLayout.ComputeBucketCount(options.SlotCapacity);
         header.RowRegionOffset = BlockLayout.RowRegionOffset;
         header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(options.SlotCapacity);
-        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity);
+        header.NameEntryRegionOffset = (ulong)BlockLayout.NameEntryRegionOffset(options.SlotCapacity);
+        header.BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(options.SlotCapacity, options.SlotCapacity);
+        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity, options.SlotCapacity);
         header.CacheTagFourCc = options.CacheTag.PackedFourCc;
         header.CacheTagVersion = options.CacheTag.Version;
         header.ScanShape = options.ScanShape;

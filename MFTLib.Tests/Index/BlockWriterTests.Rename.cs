@@ -7,6 +7,43 @@ namespace MFTLib.Tests.Index;
 public partial class BlockWriterTests
 {
     [TestMethod]
+    public void TryRenameRow_CaseOnly_InternsTheNewSpellingAndSwapsTheId()
+    {
+        using var block = TestBlocks.Create(_blockPath);
+        var writer = new BlockWriter(block);
+        writer.TryWriteRow(0, "", RootColumns);
+        writer.TryWriteRow(1, "readme.md", FileColumns(0));
+        var originalNameId = block.Rows[1].NameId;
+        var originalEntryCount = block.NameEntryCount;
+
+        Assert.IsTrue(writer.TryRenameRow(1, "README.md", parentRow: 0));
+
+        Assert.AreNotEqual(originalNameId, block.Rows[1].NameId);
+        Assert.AreEqual(originalEntryCount + 1, block.NameEntryCount);
+        Assert.AreEqual("README.md", NamePool.ReadRowName(block, 1).ToString());
+        Assert.IsNull(MFTLibTestExtensions.SyntheticNamePool.CheckIntegrity(block));
+    }
+
+    [TestMethod]
+    public void TryRenameRow_PeersSharingTheOldNameKeepIt()
+    {
+        using var block = TestBlocks.Create(_blockPath);
+        var writer = new BlockWriter(block);
+        writer.TryWriteRow(0, "", RootColumns);
+        writer.TryWriteRow(10, "notes.txt", FileColumns(0));
+        writer.TryWriteRow(11, "notes.txt", FileColumns(0));
+        var sharedNameId = block.Rows[11].NameId;
+        Assert.AreEqual(block.Rows[10].NameId, sharedNameId);
+
+        Assert.IsTrue(writer.TryRenameRow(10, "Notes.txt", parentRow: 0));
+
+        Assert.AreEqual("Notes.txt", NamePool.ReadRowName(block, 10).ToString());
+        Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, 11).ToString());
+        Assert.AreEqual(sharedNameId, block.Rows[11].NameId);
+        Assert.IsNull(MFTLibTestExtensions.SyntheticNamePool.CheckIntegrity(block));
+    }
+
+    [TestMethod]
     public void TryRenameRow_WithTheSameName_UpdatesOnlyTheParentRowAndDoesNotGrowTheNamePool()
     {
         using var block = TestBlocks.Create(_blockPath);
@@ -20,52 +57,47 @@ public partial class BlockWriterTests
 
         Assert.AreEqual(namePoolUsedBefore, block.Header.NamePoolUsed);
         Assert.AreEqual(1u, block.Rows[2].ParentRow);
-        Assert.AreEqual("unchanged.txt", new string(NamePool.ReadRowName(block, 2)));
+        Assert.AreEqual("unchanged.txt", NamePool.ReadRowName(block, 2).ToString());
     }
 
     [TestMethod]
-    public void TryRenameRow_AppendsTheNewNameAndSwapsTheRowOffset()
+    public void TryRenameRow_AppendsTheNewNameAndSwapsTheRowId()
     {
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
-        var originalOffset = block.Rows[1].NameOffsetBytes;
+        var originalNameId = block.Rows[1].NameId;
 
         Assert.IsTrue(writer.TryRenameRow(1, "after.txt", parentRow: 0));
 
-        Assert.AreEqual("after.txt", new string(NamePool.ReadRowName(block, 1)));
-        Assert.AreNotEqual(originalOffset, block.Rows[1].NameOffsetBytes);
-        Assert.AreEqual("before.txt", new string(NamePool.Read(block.NamePoolCharacters, originalOffset, 10)));
+        Assert.AreEqual("after.txt", NamePool.ReadRowName(block, 1).ToString());
+        Assert.AreNotEqual(originalNameId, block.Rows[1].NameId);
+        Assert.AreEqual("before.txt", NamePool.Read(block, originalNameId).ToString());
     }
 
     [TestMethod]
-    public void TryRenameRow_PublishesOffsetLengthAndFlagsAsOneDescriptorWord()
+    public void TryRenameRow_PublishesNameIdAndFlagsAsOneDescriptorWord()
     {
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
-        var originalOffset = block.Rows[1].NameOffsetBytes;
+        var originalNameId = block.Rows[1].NameId;
 
         Assert.IsTrue(writer.TryRenameRow(1, "considerably-longer-name.txt", parentRow: 0));
 
-        // The whole point of the descriptor word: one read yields an offset and a length that
-        // belong to the same name. Decoding them separately from the word must agree with the
-        // name the pool reader hands back, and the old name must still be readable at the old
-        // offset because the pool is append-only.
+        // The published descriptor identifies immutable name storage, including after a rename.
         var descriptor = FileRow.ReadDescriptorWord(in block.Rows[1]);
-        var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
-        var lengthUnits = FileRow.DescriptorNameLengthUnits(descriptor);
+        var nameId = FileRow.DescriptorNameId(descriptor);
 
-        Assert.AreNotEqual(originalOffset, offsetBytes);
-        Assert.AreEqual((ushort)"considerably-longer-name.txt".Length, lengthUnits);
+        Assert.AreNotEqual(originalNameId, nameId);
         Assert.AreEqual("considerably-longer-name.txt",
-            new string(NamePool.Read(block.NamePoolCharacters, offsetBytes, lengthUnits)));
-        Assert.AreEqual("considerably-longer-name.txt", new string(NamePool.ReadRowName(block, 1)));
+            NamePool.Read(block, nameId).ToString());
+        Assert.AreEqual("considerably-longer-name.txt", NamePool.ReadRowName(block, 1).ToString());
         Assert.AreEqual(RowFlags.InUse, FileRow.DescriptorFlags(descriptor));
         Assert.AreEqual("before.txt",
-            new string(NamePool.Read(block.NamePoolCharacters, originalOffset, 10)));
+            NamePool.Read(block, originalNameId).ToString());
     }
 
     [TestMethod]
@@ -83,16 +115,16 @@ public partial class BlockWriterTests
     [TestMethod]
     public void TryRenameRow_NamePoolExhausted_FailsWithoutChangingTheRow()
     {
-        using var block = TestBlocks.Create(_blockPath, namePoolCapacity: 40);
+        using var block = TestBlocks.Create(_blockPath, namePoolCapacity: 20);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
-        // Fills the tiny name pool (40 bytes = 20 UTF-16 code units) with no room left over.
+        // ASCII storage leaves one byte unused, too little for the replacement.
         writer.TryWriteRow(1, "twenty-characters-ok", FileColumns(0, size: 10, attributes: 32));
-        var originalOffset = block.Rows[1].NameOffsetBytes;
+        var originalNameId = block.Rows[1].NameId;
 
         Assert.IsFalse(writer.TryRenameRow(1, "this-new-name-does-not-fit", parentRow: 0));
 
-        Assert.AreEqual(originalOffset, block.Rows[1].NameOffsetBytes);
-        Assert.AreEqual("twenty-characters-ok", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual(originalNameId, block.Rows[1].NameId);
+        Assert.AreEqual("twenty-characters-ok", NamePool.ReadRowName(block, 1).ToString());
     }
 }

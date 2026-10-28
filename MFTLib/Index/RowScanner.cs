@@ -17,9 +17,7 @@ ref struct RowScanner
     internal const uint CancellationCheckIntervalRows = 4096;
 
     readonly ReadOnlySpan<FileRow> _rows;
-    // ReSharper disable once ReplaceWithFieldKeyword
-    // aislop-ignore-next-line jb/ReplaceWithFieldKeyword -- the field is the block's whole packed name pool, not CurrentName's storage
-    readonly ReadOnlySpan<char> _namePool;
+    readonly BlockFile _block;
     readonly uint _endRowExclusive;
     readonly CancellationToken _cancellationToken;
     uint _rowsUntilCancellationCheck;
@@ -36,7 +34,7 @@ ref struct RowScanner
         ArgumentNullException.ThrowIfNull(rootBlock);
         var block = rootBlock.Block;
         _rows = block.Rows;
-        _namePool = block.NamePoolCharacters;
+        _block = block;
         _endRowExclusive = Math.Min(endRowExclusive, block.Header.RowCount);
         _cancellationToken = cancellationToken;
 
@@ -54,15 +52,14 @@ ref struct RowScanner
 
     /// <summary>
     ///     The current row's name, taken from a single descriptor-word read so a concurrent
-    ///     rename cannot pair a new name offset with an old name length.
+    ///     rename selects either the old immutable entry or the new one.
     /// </summary>
-    internal readonly ReadOnlySpan<char> CurrentName
+    internal readonly NameView CurrentName
     {
         get
         {
             var descriptor = FileRow.ReadDescriptorWord(in Current);
-            return NamePool.Read(_namePool, FileRow.DescriptorNameOffsetBytes(descriptor),
-                FileRow.DescriptorNameLengthUnits(descriptor));
+            return NamePool.Read(_block, FileRow.DescriptorNameId(descriptor));
         }
     }
 

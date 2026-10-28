@@ -3,15 +3,11 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Calculates slot and name pool capacities for packed index blocks from NTFS volume information.
+///     Calculates slot and name pool capacities for packed index blocks from NTFS volume information. The pool
+///     reservation is the layout's one routine, shared with the enumeration producer.
 /// </summary>
 static class MftBlockCapacity
 {
-    /// <summary>
-    ///     Default estimated bytes per name entry in the block name pool.
-    /// </summary>
-    const uint AverageNameBytesPerRow = 48;
-
     /// <summary>
     ///     Minimum row count floor used when volume information is unqueried.
     /// </summary>
@@ -85,13 +81,6 @@ static class MftBlockCapacity
         NtfsVolumeInformation volumeInformation)
     {
         var slotCapacity = BlockLayout.ComputeSlotCapacity(EstimateRowCount(volumeInformation));
-
-        // Widened before the multiply and clamped after: a large volume times a generous
-        // average name length overflows 32 bits, and a saturated pool plus the block's own
-        // capacity-exhausted flag is the right answer there, not a checked-arithmetic throw
-        // on a path whose whole job is estimating.
-        var estimatedNameBytes = (ulong)slotCapacity * AverageNameBytesPerRow;
-        var clamped = estimatedNameBytes > uint.MaxValue / 2 ? uint.MaxValue / 2 : (uint)estimatedNameBytes;
-        return (slotCapacity, BlockLayout.ComputeNamePoolCapacity(clamped));
+        return (slotCapacity, BlockLayout.ComputeNamePoolCapacity(slotCapacity));
     }
 }

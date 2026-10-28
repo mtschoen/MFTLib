@@ -25,7 +25,7 @@ public enum BlockValidationResult
     ///     file whose name is not the one its stored root key and volume serial derive.
     /// </summary>
     WrongRootDirectory,
-    /// <summary>A row could address unvalidated name-pool bytes, so the cache cannot be read safely.</summary>
+    /// <summary>The header's name-region geometry is inconsistent: counts past capacities or a wrong bucket count.</summary>
     InvalidNameDescriptor,
 
     /// <summary>

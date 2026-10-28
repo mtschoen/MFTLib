@@ -129,23 +129,46 @@ static class LookupEngine
         bool CaseSensitive,
         CancellationToken CancellationToken);
 
+    /// <summary>
+    ///     Finds the child of <paramref name="parentRow" /> named <paramref name="segment" />. The segment resolves to
+    ///     the entries that match under the block's case rule, then rows are tested by name identifier. Among several
+    ///     ignore-case matches a child spelled exactly as the segment wins; otherwise the lowest row does.
+    /// </summary>
     static bool TryFindChild(in PathDescent descent, uint parentRow, ReadOnlySpan<char> segment,
         out uint childRow)
     {
+        var query = new SearchQuery(segment.ToString(), NameMatchMode.Exact, descent.CaseSensitive);
+        using var names = new NameQueryMatches(descent.RootBlock.Block, query, descent.CancellationToken);
+        var found = false;
+        childRow = 0;
         var scanner = new RowScanner(descent.RootBlock, descent.CancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
-            if (row.IsInUse && !row.IsDeleted && row.ParentRow == parentRow &&
-                scanner.CurrentRowIndex != parentRow &&
-                NameMatching.EqualsName(scanner.CurrentName, segment, descent.CaseSensitive))
+            if (!row.IsInUse || row.IsDeleted || row.ParentRow != parentRow ||
+                scanner.CurrentRowIndex == parentRow || !names.Matches(in row))
+            {
+                continue;
+            }
+
+            if (names.IsOrdinalMatch(in row))
             {
                 childRow = scanner.CurrentRowIndex;
                 return true;
             }
+
+            if (!found)
+            {
+                found = true;
+                childRow = scanner.CurrentRowIndex;
+            }
+
+            if (!names.HasOrdinalMatch)
+            {
+                return true;
+            }
         }
 
-        childRow = 0;
-        return false;
+        return found;
     }
 }

@@ -14,9 +14,6 @@ sealed class EnumerationProducer
     /// <summary>A root is never sized below this, so a tiny sample cannot starve the block.</summary>
     const uint MinimumEstimatedRowCount = 4096;
 
-    /// <summary>Bytes of name pool budgeted per row: 24 UTF-16 units is a generous mean name.</summary>
-    const uint EstimatedNameBytesPerRow = 48;
-
     /// <summary>
     ///     Bytes the OS fills per directory fetch; zero keeps the framework default. On a local NTFS
     ///     tree of mostly small directories a 64 KB buffer cost about 10% wall time and 15% CPU
@@ -77,15 +74,6 @@ sealed class EnumerationProducer
         {
             return MinimumEstimatedRowCount;
         }
-    }
-
-    /// <summary>Budgets name-pool bytes for a row estimate at a fixed mean of 24 UTF-16 units per name.</summary>
-    /// <param name="estimatedRowCount">Row estimate, typically from <see cref="EstimateRowCount" />.</param>
-    /// <returns>The estimated name-pool size in bytes.</returns>
-    /// <exception cref="OverflowException">The product exceeds <see cref="uint.MaxValue" />.</exception>
-    public static uint EstimateNamePoolBytes(uint estimatedRowCount)
-    {
-        return checked(estimatedRowCount * EstimatedNameBytesPerRow);
     }
 
     /// <summary>

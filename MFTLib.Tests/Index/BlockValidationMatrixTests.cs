@@ -98,12 +98,12 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task NameDescriptorPastUsedPool_ColdScans()
+    public async Task NamePoolUsedBelowTheEntryCount_ColdScans()
     {
         await SeedCacheAsync();
         var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
-        const long rowOneNameOffset = BlockLayout.RowRegionOffset + BlockLayout.RowBytes + 8;
-        BitConverter.GetBytes(uint.MaxValue - 1).CopyTo(bytes, rowOneNameOffset);
+        const int namePoolUsedOffset = 40;
+        BitConverter.GetBytes(0u).CopyTo(bytes, namePoolUsedOffset);
         await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.InvalidNameDescriptor);

@@ -63,7 +63,7 @@ static class EnumerationWalkTestSupport
             var path = entry.Path;
             var fileRow = root.Block.Rows[(int)row];
             var parentPath = row == 0 ? rootPath : FileEntry.Create(root, fileRow.ParentRow).Path;
-            var name = new string(NamePool.ReadRowName(root.Block, row));
+            var name = NamePool.ReadRowName(root.Block, row).ToString();
             var attributes = fileRow.Attributes;
             var size = fileRow.Size;
             var modifiedTicks = fileRow.ModifiedTicks;

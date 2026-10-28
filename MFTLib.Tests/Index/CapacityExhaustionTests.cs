@@ -57,8 +57,8 @@ public sealed class CapacityExhaustionTests : IDisposable
 
             Assert.HasCount(2, changes);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
-            Assert.AreEqual("fits.txt", new string(NamePool.ReadRowName(block, 1)));
-            Assert.AreEqual("also-fits.txt", new string(NamePool.ReadRowName(block, 2)));
+            Assert.AreEqual("fits.txt", NamePool.ReadRowName(block, 1).ToString());
+            Assert.AreEqual("also-fits.txt", NamePool.ReadRowName(block, 2).ToString());
         }
         finally
         {
@@ -69,10 +69,10 @@ public sealed class CapacityExhaustionTests : IDisposable
     [TestMethod]
     public async Task NamePoolExhaustion_FlagsCapacityExhaustionAndNeverThrows()
     {
-        // Capacity for exactly one "name-number-N.txt" name (17 characters, 34 bytes) with no
+        // Capacity for exactly one ASCII "name-number-N.txt" name (17 bytes) with no
         // room left for a second one, so the first create survives and every later one is the
         // exhaustion case, mirroring the fits/does-not-fit split in the slot exhaustion test.
-        var (block, writer, snapshot) = BuildTinyRoot(slotCapacity: 64, namePoolCapacity: 40);
+        var (block, writer, snapshot) = BuildTinyRoot(slotCapacity: 64, namePoolCapacity: 18);
         try
         {
             var mutator = new JournalMutator(writer);
@@ -87,8 +87,38 @@ public sealed class CapacityExhaustionTests : IDisposable
             Assert.HasCount(1, changes);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
             Assert.IsLessThanOrEqualTo(block.Header.NamePoolCapacity, block.Header.NamePoolUsed);
-            Assert.AreEqual("name-number-1.txt", new string(NamePool.ReadRowName(block, 1)));
+            Assert.AreEqual("name-number-1.txt", NamePool.ReadRowName(block, 1).ToString());
             Assert.IsFalse(block.Rows[2].IsInUse);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task NameCapacityExhaustion_ReportsAndContinuesWithAnInternedName(bool exhaustEntries)
+    {
+        var (block, writer, snapshot) = BuildTinyRoot(slotCapacity: 4,
+            namePoolCapacity: exhaustEntries ? 512u : 4u);
+        try
+        {
+            Assert.IsTrue(writer.TryWriteRow(1, "four", new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
+            if (exhaustEntries)
+            {
+                Assert.IsTrue(writer.TryRenameRow(1, "second", 0));
+                Assert.IsTrue(writer.TryRenameRow(1, "third", 0));
+                Assert.IsTrue(writer.TryRenameRow(1, "fourth", 0));
+            }
+            var changes = new JournalMutator(writer).Apply(snapshot[0],
+                [Create(2, "cannot-fit"), Create(3, "four")], journalIdentifier: 1, nextUsn: 10);
+
+            Assert.IsTrue(block.Header.IsCapacityExhausted);
+            Assert.IsFalse(block.Rows[2].IsInUse);
+            Assert.HasCount(1, changes);
+            Assert.AreEqual("four", changes[0].Entry.Name);
         }
         finally
         {

@@ -24,7 +24,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - Live USN watching per volume: `StartWatchingAsync`, `StopWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` each take a cancellation token and return one `RootOperationResult` for the index's one root.
 - `Changed` raises a `FileChange` with kind, path, previous path and journal timestamp. `WatchFaulted` raises a `WatchFault` with its kind and `IsRecovering`. `WatchStateChanged` reports every watch state change with a per-volume version.
 - Root and apply faults recover automatically by rescanning the affected root.
-- Cache blocks store their root key in page 0 (block format 7); a directory root is cached under a hashed file name (`D` plus 16 hexadecimal digits, then the serial) and a block whose name is not the one its stored key derives is discarded and rescanned.
+- Cache blocks store their root key in page 0 (block format 8); a directory root is cached under a hashed file name (`D` plus 16 hexadecimal digits, then the serial) and a block whose name is not the one its stored key derives is discarded and rescanned.
 - Persistent block cache: `FileIndexOptions.CacheMode`, `CacheDirectory` and `CacheTag`, plus `CacheDirectory.EnsureCreated`, `InspectCached` and `DeleteCached`. A per-block owner lock keeps two live indexes from sharing a cache block.
 - `FileIndex.Status` reports the root's `RootState`, `RootFailure`, `RootBlockStatus` and `RootWatchStatus`. A missing MFT source reports `RootFailureKind.MftSourceMissing` with a volume-specific library message; applications choose their own contextual wording.
 - `RootWatchStatus.CheckpointLoss` explains a rescan forced by the journal moving past a volume's position, with the journal size that would have retained it. `JournalCheckpointLoss.TryGetGrowthTarget`, `FileIndex.QueryUsnJournalSettings()` (the journal of the index's own root volume) and `BrokerSession.GrowUsnJournalAsync` support an explicit journal growth.
@@ -45,6 +45,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - Elevation runs through `IElevationProvider`, reached by `ElevationUtilities.DefaultProvider`. `TryRunElevated` takes an argument list and a `TimeSpan`, and passes each argument separately.
 - Self-elevation returns false without attempting UAC when no interactive desktop is available, such as in CI or a service.
 - Native ABI 11 passes a caller-supplied context pointer, then `recordsScanned`, `totalRecords` and `elapsedMs`, to the progress callback for volume and dump parses. `mft_api.h` is the shared declaration source for all production native exports. Consumer submodule updates rebuild and deploy the native library and managed assembly from the same revision.
+- Block format 8 stores each distinct name once, by exact spelling, in an ASCII-or-UTF-16 byte pool with an in-block hash table. Rows hold a name identifier, name reads are validated when they happen instead of at open, and a query resolves its matching names once before testing rows. A cache block written by an earlier format is rebuilt on its first open. Directory root keys now hold at most 1,967 UTF-16 code units.
 
 ### Removed
 

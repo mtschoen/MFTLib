@@ -6,11 +6,12 @@ namespace MFTLib.Index;
 /// <summary>
 ///     One 32-byte row in the row region. Rows are dense by record number, so row i is
 ///     record i and no lookup table exists. Explicit layout keeps the on-disk bytes fixed.
-///     The name offset, name length, and flags sit together at byte offset 8 so they form a
+///     The name identifier, a reserved half-word, and flags sit together at byte offset 8 so they form a
 ///     single 8-byte aligned descriptor word: the row region starts at
 ///     <see cref="BlockLayout.RowRegionOffset" /> and rows are <see cref="BlockLayout.RowBytes" />
 ///     apart, both multiples of 8, so byte 8 of every row is 8-byte aligned. That lets a rename
-///     publish a new name with one atomic store instead of two independent ones.
+///     publish a new name with one atomic store instead of two independent ones. The identifier names an
+///     interned entry in the block's name pool; entry zero is reserved and means no name.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = BlockLayout.RowBytes)]
 struct FileRow
@@ -21,11 +22,11 @@ struct FileRow
     /// <summary>Raw NTFS file attributes, castable to <see cref="System.IO.FileAttributes" />.</summary>
     [FieldOffset(4)] public uint Attributes;
 
-    /// <summary>Byte offset of the name inside the name pool. Low half of the descriptor word.</summary>
-    [FieldOffset(8)] public uint NameOffsetBytes;
+    /// <summary>Identifier of the interned name entry. Low half of the descriptor word.</summary>
+    [FieldOffset(8)] public uint NameId;
 
-    /// <summary>Name length in UTF-16 code units, not bytes.</summary>
-    [FieldOffset(12)] public ushort NameLengthUnits;
+    /// <summary>Reserved; written as zero.</summary>
+    [FieldOffset(12)] public ushort Reserved;
 
     /// <summary>Per-row state flags.</summary>
     [FieldOffset(14)] public RowFlags Flags;
@@ -61,7 +62,7 @@ struct FileRow
     public readonly DateTime ModifiedUtc => LastWriteTimeKnown ? new(ModifiedTicks, DateTimeKind.Utc) : DateTime.MinValue;
 
     /// <summary>
-    ///     Reads the name offset, name length, and flags as one 64-bit value. The read is atomic
+    ///     Reads the name identifier, reserved bits, and flags as one 64-bit value. The read is atomic
     ///     because the word is 8-byte aligned and MFTLib targets x64 only, where ECMA-335
     ///     guarantees that aligned reads and writes no wider than a native word are atomic.
     /// </summary>
@@ -72,10 +73,10 @@ struct FileRow
     ///     </para>
     ///     <para>
     ///         The exact invariant, which is narrower than "read everything through here": the
-    ///         name offset and the name length must come from one call to this method on a live
-    ///         block. Never pair a direct <see cref="NameOffsetBytes" /> read with a direct
-    ///         <see cref="NameLengthUnits" /> read, because two separate field reads can straddle
-    ///         a concurrent rename and pair a new offset with an old length. That is the torn read
+    ///         name identifier and the flags must come from one call to this method on a live
+    ///         block. Never pair a direct <see cref="NameId" /> read with a direct
+    ///         <see cref="Flags" /> read, because two separate field reads can straddle
+    ///         a concurrent rename and pair a new name with old flags. That is the torn read
     ///         this layout exists to prevent.
     ///     </para>
     ///     <para>
@@ -83,8 +84,8 @@ struct FileRow
     ///         <see cref="IsInUse" />, <see cref="IsDirectory" />, <see cref="IsDeleted" />,
     ///         <see cref="SizeKnown" /> and <see cref="SubtreeSkipped" />. The field is 2-byte
     ///         aligned so it cannot tear on its own, and pairing such a read with a separate name
-    ///         read is safe because the name pool is append-only: a span built from a descriptor
-    ///         that is one rename stale still points at valid, immutable characters. Routing the
+    ///         read is safe because the name pool is append-only: a view built from a descriptor
+    ///         that is one rename stale still points at a valid, immutable entry. Routing the
     ///         predicates through this method would cost a 64-bit read plus three shifts per row
     ///         on the hottest loop in the library and buy no correctness.
     ///     </para>
@@ -95,29 +96,29 @@ struct FileRow
     /// </remarks>
     internal static ulong ReadDescriptorWord(ref readonly FileRow row)
     {
-        return Volatile.Read(ref Unsafe.As<uint, ulong>(ref Unsafe.AsRef(in row).NameOffsetBytes));
+        return Volatile.Read(ref Unsafe.As<uint, ulong>(ref Unsafe.AsRef(in row).NameId));
     }
 
     /// <summary>
-    ///     Publishes the name offset, name length, and flags as one atomic store, so a concurrent
+    ///     Publishes the name identifier and flags as one atomic store, clearing the reserved bits, so a concurrent
     ///     reader observes the whole descriptor before the change or the whole descriptor after
-    ///     it. Callers that only mean to change the flags must still round-trip the other two
-    ///     values through here, otherwise a flags update would tear against a rename. The layout
+    ///     it. Callers that only mean to change the flags must still round-trip the identifier
+    ///     through here, otherwise a flags update would tear against a rename. The layout
     ///     is little-endian, matching the on-disk block format.
     /// </summary>
-    internal static void WriteDescriptorWord(ref FileRow row, uint nameOffsetBytes,
-        ushort nameLengthUnits, RowFlags flags)
+    internal static void WriteDescriptorWord(ref FileRow row, uint nameId, RowFlags flags)
     {
-        var word = nameOffsetBytes | ((ulong)nameLengthUnits << 32) | ((ulong)(ushort)flags << 48);
-        Volatile.Write(ref Unsafe.As<uint, ulong>(ref row.NameOffsetBytes), word);
+        var word = nameId | ((ulong)(ushort)flags << 48);
+        Volatile.Write(ref Unsafe.As<uint, ulong>(ref row.NameId), word);
     }
 
-    internal static uint DescriptorNameOffsetBytes(ulong descriptorWord)
+    internal static uint DescriptorNameId(ulong descriptorWord)
     {
         return (uint)descriptorWord;
     }
 
-    internal static ushort DescriptorNameLengthUnits(ulong descriptorWord)
+    /// <summary>The reserved half-word of a descriptor word; zero in every well-formed row.</summary>
+    internal static ushort DescriptorReservedBits(ulong descriptorWord)
     {
         return (ushort)(descriptorWord >> 32);
     }

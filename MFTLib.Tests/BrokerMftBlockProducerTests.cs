@@ -36,9 +36,9 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.AreEqual(21u, block.Header.RowCount);
-        Assert.AreEqual(18u, block.Header.NamePoolUsed);
+        Assert.AreEqual(9u, block.Header.NamePoolUsed);
         Assert.AreEqual(21u, block.RowCount, "the client adopts the cursors the broker published");
-        Assert.AreEqual(18u, block.NamePoolUsed, "the client adopts the cursors the broker published");
+        Assert.AreEqual(9u, block.NamePoolUsed, "the client adopts the cursors the broker published");
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
@@ -92,7 +92,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             ref var header = ref block.Header;
             header.SlotCapacity = header.RowCount;
             header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity);
-            header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity);
+            header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity);
         });
         var request = Request(Target());
 

@@ -24,7 +24,9 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
         var crowded2 = Path.Combine(TreeRoot, "crowded2");
         Directory.CreateDirectory(crowded1);
         Directory.CreateDirectory(crowded2);
-        var padding = new string('n', 200);
+        // One non-ASCII character stores each name as UTF-16 (about 500 pool bytes) while staying within 255 UTF-16 units
+        // and 255 UTF-8 bytes, the Windows and Linux name limits.
+        var padding = ((char)0xE9).ToString() + new string('n', 246);
         Parallel.For(0, FileCount, number =>
         {
             var targetDir = number % 2 == 0 ? crowded1 : crowded2;
@@ -53,6 +55,11 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
             var expectedFiles = Directory.GetFiles(Path.Combine(TreeRoot, "crowded1"))
                 .Concat(Directory.GetFiles(Path.Combine(TreeRoot, "crowded2")))
                 .ToArray();
+            foreach (var entry in index.Search(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken))
+            {
+                Assert.IsTrue(NamePool.TryFindOrdinal(index.CurrentBlock!.Block, entry.Name, out var nameId));
+                Assert.AreEqual(entry.Name, NamePool.Read(index.CurrentBlock.Block, nameId).ToString());
+            }
             Assert.AreSequenceEqual(
                 expectedFiles, [.. index.Search(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
             Assert.Contains(line => line.Contains(Fixture.CacheDirectory) &&

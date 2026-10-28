@@ -3,9 +3,8 @@ using System.Diagnostics.CodeAnalysis;
 namespace MFTLib.Index;
 
 /// <summary>
-///     The parallel column scan behind every name search. There are no secondary indexes in v1,
-///     so a search reads the name, flags, size, and modified columns of every live row on the
-///     current root block and materializes the whole match set. Callers page by slicing.
+///     Resolves matching name identifiers once, then scans row columns in parallel and
+///     materializes the whole match set. Callers page by slicing.
 /// </summary>
 static class SearchEngine
 {
@@ -60,7 +59,12 @@ static class SearchEngine
     /// </summary>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
-    internal static bool RowMatches(in FileRow row, ReadOnlySpan<char> name, SearchQuery query)
+    internal static bool RowMatches(in FileRow row, NameQueryMatches names, SearchQuery query) =>
+        RowColumnsMatch(in row, query) && names.Matches(in row);
+
+    [SuppressMessage("Roslynator", "RCS1242",
+        Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping.")]
+    static bool RowColumnsMatch(in FileRow row, SearchQuery query)
     {
         if (!row.IsInUse || (row.IsDeleted && !query.IncludeDeleted))
         {
@@ -82,12 +86,7 @@ static class SearchEngine
             return false;
         }
 
-        if (!MatchesModifiedBounds(in row, query))
-        {
-            return false;
-        }
-
-        return query.NamePattern is null || NameMatching.Matches(name, query.NamePattern, query.MatchMode, query.CaseSensitive);
+        return MatchesModifiedBounds(in row, query);
     }
 
     [SuppressMessage("Roslynator", "RCS1242",
@@ -123,6 +122,7 @@ static class SearchEngine
 
     static void SearchOneRoot(RootScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
+        using var names = new NameQueryMatches(scan.RootBlock.Block, scan.Query, cancellationToken);
         var rowCount = scan.RootBlock.Block.Header.RowCount;
         var partitions = ScanPartitioning.Partition(rowCount, ScanPartitioning.DefaultPartitionCount(rowCount));
         if (partitions.Count == 0)
@@ -132,10 +132,22 @@ static class SearchEngine
 
         if (partitions.Count == 1)
         {
-            CollectPartition(scan, partitions[0], results, cancellationToken);
+            CollectPartition(scan, names, partitions[0], results, cancellationToken);
             return;
         }
 
+        var perPartition = CollectPartitions(scan, names, partitions, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var local in perPartition)
+        {
+            results.AddRange(local);
+        }
+    }
+
+    static List<FileEntry>[] CollectPartitions(RootScan scan, NameQueryMatches names,
+        List<(uint StartRow, uint EndRowExclusive)> partitions, CancellationToken cancellationToken)
+    {
         var perPartition = new List<FileEntry>[partitions.Count];
 
         // The token goes on the loop as well as into every partition's scanner, so cancellation
@@ -145,19 +157,14 @@ static class SearchEngine
         Parallel.For(0, partitions.Count, options, index =>
         {
             var local = new List<FileEntry>();
-            CollectPartition(scan, partitions[index], local, cancellationToken);
+            CollectPartition(scan, names, partitions[index], local, cancellationToken);
             perPartition[index] = local;
         });
 
-        cancellationToken.ThrowIfCancellationRequested();
-
-        foreach (var local in perPartition)
-        {
-            results.AddRange(local);
-        }
+        return perPartition;
     }
 
-    static void CollectPartition(RootScan scan, (uint StartRow, uint EndRowExclusive) partition,
+    static void CollectPartition(RootScan scan, NameQueryMatches names, (uint StartRow, uint EndRowExclusive) partition,
         List<FileEntry> destination, CancellationToken cancellationToken)
     {
         var (rootBlock, query, underRow) = scan;
@@ -165,7 +172,7 @@ static class SearchEngine
         var scanner = new RowScanner(rootBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
         while (scanner.MoveNext())
         {
-            if (RowMatches(in scanner.Current, scanner.CurrentName, query))
+            if (RowMatches(in scanner.Current, names, query))
             {
                 candidates.Add(scanner.CurrentRowIndex);
             }
@@ -203,12 +210,13 @@ static class SearchEngine
     ///     <see cref="RowScanner.CancellationCheckIntervalRows" /> rows. A scanner itself
     ///     cannot be used here because an iterator may not hold a ref struct across a
     ///     <c>yield return</c>, so the row and its name are re-read per iteration by
-    ///     <see cref="RowMatches(BlockFile, uint, SearchQuery)" /> instead.
+    ///     <see cref="RowMatches(BlockFile, uint, NameQueryMatches, SearchQuery)" /> instead.
     /// </summary>
     static IEnumerable<FileEntry> EnumerateRoot(RootScan scan, CancellationToken cancellationToken)
     {
         var (rootBlock, query, underRow) = scan;
         var block = rootBlock.Block;
+        using var names = new NameQueryMatches(block, query, cancellationToken);
         var rowCount = block.Header.RowCount;
         var rowsUntilCancellationCheck = 1u;
 
@@ -221,7 +229,7 @@ static class SearchEngine
                 rowsUntilCancellationCheck = RowScanner.CancellationCheckIntervalRows;
             }
 
-            if (!RowMatches(block, rowIndex, query))
+            if (!RowMatches(block, rowIndex, names, query))
             {
                 continue;
             }
@@ -240,9 +248,9 @@ static class SearchEngine
     ///     never holds a span or a ref across a <c>yield return</c>, which the language
     ///     forbids.
     /// </summary>
-    static bool RowMatches(BlockFile block, uint rowIndex, SearchQuery query)
+    static bool RowMatches(BlockFile block, uint rowIndex, NameQueryMatches names, SearchQuery query)
     {
         ref readonly var row = ref block.Rows[(int)rowIndex];
-        return RowMatches(in row, NamePool.ReadRowName(block, rowIndex), query);
+        return RowMatches(in row, names, query);
     }
 }

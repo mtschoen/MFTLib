@@ -117,7 +117,7 @@
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. The tag carries only meaning the consumer
-      owns. Block format 7 stores the two values at offsets 104 and 108 in a 128-byte
+      owns. Block format 8 stores the two values at offsets 104 and 108 in a 160-byte
       declared header, and the block's root key text (the volume letter or the normalized
       directory path) in page 0 after it. The cache file name derives from that key and the
       volume serial, and a block whose name is not the one its stored key derives is invalid and

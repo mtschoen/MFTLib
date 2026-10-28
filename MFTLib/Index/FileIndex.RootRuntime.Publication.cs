@@ -9,9 +9,12 @@ public sealed partial class FileIndex
         ///     <see cref="RootBlock.ReleaseState" /> (see its own summary), not through
         ///     <see cref="IDisposable" />.
         /// </summary>
-        RootBlock BuildRootBlock(BlockFile block) =>
-            new(Root, block, rootDirectoryPath: Configuration.RootDirectory,
+        RootBlock BuildRootBlock(BlockFile block)
+        {
+            block.Diagnostics = Options.Diagnostics;
+            return new RootBlock(Root, block, rootDirectoryPath: Configuration.RootDirectory,
                 mftSource: Options.MftSource);
+        }
 
         /// <summary>
         ///     Writes every field of a published result on the root's runtime and counts its catch-up:

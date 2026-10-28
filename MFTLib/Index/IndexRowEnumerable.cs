@@ -10,7 +10,8 @@ namespace MFTLib.Index;
 ///     and on an exception.
 ///     Each GetEnumerator takes a separate borrow, including on copies of this enumerable. It preserves
 ///     mapping ownership, not frozen row contents: a live watch can update rows during the pass.
-///     Copies of the returned enumerator share its borrow; dispose it once, invalidating all copies.
+///     Copies share one borrow and resource owner. Advancing a copy invalidates all older copies;
+///     dispose through any copy to return the borrow and resources, invalidating all copies.
 ///     Their Current and MoveNext then throw ObjectDisposedException; repeated Dispose is harmless.
 ///     A reachable undisposed enumerator can delay index disposal indefinitely. Its internal borrow has
 ///     a finalizer that can return an unreachable borrow, but collection timing is not guaranteed.
@@ -47,12 +48,13 @@ public readonly ref struct IndexRowEnumerable
 /// <summary>
 ///     Enumerates the rows matching a query. It holds a block borrow until <see cref="Dispose" />; a
 ///     <c>foreach</c> disposes it, and a caller that obtains one by hand must dispose it even after an exception
-///     or a false MoveNext. Copies share one borrow, not independent ownership: dispose it once through any
-///     copy. Current and MoveNext on every copy then throw ObjectDisposedException naming IndexRowEnumerator;
+///     or a false MoveNext. Copies share one borrow and resource owner. Advancing through a copy invalidates
+///     older copies: their Current and MoveNext throw InvalidOperationException. Dispose once through any copy.
+///     Current and MoveNext on every copy then throw ObjectDisposedException naming IndexRowEnumerator;
 ///     repeated Dispose is harmless. A reachable undisposed enumerator can delay index disposal indefinitely.
 ///     The internal borrow has a finalizer that can return it once unreachable; collection timing is not guaranteed.
 ///     The borrow preserves mapping ownership, not row contents. A live watch mutates rows in place; captured
-///     name spans keep their append-only text, but other fields are live reads, with no atomic whole-row view.
+///     names are captured until the next advance, but other fields are live reads, with no atomic whole-row view.
 ///     Index disposal cancels an active borrowed scan at its cancellation checkpoint without returning its borrow.
 /// </summary>
 public ref struct IndexRowEnumerator
@@ -69,6 +71,9 @@ public ref struct IndexRowEnumerator
     CancellationToken _cancellationToken;
     RowScanner _scanner;
     RootBlock? _rootBlock;
+    readonly RowEnumerationResources _resources;
+    int _advanceVersion;
+    ReadOnlySpan<char> _currentName;
     int _nextRoot;
     int _segment;
 
@@ -103,6 +108,9 @@ public ref struct IndexRowEnumerator
 
         _scanner = default;
         _rootBlock = null;
+        _resources = new RowEnumerationResources();
+        _advanceVersion = 0;
+        _currentName = default;
         _nextRoot = 0;
         _segment = 0;
     }
@@ -122,21 +130,25 @@ public ref struct IndexRowEnumerator
         _subtree = null;
         _scanner = default;
         _rootBlock = null;
+        _resources = new RowEnumerationResources();
+        _advanceVersion = 0;
+        _currentName = default;
         _nextRoot = 0;
         _segment = 0;
     }
 
     /// <summary>The current row, valid until the next <see cref="MoveNext" /> or <see cref="Dispose" />.</summary>
     /// <exception cref="ObjectDisposedException">This enumerator or a copy has returned the shared borrow.</exception>
-    /// <exception cref="InvalidOperationException">There is no current row.</exception>
+    /// <exception cref="InvalidOperationException">There is no current row, or another copy has advanced.</exception>
     public readonly IndexRow Current
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
             ThrowIfDisposed();
+            _resources.ValidateVersion(_advanceVersion);
             var rootBlock = _rootBlock ?? throw new InvalidOperationException("The enumerator has no current row.");
-            return new IndexRow(rootBlock, _scanner.CurrentRowIndex, in _scanner.Current, _scanner.CurrentName);
+            return new IndexRow(rootBlock, _scanner.CurrentRowIndex, in _scanner.Current, _currentName);
         }
     }
 
@@ -144,18 +156,22 @@ public ref struct IndexRowEnumerator
     /// <exception cref="OperationCanceledException">The token was cancelled; observed before the first row and every 4096 rows.</exception>
     /// <exception cref="ObjectDisposedException">This enumerator or a copy has returned the shared borrow.</exception>
     /// <exception cref="InvalidDataException">A candidate's parent chain exceeds 128 hops while applying a subtree restriction.</exception>
+    /// <exception cref="InvalidOperationException">Another copy of this enumerator has advanced.</exception>
     public bool MoveNext()
     {
         ThrowIfDisposed();
+        _advanceVersion = _resources.Advance(_advanceVersion);
         while (true)
         {
             if (_rootBlock is not null)
             {
                 if (_flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch(_rootBlock))
                 {
+                    _currentName = _resources.Capture(_scanner.CurrentName);
                     return true;
                 }
 
+                _resources.EndRoot();
                 _rootBlock = null;
             }
 
@@ -185,10 +201,11 @@ public ref struct IndexRowEnumerator
 
     bool MoveToNextGeneralMatch(RootBlock rootBlock)
     {
+        var names = _resources.Names;
         while (_scanner.MoveNext())
         {
             ref readonly var row = ref _scanner.Current;
-            if (!SearchEngine.RowMatches(in row, _scanner.CurrentName, _query))
+            if (!SearchEngine.RowMatches(in row, names, _query))
             {
                 continue;
             }
@@ -213,6 +230,7 @@ public ref struct IndexRowEnumerator
             {
                 _rootBlock = nextBlock;
                 _scanner = new RowScanner(nextBlock, _cancellationToken);
+                _resources.BeginRoot(nextBlock.Block, _query, _cancellationToken);
                 return true;
             }
 
@@ -228,6 +246,7 @@ public ref struct IndexRowEnumerator
             {
                 _rootBlock = rootBlock;
                 _scanner = new RowScanner(rootBlock, _cancellationToken);
+                _resources.BeginRoot(rootBlock.Block, _query, _cancellationToken);
                 return true;
             }
         }
@@ -240,6 +259,13 @@ public ref struct IndexRowEnumerator
     /// <summary>Returns the shared borrow once, invalidating access through all copies. Safe to call more than once.</summary>
     public void Dispose()
     {
+        if (_resources is null)
+        {
+            // default(IndexRowEnumerator) owns nothing.
+            return;
+        }
+
+        _resources.Dispose();
         if (_segments is not null)
         {
             _segments.Dispose();

@@ -30,7 +30,7 @@ static class NamedBlockSection
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrEmpty(sectionName);
 
-        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.SlotCapacity, options.NamePoolCapacity);
         var fileStream = new FileStream(options.Path, FileMode.Create, FileAccess.ReadWrite,
             FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096,
             options: options.DeleteOnClose ? FileOptions.DeleteOnClose : FileOptions.None);

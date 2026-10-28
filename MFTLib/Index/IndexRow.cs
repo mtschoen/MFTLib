@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     A non-allocating view of one row, produced by <see cref="FileIndex.EnumerateRows" />. Valid only until
-///     the enumerator advances or is disposed; call <see cref="ToEntry" /> to keep a durable handle.
+///     any copy of the enumerator advances or is disposed; call <see cref="ToEntry" /> to keep a durable handle.
 /// </summary>
 public readonly ref struct IndexRow
 {
@@ -18,7 +18,7 @@ public readonly ref struct IndexRow
         Name = name;
     }
 
-    /// <summary>The name, read straight from the mapped name pool with no allocation.</summary>
+    /// <summary>The name, borrowing mapped UTF-16 text or the enumerator's reusable ASCII conversion buffer.</summary>
     public ReadOnlySpan<char> Name { get; }
 
     /// <summary>The configured logical volume key, including for virtual dump roots.</summary>

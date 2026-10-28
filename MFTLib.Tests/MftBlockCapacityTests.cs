@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 public class MftBlockCapacityTests
 {
     [TestMethod]
-    public void Plan_LargeVolume_UsesTheRecordCountAndTheAverageNameLength()
+    public void Plan_LargeVolume_UsesTheRecordCountAndTheSharedPoolReservation()
     {
         // 4 million records at 1024 bytes per file record segment.
         var volumeInformation = new NtfsVolumeInformation(
@@ -16,7 +16,7 @@ public class MftBlockCapacityTests
         var (slotCapacity, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation);
 
         Assert.AreEqual(BlockLayout.ComputeSlotCapacity(4_000_000), slotCapacity);
-        Assert.AreEqual(BlockLayout.ComputeNamePoolCapacity(slotCapacity * 48u), namePoolCapacity);
+        Assert.AreEqual(BlockLayout.ComputeNamePoolCapacity(slotCapacity), namePoolCapacity);
     }
 
     [TestMethod]
@@ -48,11 +48,11 @@ public class MftBlockCapacityTests
     }
 
     [TestMethod]
-    public void Plan_HugeNamePoolEstimate_ClampsToPreventOverflow()
+    public void Plan_HugeVolume_ClampsThePoolBelowTwoGibibytes()
     {
-        // The estimated names for this volume exceed uint.MaxValue / 2.
+        // 24 bytes per slot for this volume exceeds what a pool span length can address.
         var volumeInformation = new NtfsVolumeInformation(100_000_000L * 1024, 1024);
         var (_, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation);
-        Assert.AreEqual(BlockLayout.ComputeNamePoolCapacity(uint.MaxValue / 2), namePoolCapacity);
+        Assert.AreEqual(BlockLayout.MaximumNamePoolCapacity, namePoolCapacity);
     }
 }

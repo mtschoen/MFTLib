@@ -135,8 +135,8 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Assert.AreEqual(0u, block.Header.RootRow);
             Assert.AreEqual(0u, block.Rows[0].ParentRow);
             Assert.IsTrue(block.Rows[0].IsDirectory);
-            Assert.AreEqual(_treeRoot.Length, block.Rows[0].NameLengthUnits);
-            Assert.AreEqual(_treeRoot, new string(NamePool.ReadRowName(block, 0)));
+            Assert.AreEqual(_treeRoot.Length, NamePool.ReadRowName(block, 0).Length);
+            Assert.AreEqual(_treeRoot, NamePool.ReadRowName(block, 0).ToString());
 
             for (uint row = 1; row < block.Header.RowCount; row++)
             {
@@ -688,12 +688,6 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public void EstimateNamePoolBytes_ScalesWithRowCount()
-    {
-        Assert.IsGreaterThan(EnumerationProducer.EstimateNamePoolBytes(100), EnumerationProducer.EstimateNamePoolBytes(1000));
-    }
-
-    [TestMethod]
     public async Task Produce_HonoursCancellation_MidWalkDrainsAllWorkers()
     {
         EnumerationWalkTestSupport.GenerateBranchingTree(_treeRoot, 3, 2, 2);
@@ -991,7 +985,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Path.Combine(CacheDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
             slotCapacity: testSlotCapacity ? 3u : 4096u,
             namePoolCapacity: testSlotCapacity ? 1048576u
-                : (uint)(_treeRoot.Length + (2 * "child-0".Length)) * sizeof(char),
+                : (uint)(_treeRoot.Length * (_treeRoot.Any(character => character > 127) ? sizeof(char) : 1) + (2 * "child-0".Length)),
             volumeSerial: 1);
         var created = (Block: block, Writer: new BlockWriter(block));
         Task? produceTask = null;

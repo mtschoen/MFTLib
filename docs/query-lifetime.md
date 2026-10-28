@@ -31,10 +31,13 @@
       rejected by the query. The result (`IndexRowEnumerable`), its enumerator (`IndexRowEnumerator`) and
       each `IndexRow` are ref structs: holding one across an `await`, capturing it in a lambda or storing
       it in a class or ordinary struct field does not compile. A row and its `Name` span are valid only
-      until the enumerator advances or is disposed; use `ToEntry()` to retain a `FileEntry` handle.
+      until any copy of the enumerator advances or is disposed; use `ToEntry()` to retain a `FileEntry` handle.
       A caller that obtains an enumerator directly through `GetEnumerator()` must dispose it, including
-      when scanning throws or `MoveNext` returns false. Copies of that enumerator share one borrow:
-      dispose it once through any copy. `Current` and `MoveNext` on every copy then throw
+      when scanning throws or `MoveNext` returns false. Copies of that enumerator share one borrow
+      and one name-resource owner. Advancing one copy invalidates older copies; their `Current`
+      and `MoveNext` throw `InvalidOperationException`. Use only the advancing copy for further
+      iteration. Dispose once through any copy, including a stale copy, to return the active
+      bitset and borrow. `Current` and `MoveNext` on every copy then throw
       `ObjectDisposedException` naming `IndexRowEnumerator` before accessing the scanner or mapped memory;
       repeated `Dispose` is harmless. Already exported rows and spans must obey their lifetime themselves.
       Index disposal cancels an active borrowed scan at its cancellation checkpoint, but does not return
@@ -45,12 +48,19 @@
 
       A snapshot borrow guarantees stable ownership of that set of mapped blocks, not frozen contents.
       Journal updates write row fields in place while a watch runs. Names are appended to an immutable
-      pool, with name offset, length and flags published together as one atomic descriptor word;
-      `Current` captures a name span from one descriptor read, so a rename cannot tear its offset and
-      length. That captured span keeps its text for its valid lifetime. Other `IndexRow` properties
+      pool, with name identifier and flags published together as one atomic descriptor word;
+      Each successful `MoveNext` captures a name from one descriptor read and its immutable entry. UTF-16 names
+      borrow mapped text; ASCII names use the enumerator's reusable character buffer.
+      That captured span keeps its text for its valid lifetime. Other `IndexRow` properties
       read the live row, and neither the whole row nor query filtering plus subsequent reads is atomic.
       A row can change between matching and consumption, and a scanner captures its row-count bound
       when it enters a root. Several passes can see different contents and different mappings.
+
+      Name-filtered queries prepare matches while holding the same borrow: exact queries collect the
+      identifiers of the matching entries from one hash chain; substring and glob queries scan the
+      published name entries into a rented bitset before scanning rows. Identifiers appended after
+      that entry pass do not match it. The entry pass checks cancellation before starting and every
+      4096 name entries, and bitset ownership ends on query completion or enumerator disposal.
 
       `EnumerateRows` rejects null queries and undefined match modes at call time. Admission at
       `GetEnumerator` checks cancellation and index disposal; `MoveNext` checks cancellation during

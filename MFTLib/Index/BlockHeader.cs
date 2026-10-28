@@ -35,9 +35,9 @@ struct BlockHeader
     [FieldOffset(32)] public uint RowCount;
     /// <summary>Total number of fixed-size row slots in the block.</summary>
     [FieldOffset(36)] public uint SlotCapacity;
-    /// <summary>Number of bytes currently occupied in the UTF-16 name pool.</summary>
+    /// <summary>Number of bytes currently occupied in the name byte pool, alignment padding included.</summary>
     [FieldOffset(40)] public uint NamePoolUsed;
-    /// <summary>Total capacity, in bytes, of the UTF-16 name pool.</summary>
+    /// <summary>Total capacity, in bytes, of the name byte pool.</summary>
     [FieldOffset(44)] public uint NamePoolCapacity;
     /// <summary>USN journal identifier captured for this block, or zero when no journal was read.</summary>
     [FieldOffset(48)] public ulong UsnJournalIdentifier;
@@ -56,7 +56,7 @@ struct BlockHeader
     [FieldOffset(64)] public ulong Generation;
     /// <summary>Byte offset of the fixed-size row region from the start of the file.</summary>
     [FieldOffset(72)] public ulong RowRegionOffset;
-    /// <summary>Byte offset of the append-only UTF-16 name pool from the start of the file.</summary>
+    /// <summary>Byte offset of the append-only ASCII and UTF-16LE byte pool from the start of the file.</summary>
     [FieldOffset(80)] public ulong NamePoolOffset;
     /// <summary>
     ///     Rows that are in use and not tombstoned. <see cref="RowCount" /> is the highest used
@@ -79,8 +79,18 @@ struct BlockHeader
     [FieldOffset(112)] public ulong ScanShape;
     /// <summary>The enumeration producer's count of subtrees it could not enter; zero for an MFT block.</summary>
     [FieldOffset(120)] public uint AccessDeniedSubtreeCount;
+    /// <summary>Published name entries, excluding reserved entry zero.</summary>
+    [FieldOffset(124)] public uint NameEntryCount;
+    /// <summary>Number of allocatable name entries, excluding reserved entry zero.</summary>
+    [FieldOffset(128)] public uint NameEntryCapacity;
+    /// <summary>Number of hash bucket heads: the layout's formula for <see cref="NameEntryCapacity" />.</summary>
+    [FieldOffset(132)] public uint BucketCount;
+    /// <summary>Byte offset of the name entry region from the start of the file.</summary>
+    [FieldOffset(136)] public ulong NameEntryRegionOffset;
+    /// <summary>Byte offset of the hash bucket region from the start of the file.</summary>
+    [FieldOffset(144)] public ulong BucketRegionOffset;
     /// <summary>Reserved; written as zero.</summary>
-    [FieldOffset(124)] public uint Reserved;
+    [FieldOffset(152)] public ulong Reserved;
     /// <summary>Consumer cache identity reconstructed from its on-disk fields.</summary>
     public readonly CacheTag CacheTag => CacheTag.FromStorage(CacheTagFourCc, CacheTagVersion);
 
@@ -164,7 +174,12 @@ struct BlockHeader
             return BlockValidationResult.InconsistentRegions;
         }
 
-        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NamePoolCapacity);
+        if (!HasValidNameRegions(in header))
+        {
+            return BlockValidationResult.InvalidNameDescriptor;
+        }
+
+        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NameEntryCapacity, header.NamePoolCapacity);
         return mappedLength != required ? BlockValidationResult.InconsistentRegions : null;
     }
 
@@ -177,18 +192,40 @@ struct BlockHeader
             return BlockValidationResult.InconsistentRegions;
         }
 
-        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NamePoolCapacity);
+        if (!HasValidNameRegions(in header))
+        {
+            return BlockValidationResult.InvalidNameDescriptor;
+        }
+
+        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NameEntryCapacity, header.NamePoolCapacity);
         return fileLength < required ? BlockValidationResult.InconsistentRegions : null;
     }
 
-    /// <summary>Cursors within their capacities, and every region offset where the capacities put it.</summary>
+    /// <summary>
+    ///     The constant-cost name-region checks that run at open: counts within capacities, the bucket count the
+    ///     formula gives for the entry capacity, and at least one pool byte per published entry. Entry contents are
+    ///     checked lazily when a name is read.
+    /// </summary>
+    [SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    static bool HasValidNameRegions(in BlockHeader header)
+    {
+        return header.NameEntryCount <= header.NameEntryCapacity && header.NamePoolUsed <= header.NamePoolCapacity &&
+               header.BucketCount == BlockLayout.ComputeBucketCount(header.NameEntryCapacity) &&
+               header.NamePoolUsed >= header.NameEntryCount;
+    }
+
+    /// <summary>Row cursor within the slot capacity, and every region offset where the capacities put it.</summary>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
     static bool HasConsistentGeometry(in BlockHeader header)
     {
-        return header.RowCount <= header.SlotCapacity && header.NamePoolUsed <= header.NamePoolCapacity &&
+        return header.SlotCapacity < int.MaxValue && header.NameEntryCapacity < int.MaxValue &&
+               header.RowCount <= header.SlotCapacity &&
                header.RowRegionOffset == BlockLayout.RowRegionOffset &&
                header.SequenceRegionOffset == (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity) &&
-               header.NamePoolOffset == (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity);
+               header.NameEntryRegionOffset == (ulong)BlockLayout.NameEntryRegionOffset(header.SlotCapacity) &&
+               header.BucketRegionOffset == (ulong)BlockLayout.BucketRegionOffset(header.SlotCapacity, header.NameEntryCapacity) &&
+               header.NamePoolOffset == (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity);
     }
 }

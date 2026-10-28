@@ -40,11 +40,11 @@ public sealed class BlockRootKeyStorageTests : IDisposable
     }
 
     [TestMethod]
-    public void WrittenBlock_CarriesFormatVersionSeven()
+    public void WrittenBlock_CarriesFormatVersionEight()
     {
         var bytes = File.ReadAllBytes(Seed(new VolumeKey('T')));
 
-        Assert.AreEqual(7u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)));
+        Assert.AreEqual(8u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)));
     }
 
     [TestMethod]

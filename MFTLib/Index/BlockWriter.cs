@@ -52,7 +52,7 @@ sealed partial class BlockWriter
 
     /// <summary>Fills one slot, or sets the capacity-exhausted flag and returns false without writing a row when the slot or name cannot fit.</summary>
     /// <param name="rowIndex">Zero-based row slot to populate.</param>
-    /// <param name="name">File or directory name to append to the immutable name pool.</param>
+    /// <param name="name">File or directory name to intern in the block's name pool.</param>
     /// <param name="columns">Remaining row values, including parent, attributes, size, and flags.</param>
     /// <returns>true when the row and name fit; otherwise, false after marking capacity exhausted.</returns>
     public bool TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
@@ -64,14 +64,14 @@ sealed partial class BlockWriter
             return false;
         }
 
-        if (!TryAppendName(name, out var nameOffsetBytes))
+        if (!TryInternName(name, out var nameId))
         {
             return false;
         }
 
         // A create can reuse the row index of a previously deleted record, which is inside
         // the published range a reader may already be scanning. Every field except the
-        // descriptor word is written first, then the name offset, name length, and flags are
+        // descriptor word is written first, then the name identifier and flags are
         // published together as one atomic store, exactly as a rename publishes them. That
         // ordering holds for a fresh slot too, so there is no separate unpublished-slot case.
         ref var row = ref Block.Rows[(int)rowIndex];
@@ -87,7 +87,7 @@ sealed partial class BlockWriter
         row.Attributes = columns.Attributes;
         row.Size = columns.Size;
         row.ModifiedTicks = columns.ModifiedTicks;
-        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
+        FileRow.WriteDescriptorWord(ref row, nameId, columns.Flags);
 
         ref var header = ref Block.Header;
         if (isLive && !wasLive)
@@ -124,13 +124,11 @@ sealed partial class BlockWriter
 
     /// <summary>
     ///     A move whose name is unchanged writes only the parent row and leaves the descriptor
-    ///     word untouched, so a move-heavy workload does not re-append the same name on every
-    ///     move and burn name-pool space toward an early rescan. A real rename (the name
-    ///     differs, including an exact-case-only change) appends the new name, sets the parent,
-    ///     and only then publishes the new name offset and length as one atomic descriptor-word
-    ///     store. That ordering plus the single store is the format's guarantee that a
-    ///     concurrent reader sees the old name or the new one and never a torn pairing of one
-    ///     name's offset with another name's length.
+    ///     word untouched. A real rename (the name differs ordinally, so a case-only change counts)
+    ///     interns the new spelling, sets the parent, and only then publishes the new name
+    ///     identifier and the flags as one atomic descriptor-word store. Peers that share the old
+    ///     spelling keep it, because entries are immutable. That ordering plus the single store is
+    ///     the format's guarantee that a concurrent reader sees the old name or the new one.
     /// </summary>
     /// <param name="rowIndex">Zero-based row slot to rename or move.</param>
     /// <param name="name">New name, or the current name for a parent-only move.</param>
@@ -149,14 +147,14 @@ sealed partial class BlockWriter
         ref var row = ref Block.Rows[(int)rowIndex];
         var previousParentRow = row.ParentRow;
         var wasDeleted = row.IsDeleted;
-        if (NameMatching.EqualsName(name, currentName, caseSensitive: true))
+        if (currentName.EqualsOrdinal(name))
         {
             row.ParentRow = parentRow;
             RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
             return true;
         }
 
-        if (!TryAppendName(name, out var nameOffsetBytes))
+        if (!TryInternName(name, out var nameId))
         {
             return false;
         }
@@ -164,7 +162,7 @@ sealed partial class BlockWriter
         var flags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
         row.ParentRow = parentRow;
         RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
-        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, flags);
+        FileRow.WriteDescriptorWord(ref row, nameId, flags);
         return true;
     }
 
@@ -354,23 +352,19 @@ sealed partial class BlockWriter
         }
 
         FileRow.WriteDescriptorWord(ref row,
-            FileRow.DescriptorNameOffsetBytes(descriptor),
-            FileRow.DescriptorNameLengthUnits(descriptor),
+            FileRow.DescriptorNameId(descriptor),
             flags | additionalFlags);
     }
 
     /// <summary>Callers reach this only from members already holding an access scope.</summary>
-    bool TryAppendName(ReadOnlySpan<char> name, out uint nameOffsetBytes)
+    bool TryInternName(ReadOnlySpan<char> name, out uint nameId)
     {
-        var used = Block.NamePoolUsed;
-        if (!NamePool.TryAppend(Block.NamePoolCharacters, ref used, Block.NamePoolCapacity, name,
-                out nameOffsetBytes))
+        if (!NamePool.TryGetOrAdd(Block, name, out nameId))
         {
             MarkCapacityExhaustedCore();
             return false;
         }
 
-        Block.PublishNamePoolUsed(used);
         return true;
     }
 }

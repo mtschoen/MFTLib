@@ -219,7 +219,7 @@ public class JournalMutatorCloseCoalescingTests
             secondPair[0].PreviousPath);
         Assert.IsEmpty(close,
             "The close record repeats the second rename's name and parent, so it is the echo.");
-        Assert.AreEqual("second.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
+        Assert.AreEqual("second.txt", NamePool.ReadRowName(fixture.Block, 7).ToString());
         Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
         // The close record leaves the scanned last-write observation alone and raises no change event.
         Assert.IsTrue(fixture.Block.Rows[7].LastWriteTimeKnown);
@@ -251,7 +251,7 @@ public class JournalMutatorCloseCoalescingTests
             "A RenameNewName carrying a parent the cycle has not applied is a move, not an echo.");
         Assert.AreEqual(FileChangeKind.Renamed, move[0].Kind);
         Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
-        Assert.AreEqual("first.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
+        Assert.AreEqual("first.txt", NamePool.ReadRowName(fixture.Block, 7).ToString());
         Assert.IsEmpty(close);
     }
 
