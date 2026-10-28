@@ -19,6 +19,7 @@ sealed class SharedScanFixture : IDisposable
         {
             JournalCursor = new SyntheticJournalCursor(7, 4096),
             ScanTimestamp = new DateTime(2026, 10, 28, 0, 0, 0, DateTimeKind.Utc),
+            CatchUpLoss = _ => CatchUpLoss?.Invoke(),
             BeforeProduceAsync = async (_, cancellationToken) =>
             {
                 LastProductionToken = cancellationToken;
@@ -43,6 +44,7 @@ sealed class SharedScanFixture : IDisposable
     internal int ProductionCount => _producer.ProducedVolumes.Count;
     internal CancellationToken LastProductionToken { get; private set; }
     internal Action? BeforeProduction { get; set; }
+    internal Func<JournalCheckpointLoss?>? CatchUpLoss { get; set; }
 
     internal TestGate HoldProduction()
     {

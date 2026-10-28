@@ -102,8 +102,10 @@ public partial class FileIndexPerRootWatchTests
         _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var rescanCancellation = new CancellationTokenSource();
+        var publication = IndexPublication.ObserveNextAsync(harness.IndexFor('T'));
         var rescan = harness.IndexFor('T').RescanAsync(rescanCancellation.Token);
 
+        await publication;
         await rescanCancellation.CancelAsync();
         applying.Release();
 

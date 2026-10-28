@@ -65,7 +65,9 @@ public class FileIndexWatchRescanFaultHandoffTests
             await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             var original = index.Root(TestContext.CancellationToken).RootBlock;
             harness.SetNextProducedCursor('T', 13, 9000);
+            var publication = IndexPublication.ObserveNextAsync(index);
             rescan = index.RescanAsync(Token);
+            await publication;
             Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).RootBlock);
             Assert.IsFalse(delivering.IsCompleted, "the retired pump is held during its drain");
             Assert.AreEqual(0, handle.DisposeCount);

@@ -32,6 +32,7 @@ public sealed partial class FileIndex
                 }
                 RaiseWatchStateChanged();
                 await handoff.DrainAsync().ConfigureAwait(false);
+                await DrainRescansAsync().ConfigureAwait(false);
                 await LifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
                 Hooks.LifecycleGatesTakenForDisposal?.Invoke();
                 await WriteGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
