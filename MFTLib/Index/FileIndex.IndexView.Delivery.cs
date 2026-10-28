@@ -41,7 +41,9 @@ public sealed partial class FileIndex
         ///     <see cref="FileIndex.WatchFaulted" /> behind the state change it caused when another thread took
         ///     the queue first.
         /// </summary>
-        public void RaiseWatchStateChanged()
+        public void RaiseWatchStateChanged() => InDelivery(DeliverWatchStateChanged);
+
+        void DeliverWatchStateChanged()
         {
             if (!DeliveryLock.TryEnter())
             {
@@ -88,7 +90,9 @@ public sealed partial class FileIndex
             }
         }
 
-        internal void RaiseWatchFaulted(WatchFault fault)
+        internal void RaiseWatchFaulted(WatchFault fault) => InDelivery(() => DeliverWatchFaulted(fault));
+
+        void DeliverWatchFaulted(WatchFault fault)
         {
             RaiseWatchStateChanged();
             try
@@ -111,7 +115,9 @@ public sealed partial class FileIndex
             }
         }
 
-        public void RaiseChanged(IReadOnlyList<FileChange> changes)
+        public void RaiseChanged(IReadOnlyList<FileChange> changes) => InDelivery(() => DeliverChanged(changes));
+
+        void DeliverChanged(IReadOnlyList<FileChange> changes)
         {
             var subscribers = Index.ChangedSubscribers;
             if (subscribers is null)
