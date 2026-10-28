@@ -1,28 +1,28 @@
 # Test report: generated on main by CI; must not be edited in a pull request
 
-Source commit: 98818ed215cf3f62e551312e9b8f5d4a45f54d24
-Workflow run: 50455
-Generated at: 2026-10-28T11:04:55Z (workflow run creation time).
+Source commit: a8089c5c9abfc938e348a9ec285a207cf31add19
+Workflow run: 50489
+Generated at: 2026-10-28T16:09:39Z (workflow run creation time).
 
 ## Windows unelevated
 
 | Test project | Total | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| mftlib.tests | 3750 | 3729 | 0 | 21 |
+| mftlib.tests | 3858 | 3839 | 0 | 19 |
 
 | Managed coverage | Line | Branch |
 | --- | ---: | ---: |
-| coverage.xml | 97.29% | 94.51% |
+| coverage.xml | 97.44% | 94.16% |
 
 ## Linux
 
 | Test project | Total | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| mftlib.tests | 3645 | 3543 | 0 | 102 |
+| mftlib.tests | 3753 | 3651 | 0 | 102 |
 
 | Managed coverage | Line | Branch |
 | --- | ---: | ---: |
-| coverage.cobertura.xml | 92.17% | 90.70% |
+| coverage.cobertura.xml | 92.18% | 90.23% |
 
 Native coverage: lines: 96.7% (1512 out of 1564)
 
