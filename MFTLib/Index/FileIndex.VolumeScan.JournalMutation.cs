@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     Applies entries to the volume's current block under its write gate. A cancelled
@@ -13,7 +13,7 @@ public sealed partial class FileIndex
             IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn,
             CancellationToken cancellationToken)
         {
-            ObjectDisposedException.ThrowIf(IsDisposed, Index);
+            ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             ArgumentNullException.ThrowIfNull(entries);
 
             lock (StateLock)
@@ -38,7 +38,7 @@ public sealed partial class FileIndex
                     return [];
                 }
 
-                ObjectDisposedException.ThrowIf(IsDisposed, Index);
+                ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
                 RootBlock rootBlock;
                 lock (StateLock)
                 {
@@ -58,8 +58,18 @@ public sealed partial class FileIndex
                 var changes = mutator.Apply(rootBlock, entries, journalIdentifier, nextUsn);
                 // Still under the write gate: a directory view follows its directory through renames, deletions and
                 // re-creations by rechecking its binding once per applied batch.
-                rootBlock.View.RefreshAfterBatch(rootBlock, entries, DisposalToken);
-                return changes;
+                foreach (var view in ViewsSnapshot())
+                {
+                    if (view.Block is { } bound)
+                    {
+                        bound.View.RefreshAfterBatch(bound, entries, ClosingToken);
+                    }
+                }
+                var receivingBlock = ViewsSnapshot()[0].Block ?? throw new InvalidOperationException("The attached view has no published block.");
+                return changes.Select(change => change with
+                {
+                    Entry = change.Entry.WithRootBlock(receivingBlock)
+                }).ToArray();
             }
             finally
             {

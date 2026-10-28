@@ -2,12 +2,12 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     Settles the root while opening: warm-starts it from its cached block or scans it into a
         ///     <see cref="PendingRootResult" /> that nothing shared has seen yet, then adopts that result
-        ///     under <see cref="_stateLock" />. A root that ends with no block is recorded as blockless instead.
+        ///     under <see cref="StateLock" />. A root that ends with no block is recorded as blockless instead.
         ///     A root missing at open settles Offline before selection, except that an MftOnly open on a platform without
         ///     an MFT fails first with that reason. An <see cref="ProducerSelection.Automatic" />
         ///     open whose cold scan finds the MFT unusable (no source, no broker, elevation declined) settles once
@@ -39,6 +39,10 @@ public sealed partial class FileIndex
             if (await SettleResolvedRootAsync(cancellationToken).ConfigureAwait(false) is { } fallback)
             {
                 Resolved = Resolved.AsWalk(fallback);
+                foreach (var view in ViewsSnapshot())
+                {
+                    view.Resolved = view.Resolved.AsWalk(fallback);
+                }
                 lock (StateLock)
                 {
                     // Nothing was published by the MFT attempt; its recorded outcome gives way to the walk's.
@@ -84,12 +88,12 @@ public sealed partial class FileIndex
 
             if (warmStart.Block is { } warmStartedBlock)
             {
-                _ = AdoptOpenedRoot(warmStartedBlock, opened with
+                _ = await AdoptOpenedRootAsync(warmStartedBlock, opened with
                 {
                     Block = warmStartedBlock,
                     Origin = BlockOrigin.WarmStartedFromCache,
                     CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
-                });
+                }).ConfigureAwait(false);
                 return null;
             }
 
@@ -152,12 +156,13 @@ public sealed partial class FileIndex
         /// <summary>
         ///     Adopts an opened root's settled result: builds its <see cref="RootBlock" /> over
         ///     <paramref name="block" /> and records the result on the runtime in one step under
-        ///     <see cref="_stateLock" />. Returns the adopted block and the count of lost catch-ups in a row.
+        ///     <see cref="StateLock" />. Returns the adopted block and the count of lost catch-ups in a row.
         /// </summary>
-        (RootBlock Adopted, int ConsecutiveLostCatchUps) AdoptOpenedRoot(
+        async Task<(RootBlock Adopted, int ConsecutiveLostCatchUps)> AdoptOpenedRootAsync(
             BlockFile block, PendingRootResult settled, RootBlock? replacing = null)
         {
-            lock (StateLock)
+            await WriteGate.WaitAsync(ClosingToken).ConfigureAwait(false);
+            try
             {
                 if (replacing is not null)
                 {
@@ -165,10 +170,17 @@ public sealed partial class FileIndex
                 }
 
                 var adopted = BuildRootBlock(block);
-                Block = adopted;
-
-                RecordPendingResultLocked(settled, clearsCheckpointLoss: false);
-                return (adopted, _consecutiveLostCatchUps);
+                var bindings = BindViews(adopted.Mapped);
+                lock (StateLock)
+                {
+                    PublishBindingsLocked(adopted, bindings);
+                    RecordPendingResultLocked(settled, clearsCheckpointLoss: false);
+                    return (adopted, _consecutiveLostCatchUps);
+                }
+            }
+            finally
+            {
+                WriteGate.Release();
             }
         }
 

@@ -352,7 +352,7 @@ Behavior-preserving: every index still has one view, so nothing outside the new 
 - `SubtreeAnchor.ForeignOrDisposed` text: "...it came from another index, another view of the same volume, or a block
   a rescan replaced."
 
-- [ ] **Step 1: Write the failing tests** (`MappedBlockTests`; two view handles over one `MappedBlock` built from
+- [x] **Step 1: Write the failing tests** (`MappedBlockTests`; two view handles over one `MappedBlock` built from
   `TestBlocks`, each with its own `ViewBorrows`)
 
 ```csharp
@@ -368,10 +368,10 @@ public void Anchor_FromAnotherViewOfTheBlock_IsRejected() // SubtreeAnchor.Resol
 public void ReleasingTheMapping_ReleasesEveryView()       // Mapped.ReleaseState.ReleaseUnborrowed: A and B IsReleased
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MappedBlockTests"` (compile errors).
-- [ ] **Step 3: Implement** the Interfaces.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileEntry|FullyQualifiedName~SubtreeAnchor|FullyQualifiedName~Disposal|FullyQualifiedName~RootBlock`, then Smoke (`--filter TestCategory=Smoke`).
-- [ ] **Step 5: Commit** `refactor: share one mapped block between per-view root blocks`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MappedBlockTests"` (compile errors).
+- [x] **Step 3: Implement** the Interfaces.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileEntry|FullyQualifiedName~SubtreeAnchor|FullyQualifiedName~Disposal|FullyQualifiedName~RootBlock`, then Smoke (`--filter TestCategory=Smoke`).
+- [x] **Step 5: Commit** `refactor: share one mapped block between per-view root blocks`.
 
 ### Task 5.3: `RootRuntime` splits into `VolumeScan` and `IndexView`
 
@@ -427,11 +427,11 @@ and no registry exists yet, so the full suite is the test. All later tasks build
 - `IndexHooks` stays one class: `RootsReadBeforeLock`, `ReaderAdmitted` and `DisposedFlagSet` are read through the
   view's index; every other hook through `VolumeScan.Hooks` (the creating view's).
 
-- [ ] **Step 1: Rename and move** by compiler errors. `grep -rn "RootRuntime" --include=*.cs MFTLib MFTLib.Tests MFTLibTestExtensions`
+- [x] **Step 1: Rename and move** by compiler errors. `grep -rn "RootRuntime" --include=*.cs MFTLib MFTLib.Tests MFTLibTestExtensions`
   returns nothing (test helpers that named it in strings or comments follow).
-- [ ] **Step 2: Build and run the full suite**: `.\scripts\build-windows.ps1 -NoRestore`, then the full suite.
+- [x] **Step 2: Build and run the full suite**: `.\scripts\build-windows.ps1 -NoRestore`, then the full suite.
   Expected: 0 failed, the same pass count as main.
-- [ ] **Step 3: Commit** `refactor: split the root runtime into a volume scan and an index view`.
+- [x] **Step 3: Commit** `refactor: split the root runtime into a volume scan and an index view`.
 
 ### Task 5.4: The registry and shared opens
 

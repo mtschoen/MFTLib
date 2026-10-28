@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>Scans of this volume in a row whose journal catch-up was lost.</summary>
         int _consecutiveLostCatchUps;
@@ -50,13 +50,13 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                if (IsDisposed || !_watchRequested || !IsCurrentWatchOverItsBlockLocked(instance) ||
+                if (IsClosing || !_watchRequested || !IsCurrentWatchOverItsBlockLocked(instance) ||
                     instance.State != WatchInstanceState.Faulted)
                 {
                     return null;
                 }
 
-                var ticket = new RecoveryTicket(instance, instance.ArmedBlock, DisposalToken);
+                var ticket = new RecoveryTicket(instance, instance.ArmedBlock, ClosingToken);
                 Recovery = ticket;
                 _recoveryState = RecoveryState.Recovering;
                 _recoveryCompletions.Add(ticket.Completion);
@@ -125,7 +125,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                return !IsDisposed && _watchRequested && ReferenceEquals(Recovery, ticket) &&
+                return !IsClosing && _watchRequested && ReferenceEquals(Recovery, ticket) &&
                        ReferenceEquals(Current, ticket.FailedInstance) &&
                        ticket.FailedInstance.State == WatchInstanceState.Faulted &&
                        ReferenceEquals(FindWatchableRootBlockLocked(), ticket.FailedBlock);
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
             {
                 return null;
             }
-            catch (Exception) when (ticket.Cancellation.IsCancellationRequested || IsDisposed)
+            catch (Exception) when (ticket.Cancellation.IsCancellationRequested || IsClosing)
             {
                 return null;
             }

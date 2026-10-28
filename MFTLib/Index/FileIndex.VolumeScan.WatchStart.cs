@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>Starts this root for an admitted consumer request; readiness is handle publication.</summary>
         public Task StartRootWatchingAsync(CancellationToken cancellationToken)
@@ -12,7 +12,7 @@ public sealed partial class FileIndex
                 return rejected;
             }
 
-            ObjectDisposedException.ThrowIf(IsDisposed, Index);
+            ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             return StartConsumerWatchingAsync(cancellationToken);
         }
 
@@ -33,7 +33,7 @@ public sealed partial class FileIndex
         async Task StartWatchingWithGateHeldAsync(bool restart, RecoveryTicket? recovery,
             CancellationToken cancellationToken)
         {
-            Index.ThrowIfCancelledByDisposal(cancellationToken);
+            ThrowIfClosing(cancellationToken);
             var source = WatchSourceOrNull ?? throw new InvalidOperationException(
                 MftIndexSource.FormatUnavailable(Volume, MftIndexSource.NoWatchReason));
 
@@ -174,7 +174,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                Index.ThrowIfCancelledByDisposal(CancellationToken.None);
+                ThrowIfClosing(CancellationToken.None);
                 if (restart && !IsRestartStillRequestedLocked(recovery))
                 {
                     return null;
@@ -194,7 +194,7 @@ public sealed partial class FileIndex
                 }
 
                 var instance = new WatchInstance(Root, _nextGeneration++, armedBlock,
-                    TakeRestartPendingWaiterLocked(), DisposalToken);
+                    TakeRestartPendingWaiterLocked(), ClosingToken);
                 Current = instance;
                 if (!restart)
                 {

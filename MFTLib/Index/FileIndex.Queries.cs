@@ -177,11 +177,11 @@ public sealed partial class FileIndex
         {
             Hooks.RootsReadBeforeLock?.Invoke();
             string message;
-            lock (_stateLock)
+            lock (StateLock)
             {
                 // A block with no borrowable root is a directory view whose directory is out of the block.
-                var state = _runtime.Block is { View.IsDirectoryView: true } ? RootState.Offline : _runtime.BlocklessState;
-                message = $"Root {_runtime.Root} has no block (state: {state}).";
+                var state = _view.Block is { View.IsDirectoryView: true } ? RootState.Offline : _view.Scan.BlocklessState;
+                message = $"Root {_view.Root} has no block (state: {state}).";
             }
 
             throw new InvalidOperationException(message);
@@ -191,7 +191,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Takes a reader's claim on the current block. Taken under <see cref="_stateLock" />,
+    ///     Takes a reader's claim on the current block. Taken under <see cref="StateLock" />,
     ///     the same lock a block swap and index disposal publish through, so a borrow is
     ///     either counted before the block leaves the index (and waited for when it is
     ///     released) or refused because the release has already begun.
@@ -206,10 +206,10 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     SnapshotBorrow BorrowBlock(Func<RootBlock?, RootBlock?>? select)
     {
-        lock (_stateLock)
+        lock (StateLock)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            var current = _runtime.Block;
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            var current = _view.Block;
             return new SnapshotBorrow(select is null ? current : select(current));
         }
     }

@@ -2,21 +2,26 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
-        public RootStatus DescribeLocked()
+        public RootStatus DescribeLocked(IndexView view)
         {
-            if (Block is not { } rootBlock)
+            var resolved = view.Resolved;
+            var root = view.Root;
+            var unavailable = resolved.MftUnavailable ?? _lastMftFailure;
+            // The platform reports no serial as zero; the public status reports it as null.
+            uint? serial = resolved.VolumeSerial != 0 ? resolved.VolumeSerial : null;
+            if (view.Block is not { } rootBlock)
             {
                 // Offline here is a root absent at open, which never reached selection.
                 var reachedSelection = BlocklessState != RootState.Offline;
-                return new RootStatus(Root, BlocklessState)
+                return new RootStatus(root, BlocklessState)
                 {
-                    VolumeSerial = reachedSelection && Resolved.VolumeSerial != 0 ? Resolved.VolumeSerial : null,
+                    VolumeSerial = reachedSelection ? serial : null,
                     Failure = _failure,
                     Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss },
-                    Producer = reachedSelection ? Resolved.Producer : null,
-                    MftUnavailable = reachedSelection ? ReportedMftUnavailable : null
+                    Producer = reachedSelection ? resolved.Producer : null,
+                    MftUnavailable = reachedSelection ? unavailable : null
                 };
             }
 
@@ -24,24 +29,24 @@ public sealed partial class FileIndex
             {
                 // A directory view whose directory is out of the block (renamed away, or not yet created) reads as
                 // offline with no block: the volume block stays mapped and watched, and a later batch can bring it back.
-                return new RootStatus(Root, RootState.Offline)
+                return new RootStatus(root, RootState.Offline)
                 {
-                    VolumeSerial = Resolved.VolumeSerial != 0 ? Resolved.VolumeSerial : null,
-                    Watch = DescribeWatchLocked(),
-                    Producer = Resolved.Producer,
-                    MftUnavailable = ReportedMftUnavailable
+                    VolumeSerial = serial,
+                    Watch = DescribeWatchLocked(view),
+                    Producer = resolved.Producer,
+                    MftUnavailable = unavailable
                 };
             }
 
             var result = _lastResult ?? throw new InvalidOperationException(
                 $"Root {Root} has a block without its adopted result.");
             ref readonly var header = ref rootBlock.Block.Header;
-            return new RootStatus(Root, RootState.Ready)
+            return new RootStatus(root, RootState.Ready)
             {
-                VolumeSerial = Resolved.VolumeSerial != 0 ? Resolved.VolumeSerial : null,
+                VolumeSerial = serial,
                 Failure = _failure,
-                Producer = Resolved.Producer,
-                MftUnavailable = ReportedMftUnavailable,
+                Producer = resolved.Producer,
+                MftUnavailable = unavailable,
                 Block = new RootBlockStatus
                 {
                     Origin = result.Origin,
@@ -53,7 +58,7 @@ public sealed partial class FileIndex
                     SkippedRecordCount = result.SkippedRecordCount,
                     AccessDeniedSubtreeCount = (int)Math.Min(header.AccessDeniedSubtreeCount, int.MaxValue)
                 },
-                Watch = DescribeWatchLocked()
+                Watch = DescribeWatchLocked(view)
             };
         }
 
@@ -65,7 +70,7 @@ public sealed partial class FileIndex
         ///     <see cref="WatchState.Faulted" /> for a faulted instance or a failed or refused
         ///     start, <see cref="WatchState.CatchingUp" /> while the watch is requested and its
         ///     replacement has not registered yet, and <see cref="WatchState.NotStarted" />
-        ///     otherwise. The caller holds <see cref="FileIndex._stateLock" />.
+        ///     otherwise. The caller holds <see cref="FileIndex.StateLock" />.
         /// </summary>
         WatchState GetWatchStateLocked()
         {
@@ -93,14 +98,13 @@ public sealed partial class FileIndex
         ///     The one builder of a root's <see cref="RootWatchStatus" />, shared by
         ///     <see cref="Status" /> and the changes <see cref="FileIndex.WatchStateChanged" /> delivers. A change is
         ///     only ever noted for a root with a block: a watch is requested only against a block,
-        ///     and blocks are never removed. The caller holds <see cref="FileIndex._stateLock" />.
+        ///     and blocks are never removed. The caller holds <see cref="FileIndex.StateLock" />.
         /// </summary>
-        RootWatchStatus DescribeWatchLocked()
+        RootWatchStatus DescribeWatchLocked(IndexView view)
         {
-            var rootBlock = Block ?? throw new InvalidOperationException($"Root {Root} has no block.");
             return new RootWatchStatus
             {
-                IsSupported = rootBlock.Kind.CanWatch && WatchSourceOrNull is not null,
+                IsSupported = view.Kind.CanWatch && WatchSourceOrNull is not null,
                 IsRequested = _watchRequested,
                 State = GetWatchStateLocked(),
                 StateVersion = _watchStateVersion,
@@ -115,9 +119,6 @@ public sealed partial class FileIndex
 
         public bool IsWatchingLocked() =>
             _watchRequested || Current is not null || _retiring is not null;
-
-        /// <summary>The selection-time reason, or the last scan attempt's when a broker launch or elevation failed.</summary>
-        MftUnavailableReason? ReportedMftUnavailable => Resolved.MftUnavailable ?? _lastMftFailure;
 
         public UsnJournalSettings QueryUsnJournalSettings()
         {

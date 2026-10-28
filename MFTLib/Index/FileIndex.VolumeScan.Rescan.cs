@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         /// Runs one admitted rescan under this root's lifecycle gate. Production keeps the current
@@ -16,13 +16,13 @@ public sealed partial class FileIndex
                 throw rejection;
             }
 
-            ObjectDisposedException.ThrowIf(IsDisposed, Index);
+            ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             using var rescanCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ClosingToken);
             await LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
             try
             {
-                Index.ThrowIfCancelledByDisposal(rescanCancellation.Token);
+                ThrowIfClosing(rescanCancellation.Token);
                 await RescanWithGateHeldAsync(recovery: null, rescanCancellation.Token)
                     .ConfigureAwait(false);
             }
@@ -54,7 +54,7 @@ public sealed partial class FileIndex
         async Task<ScanAttempt> ScanAndPublishAsync(bool clearsCheckpointLoss,
             RecoveryTicket? recovery, CancellationToken cancellationToken)
         {
-            Index.ThrowIfCancelledByDisposal(cancellationToken);
+            ThrowIfClosing(cancellationToken);
             var superseded = FindBlockForRescan();
 
             // The rename-aside is licensed by the owner lock: an index that does not hold it (its

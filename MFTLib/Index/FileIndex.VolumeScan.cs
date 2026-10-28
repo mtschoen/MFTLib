@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
@@ -8,7 +10,7 @@ public sealed partial class FileIndex
     ///     and the pump is scheduled. <c>Faulted</c>: the pump ended with
     ///     a fault while the instance was current.
     /// </summary>
-    enum WatchInstanceState
+    internal enum WatchInstanceState
     {
         Starting,
         Running,
@@ -50,12 +52,12 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     One root's watch and scan records. The fields are read and written under
-    ///     <see cref="FileIndex._stateLock" />; <see cref="LifecycleGate" /> and
+    ///     <see cref="FileIndex.StateLock" />; <see cref="LifecycleGate" /> and
     ///     <see cref="WriteGate" /> are not.
     /// </summary>
     /// <remarks>
     ///     Lock order, outermost first: the root's <see cref="LifecycleGate" />, then its
-    ///     <see cref="WriteGate" />, then <see cref="FileIndex._stateLock" />, which is a
+    ///     <see cref="WriteGate" />, then <see cref="FileIndex.StateLock" />, which is a
     ///     <see cref="Lock" /> never held across an <c>await</c>. No code holds two roots'
     ///     lifecycle gates or two roots' write gates except disposal, which takes every lifecycle
     ///     gate and then every write gate in ascending root-key order. No code acquires a gate
@@ -67,15 +69,19 @@ public sealed partial class FileIndex
     ///     <see cref="WatchFaultKind.RescanRestart" /> after a failed restart holds the root's
     ///     lifecycle gate.
     /// </remarks>
-    sealed partial class RootRuntime(FileIndex index, ResolvedRoot resolved)
+    [SuppressMessage("Design", "CA1001",
+        Justification = "FileIndex owns asynchronous scan teardown. The closing source, like the lifecycle gates, " +
+                        "stays readable by operations racing teardown and is intentionally not disposed.")]
+    internal sealed partial class VolumeScan(VolumeScanCreation creation)
     {
-        FileIndex Index { get; } = index;
-
-        Lock StateLock => Index._stateLock;
-        FileIndexOptions Options => Index._options;
-        IndexHooks Hooks => Index.Hooks;
-        CancellationToken DisposalToken => Index.DisposalToken;
-        bool IsDisposed => Index._disposed;
+        internal Lock StateLock { get; } = new();
+        FileIndexOptions Options => creation.Options;
+        IndexHooks Hooks => creation.Hooks;
+        readonly CancellationTokenSource _closing = new();
+        internal CancellationToken ClosingToken => _closing.Token;
+        bool _isClosing;
+        internal bool IsClosing => Volatile.Read(ref _isClosing);
+        internal void MarkClosingLocked() => Volatile.Write(ref _isClosing, true);
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
         /// <summary>
@@ -83,7 +89,7 @@ public sealed partial class FileIndex
         ///     walk; that happens before <see cref="FileIndex.OpenAsync" /> returns the index, so no other thread can
         ///     read it during the swap and the property needs no synchronization.
         /// </summary>
-        ResolvedRoot Resolved { get; set; } = resolved;
+        ResolvedRoot Resolved { get; set; } = creation.Resolved;
 
         public RootBlock? Block;
         PendingRootResult? _lastResult;

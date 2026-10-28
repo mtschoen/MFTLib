@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    sealed partial class RootRuntime
+    internal sealed partial class VolumeScan
     {
         /// <summary>
         ///     The block's ownership passes to the <see cref="RootBlock" />, which releases it through
@@ -12,31 +12,8 @@ public sealed partial class FileIndex
         RootBlock BuildRootBlock(BlockFile block)
         {
             block.Diagnostics = Options.Diagnostics;
-            var view = Resolved.Producer == ProducerKind.Mft && IsDirectoryViewOfVolume()
-                ? ViewRoot.ForDirectory(Resolved.RootDirectory, RootKind.For(ProducerKind.Mft, Resolved.IsDump),
-                    Resolved.RenderRootDirectory)
-                : null;
-            var rootBlock = new RootBlock(Root, block, rootDirectoryPath: Resolved.RenderRootDirectory,
-                mftSource: Options.MftSource, view);
-            view?.Resolve(rootBlock, DisposalToken);
-            return rootBlock;
-        }
-
-        /// <summary>
-        ///     True when the root names a directory below its volume's root: such a root is a view of the whole-volume
-        ///     block, rooted at its resolved row, while a volume key (or a directory key naming the volume root itself)
-        ///     reads the block from its own root row.
-        /// </summary>
-        bool IsDirectoryViewOfVolume()
-        {
-            if (Resolved.IsDump || Resolved.Root.IsVolume || Resolved.VolumeRootDirectory is not { } volumeRoot)
-            {
-                return false;
-            }
-
-            var kind = RootKind.For(ProducerKind.Mft, isDump: false);
-            return !string.Equals(kind.ToMatchablePrefix(Resolved.RootDirectory),
-                kind.ToMatchablePrefix(volumeRoot), kind.Comparison);
+            return new RootBlock(BlockRoot, block, rootDirectoryPath: Resolved.RenderRootDirectory,
+                mftSource: Options.MftSource);
         }
 
         /// <summary>
@@ -45,7 +22,7 @@ public sealed partial class FileIndex
         ///     loss the root's report as the newer fact, and zero for one that held. A held catch-up
         ///     keeps the root's report unless <paramref name="clearsCheckpointLoss" /> says the
         ///     publishing operation replaces what it explained. The caller holds
-        ///     <see cref="_stateLock" />.
+        ///     <see cref="StateLock" />.
         /// </summary>
         void RecordPendingResultLocked(PendingRootResult published, bool clearsCheckpointLoss)
         {
@@ -77,7 +54,7 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     The publish step of a scan operation: under the root's write gate, then
-        ///     <see cref="_stateLock" />, assigns the ordinal, builds the <see cref="RootBlock" /> over
+        ///     <see cref="StateLock" />, assigns the ordinal, builds the <see cref="RootBlock" /> over
         ///     <paramref name="block" />, commits it with every field of <paramref name="produced" />, and
         ///     publishes the snapshot. A batch on the
         ///     root therefore lands on the old block before this or is dropped after it. Retirement
@@ -94,9 +71,11 @@ public sealed partial class FileIndex
             try
             {
                 Hooks.PublishInsideWriteGate?.Invoke(Root);
+                var rootBlock = BuildRootBlock(block);
+                var bindings = BindViews(rootBlock.Mapped);
                 lock (StateLock)
                 {
-                    Index.ThrowIfCancelledByDisposal(cancellationToken);
+                    ThrowIfClosing(cancellationToken);
                     var replaced = Block;
 
                     if (replaced is not null)
@@ -104,7 +83,6 @@ public sealed partial class FileIndex
                         new BlockWriter(block).AdvanceGenerationPast(replaced.Block.Generation);
                     }
 
-                    var rootBlock = BuildRootBlock(block);
                     var handoff = RetireWatchAtCommitLocked();
                     if (recovery is null)
                     {
@@ -116,7 +94,7 @@ public sealed partial class FileIndex
                         RetireBlockLocked(replaced);
                     }
 
-                    Block = rootBlock;
+                    PublishBindingsLocked(rootBlock, bindings);
                     RecordPendingResultLocked(produced, clearsCheckpointLoss);
                     NoteWatchStateLocked();
                     return (_consecutiveLostCatchUps, handoff);
