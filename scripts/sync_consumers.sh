@@ -16,6 +16,15 @@
 # for the pin, so the bump commits the new sha into the gitlink and opens a
 # pull request. A repository with no such submodule is not a consumer.
 #
+# Every bump pull request, whether newly opened or refreshed, is labeled
+# `auto-bump` and asked to merge its current head once all "*" checks pass.
+# Gitea ignores head_commit_id when scheduling auto-merge, so the scheduled
+# merge is not pinned to the pushed head. Auto-merge is requested only when
+# the base branch requires all status checks (enable_status_check with the
+# "*" context; Gitea would otherwise merge at once); see
+# scripts/auto_bump_pull_request.sh.
+# A repository without such a rule is recorded as "auto-merge skipped".
+#
 # Matching zero consumers is a failure, not a success. A fan-out that bumps
 # nothing while reporting green suppresses the signal that the pins drifted,
 # which is how both consumers fell four MFTLib pull requests behind (#194).
@@ -32,6 +41,8 @@ set -o pipefail
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./mftlib_submodules.sh
 source "$SCRIPT_DIRECTORY/mftlib_submodules.sh"
+# shellcheck source=./auto_bump_pull_request.sh
+source "$SCRIPT_DIRECTORY/auto_bump_pull_request.sh"
 
 GITEA_URL="${GITEA_URL:-}"
 GITEA_OWNER="${GITEA_OWNER:-schoen}"
@@ -42,6 +53,9 @@ GITMODULES_FILE=".gitmodules"
 GITLINK_MODE="160000"
 
 declare -a SUMMARY
+PUSHED_HEAD_SHA=""
+BOT_LOGIN=""
+BOT_EMAIL=""
 
 record() {
 	# record <repo> <result> <detail>. Never pass a credential-bearing URL
@@ -105,6 +119,21 @@ api_read_gitlink_sha() {
 	printf '%s' "$sha"
 }
 
+resolve_bot_identity() {
+	# resolve_bot_identity: read the token owner's login and primary email from
+	# GET /api/v1/user into BOT_LOGIN and BOT_EMAIL, so bump commits are
+	# authored with an email Gitea maps to that account (author.login set).
+	# Returns 1 when either field is missing; there is no fallback identity.
+	local response status
+	response="$SCRATCH/bot_user.json"
+	status="$(curl -sS -o "$response" -w '%{http_code}' -H "$auth_header" \
+		"$GITEA_URL/api/v1/user")" || return 1
+	[ "$status" = "200" ] || return 1
+	BOT_LOGIN="$(jq -r '.login // empty' "$response" 2>/dev/null)" || return 1
+	BOT_EMAIL="$(jq -r '.email // empty' "$response" 2>/dev/null)" || return 1
+	[ -n "$BOT_LOGIN" ] && [ -n "$BOT_EMAIL" ]
+}
+
 resolve_owner_uid() {
 	local body
 	body="$(curl -sSf -H "$auth_header" "$GITEA_URL/api/v1/users/$GITEA_OWNER")" || return 1
@@ -139,8 +168,8 @@ bump_gitlink() {
 	local path
 	(
 		cd "$repo_dir" || exit 1
-		git config user.name claude-code
-		git config user.email claude-code@users.noreply.localhost
+		git config user.name "$BOT_LOGIN"
+		git config user.email "$BOT_EMAIL"
 		git checkout --quiet -b "$branch"
 		while IFS= read -r path; do
 			[ -n "$path" ] || continue
@@ -265,18 +294,27 @@ refresh_existing_pull_request() {
 	fi
 
 	record "$repo" "updated" "PR #$index refreshed to $SHORT_SHA (${url:-no url})"
+	finalize_pull_request "$repo" "$base_branch" "$index" "$PUSHED_HEAD_SHA"
 	return 0
 }
 
 open_pull_request() {
 	# open_pull_request <repo> <base_branch> <newline_separated_paths>
 	local repo="$1" base_branch="$2" paths="$3"
-	local detail pr_body pr_status pr_response
+	local detail pr_body pr_status pr_response label_id
 	detail="${paths//$'\n'/, }"
-	pr_body="$(jq -n --arg title "chore: bump MFTLib pin to $SHORT_SHA" \
-		--arg head "$BRANCH" --arg base "$base_branch" \
-		--arg body "$(pull_request_body "$detail")" \
-		'{title: $title, head: $head, base: $base, body: $body}')"
+	label_id="$(ensure_auto_bump_label_id "$repo")" || label_id=""
+	if [ -n "$label_id" ]; then
+		pr_body="$(jq -cn --arg title "chore: bump MFTLib pin to $SHORT_SHA" \
+			--arg head "$BRANCH" --arg base "$base_branch" \
+			--arg body "$(pull_request_body "$detail")" --argjson label_id "$label_id" \
+			'{title: $title, head: $head, base: $base, body: $body, labels: [$label_id]}')"
+	else
+		pr_body="$(jq -cn --arg title "chore: bump MFTLib pin to $SHORT_SHA" \
+			--arg head "$BRANCH" --arg base "$base_branch" \
+			--arg body "$(pull_request_body "$detail")" \
+			'{title: $title, head: $head, base: $base, body: $body}')"
+	fi
 	pr_response="$SCRATCH/pr_response.json"
 	pr_status="$(curl -sS -o "$pr_response" -w '%{http_code}' -X POST \
 		-H "$auth_header" -H "Content-Type: application/json" \
@@ -286,6 +324,7 @@ open_pull_request() {
 	case "$pr_status" in
 	200 | 201)
 		record "$repo" "updated" "PR opened ($(jq -r '.html_url // "no url"' "$pr_response"))"
+		finalize_pull_request "$repo" "$base_branch" "$(jq -r '.number // empty' "$pr_response")" "$PUSHED_HEAD_SHA"
 		return 0
 		;;
 	409)
@@ -325,6 +364,7 @@ update_consumer() {
 		return 1
 	fi
 
+	PUSHED_HEAD_SHA="$(git -C "$repo_dir" rev-parse HEAD)"
 	open_pull_request "$repo" "$branch" "$paths"
 }
 
@@ -414,6 +454,11 @@ main() {
 
 	if ! OWNER_UID="$(resolve_owner_uid)" || [ -z "$OWNER_UID" ]; then
 		echo "sync_consumers.sh: could not resolve a Gitea user id for owner '$GITEA_OWNER'" >&2
+		exit 1
+	fi
+
+	if ! resolve_bot_identity; then
+		echo "sync_consumers.sh: could not read the token owner's login and email from $GITEA_URL/api/v1/user; refusing to author bump commits without an identity Gitea can attribute" >&2
 		exit 1
 	fi
 

@@ -185,6 +185,11 @@ resolve_owner_uid() { printf '1'; }
 
 authed_url() { printf '%s' "$1"; }
 
+resolve_bot_identity() {
+	BOT_LOGIN="claude-code"
+	BOT_EMAIL="claude-code@example.invalid"
+}
+
 list_consumer_candidates() {
 	local name
 	for name in $FIXTURE_REPOS; do
@@ -242,6 +247,13 @@ update_pull_request() {
 	printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$UPDATE_PR_LOG"
 	[ "$UPDATE_PR_EXIT" -eq 0 ] || return "$UPDATE_PR_EXIT"
 	printf '%s' "$UPDATE_PR_URL"
+}
+
+# finalize_pull_request has its own transport-level tests further down; here it
+# is only logged, so the refresh and integration tests never reach the network.
+FINALIZE_LOG="$FIXTURE_ROOT/finalize.log"
+finalize_pull_request() {
+	printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$FINALIZE_LOG"
 }
 
 run_sync() {
@@ -327,6 +339,7 @@ assert_equals "" \
 start_test "an existing open pull request has its title and body refreshed to the new sha"
 SHORT_SHA="${NEW_SHA:0:12}"
 SUMMARY=()
+: >"$FINALIZE_LOG"
 : >"$FIND_PR_INDEX_LOG"
 : >"$UPDATE_PR_LOG"
 FIND_PR_INDEX_RESULT="42"
@@ -346,9 +359,12 @@ assert_contains "$(cat "$UPDATE_PR_LOG")" \
 	"the refreshed body names the new sha"
 assert_contains "${SUMMARY[*]}" "updated" "records the refresh as updated"
 assert_contains "${SUMMARY[*]}" "#42" "names the pull request index in the summary"
+assert_contains "$(cat "$FINALIZE_LOG")" "consumer-refresh|main|42|" \
+	"labels and requests auto-merge on the refreshed pull request"
 
 start_test "a failed PATCH on an existing pull request is reported as failed, not swallowed"
 SUMMARY=()
+: >"$FINALIZE_LOG"
 : >"$FIND_PR_INDEX_LOG"
 : >"$UPDATE_PR_LOG"
 FIND_PR_INDEX_RESULT="42"
@@ -359,9 +375,11 @@ REFRESH_STATUS=$?
 assert_equals "1" "$REFRESH_STATUS" "reports failure"
 assert_contains "${SUMMARY[*]}" "failed" "records the failed PATCH"
 assert_contains "${SUMMARY[*]}" "consumer-refresh" "names the repo in the summary"
+assert_equals "" "$(cat "$FINALIZE_LOG")" "never labels or auto-merges after a failed PATCH"
 
 start_test "zero open pull requests on a 409 is a contradiction: recorded as failed, never patched"
 SUMMARY=()
+: >"$FINALIZE_LOG"
 : >"$FIND_PR_INDEX_LOG"
 : >"$UPDATE_PR_LOG"
 FIND_PR_INDEX_RESULT=""
@@ -372,9 +390,11 @@ assert_equals "1" "$REFRESH_STATUS" "reports failure"
 assert_contains "${SUMMARY[*]}" "failed" "records the failure"
 assert_contains "${SUMMARY[*]}" "no pull request is open" "the summary explains why: none is open"
 assert_equals "" "$(cat "$UPDATE_PR_LOG")" "never calls update_pull_request"
+assert_equals "" "$(cat "$FINALIZE_LOG")" "never labels or auto-merges"
 
 start_test "more than one open pull request matching the branch is a contradiction: recorded as failed, never guessed"
 SUMMARY=()
+: >"$FINALIZE_LOG"
 : >"$FIND_PR_INDEX_LOG"
 : >"$UPDATE_PR_LOG"
 FIND_PR_INDEX_RESULT=""
@@ -385,6 +405,7 @@ assert_equals "1" "$REFRESH_STATUS" "reports failure"
 assert_contains "${SUMMARY[*]}" "failed" "records the failure"
 assert_contains "${SUMMARY[*]}" "more than one pull request is open" "the summary explains why: more than one is open"
 assert_equals "" "$(cat "$UPDATE_PR_LOG")" "never calls update_pull_request"
+assert_equals "" "$(cat "$FINALIZE_LOG")" "never labels or auto-merges"
 
 # --- transport-level regression: real HTTP status handling and endpoint choice
 # The tests above fake find_open_pull_request_index and update_pull_request as
@@ -493,6 +514,329 @@ assert_contains "$TRANSPORT_SUMMARY" "updated" "the consumer is recorded as upda
 assert_contains "$TRANSPORT_SUMMARY" "#478" "pull request 478, the open one, is patched"
 assert_not_contains "$TRANSPORT_SUMMARY" "441" "pull request 441, the long-merged one, is never named as patched"
 
+# --- label and guarded auto-merge: real helpers, fake Gitea at curl ---------
+# run_auto_bump_test sources the real script in a subshell and fakes only curl.
+# The fake keeps a call log ($AUTO_BUMP_CURL_LOG, one "METHOD url body" line per
+# call) and answers from these variables, set by the caller:
+#   FAKE_LABELS_JSON, FAKE_LABEL_CREATE_STATUS, FAKE_BRANCH_JSON,
+#   FAKE_BRANCH_STATUS, FAKE_LABEL_APPLY_STATUS, FAKE_MERGE_STATUS,
+#   FAKE_FAILURE_OPERATION, FAKE_FAILURE_MODE.
+
+AUTO_BUMP_CURL_LOG="$FIXTURE_ROOT/auto_bump_curl.log"
+FAKE_LABELS_JSON='[]'
+FAKE_LABEL_CREATE_STATUS=201
+FAKE_LABEL_APPLY_STATUS=200
+FAKE_BRANCH_JSON='{}'
+FAKE_BRANCH_STATUS=200
+FAKE_MERGE_STATUS=201
+FAKE_FAILURE_OPERATION=""
+FAKE_FAILURE_MODE=""
+PROTECTED_MAIN_JSON='{"name": "main", "enable_status_check": true, "status_check_contexts": ["*"]}'
+
+run_auto_bump_test() {
+	# run_auto_bump_test <function> <args...>: run one real script function
+	# with curl faked, then print STATUS and the recorded SUMMARY.
+	local BRANCH SHORT_SHA SCRATCH PUSHED_HEAD_SHA
+	# shellcheck source=scripts/sync_consumers.sh
+	source "$SCRIPT_PATH"
+
+	curl() {
+		local output_file="" method="GET" url="" body="" arg failure
+		while [ $# -gt 0 ]; do
+			arg="$1"
+			case "$arg" in
+			-o) output_file="$2"; shift 2 ;;
+			-X) method="$2"; shift 2 ;;
+			--data-binary) body="$2"; shift 2 ;;
+			-H | -w) shift 2 ;;
+			-sS | -sSf) shift ;;
+			*) url="$arg"; shift ;;
+			esac
+		done
+		printf '%s %s %s\n' "$method" "$url" "$body" >>"$AUTO_BUMP_CURL_LOG"
+		failure=0
+		case "$FAKE_FAILURE_OPERATION $method $url" in
+		"label-lookup GET "*"/schoen/consumer-a/labels?"*) failure=1 ;;
+		"label-create POST "*"/schoen/consumer-a/labels") failure=1 ;;
+		"label-apply POST "*"/schoen/consumer-a/issues/"*"/labels") failure=1 ;;
+		"merge POST "*"/schoen/consumer-a/pulls/"*"/merge") failure=1 ;;
+		esac
+		if [ "$failure" = "1" ]; then
+			if [ "$FAKE_FAILURE_MODE" = "transport" ]; then
+				printf 'simulated %s transport failure\n' "$FAKE_FAILURE_OPERATION" >&2
+				return 7
+			fi
+			printf '{"message":"simulated failure"}' >"$output_file"
+			printf '500'
+			return 0
+		fi
+		case "$method $url" in
+		"GET "*"/labels?"*)
+			printf '%s' "$FAKE_LABELS_JSON" >"$output_file"
+			printf '200'
+			;;
+		"POST "*"/issues/"*"/labels")
+			printf '[]' >"$output_file"
+			printf '%s' "$FAKE_LABEL_APPLY_STATUS"
+			;;
+		"POST "*"/labels")
+			printf '{"id": 77, "name": "auto-bump"}' >"$output_file"
+			printf '%s' "$FAKE_LABEL_CREATE_STATUS"
+			;;
+		"GET "*"/branches/"*)
+			printf '%s' "$FAKE_BRANCH_JSON" >"$output_file"
+			printf '%s' "$FAKE_BRANCH_STATUS"
+			;;
+		"POST "*"/merge")
+			printf '{}' >"$output_file"
+			printf '%s' "$FAKE_MERGE_STATUS"
+			;;
+		*)
+			printf '{}' >"$output_file"
+			printf '404'
+			;;
+		esac
+	}
+
+	auth_header="Authorization: token fixture-token"
+	GITEA_URL="https://fixture.invalid"
+	GITEA_OWNER="schoen"
+	BRANCH="chore/mftlib-pin-bump"
+	SCRATCH="$(mktemp -d)"
+	SUMMARY=()
+	: >"$AUTO_BUMP_CURL_LOG"
+	"$@"
+	printf 'STATUS=%s\n' "$?"
+	printf 'SUMMARY=%s\n' "${SUMMARY[*]}"
+}
+
+HEAD_ONE="1111111111111111111111111111111111111111"
+HEAD_TWO="2222222222222222222222222222222222222222"
+
+start_test "an existing auto-bump label is reused, applied by id, and auto-merge is requested when the base rule has status checks"
+FAKE_LABELS_JSON='[{"id": 5, "name": "bug"}, {"id": 9, "name": "auto-bump"}]'
+FAKE_BRANCH_JSON="$PROTECTED_MAIN_JSON"
+FAKE_MERGE_STATUS=201
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main 12 "$HEAD_ONE")"
+AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+assert_contains "$AUTO_BUMP_OUTPUT" "STATUS=0" "never fails the fan-out"
+assert_contains "$AUTO_BUMP_OUTPUT" "auto-merge requested" "records the auto-merge request"
+assert_not_contains "$AUTO_BUMP_OUTPUT" "warning" "records no warning"
+assert_not_contains "$AUTO_BUMP_CALLS" "POST https://fixture.invalid/api/v1/repos/schoen/consumer-a/labels" "does not create a label that exists"
+assert_contains "$AUTO_BUMP_CALLS" 'issues/12/labels {"labels":[9]}' "applies the existing label id"
+assert_contains "$AUTO_BUMP_CALLS" "pulls/12/merge" "requests the merge schedule"
+assert_contains "$AUTO_BUMP_CALLS" '"head_commit_id":"'"$HEAD_ONE"'"' "checks the merge payload carries the pushed head sha"
+assert_contains "$AUTO_BUMP_CALLS" '"merge_when_checks_succeed":true' "asks to merge when checks succeed"
+assert_contains "$AUTO_BUMP_CALLS" '"Do":"squash"' "squash merges"
+assert_contains "$AUTO_BUMP_CALLS" '"delete_branch_after_merge":true' "deletes the bump branch after merging"
+
+start_test "a missing auto-bump label is created, then applied"
+FAKE_LABELS_JSON='[{"id": 5, "name": "bug"}]'
+FAKE_BRANCH_JSON="$PROTECTED_MAIN_JSON"
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main 12 "$HEAD_ONE")"
+AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+assert_contains "$AUTO_BUMP_CALLS" "POST https://fixture.invalid/api/v1/repos/schoen/consumer-a/labels" "creates the label"
+assert_contains "$AUTO_BUMP_CALLS" "Opened by an automatic dependency bump; merges itself on green CI" "uses the label description"
+assert_contains "$AUTO_BUMP_CALLS" 'issues/12/labels {"labels":[77]}' "applies the id of the created label"
+assert_not_contains "$AUTO_BUMP_OUTPUT" "warning" "records no warning"
+
+SKIP_TEXT="auto-merge skipped: main does not require all status checks (*)"
+
+start_test "auto-merge is skipped when the status check list names checks but lacks the * pattern"
+FAKE_LABELS_JSON='[{"id": 9, "name": "auto-bump"}]'
+FAKE_BRANCH_JSON='{"name": "main", "enable_status_check": true, "status_check_contexts": ["ci/build", "ci/test"]}'
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main 12 "$HEAD_ONE")"
+AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+assert_contains "$AUTO_BUMP_OUTPUT" "$SKIP_TEXT" "records the skip"
+assert_contains "$AUTO_BUMP_CALLS" 'issues/12/labels' "still labels the pull request"
+assert_contains "$AUTO_BUMP_CALLS" '/branches/main' "reads the branch, not branch_protections"
+assert_not_contains "$AUTO_BUMP_CALLS" "branch_protections" "never calls branch_protections"
+assert_not_contains "$AUTO_BUMP_CALLS" "/merge" "never calls the merge endpoint"
+
+start_test "auto-merge is skipped when enable_status_check is false, even with the * pattern"
+FAKE_BRANCH_JSON='{"name": "main", "enable_status_check": false, "status_check_contexts": ["*"]}'
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main 12 "$HEAD_ONE")"
+assert_contains "$AUTO_BUMP_OUTPUT" "$SKIP_TEXT" "skips when status checks are disabled"
+assert_not_contains "$(cat "$AUTO_BUMP_CURL_LOG")" "/merge" "no merge call with checks disabled"
+
+start_test "auto-merge is skipped when no contexts are configured"
+FAKE_BRANCH_JSON='{"name": "main", "enable_status_check": true, "status_check_contexts": []}'
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main 12 "$HEAD_ONE")"
+assert_contains "$AUTO_BUMP_OUTPUT" "$SKIP_TEXT" "skips with empty contexts"
+assert_not_contains "$(cat "$AUTO_BUMP_CURL_LOG")" "/merge" "no merge call with empty contexts"
+
+start_test "auto-merge is skipped when the branch cannot be read (non-200)"
+FAKE_BRANCH_JSON='{"message": "forbidden"}'
+FAKE_BRANCH_STATUS=403
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main 12 "$HEAD_ONE")"
+assert_contains "$AUTO_BUMP_OUTPUT" "could not read branch main" "records why it skipped"
+assert_not_contains "$(cat "$AUTO_BUMP_CURL_LOG")" "/merge" "never guesses; no merge call"
+FAKE_BRANCH_STATUS=200
+
+finalize_two_consumers() {
+	local first_status
+	finalize_pull_request consumer-a main 12 "$HEAD_ONE"
+	first_status=$?
+	finalize_pull_request consumer-b main 12 "$HEAD_TWO"
+	return "$first_status"
+}
+
+for OPERATION in label-lookup label-create label-apply merge; do
+	for MODE in http transport; do
+		start_test "a $OPERATION $MODE failure warns and the second consumer still processes"
+		FAKE_FAILURE_OPERATION="$OPERATION"
+		FAKE_FAILURE_MODE="$MODE"
+		FAKE_LABELS_JSON='[{"id": 9, "name": "auto-bump"}]'
+		if [ "$OPERATION" = "label-create" ]; then
+			FAKE_LABELS_JSON='[{"id": 5, "name": "bug"}]'
+		fi
+		FAKE_BRANCH_JSON="$PROTECTED_MAIN_JSON"
+		AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_two_consumers)"
+		AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+		if [ "$OPERATION" = "merge" ]; then
+			if [ "$MODE" = "http" ]; then
+				EXPECTED_DETAIL="warning: auto-merge request returned 500"
+			else
+				EXPECTED_DETAIL="warning: auto-merge request returned curl-error"
+			fi
+		else
+			EXPECTED_DETAIL="warning: could not apply label auto-bump to PR #12"
+		fi
+		assert_contains "$AUTO_BUMP_OUTPUT" "STATUS=0" "still returns success"
+		assert_contains "$AUTO_BUMP_OUTPUT" "$(printf '%-28s %-18s' consumer-a warning)" "records a warning row for the first consumer"
+		assert_contains "$AUTO_BUMP_OUTPUT" "$EXPECTED_DETAIL" "records the failure detail"
+		assert_contains "$AUTO_BUMP_OUTPUT" "$(printf '%-28s %-18s' consumer-b auto-bump)" "records success for the second consumer"
+		assert_contains "$AUTO_BUMP_CALLS" "consumer-a/pulls/12/merge" "still requests the first consumer merge"
+		assert_contains "$AUTO_BUMP_CALLS" "consumer-b/pulls/12/merge" "processes the second consumer"
+	done
+done
+FAKE_FAILURE_OPERATION=""
+FAKE_FAILURE_MODE=""
+
+start_test "a pull request number that cannot be read is a recorded warning with no API calls"
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test finalize_pull_request consumer-a main "" "$HEAD_ONE")"
+assert_contains "$AUTO_BUMP_OUTPUT" "could not read the pull request number" "records the warning"
+assert_equals "" "$(cat "$AUTO_BUMP_CURL_LOG")" "makes no calls"
+
+start_test "a refreshed pull request re-requests auto-merge with the new head sha"
+refresh_with_new_head() {
+	find_open_pull_request_index() { printf '42'; }
+	update_pull_request() { printf 'https://fixture.invalid/schoen/consumer-a/pulls/42'; }
+	SHORT_SHA="aaaaaaaaaaaa"
+	PUSHED_HEAD_SHA="$HEAD_TWO"
+	refresh_existing_pull_request consumer-a main external/MFTLib
+}
+FAKE_LABELS_JSON='[{"id": 9, "name": "auto-bump"}]'
+FAKE_BRANCH_JSON="$PROTECTED_MAIN_JSON"
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test refresh_with_new_head)"
+AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+assert_contains "$AUTO_BUMP_OUTPUT" "STATUS=0" "refresh succeeds"
+assert_contains "$AUTO_BUMP_CALLS" 'issues/42/labels {"labels":[9]}' "labels the refreshed pull request"
+assert_contains "$AUTO_BUMP_CALLS" "pulls/42/merge" "re-requests auto-merge"
+assert_contains "$AUTO_BUMP_CALLS" '"head_commit_id":"'"$HEAD_TWO"'"' "uses the newly pushed head sha"
+
+start_test "a newly opened pull request is labeled and auto-merged using the number Gitea returned"
+open_with_new_head() {
+	PUSHED_HEAD_SHA="$HEAD_ONE"
+	SHORT_SHA="aaaaaaaaaaaa"
+	# Wrap the fake curl so the pulls POST answers 201 with a number.
+	eval "$(declare -f curl | sed '1s/curl/fake_label_curl/')"
+	curl() {
+		local arg previous="" method="GET" output_file="" body=""
+		for arg in "$@"; do
+			[ "$previous" = "-o" ] && output_file="$arg"
+			[ "$previous" = "-X" ] && method="$arg"
+			[ "$previous" = "--data-binary" ] && body="$arg"
+			previous="$arg"
+		done
+		case "${method} ${*: -1}" in
+		"POST "*"/schoen/consumer-a/pulls")
+			printf '%s %s %s\n' "$method" "${*: -1}" "$body" >>"$AUTO_BUMP_CURL_LOG"
+			printf '{"number": 31, "html_url": "https://fixture.invalid/schoen/consumer-a/pulls/31"}' >"$output_file"
+			printf '201'
+			;;
+		*) fake_label_curl "$@" ;;
+		esac
+	}
+	open_pull_request consumer-a main external/MFTLib
+}
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test open_with_new_head)"
+AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+assert_contains "$AUTO_BUMP_OUTPUT" "STATUS=0" "open succeeds"
+assert_contains "$AUTO_BUMP_CALLS" 'issues/31/labels' "labels the new pull request"
+assert_contains "$AUTO_BUMP_CALLS" 'by sync-consumers.","labels":[9]}' "includes the existing label in the creation payload"
+assert_contains "$AUTO_BUMP_CALLS" "pulls/31/merge" "requests auto-merge for the new pull request"
+assert_contains "$AUTO_BUMP_CALLS" '"head_commit_id":"'"$HEAD_ONE"'"' "checks the merge payload carries the pushed head"
+
+start_test "a newly opened pull request creates and includes a missing auto-bump label"
+FAKE_LABELS_JSON='[{"id": 5, "name": "bug"}]'
+AUTO_BUMP_OUTPUT="$(run_auto_bump_test open_with_new_head)"
+AUTO_BUMP_CALLS="$(cat "$AUTO_BUMP_CURL_LOG")"
+assert_contains "$AUTO_BUMP_OUTPUT" "STATUS=0" "open succeeds"
+assert_contains "$AUTO_BUMP_CALLS" "POST https://fixture.invalid/api/v1/repos/schoen/consumer-a/labels" "creates the missing label"
+assert_contains "$AUTO_BUMP_CALLS" 'by sync-consumers.","labels":[77]}' "includes the created label in the creation payload"
+assert_contains "$AUTO_BUMP_CALLS" 'issues/31/labels {"labels":[77]}' "keeps the idempotent label application"
+
+# --- bot identity: real resolve_bot_identity against a faked /api/v1/user ---
+
+run_identity_test() {
+	# run_identity_test <user_status> <user_json>: run the real function with
+	# curl faked, then print STATUS, LOGIN and EMAIL.
+	local SCRATCH
+	# shellcheck source=scripts/sync_consumers.sh
+	source "$SCRIPT_PATH"
+	curl() {
+		local output_file="" url="" arg
+		while [ $# -gt 0 ]; do
+			arg="$1"
+			case "$arg" in
+			-o) output_file="$2"; shift 2 ;;
+			-H | -w) shift 2 ;;
+			-sS | -sSf) shift ;;
+			*) url="$arg"; shift ;;
+			esac
+		done
+		printf '%s' "$FAKE_USER_JSON" >"$output_file"
+		printf '%s' "$FAKE_USER_STATUS"
+	}
+	auth_header="Authorization: token fixture-token"
+	GITEA_URL="https://fixture.invalid"
+	SCRATCH="$(mktemp -d)"
+	resolve_bot_identity
+	printf 'STATUS=%s\nLOGIN=%s\nEMAIL=%s\n' "$?" "$BOT_LOGIN" "$BOT_EMAIL"
+}
+
+start_test "the bot identity is read from /api/v1/user"
+FAKE_USER_STATUS=200
+FAKE_USER_JSON='{"login": "claude-code", "email": "claude-code@example.invalid"}'
+IDENTITY_OUTPUT="$(run_identity_test)"
+assert_contains "$IDENTITY_OUTPUT" "STATUS=0" "succeeds"
+assert_contains "$IDENTITY_OUTPUT" "LOGIN=claude-code" "reads the login"
+assert_contains "$IDENTITY_OUTPUT" "EMAIL=claude-code@example.invalid" "reads the email"
+
+start_test "a failed or incomplete /api/v1/user call fails instead of inventing an identity"
+FAKE_USER_STATUS=401
+FAKE_USER_JSON='{"message": "unauthorized"}'
+IDENTITY_OUTPUT="$(run_identity_test)"
+assert_contains "$IDENTITY_OUTPUT" "STATUS=1" "fails on a non-200"
+FAKE_USER_STATUS=200
+FAKE_USER_JSON='{"login": "claude-code", "email": ""}'
+IDENTITY_OUTPUT="$(run_identity_test)"
+assert_contains "$IDENTITY_OUTPUT" "STATUS=1" "fails on an empty email"
+
+start_test "the run aborts before any bump when the bot identity cannot be read"
+FIXTURE_REPOS="consumer-noid"
+make_consumer consumer-noid "$OLD_SHA" "../MFTLib.git"
+: >"$PR_LOG"
+(
+	resolve_bot_identity() { return 1; }
+	main "$NEW_SHA"
+) >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_STATUS=$?
+assert_equals "1" "$RUN_STATUS" "exits non-zero"
+assert_contains "$(cat "$RUN_STDERR")" "refusing to author bump commits" "says why"
+assert_equals "" "$(cat "$PR_LOG")" "opens no pull request"
+
 # --- integration tests: full main run against fixture repos ----------------
 
 start_test "a gitlink-only consumer gets a bump branch and a pull request"
@@ -503,9 +847,15 @@ assert_equals "0" "$RUN_STATUS" "exits successfully"
 assert_equals "$NEW_SHA" "$(gitlink_of consumer-a "$BRANCH")" "bump branch records the new sha"
 assert_equals "$OLD_SHA" "$(gitlink_of consumer-a main)" "the default branch is untouched"
 assert_equals "chore: bump MFTLib pin to ${NEW_SHA:0:12}" "$(subject_of consumer-a "$BRANCH")" "commit subject names the short sha"
-assert_equals 'claude-code@users.noreply.localhost' \
+assert_equals 'claude-code@example.invalid' \
     "$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-a.git" log -1 --format=%ae "$BRANCH")" \
-    "portable bot commit identity"
+    "commit author email is the one read from the API"
+assert_equals 'claude-code' \
+    "$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-a.git" log -1 --format=%an "$BRANCH")" \
+    "commit author name is the login read from the API"
+assert_equals 'claude-code@example.invalid' \
+    "$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-a.git" log -1 --format=%ce "$BRANCH")" \
+    "committer email matches the author"
 assert_contains "$(cat "$PR_LOG")" "consumer-a|main|$BRANCH|external/MFTLib" "a pull request was opened against main"
 assert_contains "$(cat "$RUN_STDOUT")" "matched 1 consumers" "the summary counts the match"
 assert_contains "$(cat "$RUN_STDOUT")" "consumer-a" "the summary names the repo"
