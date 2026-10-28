@@ -215,20 +215,15 @@ public class RootKeyTests
     {
         var constructor = typeof(InProcessBrokerScan).GetConstructors(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Single(candidate => candidate.GetParameters().Length == 2);
+            .Single(candidate => candidate.GetParameters() is [{ } parameter] && parameter.ParameterType == typeof(VolumeKey));
         Assert.IsTrue(constructor.IsAssembly, "Scan observations are constructed inside the harness.");
-        IReadOnlyCollection<string> retainedFileNames = [".git", "HEAD"];
-        var scan = new InProcessBrokerScan('c', retainedFileNames);
-        Assert.AreSame(retainedFileNames, scan.RetainedFileNames);
-        Assert.IsNull(new InProcessBrokerScan('c', null).RetainedFileNames);
-        Assert.IsEmpty(new InProcessBrokerScan('c', Array.Empty<string>()).RetainedFileNames!);
-        Assert.AreSequenceEqual(["marker"], [.. (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!]);
+        var scan = new InProcessBrokerScan('c');
         var start = new ScriptedWatchStart('c', default);
         Assert.AreEqual('C', scan.Volume);
         Assert.AreEqual('C', start.Volume);
         Assert.AreEqual('D', (scan with { Volume = 'd' }).Volume);
         Assert.AreEqual('D', (start with { Volume = 'd' }).Volume);
-        Assert.ThrowsExactly<ArgumentException>(() => new InProcessBrokerScan(default, null));
+        Assert.ThrowsExactly<ArgumentException>(() => new InProcessBrokerScan(default));
         Assert.ThrowsExactly<ArgumentException>(() => new ScriptedWatchStart(default, default));
         Assert.ThrowsExactly<ArgumentException>(() => scan with { Volume = default });
         Assert.ThrowsExactly<ArgumentException>(() => start with { Volume = default });

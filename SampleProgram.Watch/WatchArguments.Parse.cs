@@ -18,13 +18,12 @@ sealed partial record WatchArguments
         }
 
         var reader = new ArgumentReader(arguments.Skip(start));
-        var keep = reader.Text("--keep-name");
-        var directoriesOnly = reader.Flag("--directories-only");
+        _ = reader.Text("--keep-name");
+        _ = reader.Flag("--directories-only");
         var seconds = reader.Number("--seconds");
         var connectTimeout = reader.Number("--connect-timeout");
         var candidate = new WatchArguments(verb, [])
         {
-            RetainedFileNames = directoriesOnly ? [] : keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : null,
             ConnectTimeoutSeconds = connectTimeout is >= 1 and <= MaximumSeconds ? (int)connectTimeout : null,
             MaximumSize = reader.Number("--maximum-size"),
@@ -33,7 +32,7 @@ sealed partial record WatchArguments
             Clear = reader.Flag("--clear")
         };
         var tokens = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, keep, directoriesOnly, seconds, connectTimeout) ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotARoot(tokens);
+        error = reader.Error ?? Validate(candidate, seconds, connectTimeout) ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotARoot(tokens);
         if (error is not null)
         {
             return false;
@@ -56,12 +55,10 @@ sealed partial record WatchArguments
         return stray is null ? null : $"Option {stray} does not apply to {WatchVerbs.Names.First(pair => pair.Value == verb).Key}.";
     }
 
-    static string? Validate(WatchArguments candidate, string? keep, bool directoriesOnly, long? seconds, long? connectTimeout)
+    static string? Validate(WatchArguments candidate, long? seconds, long? connectTimeout)
     {
         return candidate switch
         {
-            _ when directoriesOnly && keep is not null => "Options --directories-only and --keep-name cannot be combined.",
-            _ when keep is not null && candidate.RetainedFileNames is { Count: 0 } => "Option --keep-name needs a file name; use --directories-only for directories alone.",
             _ when seconds is < 1 or > MaximumSeconds => $"Option --seconds must be from 1 to {MaximumSeconds}.",
             _ when connectTimeout is < 1 or > MaximumSeconds => $"Option --connect-timeout must be from 1 to {MaximumSeconds}.",
             { Verb: WatchVerb.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue

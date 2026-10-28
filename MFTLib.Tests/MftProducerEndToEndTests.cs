@@ -80,7 +80,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
     }
 
     [TestMethod]
-    public async Task OpenAsync_BlockProgressAndRetainedFileNamesSurviveTheProtocol()
+    public async Task OpenAsync_BlockProgressAndEveryNameSurviveTheProtocol()
     {
         var parsingReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var progress = new List<IndexScanProgress>();
@@ -98,7 +98,6 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         var options = Options(source) with
         {
-            RetainedFileNames = ["NOTES.TXT"],
             ScanProgress = new SynchronousProgress<IndexScanProgress>(value =>
             {
                 progress.Add(value);
@@ -122,8 +121,8 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         Assert.IsTrue(index.Find(At("documents"), TestContext.CancellationToken)!.Value.IsDirectory);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt"), TestContext.CancellationToken));
         Assert.IsNotNull(index.Find(At("notes.txt"), TestContext.CancellationToken));
-        Assert.IsNull(index.Find(At("documents", "obsolete.txt"), TestContext.CancellationToken));
-        Assert.IsNull(index.Find(At("documents", "draft.txt"), TestContext.CancellationToken));
+        Assert.IsNotNull(index.Find(At("documents", "obsolete.txt"), TestContext.CancellationToken));
+        Assert.IsNotNull(index.Find(At("documents", "draft.txt"), TestContext.CancellationToken));
     }
 
     [TestMethod]

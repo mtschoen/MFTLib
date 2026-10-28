@@ -23,7 +23,7 @@ The header stores it, so a warm start reports the count of the scan that built t
 `RootBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
 including unsupported record identifiers, empty names and exhausted block capacity.
 All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's count is larger.
-Records excluded by `FileIndexOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count,
+Records excluded by `MftScanOptions.IncludeFreed` contribute to neither count,
 and neither does a directory `FileIndexOptions.DirectoryWalk` records without entering. These diagnostics describe the
 current block's production: successful rescans replace the counts, and failed or cancelled
 rescans retain them with the block. A warm start reports zero skipped records, because that
@@ -258,32 +258,29 @@ The header's scan shape at offset 112 identifies the options that shaped the blo
 rows. It is the first eight bytes, read as a little-endian u64, of SHA-256 over a
 canonical byte encoding. Integers are little-endian, a flag is one byte (0 or 1), and
 a string set is a u32 count followed by each string as a u32 UTF-8 byte count and its
-bytes, deduplicated and sorted ordinally after folding. Retention is a flag that is 1
-when `FileIndexOptions.RetainedFileNames` is non-null, followed, when it is, by the
-names folded to upper-invariant for MFT blocks. Enumeration retention folds that way on
-Windows and stays as given elsewhere, matching the root comparison.
-Every name or path string in those sets is well-formed UTF-16, so the UTF-8 form is lossless:
-admission rejects an unpaired surrogate in a retained name, a pruned directory name or a pruned path
-before any cache work. A pruned directory name pattern sequence is a u32 count followed by each
-distinct `(Regex.ToString(), (uint)Regex.Options)` pair, sorted ordinally by pattern text and then
-by numeric `RegexOptions`: each pattern text is written as its u32 UTF-16 code-unit count followed
-by the little-endian u16 code units as given, and then its `RegexOptions` as a u32 (`MatchTimeout`
-is excluded).
+bytes, deduplicated and sorted ordinally after folding. Every name or path string in
+those sets is well-formed UTF-16, so the UTF-8 form is lossless: admission rejects an
+unpaired surrogate in a pruned directory name or a pruned path before any cache work.
+A pruned directory name pattern sequence is a u32 count followed by each distinct
+`(Regex.ToString(), (uint)Regex.Options)` pair, sorted ordinally by pattern text and then
+by numeric `RegexOptions`: each pattern text is written as its u32 UTF-16 code-unit count
+followed by the little-endian u16 code units as given, and then its `RegexOptions` as a
+u32 (`MatchTimeout` is excluded).
 
 | Producer | Canonical encoding, in order |
 | --- | --- |
-| MFT | producer kind u32 (1); retention; `MftScanOptions.IncludeFreed` flag |
-| Enumeration | producer kind u32 (2); retention; pruned directory names; pruned directory attributes u32; `PruneDotDirectories` flag; pruned directory paths; pruned directory name patterns |
+| MFT | producer kind u32 (1); `MftScanOptions.IncludeFreed` flag |
+| Enumeration | producer kind u32 (2); pruned directory names; pruned directory attributes u32; `PruneDotDirectories` flag; pruned directory paths; pruned directory name patterns |
 
-For an enumeration block, retained names, exact pruned names and pruned paths fold to upper-invariant
-on Windows and stay as given elsewhere, matching the root's path comparison; regex pattern text is
-never folded by the root comparison because each `Regex` carries its own `RegexOptions`. Paths are normalized with
-`Path.GetFullPath` and `Path.TrimEndingDirectorySeparator`, and only the paths equal to
-or beneath the root's directory are encoded, so editing a pruned path under one root leaves
-every other volume's block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`, including
-`PrunedDirectoryNamePatterns`. The
-MFT `IncludeFreed` value comes from the scan options of `FileIndexOptions.MftSource`; an
-open with no source computes it as false.
+For an enumeration block, exact pruned names and pruned paths fold to upper-invariant on
+Windows and stay as given elsewhere, matching the root's path comparison; regex pattern
+text is never folded by the root comparison because each `Regex` carries its own
+`RegexOptions`. Paths are normalized with `Path.GetFullPath` and
+`Path.TrimEndingDirectorySeparator`, and only the paths equal to or beneath the root's
+directory are encoded, so editing a pruned path under one root leaves every other volume's
+block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`, including
+`PrunedDirectoryNamePatterns`. The MFT `IncludeFreed` value comes from the scan options of
+`FileIndexOptions.MftSource`; an open with no source computes it as false.
 
 The index computes the expected shape for each root and passes it to the producer in
 `MftBlockProduceRequest.ScanShape`, or writes it itself for an enumeration block. A

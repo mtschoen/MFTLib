@@ -29,8 +29,6 @@ sealed class InProcessBroker : IAsyncDisposable
 
     public TestBlockSections Sections => _resources.Sections;
 
-    public RecordingBlockSectionWriter Writer => _resources.Writer;
-
     public async ValueTask DisposeAsync() =>
         await Handle.DisposeAsync().AsTask().WaitAsync(TestTimeouts.HangGuard);
 }

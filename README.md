@@ -30,17 +30,16 @@ and requires glibc 2.33 and GLIBCXX_3.4.22.
 
 ## What the index reveals
 
-An MFT scan reads the raw table, which applies no per-file access checks. With the default
-unfiltered retention, the index holds the name, parent folder, attributes, size and timestamps of
-every file on the volume, including files the indexing account cannot open, such as other users'
-profiles and system folders. File contents are never read. The full table sits in the consuming
-process's memory, where anything able to read that process can read it. Cached blocks live in the
-application's cache directory. `CacheDirectory.EnsureCreated` restricts the directory itself to the
-current user and SYSTEM (owner-only mode on Linux), but does not recursively repair existing files'
-permissions. Anything running as that user can read the cache. MFT scans offer no subtree exclusion.
-`FileIndexOptions.RetainedFileNames` filters retained file rows, while
+An MFT scan reads the raw table, which applies no per-file access checks. The index holds the name,
+parent folder, attributes, size and timestamps of every file on the volume, including files the
+indexing account cannot open, such as other users' profiles and system folders. File contents are
+never read. The full table sits in the consuming process's memory, where anything able to read that
+process can read it. Cached blocks live in the application's cache directory.
+`CacheDirectory.EnsureCreated` restricts the directory itself to the current user and SYSTEM
+(owner-only mode on Linux), but does not recursively repair existing files' permissions. Anything
+running as that user can read the cache. MFT scans offer no subtree exclusion.
 `DirectoryWalkOptions.PrunedDirectoryPaths` and the other directory-walk pruning rules skip
-subtrees during enumeration. Neither kind of filtering is a privacy boundary.
+subtrees during enumeration. Enumeration pruning is not a privacy boundary.
 
 ## Install
 

@@ -85,14 +85,9 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow(null, false, false, false)]
-    [DataRow(null, true, true, true)]
-    [DataRow(new string[0], false, false, false)]
-    [DataRow(new string[0], true, false, false)]
-    [DataRow(new[] { "keep.txt" }, false, false, false)]
-    [DataRow(new[] { "keep.txt" }, true, false, true)]
-    public void RetentionAndFreedInclusion_AreOrthogonal(string[]? names, bool includeFreed,
-        bool ignoredFileRetained, bool namedFileRetained)
+    [DataRow(false)]
+    [DataRow(true)]
+    public void FreedInclusion_WritesEveryFreedRecordWhateverItsName(bool includeFreed)
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
@@ -105,15 +100,14 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         ];
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            new MftScanOptions { IncludeFreed = includeFreed }, null,
-            CancellationToken.None, names);
+            new MftScanOptions { IncludeFreed = includeFreed }, null, CancellationToken.None);
 
         Assert.AreEqual(includeFreed, block.Rows[12].IsDeleted);
-        Assert.AreEqual(ignoredFileRetained, block.Rows[13].IsDeleted);
-        Assert.AreEqual(namedFileRetained, block.Rows[14].IsDeleted);
-        if (namedFileRetained)
+        Assert.AreEqual(includeFreed, block.Rows[13].IsDeleted);
+        Assert.AreEqual(includeFreed, block.Rows[14].IsDeleted);
+        if (includeFreed)
         {
-            Assert.AreEqual(12u, block.Rows[14].ParentRow, "A retained freed file under a verified directory keeps its parent.");
+            Assert.AreEqual(12u, block.Rows[14].ParentRow, "A freed file under a verified directory keeps its parent.");
         }
     }
 

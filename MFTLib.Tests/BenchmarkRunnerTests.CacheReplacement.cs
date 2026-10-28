@@ -25,12 +25,12 @@ public partial class BenchmarkRunnerTests
         // Slot A is declined before any open, so its report line marks the window between
         // inspection and the opens of B (enumeration) and C (MFT, whose root must exist).
         WriteCacheBlock(directory, directory, 'A',
-            ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PruneDotDirectories = true }, directory));
+            ScanShape.ForEnumeration(new DirectoryWalkOptions { PruneDotDirectories = true }, directory));
         WriteCacheBlock(directory, directory, 'B', SyntheticScanShape.Default(ProducerKind.Enumeration));
         WriteCacheBlock(directory, directory, 'C', SyntheticScanShape.Default(ProducerKind.Mft), ProducerKind.Mft);
         WriteCacheBlock(staging, directory, 'B',
-            ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory));
-        WriteCacheBlock(staging, directory, 'C', ScanShape.ForMft(null, includeFreed: true), ProducerKind.Mft);
+            ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory));
+        WriteCacheBlock(staging, directory, 'C', ScanShape.ForMft(includeFreed: true), ProducerKind.Mft);
 
         var replacements = Directory.GetFiles(staging, "*.mlix")
             .ToDictionary(path => Path.Combine(directory, Path.GetFileName(path)), File.ReadAllBytes);

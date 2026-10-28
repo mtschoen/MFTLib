@@ -96,13 +96,12 @@ sealed class HostChannelHarness : IAsyncDisposable
         return VolumePipe(pipeName);
     }
 
-    public async Task<Stream> OpenScanChannelAsync(VolumeKey volume, string? sectionName = null,
-        IReadOnlyCollection<string>? retainedFileNames = null)
+    public async Task<Stream> OpenScanChannelAsync(VolumeKey volume, string? sectionName = null)
     {
         var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(volume);
         var pipe = await OpenChannelAsync(volume);
         await WriteFrameAsync(pipe,
-            writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(targetSectionName, retainedFileNames)));
+            writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(targetSectionName, includeFreed: false)));
         return pipe;
     }
 

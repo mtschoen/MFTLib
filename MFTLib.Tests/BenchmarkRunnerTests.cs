@@ -162,14 +162,11 @@ public partial class BenchmarkRunnerTests
         // be declined as an unsupported scan shape and its bytes left intact.
         var declined = new (char Drive, ulong Shape, ProducerKind Producer)[]
         {
-            ('V', ScanShape.ForEnumeration(["child.txt"], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
-            ('W', ScanShape.ForEnumeration([], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
-            ('X', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory), ProducerKind.Enumeration),
-            ('Y', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, directory), ProducerKind.Enumeration),
-            ('Z', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, directory), ProducerKind.Enumeration),
-            ('S', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PruneDotDirectories = true }, directory), ProducerKind.Enumeration),
-            ('M', ScanShape.ForMft(["child.txt"], includeFreed: false), ProducerKind.Mft),
-            ('N', ScanShape.ForMft(null, includeFreed: true), ProducerKind.Mft)
+            ('X', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory), ProducerKind.Enumeration),
+            ('Y', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, directory), ProducerKind.Enumeration),
+            ('Z', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, directory), ProducerKind.Enumeration),
+            ('S', ScanShape.ForEnumeration(new DirectoryWalkOptions { PruneDotDirectories = true }, directory), ProducerKind.Enumeration),
+            ('N', ScanShape.ForMft(includeFreed: true), ProducerKind.Mft)
         };
         foreach (var (drive, shape, producer) in declined)
         {

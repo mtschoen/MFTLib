@@ -29,10 +29,9 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `FileIndex.Status` reports the root's `RootState`, `RootFailure`, `RootBlockStatus` and `RootWatchStatus`. A missing MFT source reports `RootFailureKind.MftSourceMissing` with a volume-specific library message; applications choose their own contextual wording.
 - `RootWatchStatus.CheckpointLoss` explains a rescan forced by the journal moving past a volume's position, with the journal size that would have retained it. `JournalCheckpointLoss.TryGetGrowthTarget`, `FileIndex.QueryUsnJournalSettings()` (the journal of the index's own root volume) and `BrokerSession.GrowUsnJournalAsync` support an explicit journal growth.
 - `FileIndexOptions.ScanProgress` and `Diagnostics` report scan progress and block-file deletions.
-- `FileIndexOptions.RetainedFileNames` selects which files an index keeps, and every producer applies it: null keeps every row, an empty collection keeps directories only, and a nonempty collection keeps directories plus files whose names match by the volume's comparison. MFT sources ignore case, including dumps parsed on Linux; directory walks ignore case on Windows and compare ordinally elsewhere. The root row is always kept. A set too long for one broker request frame fails `OpenAsync` with `ArgumentException`.
 - `MftScanOptions.IncludeFreed` imports freed MFT records as deleted rows.
 - `FileIndexOptions.DirectoryWalk` takes a `DirectoryWalkOptions` with `PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and `PruneDotDirectories`. A pruned directory is recorded but not entered, and the root is never pruned. MFT volumes ignore it.
-- Block format 6 stores a library-computed scan shape of the retention, walk and freed-record options, so a warm start under other options cold-scans without a cache tag change, and records `BlockValidationResult.WrongScanShape`. It also stores the walk's access-denied subtree count, so a warm start reports it.
+- Block format 6 stores a library-computed scan shape of the walk and freed-record options, so a warm start under other options cold-scans without a cache tag change, and records `BlockValidationResult.WrongScanShape`. It also stores the walk's access-denied subtree count, so a warm start reports it.
 - `BrokerSession` owns one elevated broker process per consumer session. `ElevatedEntryPoint.RunBrokerIfRequested` dispatches broker mode, and `BrokerDiagnostics.Enable` writes per-role diagnostics logs.
 - `ElevationUtilities.TryAddDefenderProcessExclusions` adds Windows Defender process exclusions, elevating when needed.
 - `MFTLib.TestExtensions`: an in-process broker harness, scripted watches, synthetic cache blocks, synthetic journal records and journal isolation for consumer tests.
@@ -51,6 +50,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 - The public `MftVolume`, `MftResult`, `MftRecord`, `MftParseTimings`, `MatchFlags` and `MftPathUtilities` types; scans run through index sources and are queried through `FileIndex`.
 - `ElevationUtilities.IsElevated`, `CanSelfElevate`, `TryRunElevated`, `GetProcessPath` and `DefaultElevatedTimeout`.
+- `FileIndexOptions.RetainedFileNames` and the Watch sample's `--keep-name` and `--directories-only` flags; every producer writes every eligible record.
 - Name filtering and path resolution in the native parser; queries filter names and `FileEntry.Path` renders paths.
 
 ### Fixed
@@ -72,9 +72,9 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `MftResult.ToArray` and `MftRecord.Materialize` -> `FileIndex.Search`
 - `MftResult.Timings` and `MftParseTimings` -> removed; `FileIndexOptions.ScanProgress` reports scan progress
 - `bufferSizeRecords` parameters -> removed
-- `MftScanOptions.RetainedFileNames` -> `FileIndexOptions.RetainedFileNames`, which the directory walk applies too
+- `MftScanOptions.RetainedFileNames` and `FileIndexOptions.RetainedFileNames` -> removed; every producer writes every eligible record
 - `RootFailureKind.CacheTagMismatch` -> `RootFailureKind.CacheIdentityMismatch`, which also covers a scan-shape mismatch
-- A `CacheTag` version bumped for retention or freed-record changes -> no bump; the library compares those options as the scan shape
+- A `CacheTag` version bumped for freed-record inclusion -> no bump; the library compares `MftScanOptions.IncludeFreed` as the scan shape
 - `MftVolume.GenerateSyntheticMFT` -> internal test support, used by MFTLib's own tests and Benchmark; `SyntheticBlock` and `SyntheticMftProducer` in `MFTLib.TestExtensions` build index cache blocks, not MFT dumps
 - `ElevationUtilities.IsElevated()` and `CanSelfElevate()` -> `ElevationUtilities.DefaultProvider.IsElevated()` and `CanSelfElevate()`
 - `ElevationUtilities.TryRunElevated(string arguments, int timeoutMs)` -> `ElevationUtilities.DefaultProvider.TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)`

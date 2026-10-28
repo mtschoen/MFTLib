@@ -221,7 +221,7 @@ public partial class BrokerProcessTests
     public async Task ScriptedScan_WritesTheBatchesThroughTheRealWriterAndRecordsTheRequest(ScanRecordingCase recordingCase)
     {
         var options = new MftScanOptions();
-        var target = TestBlockSections.Target() with { RetainedFileNames = [".git"] };
+        var target = TestBlockSections.Target();
 
         if (recordingCase == ScanRecordingCase.FirstCallbackHeld)
         {
@@ -291,7 +291,6 @@ public partial class BrokerProcessTests
 
             var recorded = singleHandle.Scans.Single();
             Assert.AreEqual('C', recorded.Volume);
-            Assert.AreSequenceEqual([".git"], [.. recorded.RetainedFileNames!]);
             return;
         }
 
@@ -304,31 +303,6 @@ public partial class BrokerProcessTests
         Assert.IsGreaterThan(0u, result.Block.Block.Header.RowCount);
         var scan = singleHandle.Scans.Single();
         Assert.AreEqual('C', scan.Volume);
-        Assert.AreSequenceEqual([".git"], [.. scan.RetainedFileNames!]);
-    }
-
-    [TestMethod]
-    [DataRow(null)]
-    [DataRow([])]
-    public async Task ScriptedScan_RecordsNullVersusEmptyRetention(string[]? names)
-    {
-        await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
-        {
-            QueryJournalCursor = _ => ArmedSynthetic,
-            ScanVolume = _ => [[SyntheticRecord(5, ".", 3)]]
-        });
-        await handle.Process.ScanVolumeAsync('C', TestBlockSections.Target() with { RetainedFileNames = names },
-            new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var scan = handle.Scans.Single();
-        if (names is null)
-        {
-            Assert.IsNull(scan.RetainedFileNames);
-        }
-        else
-        {
-            Assert.IsNotNull(scan.RetainedFileNames);
-            Assert.IsEmpty(scan.RetainedFileNames);
-        }
     }
 
     [TestMethod]

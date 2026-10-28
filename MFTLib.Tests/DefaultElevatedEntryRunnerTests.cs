@@ -192,7 +192,7 @@ public class DefaultElevatedEntryRunnerTests
         {
             await AcceptVolumeChannelAsync(control, volume, cts.Token);
             await HostChannelHarness.WriteFrameAsync(volume,
-                writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'))));
+                writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'), includeFreed: false)));
 
             // Reach the cursor query before taking the client ends away, so the reply that
             // follows is written to a pipe that is already broken for certain. A scan that has

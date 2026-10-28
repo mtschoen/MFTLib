@@ -86,19 +86,12 @@ sealed class RootKind
             {
                 Root = identity.VirtualRoot,
                 CacheMode = CacheMode.Disabled,
-                RetainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options),
                 DirectoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk)
             };
         }
 
         var root = FileIndexOptions.ValidateRoot(options);
-        var retainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options);
         var directoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk);
-        if (retainedFileNames is not null && root.Producer == ProducerKind.Mft)
-        {
-            options.MftSource?.ValidateRetainedFileNames?.Invoke(retainedFileNames);
-        }
-
         if (options.CacheMode is { } mode && !Enum.IsDefined(mode))
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Unknown cache mode.");
@@ -108,7 +101,6 @@ sealed class RootKind
         {
             Root = root,
             CacheMode = options.CacheMode ?? CacheMode.Persistent,
-            RetainedFileNames = retainedFileNames,
             DirectoryWalk = directoryWalk
         };
     }

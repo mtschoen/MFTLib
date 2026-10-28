@@ -250,8 +250,8 @@ The public elevation helper and provider remain the shared consumer API.
 
 **Decision:**
 `InProcessBrokerScan` is a receive-only
-record with an explicit internal constructor, public init-only `Volume` and `RetainedFileNames`
-properties, and no positional deconstruction. Root validation applies on construction and init.
+record with an explicit internal constructor, a public init-only `Volume` property and no
+positional deconstruction. Root validation applies on construction and init.
 The Direct `open` sample branches on `FileEntry.IsLastWriteTimeKnown` and prints `<unknown>` for
 unknown metadata, preserving the metadata-freshness ruling.
 
@@ -292,7 +292,7 @@ does not decide whether growth is worth it, and a consumer reads fresh settings 
 **Decision (2026-10-20):** Enumeration scans use concurrent directory readers and
 one block writer. Every walk holds a base permit and borrows only immediately
 available extra permits from the process-wide processor-sized budget. Readers
-copy retained names and metadata into owned directory buffers, handed off through
+copy every entry's name and metadata into owned directory buffers, handed off through
 a bounded waiting queue. The writer commits parent rows before scheduling their
 children. Row order between directories is unspecified. With one available
 permit the same pipeline runs sequentially. Parallel traversal ships
@@ -575,9 +575,8 @@ such as a production need for rejected-filename reporting during deletion.
 
 **Decision (owner ruling 2026-10-26):** MFTLib makes no promise to hide any file's metadata from a
 process running as the indexing user. MFT scans offer no subtree-exclusion option, and full metadata
-retention is their default. `FileIndexOptions.RetainedFileNames` can filter retained file rows, and
-`DirectoryWalkOptions.PrunedDirectoryPaths` and the other directory-walk pruning rules can skip
-enumeration subtrees. These are existing filtering features, not privacy boundaries. What MFTLib
+retention is their default. `DirectoryWalkOptions.PrunedDirectoryPaths` and the other directory-walk
+pruning rules can skip enumeration subtrees. These rules are not privacy boundaries. What MFTLib
 does do: `CacheDirectory.EnsureCreated`, which every cached open calls, gives the cache directory an
 access list of the current user plus SYSTEM with inheritance removed (owner-only mode on Unix), and
 file contents are never read.
@@ -586,9 +585,9 @@ file contents are never read.
 read applies no per-file access checks. With default retention, the index and its cache file hold
 the name, parent folder, attributes, size and timestamps of every file on the volume, including
 files the user's account cannot open. At some point the full table is in the consuming process's
-memory, where anything able to read that process can read it. Filename retention does not change
-what the raw MFT scan reads. Neither it nor enumeration pruning is a privacy guarantee. An MFT
-subtree-exclusion option presented as a privacy boundary would be a promise MFTLib cannot keep.
+memory, where anything able to read that process can read it. Enumeration pruning is not a privacy
+guarantee. An MFT subtree-exclusion option presented as a privacy boundary would be a promise MFTLib
+cannot keep.
 
 **Revisit only if:** a consumer asks for MFT subtree exclusion for a reason other than privacy, for
 example size.
@@ -735,34 +734,26 @@ their history without converting between shapes. Names distinguish the snapshot,
 `MftScanOptions` configures every MFT scan: broker-backed through
 `BrokerSession.CreateIndexSource(scanOptions)` and in-process through `MftIndexSources.FromLocalVolumes(scanOptions)`.
 It holds `IncludeFreed`, the one setting that exists only for an MFT scan.
-Row retention is `FileIndexOptions.RetainedFileNames`
-([Retention is an index option applied by every producer](#retention-is-an-index-option-applied-by-every-producer)).
 
 **Reason:** scan options apply independently of the transport, and freed records exist only in the MFT.
 
 **Revisit only if:** a scan setting applies to one transport only.
 
-## Retention is an index option applied by every producer
+## Every MFT index stores every name
 
-**Decision:** `FileIndexOptions.RetainedFileNames` is null to retain every eligible row, empty to retain
-directories only, or nonempty to retain directories plus files whose names match by the root's comparison.
-MFT sources use NTFS name comparison, ordinal and ignoring case, including a dump parsed on Linux. The
-directory walk uses one comparison for retained names and pruning: ignoring case on Windows, ordinal elsewhere.
-Every producer applies it. The MFT producers filter records, the dump source filters records, and the
-directory walk (`ProducerKind.Enumeration`) does not write a non-directory entry whose name is not retained.
-The root row is always kept. The index hands the set to an MFT producer in the internal produce request, and
-the broker's scan request carries it to the elevated scanner. The walk looks names up by span, so it
-allocates no string per entry. `FileIndex.OpenAsync` copies the set once, rejects a null element, and rejects
-a set too long for one broker request frame with `ArgumentException` before it creates a cache directory or
-starts a scan; the frame check applies when a volume uses the MFT producer. `MftScanOptions` has no retention
-member. The test package's `InProcessBrokerScan.RetainedFileNames` reports what a client requested.
-The retention naming ruling at the end of this document applies.
+**Decision (2026-10-27, owner rulings 3 and 4 of MFTLib issue 844):** every MFT index stores the whole volume
+with every name. `FileIndexOptions.RetainedFileNames` and the test package's
+`InProcessBrokerScan.RetainedFileNames` are deleted, along with the broker's retained-name payload, the
+producer filters and the Watch sample's retention flags. Every producer writes every eligible record.
+`MftScanOptions.IncludeFreed` remains an independent scan choice, and directory-walk pruning is unchanged.
+This supersedes "Retention is an index option applied by every producer".
 
-**Reason:** a set that filters only some producers makes one index hold two policies and forces a consumer
-that walks a tree to write every file it then discards. Retention describes which rows the index keeps, not
-how a producer reads its substrate. This supersedes the F4 sentence that scoped retention to MFT scans.
+**Reason:** retention existed only to shrink a block, and a name filter prevents all indexes on one volume
+from sharing one scan. Format 8's deduplicated, dual-width name encoding makes the all-names design smaller:
+the measured volumes total 2,527 MB against 3,310 MB for today's filtered layout. There is no longer a
+storage reason to discard names.
 
-**Revisit only if:** a producer cannot apply a name filter at the point it reads entries.
+**Revisit only if:** a future format cannot provide whole-volume sharing without discarding names.
 
 ## The directory walk prunes declaratively and records pruned directories
 
@@ -770,7 +761,7 @@ how a producer reads its substrate. This supersedes the F4 sentence that scoped 
 `FileIndexOptions.DirectoryWalk` is a `DirectoryWalkOptions` record, defaulting to `new()`, with
 five rules: `PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and
 `PruneDotDirectories`. A pruned directory is written as a row, like `find -prune`, but its children are not
-enumerated. The walk's root directory is never pruned. On directory walks, retained names and the exact-name and path pruning rules use
+enumerated. The walk's root directory is never pruned. On directory walks, the exact-name and path pruning rules use
 one root comparison: ignoring case on Windows, ordinal elsewhere. `PrunedDirectoryNamePatterns` is an
 `IReadOnlyCollection<Regex>` defaulting to `[]`: each `Regex` carries its own `RegexOptions` and match timeout (for example
 `new Regex(@"^\.git$", RegexOptions.IgnoreCase)`) rather than using the root comparison, and a directory whose name matches
@@ -807,9 +798,8 @@ block under its owner lock and cold-scans, and a cache-only open leaves the bloc
 meaning the consumer owns. The shape has no public accessor, and `CacheDirectory.InspectCached` does not report
 it. `MftIndexSource` carries its producer's `IncludeFreed` flag internally so the index can compute the MFT shape.
 
-**Reason:** a consumer cannot hand-version a user-editable exclusion list, and both consumers of retention paid
-for hand-versioning (a pinned tag version with a test, and a hashed cache directory name). Every consumer reacts
-to a tag mismatch and a shape mismatch the same way, by rebuilding, so one failure kind covers both.
+**Reason:** a consumer cannot hand-version a user-editable exclusion list. Every consumer reacts to a tag
+mismatch and a shape mismatch the same way, by rebuilding, so one failure kind covers both.
 
 **Revisit only if:** a consumer must react differently to a shape mismatch than to a tag mismatch.
 
@@ -911,8 +901,8 @@ its pin-bump pull request.
 
 ## Origin, cache location and journal position have distinct names
 
-**Decision:** `RootBlockStatus.Origin` uses `BlockOrigin`; `CacheLocation` uses nullable `CacheLocation`. Synthetic journal records use `Usn`, with `FirstUsn` and `NextUsn` for bounds. Retention uses `RetainedFileNames` and `retainedFileNames`.
-**Reason:** provenance, cache backing, journal position and retained names each need one vocabulary; data-supplier types keep Source/Sources and row positions keep slot terminology.
+**Decision:** `RootBlockStatus.Origin` uses `BlockOrigin`; `CacheLocation` uses nullable `CacheLocation`. Synthetic journal records use `Usn`, with `FirstUsn` and `NextUsn` for bounds.
+**Reason:** provenance, cache backing and journal position each need one vocabulary; data-supplier types keep Source/Sources and row positions keep slot terminology.
 **Revisit only if:** a concrete consumer needs a distinct concept these names cannot express.
 
 ## Live watch is MFT-only in 0.3.0; walked roots refresh by age
@@ -1074,12 +1064,12 @@ drives the parser edge-case tests on Windows and Linux. The shipped DLL is the t
 **Revisit only if:** a generator stops being used by any test or by Benchmark. A proposal to remove the generators on the
 grounds that test code ships in the release DLL does not reopen this ruling.
 
-## Retained names and pruning share the root comparison
+## Pruning uses the root comparison
 
-**Decision (2026-10-26, owner ruling B11):** `FileIndexOptions.RetainedFileNames` and directory-walk pruning
-use one comparison, the volume's. MFT sources use ordinal case-insensitive comparison for NTFS, including a dump
-parsed on Linux. The directory walk ignores case on Windows and is ordinal elsewhere for retained names, exact pruned
-names and pruned paths (`PrunedDirectoryNamePatterns` uses each `Regex` instance's own `RegexOptions`). The format version moved to 6, so blocks shaped under the previous comparison are discarded.
+**Decision (2026-10-26, owner ruling B11):** directory-walk pruning uses the root comparison. The directory
+walk ignores case on Windows and is ordinal elsewhere for exact pruned names and pruned paths
+(`PrunedDirectoryNamePatterns` uses each `Regex` instance's own `RegexOptions`). The format version moved to
+6, so blocks shaped under the previous comparison are discarded.
 
 **Reason:** one rule matches what the file system itself treats as the same name.
 

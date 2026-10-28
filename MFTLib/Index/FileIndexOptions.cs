@@ -74,24 +74,11 @@ public sealed record FileIndexOptions
     ///     An optional consumer cache tag carrying meaning only the consumer can see. The tag is validated on
     ///     construction: the FourCC must contain exactly four ASCII characters. The default value is all zeros,
     ///     meaning unspecified. Comparison matches both the FourCC and version exactly. MFTLib does not
-    ///     interpret the tag. The options that shape a block's rows (<see cref="RetainedFileNames" />,
-    ///     <see cref="DirectoryWalk" /> and <see cref="MftScanOptions.IncludeFreed" />) are compared by the
-    ///     library itself as the block's scan shape, so the tag need not change with them.
+    ///     interpret the tag. The options that shape a block's rows (<see cref="DirectoryWalk" /> and
+    ///     <see cref="MftScanOptions.IncludeFreed" />) are compared by the library itself as the block's scan
+    ///     shape, so the tag need not change with them.
     /// </summary>
     public CacheTag CacheTag { get; init; }
-
-    /// <summary>
-    ///     Which files the index keeps, applied by every producer: the MFT producers filter records and
-    ///     the directory walk filters entries. Null (the default) keeps every eligible row. An empty
-    ///     collection keeps directories only. A nonempty collection also keeps files whose names match by the
-    ///     volume's comparison. MFT sources use NTFS name comparison, ordinal and ignoring case, including dumps
-    ///     parsed on Linux. The directory walk uses one comparison for retained names and exact name/path pruning: ignoring case
-    ///     on Windows and ordinal elsewhere. The root row is always kept. <see cref="FileIndex.OpenAsync" />
-    ///     materializes the collection once and rejects a null or malformed UTF-16 element, or a set too long for the
-    ///     source's request, before creating a cache directory or starting a scan. A cached block records
-    ///     the retention that shaped it, so a warm start under another set discards the block and scans again.
-    /// </summary>
-    public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 
     /// <summary>
     ///     How enumeration roots walk: the directories they record but do not enter. MFT volumes ignore it.
@@ -103,39 +90,6 @@ public sealed record FileIndexOptions
     public DirectoryWalkOptions DirectoryWalk { get; init; } = new();
 
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
-
-    /// <summary>
-    ///     Copies <see cref="RetainedFileNames" /> once so the index never re-evaluates or shares the
-    ///     caller's collection, and rejects a null element.
-    /// </summary>
-    internal static string[]? ValidateRetainedFileNames(FileIndexOptions options)
-    {
-        if (options.RetainedFileNames is not { } names)
-        {
-            return null;
-        }
-
-        var copy = new List<string>(names.Count);
-        foreach (var name in names)
-        {
-            if (name is null)
-            {
-                throw new ArgumentException("FileIndexOptions.RetainedFileNames must not contain null entries.",
-                    nameof(options));
-            }
-
-            if (!WellFormedText.IsWellFormed(name))
-            {
-                throw new ArgumentException(
-                    "FileIndexOptions.RetainedFileNames must not contain an entry with an unpaired surrogate.",
-                    nameof(options));
-            }
-
-            copy.Add(name);
-        }
-
-        return [.. copy];
-    }
 
     internal static IndexedRoot ValidateRoot(FileIndexOptions options)
     {

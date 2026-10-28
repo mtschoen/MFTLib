@@ -88,8 +88,7 @@ var options = new FileIndexOptions
 {
     Root = root,
     CacheDirectory = cacheDirectory,
-    MftSource = session.CreateIndexSource(),
-    RetainedFileNames = null // Keeps every row; [] keeps directories only.
+    MftSource = session.CreateIndexSource()
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
@@ -120,11 +119,8 @@ blocks still open, and a failed rescan retains an existing block. Enumeration
 roots ignore the source. Watch start reports `NotApplicable`, carries no
 failure exception, and records no watch request.
 
-The optional `FileIndexOptions.RetainedFileNames` selects retention for every producer: null keeps
-all eligible rows, an empty collection keeps directories only, and a nonempty collection keeps directories
-plus files whose names match by the volume's comparison. MFT sources ignore case, including dumps parsed on
-Linux; directory walks ignore case on Windows and compare ordinally elsewhere.
-`MftScanOptions.IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
+Every producer writes every eligible record. `MftScanOptions.IncludeFreed` controls freed-record
+inclusion independently. Scan progress reaches the application as `IndexScanProgress`
 through `FileIndexOptions.ScanProgress`. A block that fails validation is disposed
 and its scan fails; a block that passes transfers to the index.
 

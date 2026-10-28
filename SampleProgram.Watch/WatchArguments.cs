@@ -18,7 +18,7 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drive
     const int MaximumSeconds = int.MaxValue / 1000;
 
     internal static string Usage =>
-        "Usage: SampleProgram.Watch [verb] [drive ...] [--directories-only | --keep-name A,B] [--connect-timeout N]" + Environment.NewLine +
+        "Usage: SampleProgram.Watch [verb] [drive ...] [--connect-timeout N]" + Environment.NewLine +
         "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); with no drive, every ready NTFS fixed drive" + Environment.NewLine +
         "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch runs until a key press, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
         "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
@@ -28,15 +28,14 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drive
     // The flags each verb reads; any other flag on the command line is a usage error rather than silently ignored.
     static readonly Dictionary<WatchVerb, string[]> VerbFlags = new()
     {
-        [WatchVerb.Scan] = ["--keep-name", "--directories-only", "--connect-timeout"],
-        [WatchVerb.Watch] = ["--keep-name", "--directories-only", "--cache-directory", "--seconds", "--connect-timeout"],
-        [WatchVerb.Rescan] = ["--keep-name", "--directories-only", "--cache-directory", "--connect-timeout"],
-        [WatchVerb.Journal] = ["--keep-name", "--directories-only", "--cache-directory", "--maximum-size", "--allocation-delta", "--connect-timeout"],
+        [WatchVerb.Scan] = ["--connect-timeout"],
+        [WatchVerb.Watch] = ["--cache-directory", "--seconds", "--connect-timeout"],
+        [WatchVerb.Rescan] = ["--cache-directory", "--connect-timeout"],
+        [WatchVerb.Journal] = ["--cache-directory", "--maximum-size", "--allocation-delta", "--connect-timeout"],
         [WatchVerb.Cache] = ["--cache-directory", "--clear"],
         [WatchVerb.ElevationStatus] = []
     };
 
-    internal IReadOnlyList<string>? RetainedFileNames { get; private init; }
     /// <summary>The <c>--seconds</c> a watch runs for; null waits for a key press when attended.</summary>
     internal int? Seconds { get; init; }
     /// <summary>The <c>--connect-timeout</c> in seconds the broker session waits for the elevated broker; null waits the library default.</summary>
@@ -52,8 +51,8 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drive
     // Verbs that open an index launch the broker, which asks for elevation itself; cache and elevation-status touch no volume.
     internal ElevationNeed Need => Verb is WatchVerb.Cache or WatchVerb.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
 
-    /// <summary>The consumer tag; the library compares the retention scan shape itself and rebuilds a block whose shape differs.</summary>
-    internal static CacheTag CacheTag => new("SMPW", 2);
+    /// <summary>The consumer tag; the library compares row-shaping options and rebuilds a block whose shape differs.</summary>
+    internal static CacheTag CacheTag => new("SMPW", 3);
 }
 
 static class WatchVerbs

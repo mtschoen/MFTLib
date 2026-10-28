@@ -74,8 +74,8 @@ public partial class BenchmarkRunner
         }
 
         var expectedShape = input.Producer == ProducerKind.Enumeration
-            ? ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), input.RootDirectory)
-            : ScanShape.ForMft(null, includeFreed: false);
+            ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), input.RootDirectory)
+            : ScanShape.ForMft(includeFreed: false);
         if (input.ScanShape != expectedShape)
         {
             throw new ArgumentException("Unsupported index memory scan shape.");

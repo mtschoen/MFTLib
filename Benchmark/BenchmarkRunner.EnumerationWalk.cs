@@ -159,7 +159,7 @@ public partial class BenchmarkRunner
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
             NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked((rows * 20) + ((uint)root.Length * 2))),
-            ScanShape = ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), root)
+            ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), root)
         });
         var writer = new BlockWriter(block);
         var producer = new EnumerationProducer(new EnumerationProducerOptions { RootDirectory = root, Root = new VolumeKey('T') });

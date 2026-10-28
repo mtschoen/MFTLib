@@ -66,8 +66,7 @@ sealed class MftDumpBlockProducer
 
         // A dump has no journal: the zero cursor says nothing can be resumed from this block.
         var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
-            new BlockStamp(default, _timeProvider),
-            new MftRowSelection(new MftScanOptions(), request.RetainedFileNames));
+            new BlockStamp(default, _timeProvider), new MftScanOptions());
         return MftBlockProducerPipeline.Write(request, plan,
             // ReSharper disable once AccessToDisposedClosure
             (block, _) => new MftDumpRecordValidation(block).Validate(Remaining(batches, hasBatch)),

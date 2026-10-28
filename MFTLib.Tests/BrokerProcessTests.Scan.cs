@@ -70,31 +70,6 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    [DataRow(null)]
-    [DataRow([])]
-    [DataRow([".git"])]
-    public async Task ScanVolume_ForwardsRetainedFileNames(string[]? names)
-    {
-        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
-        var target = TestBlockSections.Target() with { RetainedFileNames = names };
-
-        var result = await broker.Process.ScanVolumeAsync('C', target, new MftScanOptions(), null, CancellationToken.None)
-            .WaitAsync(HangGuard, TestContext.CancellationToken);
-        result.Block.Block.Dispose();
-
-        if (names is null)
-        {
-            Assert.IsNull(broker.Writer.LastRetainedFileNames);
-        }
-        else
-        {
-            Assert.AreSequenceEqual(names, [.. broker.Writer.LastRetainedFileNames!]);
-        }
-
-        Assert.AreEqual(new VolumeKey('C'), broker.Handle.Scans.Single().Volume);
-    }
-
-    [TestMethod]
     public async Task ScanVolume_CatchUpLost_ReturnsBlockWithLossAndArmedCursor()
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
@@ -383,7 +358,7 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanVolume_DefaultRetention_SendsANullList()
+    public async Task ScanVolume_SendsSectionAndIncludeFreed()
     {
         await using var broker = new ScriptedBroker();
         var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(),
@@ -394,7 +369,8 @@ public partial class BrokerProcessTests
             var request = await HostChannelHarness.ReadFrameAsync(pipe);
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, request?.Kind);
             Assert.IsNotNull(request);
-            Assert.IsNull(request.Value.RetainedFileNames);
+            Assert.IsNotNull(request.Value.SectionName);
+            Assert.IsFalse(request.Value.IncludeFreed);
         }
 
         await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));

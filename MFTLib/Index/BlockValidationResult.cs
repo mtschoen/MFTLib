@@ -40,9 +40,9 @@ public enum BlockValidationResult
 
     /// <summary>
     ///     The block was built under other row-shaping options than the open requests: another
-    ///     <see cref="FileIndexOptions.RetainedFileNames" />, <see cref="FileIndexOptions.DirectoryWalk" /> for an
-    ///     enumeration root, or <see cref="MftScanOptions.IncludeFreed" /> for an MFT volume. The library
-    ///     compares this itself, so the consumer's <see cref="CacheTag" /> need not change with these options.
+    ///     <see cref="FileIndexOptions.DirectoryWalk" /> for an enumeration root, or
+    ///     <see cref="MftScanOptions.IncludeFreed" /> for an MFT volume. The library compares this itself,
+    ///     so the consumer's <see cref="CacheTag" /> need not change with these options.
     /// </summary>
     WrongScanShape
 }

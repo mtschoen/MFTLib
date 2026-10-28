@@ -76,8 +76,7 @@ public sealed partial class FileIndex
                 Progress = Options.ScanProgress,
                 CacheTag = Options.CacheTag,
                 ScanShape = ExpectedScanShape,
-                Diagnostics = Options.Diagnostics,
-                RetainedFileNames = Options.RetainedFileNames
+                Diagnostics = Options.Diagnostics
             };
 
             var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
@@ -131,7 +130,6 @@ public sealed partial class FileIndex
             {
                 RootDirectory = Configuration.RootDirectory,
                 Root = Root,
-                RetainedFileNames = Options.RetainedFileNames,
                 DirectoryWalk = Options.DirectoryWalk
             })
             {

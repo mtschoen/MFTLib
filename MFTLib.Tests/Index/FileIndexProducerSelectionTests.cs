@@ -46,59 +46,6 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task RetainedFileNames_OneSetReachesTheMftProducerAndFiltersTheEnumerationWalk()
-    {
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Notes.TXT"), "keep", TestContext.CancellationToken);
-        if (!OperatingSystem.IsWindows())
-        {
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "notes.txt"), "keep exact", TestContext.CancellationToken);
-        }
-
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "other.bin"), "drop", TestContext.CancellationToken);
-        var seen = new List<IReadOnlyCollection<string>?>();
-        Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _)
-        {
-            seen.Add(request.RetainedFileNames);
-            return Task.FromResult(new MftBlockProduceResult(
-                SeededBlocks.Build(request, 7, 4096, FixedMoment), 0));
-        }
-
-        string[] retained = ["notes.txt"];
-        using var mftRoot = new TempDirectory("mftlib-mft-root");
-        await using var mftIndex = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('M'), mftRoot.Path, 2),
-            CacheDirectory = CacheDirectoryPath,
-            MftSource = new MftIndexSource(Produce),
-            RetainedFileNames = retained
-        }, TestContext.CancellationToken);
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration),
-            CacheDirectory = CacheDirectoryPath,
-            MftSource = new MftIndexSource(Produce),
-            RetainedFileNames = retained
-        }, TestContext.CancellationToken);
-
-        Assert.AreSequenceEqual(retained, [.. seen.Single()!]);
-        var walked = index.Status;
-        Assert.AreEqual(RootState.Ready, walked.State);
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT"), TestContext.CancellationToken));
-        }
-        else
-        {
-            Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "notes.txt"), TestContext.CancellationToken));
-            Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT"), TestContext.CancellationToken));
-        }
-
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "other.bin"), TestContext.CancellationToken));
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
-        Assert.IsTrue(index.Find(Path.Combine(TreeRoot, "Documents"), TestContext.CancellationToken)!.Value.IsDirectory);
-    }
-
-    [TestMethod]
     [DataRow("elevation declined")]
     [DataRow("Volume T: no MFT source is available to scan this volume.")]
     public async Task Mft_MarksTheFailedRootAndKeepsTheOthers(string failureMessage)

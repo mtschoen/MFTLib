@@ -14,27 +14,17 @@ public partial class BrokerProtocolTests
         JournalCheckpointLossCause.CheckpointTrimmed, 1000, 5000, 9000, 4096, 32768, 4000, 12288);
 
     [TestMethod]
-    public void ArmAndScanFrame_RoundTrips_SectionAndFullRetention()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ArmAndScan_RoundTripsSectionAndIncludeFreed(bool includeFreed)
     {
-        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C"), BrokerProtocol.WriteArmAndScan);
+        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed), BrokerProtocol.WriteArmAndScan);
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
-        Assert.IsNull(frame.RetainedFileNames);
+        Assert.AreEqual(includeFreed, frame.IncludeFreed);
         Assert.IsNull(frame.Volume, "The volume pipe names no volume.");
         Assert.IsEmpty(frame.Entries);
-    }
-
-    [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void ArmAndScanFrame_RoundTrips_IncludeFreed(bool includeFreed)
-    {
-        var frame = RoundTrip(BrokerFrame.ArmAndScan(
-            "s", RetainedFileNamesGitAndNonAscii, includeFreed), BrokerProtocol.WriteArmAndScan);
-
-        Assert.AreEqual(includeFreed, frame.IncludeFreed);
-        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, [.. frame.RetainedFileNames!]);
     }
 
     [TestMethod]
@@ -49,32 +39,6 @@ public partial class BrokerProtocolTests
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
 
         Assert.Contains("2", exception.Message);
-    }
-
-    [TestMethod]
-    public void ArmAndScanFrame_RoundTrips_RetainedFileNames()
-    {
-        var frame = RoundTrip(BrokerFrame.ArmAndScan(
-            "s", RetainedFileNamesGitAndNonAscii), BrokerProtocol.WriteArmAndScan); // non-ASCII to prove UTF-16
-
-        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, [.. frame.RetainedFileNames!]);
-    }
-
-    [TestMethod]
-    [DataRow(-1)]
-    [DataRow(-99)]
-    public void ReadFrame_ArmAndScan_NegativeNameCount_ThrowsInvalidDataException(int negativeCount)
-    {
-        var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s"));
-        var bytes = buffer.WrittenSpan.ToArray();
-        bytes[12] = 1; // present
-        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(13), negativeCount);
-
-        var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
-            BrokerProtocol.ReadFrame(bytes, out _));
-
-        Assert.Contains(negativeCount.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
     }
 
     [TestMethod]
@@ -286,26 +250,10 @@ public partial class BrokerProtocolTests
     {
         AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed: includeFreed)),
         [
-            0x0D, 0x00, 0x00, 0x00, // totalLength = 13
+            0x08, 0x00, 0x00, 0x00, // totalLength = 8
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
-            expectedFlagByte, // includeFreed
-            0x00, 0x00, 0x00, 0x00, 0x00 // retainedFileNames = absent
-        ]);
-    }
-
-    [TestMethod]
-    public void WireBytes_Golden_ArmAndScanFrame_WithRetainedFileNames()
-    {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C",
-                RetainedFileNamesSingleLetter)),
-        [
-            0x13, 0x00, 0x00, 0x00, // totalLength = 19
-            0x0A, // kind = ArmAndScan
-            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
-            0x00, // includeFreed = false
-            0x01, 0x01, 0x00, 0x00, 0x00, // retainedFileNames count = present, 1
-            0x02, 0x00, 0x00, 0x00, 0x61, 0x00 // retainedFileNames[0] "a"
+            expectedFlagByte // includeFreed
         ]);
     }
 
@@ -440,14 +388,6 @@ public partial class BrokerProtocolTests
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalIdentifier = 1
             0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nextUsn = 2
         ]);
-    }
-
-    [TestMethod]
-    public void Factory_ArmAndScan_WithoutRetainedNames_HasNullList()
-    {
-        var frame = BrokerFrame.ArmAndScan("section");
-
-        Assert.IsNull(frame.RetainedFileNames);
     }
 
     [TestMethod]

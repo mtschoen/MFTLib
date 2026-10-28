@@ -62,7 +62,6 @@ readonly record struct BrokerFrame
     public UsnJournalEntry[] Entries { get; private init; }
     public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
-    public IReadOnlyCollection<string>? RetainedFileNames { get; private init; }
 
     /// <summary>
     ///     A scan's progress. The volume belongs to the channel, so the progress sample carries no volume identity.
@@ -148,7 +147,7 @@ readonly record struct BrokerFrame
         };
     }
 
-    // Per-kind factories initialize Entries. Retention stays null on full scans and non-scan frames.
+    // Per-kind factories initialize Entries.
 
     public static BrokerFrame OpenChannel(uint requestId, VolumeKey volume, string pipeName)
     {
@@ -210,14 +209,12 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.Stalled, 0) with { Message = message };
     }
 
-    public static BrokerFrame ArmAndScan(string sectionName,
-        IReadOnlyCollection<string>? retainedFileNames = null, bool includeFreed = false)
+    public static BrokerFrame ArmAndScan(string sectionName, bool includeFreed)
     {
         return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
             SectionName = sectionName,
-            IncludeFreed = includeFreed,
-            RetainedFileNames = retainedFileNames
+            IncludeFreed = includeFreed
         };
     }
 

@@ -78,7 +78,7 @@ public partial class BrokerProtocolTests
                 BrokerProtocol.WriteStalled(buffer, BrokerFrame.Stalled("s"));
                 break;
             case BrokerFrameKind.ArmAndScan:
-                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", RetainedFileNamesGitAndNonAscii, includeFreed: true));
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true));
                 break;
             case BrokerFrameKind.Cursor:
                 BrokerProtocol.WriteCursor(buffer, BrokerFrame.ArmedCursor(new UsnJournalCursor(1, 2)));
@@ -124,6 +124,7 @@ public partial class BrokerProtocolTests
     [DataRow((int)BrokerFrameKind.Heartbeat)]
     [DataRow((int)BrokerFrameKind.Stalled)]
     [DataRow((int)BrokerFrameKind.ArmAndScan)]
+    [DataRow((int)BrokerFrameKind.ArmAndScan, new byte[] { 0, 0, 0, 0, 1 })]
     [DataRow((int)BrokerFrameKind.Cursor)]
     [DataRow((int)BrokerFrameKind.ScanProgress)]
     [DataRow((int)BrokerFrameKind.CatchUpLost)]
@@ -132,7 +133,7 @@ public partial class BrokerProtocolTests
     [DataRow((int)BrokerFrameKind.StartWatch)]
     [DataRow((int)BrokerFrameKind.CaughtUp)]
     [DataRow((int)BrokerFrameKind.ScanCompleted)]
-    public void ReadFrame_TrailingPayloadByte_ThrowsInvalidDataException(int kindValue)
+    public void ReadFrame_TrailingPayloadByte_ThrowsInvalidDataException(int kindValue, byte[]? trailingBytes = null)
     {
         var kind = (BrokerFrameKind)kindValue;
         var bytes = ValidFrame(kind);
@@ -141,12 +142,13 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(kind, decoded.Kind);
         Assert.AreEqual(bytes.Length, consumed);
 
-        byte[] trailing = [.. bytes, 0xFF];
+        trailingBytes ??= [0xFF];
+        byte[] trailing = [.. bytes, .. trailingBytes];
         var declaredLength = BinaryPrimitives.ReadInt32LittleEndian(trailing);
-        BinaryPrimitives.WriteInt32LittleEndian(trailing, declaredLength + 1);
+        BinaryPrimitives.WriteInt32LittleEndian(trailing, declaredLength + trailingBytes.Length);
 
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(trailing, out _));
-        Assert.Contains("trailing bytes", exception.Message);
+        Assert.Contains($"{trailingBytes.Length} trailing bytes", exception.Message);
     }
 
     [TestMethod]

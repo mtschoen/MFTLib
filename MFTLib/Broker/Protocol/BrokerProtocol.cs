@@ -129,14 +129,7 @@ static partial class BrokerProtocol
     {
         var sectionName = payload.String();
         var includeFreed = payload.Boolean();
-        var nameCount = payload.NullableNameCount();
-        List<string>? retainedFileNames = nameCount is { } count ? new(count) : null;
-        while (retainedFileNames is not null && retainedFileNames.Count < nameCount)
-        {
-            retainedFileNames.Add(payload.String());
-        }
-
-        return BrokerFrame.ArmAndScan(sectionName, retainedFileNames, includeFreed);
+        return BrokerFrame.ArmAndScan(sectionName, includeFreed);
     }
 
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)

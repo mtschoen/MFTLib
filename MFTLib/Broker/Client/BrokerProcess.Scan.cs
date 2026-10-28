@@ -43,7 +43,7 @@ sealed partial class BrokerProcess
         var section = new VolumeBlockSection(sectionName, block, sectionLifetime);
         try
         {
-            return await ScanOnChannelAsync(volume, section, options, target.RetainedFileNames, progress, cancellationToken)
+            return await ScanOnChannelAsync(volume, section, options, progress, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -62,10 +62,9 @@ sealed partial class BrokerProcess
     }
 
     async Task<BrokerVolumeScanResult> ScanOnChannelAsync(VolumeKey volume, VolumeBlockSection section,
-        MftScanOptions options, IReadOnlyCollection<string>? retainedFileNames, IProgress<BlockWriteProgress>? progress,
-        CancellationToken cancellationToken)
+        MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
-        var channel = await OpenChannelAsync(volume, writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(section.SectionName, retainedFileNames, options.IncludeFreed)), cancellationToken).ConfigureAwait(false);
+        var channel = await OpenChannelAsync(volume, writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(section.SectionName, options.IncludeFreed)), cancellationToken).ConfigureAwait(false);
 
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, progress);

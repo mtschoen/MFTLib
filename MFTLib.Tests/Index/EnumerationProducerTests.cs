@@ -26,8 +26,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     int _blockId;
 
     RootBlock[] Produce(out BlockFile block,
-        IReadOnlyCollection<string>? retainedFileNames = null, DirectoryWalkOptions? directoryWalk = null,
-        string? rootDirectory = null, int maximumWorkers = int.MaxValue)
+        DirectoryWalkOptions? directoryWalk = null, string? rootDirectory = null, int maximumWorkers = int.MaxValue)
     {
         var root = rootDirectory ?? _treeRoot;
         // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to the returned DriveBlock snapshot, which callers release via ReleaseNowAsync
@@ -40,7 +39,6 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         {
             RootDirectory = root,
             Root = new VolumeKey('T'),
-            RetainedFileNames = retainedFileNames,
             DirectoryWalk = DirectoryWalkOptions.Admit(directoryWalk ?? new DirectoryWalkOptions())
         });
 
@@ -68,87 +66,15 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task Produce_NullRetainedFileNames_WritesEveryFile()
+    public async Task EnumerationWalk_WritesEveryFileWhateverItsName()
     {
-        var snapshot = Produce(out var block, retainedFileNames: null);
+        var snapshot = Produce(out var block);
         try
         {
             Assert.AreEqual(7u, block.Header.RowCount);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf")).HasValue);
             Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg")).HasValue);
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
-    }
-
-    [TestMethod]
-    public async Task Produce_EmptyRetainedFileNames_WritesDirectoriesOnly()
-    {
-        var snapshot = Produce(out var block, retainedFileNames: []);
-        try
-        {
-            // Root, Documents, Projects, Pictures.
-            Assert.AreEqual(4u, block.Header.RowCount);
-            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects")).HasValue);
-            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures")).HasValue);
-            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
-            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf")).HasValue);
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
-    }
-
-    [TestMethod]
-    public async Task Produce_RetainedFileNamesFollowTheRootComparison()
-    {
-        var root = Path.Combine(_treeRoot, "RetainedNames");
-        Directory.CreateDirectory(root);
-        await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "upper", TestContext.CancellationToken);
-        if (!RootComparisonIgnoresCase)
-        {
-            await File.WriteAllTextAsync(Path.Combine(root, "readme.md"), "lower", TestContext.CancellationToken);
-        }
-
-        await File.WriteAllTextAsync(Path.Combine(root, "other.txt"), "other", TestContext.CancellationToken);
-
-        var snapshot = Produce(out var block, retainedFileNames: ["readme.md", "no-such-file.txt"],
-            rootDirectory: root);
-        try
-        {
-            var fileNames = new List<string>();
-            for (var rowIndex = 0u; rowIndex < block.Header.RowCount; rowIndex++)
-            {
-                if (!block.Rows[(int)rowIndex].IsDirectory)
-                {
-                    fileNames.Add(new string(NamePool.ReadRowName(block, rowIndex)));
-                }
-            }
-
-            Assert.AreEqual(2u, block.Header.RowCount);
-            Assert.HasCount(1, fileNames);
-            Assert.AreEqual(RootComparisonIgnoresCase ? "README.md" : "readme.md", fileNames[0]);
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
-    }
-
-    [TestMethod]
-    public async Task Produce_RetainedFileNamesNeverMatchADirectory_AndTheRootRowIsAlwaysKept()
-    {
-        // A directory is kept whether or not its name is in the set, so the set naming one changes nothing.
-        var snapshot = Produce(out var block, retainedFileNames: ["Pictures"]);
-        try
-        {
-            Assert.AreEqual(4u, block.Header.RowCount);
-            Assert.AreEqual(_treeRoot, new string(NamePool.ReadRowName(block, 0)));
-            Assert.IsTrue(block.Rows[0].IsDirectory);
-            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents")).HasValue);
         }
         finally
         {

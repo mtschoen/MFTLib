@@ -83,30 +83,11 @@ static partial class BrokerProtocol
 
     // Volume pipe
 
-    // The ArmAndScan frame's length (kind byte plus payload), so a caller can refuse a keep list
-    // the frame limit cannot carry before anything is sent.
-    public static long ArmAndScanFrameLength(string sectionName, IReadOnlyCollection<string>? retainedFileNames)
-    {
-        var length = 1L + 4 + (2L * sectionName.Length) + 1 + 5;
-        foreach (var name in retainedFileNames ?? [])
-        {
-            length += 4 + (2L * name.Length);
-        }
-
-        return length;
-    }
-
-    // payload: [sectionName string][includeFreed byte, 0 or 1][nameCount nullable i32][per name: name string]
+    // payload: [sectionName string][includeFreed byte, 0 or 1]
     public static void WriteArmAndScan(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        var payload = new PayloadWriter().String(frame.SectionName).Boolean(frame.IncludeFreed)
-            .NullableInt32(frame.RetainedFileNames?.Count);
-        foreach (var name in frame.RetainedFileNames ?? [])
-        {
-            payload.String(name);
-        }
-
-        payload.WriteTo(writer, BrokerFrameKind.ArmAndScan);
+        new PayloadWriter().String(frame.SectionName).Boolean(frame.IncludeFreed)
+            .WriteTo(writer, BrokerFrameKind.ArmAndScan);
     }
 
     // payload: [journalIdentifier u64][nextUsn i64]

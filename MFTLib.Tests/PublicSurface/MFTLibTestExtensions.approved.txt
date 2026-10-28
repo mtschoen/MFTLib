@@ -21,7 +21,6 @@ MFTLibTestExtensions.InProcessBrokerScan :: method public override GetHashCode()
 MFTLibTestExtensions.InProcessBrokerScan :: method public override ToString() : string
 MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Equality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Inequality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
-MFTLibTestExtensions.InProcessBrokerScan :: property public RetainedFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
 MFTLibTestExtensions.InProcessBrokerScan :: property public Volume { get; init; } : MFTLib.Index.VolumeKey
 MFTLibTestExtensions.InProcessBrokerScan :: type public sealed class : System.IEquatable<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void

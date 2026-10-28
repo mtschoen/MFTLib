@@ -12,9 +12,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public partial class BrokerProtocolTests
 {
-    static readonly string[] RetainedFileNamesGitAndNonAscii = [".git", "repört"];
-    static readonly string[] RetainedFileNamesSingleLetter = ["a"];
-
     static void AssertWireBytes(Action<ArrayBufferWriter<byte>> write, byte[] expected)
     {
         var buffer = new ArrayBufferWriter<byte>();
@@ -50,16 +47,6 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(expected.JournalMaximumSize, actual.JournalMaximumSize);
         Assert.AreEqual(expected.JournalAllocationDelta, actual.JournalAllocationDelta);
         Assert.AreEqual(expected.CatchUpLoss, actual.CatchUpLoss);
-        if (expected.RetainedFileNames is null)
-        {
-            Assert.IsNull(actual.RetainedFileNames);
-        }
-        else
-        {
-            Assert.IsNotNull(actual.RetainedFileNames);
-            Assert.AreSequenceEqual([.. expected.RetainedFileNames], [.. actual.RetainedFileNames]);
-        }
-
         Assert.HasCount(expected.Entries.Length, actual.Entries);
         for (var index = 0; index < expected.Entries.Length; index++)
         {

@@ -22,36 +22,31 @@ static class ScanShape
     /// <returns>The expected scan shape.</returns>
     public static ulong For(IndexedRoot root, FileIndexOptions options) =>
         root.Producer == ProducerKind.Enumeration
-            ? ForEnumeration(options.RetainedFileNames, options.DirectoryWalk, root.RootDirectory)
-            : ForMft(options.RetainedFileNames, options.MftSource?.IncludeFreed ?? false);
+            ? ForEnumeration(options.DirectoryWalk, root.RootDirectory)
+            : ForMft(options.MftSource?.IncludeFreed ?? false);
 
-    /// <summary>The shape of an MFT block: retention, then freed-record inclusion.</summary>
-    /// <param name="retainedFileNames">The retention set; null retains every row.</param>
+    /// <summary>The shape of an MFT block: producer kind, then freed-record inclusion.</summary>
     /// <param name="includeFreed">Whether freed records were written.</param>
     /// <returns>The scan shape.</returns>
-    public static ulong ForMft(IReadOnlyCollection<string>? retainedFileNames, bool includeFreed)
+    public static ulong ForMft(bool includeFreed)
     {
         var buffer = new ArrayBufferWriter<byte>();
         WriteUInt32(buffer, (uint)ProducerKind.Mft);
-        WriteRetention(buffer, retainedFileNames, FoldForMft);
         WriteFlag(buffer, includeFreed);
         return Digest(buffer);
     }
 
     /// <summary>
-    ///     The shape of an enumeration block: retention, then the walk options, keeping only the pruned paths
+    ///     The shape of an enumeration block: producer kind, then the walk options, keeping only the pruned paths
     ///     that can match under <paramref name="rootDirectory" />.
     /// </summary>
-    /// <param name="retainedFileNames">The retention set; null retains every row.</param>
     /// <param name="walk">The admitted walk options.</param>
     /// <param name="rootDirectory">The root's directory.</param>
     /// <returns>The scan shape.</returns>
-    public static ulong ForEnumeration(IReadOnlyCollection<string>? retainedFileNames, DirectoryWalkOptions walk,
-        string rootDirectory)
+    public static ulong ForEnumeration(DirectoryWalkOptions walk, string rootDirectory)
     {
         var buffer = new ArrayBufferWriter<byte>();
         WriteUInt32(buffer, (uint)ProducerKind.Enumeration);
-        WriteRetention(buffer, retainedFileNames, FoldForVolume);
         WriteStrings(buffer, walk.PrunedDirectoryNames.Select(FoldForVolume));
         WriteUInt32(buffer, (uint)walk.PrunedDirectoryAttributes);
         WriteFlag(buffer, walk.PruneDotDirectories);
@@ -59,19 +54,6 @@ static class ScanShape
         WritePatterns(buffer, walk.PrunedDirectoryNamePatterns);
         return Digest(buffer);
     }
-
-    // Retention folds exactly when the producer's name comparison ignores case.
-    static void WriteRetention(ArrayBufferWriter<byte> buffer, IReadOnlyCollection<string>? retainedFileNames,
-        Func<string, string> fold)
-    {
-        WriteFlag(buffer, retainedFileNames is not null);
-        if (retainedFileNames is not null)
-        {
-            WriteStrings(buffer, retainedFileNames.Select(fold));
-        }
-    }
-
-    static string FoldForMft(string value) => value.ToUpperInvariant();
 
     static string FoldForVolume(string value) => OperatingSystem.IsWindows() ? value.ToUpperInvariant() : value;
 

@@ -164,7 +164,6 @@ partial class SampleHost
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _output.WriteLine : null,
             MftSource = source,
-            RetainedFileNames = parsed.RetainedFileNames,
             ScanProgress = scanProgress
         };
 

@@ -89,7 +89,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         {
             var result = new RealBlockSectionWriter(TimeProvider.System).Write(_sectionName,
                 new UsnJournalCursor(7, 100), BatchesRewritingBetween(creator),
-                new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
+                new MftScanOptions(), default, CancellationToken.None);
 
             using var raw = MemoryMappedFile.OpenExisting(_sectionName, MemoryMappedFileRights.Read);
             using var view = raw.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);

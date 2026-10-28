@@ -92,6 +92,9 @@ public class WatchArgumentsTests
         {
             Assert.Contains(name, WatchArguments.Usage);
         }
+
+        Assert.DoesNotContain("--keep-name", WatchArguments.Usage);
+        Assert.DoesNotContain("--directories-only", WatchArguments.Usage);
     }
 
     [TestMethod]
@@ -204,9 +207,6 @@ public class WatchArgumentsTests
     [DataRow(new[] { "journal", "C", "--allocation-delta", "1" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "watch", "C", "--clear" }, "Option --clear does not apply to watch.")]
     [DataRow(new[] { "watch", "C", "--profile", "sparse" }, "Unknown option --profile.")]
-    [DataRow(new[] { "watch", "C", "--directories-only", "--keep-name", "a" }, "Options --directories-only and --keep-name cannot be combined.")]
-    [DataRow(new[] { "watch", "C", "--keep-name", "" }, "Option --keep-name needs a file name; use --directories-only for directories alone.")]
-    [DataRow(new[] { "watch", "C", "--keep-name", " , " }, "Option --keep-name needs a file name; use --directories-only for directories alone.")]
     [DataRow(new[] { "watch", "C", "--seconds", "soon" }, "Option --seconds needs a whole number, not 'soon'.")]
     public void TryParse_BadFlags_AreRefusedWithTheirReason(string[] arguments, string expected)
     {
@@ -221,6 +221,8 @@ public class WatchArgumentsTests
     [DataRow(new[] { "watch", "C", "--maximum-size", "1" }, "Option --maximum-size does not apply to watch.")]
     [DataRow(new[] { "rescan", "C", "--allocation-delta", "1" }, "Option --allocation-delta does not apply to rescan.")]
     [DataRow(new[] { "journal", "C", "--seconds", "3" }, "Option --seconds does not apply to journal.")]
+    [DataRow(new[] { "watch", "C", "--keep-name", "a" }, "Option --keep-name does not apply to watch.")]
+    [DataRow(new[] { "watch", "C", "--directories-only" }, "Option --directories-only does not apply to watch.")]
     [DataRow(new[] { "cache", "--keep-name", "a.txt" }, "Option --keep-name does not apply to cache.")]
     [DataRow(new[] { "cache", "--directories-only" }, "Option --directories-only does not apply to cache.")]
     [DataRow(new[] { "cache", "--seconds", "3" }, "Option --seconds does not apply to cache.")]
@@ -238,12 +240,11 @@ public class WatchArgumentsTests
     [DataRow("watch")]
     [DataRow("rescan")]
     [DataRow("journal")]
-    public void TryParse_ScanAndCacheFlags_ApplyToEveryVerbThatOpensAnIndex(string verb)
+    public void TryParse_CacheDirectory_AppliesToEveryVerbThatOpensAnIndex(string verb)
     {
-        Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
+        Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--cache-directory", "folder"], out var parsed, out var error), error);
 
         Assert.AreEqual("folder", parsed!.CacheDirectory);
-        Assert.AreSequenceEqual(["a.txt"], [.. parsed.RetainedFileNames!]);
     }
 
     [TestMethod]
@@ -300,15 +301,6 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void RetainedFileNames_RetentionStates_RootTheIndexOption()
-    {
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "desktop.ini, .gitignore"], out var parsed, out _));
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--directories-only"], out var directories, out _));
-
-        Assert.AreSequenceEqual(["desktop.ini", ".gitignore"], [.. parsed!.RetainedFileNames!]);
-        Assert.IsEmpty(directories!.RetainedFileNames!);
-        Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 2), WatchArguments.CacheTag);
-        Assert.IsNull(plain!.RetainedFileNames);
-    }
+    public void CacheTag_IsSmpw3() =>
+        Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 3), WatchArguments.CacheTag);
 }

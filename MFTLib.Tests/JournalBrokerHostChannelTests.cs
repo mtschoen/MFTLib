@@ -236,8 +236,7 @@ public partial class JournalBrokerHostChannelTests
 
     [TestMethod]
     [DataRow("truncated section name")]
-    [DataRow("negative name count")]
-    [DataRow("name count beyond the payload")]
+    [DataRow("trailing bytes")]
     public async Task VolumeChannel_MalformedRequestPayload_WritesErrorAndOtherRequestsContinue(string malformation)
     {
         var payload = new List<byte>();
@@ -245,8 +244,7 @@ public partial class JournalBrokerHostChannelTests
         if (malformation != "truncated section name")
         {
             payload.Add(0); // IncludeFreed
-            payload.Add(1); // RetainedFileNames present
-            payload.AddRange(BitConverter.GetBytes(malformation == "negative name count" ? -2 : int.MaxValue));
+            payload.AddRange([0, 0, 0, 0, 1]);
         }
         else
         {

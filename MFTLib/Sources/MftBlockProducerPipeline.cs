@@ -7,7 +7,7 @@ static class MftBlockProducerPipeline
     internal static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
 
     internal readonly record struct WritePlan(
-        NtfsVolumeInformation Volume, BlockStamp Stamp, MftRowSelection Selection);
+        NtfsVolumeInformation Volume, BlockStamp Stamp, MftScanOptions ScanOptions);
 
     internal static async Task<MftBlockProduceResult> RunAsync(MftBlockProduceRequest request,
         ParseThreadAllocator allocator,
@@ -39,7 +39,7 @@ static class MftBlockProducerPipeline
         {
             long recordsOmitted = 0;
             var written = MftBlockScan.WriteToBlock(block, plan.Stamp,
-                batches(block, count => recordsOmitted += count), plan.Selection,
+                batches(block, count => recordsOmitted += count), plan.ScanOptions,
                 new BlockWriteReporting(progress, null), cancellationToken);
             // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to Finish, which disposes it on validation failure or returns it
             var completed = block;

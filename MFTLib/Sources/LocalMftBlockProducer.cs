@@ -30,8 +30,7 @@ sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? sc
         var information = _volumeAccess.QueryVolumeInformation(volume);
         var cursor = request.DeleteOnClose ? default : _volumeAccess.QueryCursor(volume);
         var progress = MftBlockProgressAdapter.Create(request);
-        var plan = new MftBlockProducerPipeline.WritePlan(information, new BlockStamp(cursor, timeProvider),
-            new MftRowSelection(options, request.RetainedFileNames));
+        var plan = new MftBlockProducerPipeline.WritePlan(information, new BlockStamp(cursor, timeProvider), options);
         // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
         return MftBlockProducerPipeline.Write(request, plan,
             (_, recordsOmitted) => _volumeAccess.ScanVolumeRecordBatches(volume, allowance,

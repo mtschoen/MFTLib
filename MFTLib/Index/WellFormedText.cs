@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The one text policy for strings that shape a cached block: retained names, pruned directory names and
+///     The one text policy for strings that shape a cached block: root paths, pruned directory names and
 ///     pruned directory paths must be well-formed UTF-16. A lone surrogate has no UTF-8 form of its own, so
 ///     encoding it substitutes U+FFFD, and the scan-shape fingerprint could not tell the two spellings apart.
 ///     Admission rejects it before any cache work.

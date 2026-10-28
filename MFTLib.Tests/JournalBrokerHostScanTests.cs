@@ -21,13 +21,6 @@ public class JournalBrokerHostScanTests
     static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
     static readonly NtfsVolumeInformation ControlVolume = new(1024 * 1000, 1024);
 
-    static readonly MftRecord[] RetentionSampleRecords =
-    [
-        new(100, 5, new MftRecordFields(3, FileAttributes.Directory), "repo"),
-        new(101, 100, new MftRecordFields(1, FileAttributes.Archive), ".git"),
-        new(102, 100, new MftRecordFields(1, FileAttributes.Archive), "file.txt")
-    ];
-
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
@@ -238,19 +231,6 @@ public class JournalBrokerHostScanTests
     }
 
     [TestMethod]
-    [DataRow(new[] { ".git" }, 2, DisplayName = "RetainedFileNameMatch_RetainsTheNamedFile")]
-    [DataRow(new[] { ".GIT" }, 2, DisplayName = "RetainedFileNameMatch_IsCaseInsensitive")]
-    [DataRow(new[] { "other.txt" }, 1, DisplayName = "NonMatchingFiles_AreDropped")]
-    [DataRow(null, 3, DisplayName = "NullRetention_YieldsAllRecords")]
-    [DataRow(new string[0], 1, DisplayName = "EmptyRetainedFileNames_YieldsDirectoriesOnly")]
-    public async Task RetainedFileNames_DecideWhichFilesAreRetained(string[]? retainedFileNames, int expectedInUseRows)
-    {
-        using var writer = await ServeRetentionScanAsync(RetentionSampleRecords, retainedFileNames);
-
-        Assert.AreEqual(expectedInUseRows, InUseRowCount(writer));
-    }
-
-    [TestMethod]
     public async Task ArmAndScan_InvalidFreedFlag_WritesMalformedErrorAndSessionContinues()
     {
         var host = BrokerHostFactory.Create(new()
@@ -267,7 +247,7 @@ public class JournalBrokerHostScanTests
             writer =>
             {
                 var buffer = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section"));
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false));
                 var bytes = buffer.WrittenSpan.ToArray();
                 bytes[23] = 99;
                 var destination = writer.GetSpan(bytes.Length);
@@ -355,7 +335,7 @@ public class JournalBrokerHostScanTests
             var written = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, cursor,
                 [[new MftRecord(5, 5, new MftRecordFields(3), "."),
                     new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]],
-                new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
+                new MftScanOptions(), default, CancellationToken.None);
 
             Assert.AreEqual(101L, written.RowCount);
             Assert.AreEqual(18L, written.NamePoolUsedBytes);
@@ -400,7 +380,7 @@ public class JournalBrokerHostScanTests
     }
 
     [TestMethod]
-    public async Task ScanChannel_ForwardsRetainedFileNamesToSectionWriter()
+    public async Task ScanChannel_WritesEveryRecord()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = BrokerHostFactory.Create(new()
@@ -411,15 +391,13 @@ public class JournalBrokerHostScanTests
             ProcessorCount = null
         });
 
-        var frames = await ScanAsync(host, blockWriter, [".git"]);
+        var frames = await ScanAsync(host, blockWriter);
 
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.StartsWith("mftlib-block-C-", blockWriter.LastSectionName!);
-        Assert.IsNotNull(blockWriter.LastRetainedFileNames);
-        Assert.AreSequenceEqual([".git"], [.. blockWriter.LastRetainedFileNames]);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
-        Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
+        Assert.AreEqual(RowFlags.InUse, blockWriter.Block.Rows[20].Flags);
     }
 
     [TestMethod]
@@ -666,7 +644,7 @@ public class JournalBrokerHostScanTests
         using var directBlock = TestBlocks.Create(Path.Combine(blockDirectory.Path, "block.bin"),
             ProducerKind.Mft, 256, 4096, volumeSerial: 123, rootRow: 5, deleteOnClose: true);
         var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), batches,
-            new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
+            new MftScanOptions(), default, CancellationToken.None);
 
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
         Assert.AreEqual(2L, result.SkippedRecordCount);
@@ -700,39 +678,20 @@ public class JournalBrokerHostScanTests
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.ScanCompleted, frames);
     }
 
-    static async Task<RecordingBlockSectionWriter> ServeRetentionScanAsync(
-        MftRecord[] records, IReadOnlyCollection<string>? retainedFileNames)
-    {
-        var writer = new RecordingBlockSectionWriter();
-        var host = BrokerHostFactory.Create(new()
-        {
-            QueryCursor = _ => ScanArmedCursor,
-            ScanVolume = (_, _, _, _, _, _) => [records],
-            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
-        });
-        await using var harness = new HostChannelHarness(host, writer);
-
-        var frames = await ScanFramesAsync(harness, retainedFileNames: retainedFileNames);
-
-        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        return writer;
-    }
-
     static MftRecord ScanRecord(ulong recordNumber, string name, ushort flags = 1) =>
         new(recordNumber, 5, new MftRecordFields(flags, FileAttributes.Archive, 100), name);
 
     static async Task<List<BrokerFrame>> ScanFramesAsync(HostChannelHarness harness, char drive = 'C',
-        string? sectionName = null, IReadOnlyCollection<string>? retainedFileNames = null)
+        string? sectionName = null)
     {
-        var pipe = await harness.OpenScanChannelAsync(drive, sectionName, retainedFileNames);
+        var pipe = await harness.OpenScanChannelAsync(drive, sectionName);
         return await HostChannelHarness.ReadToEndAsync(pipe);
     }
 
-    static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter,
-        IReadOnlyCollection<string>? retainedFileNames = null)
+    static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter)
     {
         await using var harness = new HostChannelHarness(host, blockWriter);
-        return await ScanFramesAsync(harness, retainedFileNames: retainedFileNames);
+        return await ScanFramesAsync(harness);
     }
 
     static int InUseRowCount(RecordingBlockSectionWriter writer) =>

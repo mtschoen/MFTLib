@@ -1,9 +1,8 @@
 namespace MFTLib;
 
 /// <summary>
-///     Configures freed-record inclusion for a cold MFT scan, broker-backed or in-process. Row retention
-///     is <see cref="MFTLib.Index.FileIndexOptions.RetainedFileNames" />. Scan progress arrives through
-///     <see cref="MFTLib.Index.FileIndexOptions.ScanProgress" />.
+///     Configures freed-record inclusion for a cold MFT scan, broker-backed or in-process. Scan progress
+///     arrives through <see cref="MFTLib.Index.FileIndexOptions.ScanProgress" />.
 /// </summary>
 public sealed record MftScanOptions
 {

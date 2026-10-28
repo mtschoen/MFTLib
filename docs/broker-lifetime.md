@@ -125,20 +125,15 @@ received frame. Every frame kind must consume its declared payload completely; a
 unconsumed bytes inside a frame's declared payload fail decoding with
 `InvalidDataException`, including for payload-free frames, while bytes after the
 declared frame length belong to subsequent frames in a combined input. A native-source watch `JournalBatch` is one 64 KiB journal read;
-`Error` and `Stalled` text is truncated to 32,768 UTF-16 units. A
-`FileIndexOptions.RetainedFileNames` list making `ArmAndScan` exceed the limit
-(32,640 maximum-length names with the fixed 47-unit section name) throws `ArgumentException`
-from `FileIndex.OpenAsync` for an index with an MFT-producer volume, before any cache directory is created. An oversized journal batch fails that watch with `Error`, like any
-source failure.
+`Error` and `Stalled` text is truncated to 32,768 UTF-16 units. An oversized journal
+batch fails that watch with `Error`, like any source failure.
 
-`ArmAndScan` encodes the section name, a 1-byte include-freed flag (0 or 1), then
-a nullable signed 32-bit name count (a presence byte followed by a 4-byte signed integer): absent for full retention, present 0 for directories only, or present with the
-number of following UTF-16 names. The section name must match `mftlib-block-<root>-`
-followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`) for the scan channel's volume
-letter (47 UTF-16 units); any other section name, negative present counts or counts beyond the
-remaining payload, truncated fields, invalid flags and trailing data are malformed
-requests and write an `Error` frame on the scan channel before the host touches the
-volume or opens the named section.
+`ArmAndScan` encodes the section name, then a 1-byte include-freed flag (0 or 1).
+The section name must match `mftlib-block-<root>-` followed by 32 ASCII hex digits
+(`0-9`, `a-f`, `A-F`) for the scan channel's volume letter (47 UTF-16 units); any other
+section name, truncated fields, invalid flags and trailing data are malformed requests
+and write an `Error` frame on the scan channel before the host touches the volume or
+opens the named section.
 
 ## Control requests
 

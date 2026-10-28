@@ -33,7 +33,6 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, order.Kind);
         Assert.AreEqual(section.SectionName, order.RequireSectionName('C'));
-        Assert.IsNull(order.RetainedFileNames);
         var expected = MftBlockCapacity.Plan(VolumeInformation);
         Assert.AreEqual(expected.SlotCapacity, section.Block.Header.SlotCapacity);
         Assert.AreEqual(expected.NamePoolCapacity, section.Block.Header.NamePoolCapacity);

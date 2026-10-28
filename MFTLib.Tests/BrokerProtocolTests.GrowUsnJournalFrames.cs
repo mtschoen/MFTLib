@@ -21,7 +21,6 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
         Assert.IsEmpty(frame.Entries);
-        Assert.IsNull(frame.RetainedFileNames);
     }
 
     [TestMethod]
@@ -35,7 +34,6 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0x02000000L, frame.JournalAllocationDelta);
         Assert.IsNull(frame.Volume, "The reply is matched by its request id, not by a volume.");
         Assert.IsEmpty(frame.Entries);
-        Assert.IsNull(frame.RetainedFileNames);
     }
 
     [TestMethod]

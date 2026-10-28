@@ -84,7 +84,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
             VolumeSerial = 123,
             BlockPath = BlockPath,
             CacheTag = tag,
-            ScanShape = ScanShape.ForMft(null, includeFreed: false)
+            ScanShape = ScanShape.ForMft(includeFreed: false)
         });
     }
 

@@ -6,17 +6,14 @@ namespace MFTLib;
 static class BrokerFrameStream
 {
     // The limit on a frame's kind byte plus payload, enforced by the writer before a prefix is
-    // emitted and by the reader before a buffer is allocated. The largest frames the library
-    // itself produces are a watch JournalBatch and an ArmAndScan request. A watch batch from the
-    // native source is one 64 KiB read; a wire entry (46 fixed bytes plus its UTF-16 name) is
-    // smaller than the native USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte
-    // aligned), so such a batch is under 64 KiB plus its 21-byte header. ArmAndScan carries the
-    // caller's keep list: an NTFS name is at most 255 UTF-16 units (510 bytes) plus a 4-byte
-    // length prefix, so 16 MiB holds 32,640 maximum-length names with the default section name,
-    // and far more of the short ones a keep list names. Error and Stalled text is cut to 32,768
-    // units. A keep list over the limit is refused by ScanDriveAsync before anything is sent, and
-    // a custom journal source's batch over the limit ends that watch with an Error frame. 16 MiB
-    // also bounds a garbled prefix to a modest allocation.
+    // emitted and by the reader before a buffer is allocated. The largest frame the library
+    // itself produces is a watch JournalBatch. A watch batch from the native source is one 64 KiB
+    // read; a wire entry (46 fixed bytes plus its UTF-16 name) is smaller than the native
+    // USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte aligned), so such a
+    // batch is under 64 KiB plus its 21-byte header. ArmAndScan carries only a length-prefixed
+    // UTF-16 section name and a one-byte include-freed flag, far below the limit. Error and
+    // Stalled text is cut to 32,768 units. A custom journal source's batch over the limit ends
+    // that watch with an Error frame. 16 MiB also bounds a garbled prefix to a modest allocation.
     internal const int MaximumFrameLength = 1 << 24;
 
     /// <summary>

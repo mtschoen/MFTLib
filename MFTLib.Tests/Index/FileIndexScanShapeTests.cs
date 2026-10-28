@@ -94,7 +94,6 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var options = EnumerationOptions(diagnostics);
         return option switch
         {
-            "retention" => options with { RetainedFileNames = ["app.dll"] },
             "names" => options with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] } },
             "pattern-text" => options with
             {
@@ -118,7 +117,6 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow("retention")]
     [DataRow("names")]
     [DataRow("pattern-text")]
     [DataRow("pattern-options")]
@@ -170,7 +168,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     public void ForEnumeration_DistinguishesPatternTextOptionsAndUnpairedSurrogatesWhileIgnoringOrderDuplicatesAndTimeout()
     {
         static ulong Shape(params Regex[] patterns) =>
-            ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNamePatterns = patterns }, "/root");
+            ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNamePatterns = patterns }, "/root");
 
         var lower = Shape(new Regex(@"^\.git$", RegexOptions.None));
         var upper = Shape(new Regex(@"^\.GIT$", RegexOptions.None));
@@ -202,20 +200,6 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var surrogateFirst = Shape(new Regex(MalformedText.Make(0xD800, true), RegexOptions.None));
         var surrogateSecond = Shape(new Regex(MalformedText.Make(0xD801, true), RegexOptions.None));
         Assert.AreNotEqual(surrogateFirst, surrogateSecond, "unpaired UTF-16 code units are encoded losslessly");
-    }
-
-    [TestMethod]
-    public async Task ReplacementCharacterInARetainedName_IsADistinctShapeFromTheNameWithoutIt()
-    {
-        var diagnostics = new List<string>();
-        var withReplacement = EnumerationOptions(diagnostics) with { RetainedFileNames = ["app\uFFFD.dll"] };
-        await OpenOnce(withReplacement);
-
-        var withoutReplacement = EnumerationOptions(diagnostics) with { RetainedFileNames = ["app.dll"] };
-        await using var reopenedA = await FileIndex.OpenAsync(withoutReplacement, TestContext.CancellationToken);
-
-        Assert.IsTrue(RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedA.Status.Block?.Origin);
     }
 
     [TestMethod]
@@ -253,22 +237,6 @@ public sealed class FileIndexScanShapeTests : IDisposable
         Assert.IsFalse(RecordedWrongScanShape(diagnostics));
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedA.Status.Block?.Origin);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedB.Status.Block?.Origin);
-    }
-
-    [TestMethod]
-    public async Task EnumerationRetentionCasingFollowsTheRootComparison()
-    {
-        var diagnostics = new List<string>();
-        await OpenOnce(EnumerationOptions(diagnostics) with { RetainedFileNames = ["app.dll"] });
-
-        var options = EnumerationOptions(diagnostics) with { RetainedFileNames = ["APP.DLL"] };
-        await using var reopenedA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
-        await using var reopenedB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
-
-        var expectedOrigin = OperatingSystem.IsWindows() ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan;
-        Assert.AreEqual(!OperatingSystem.IsWindows(), RecordedWrongScanShape(diagnostics));
-        Assert.AreEqual(expectedOrigin, reopenedA.Status.Block?.Origin);
-        Assert.AreEqual(expectedOrigin, reopenedB.Status.Block?.Origin);
     }
 
     [TestMethod]
@@ -320,13 +288,33 @@ public sealed class FileIndexScanShapeTests : IDisposable
         Assert.HasCount(2, Directory.GetFiles(Cache, "*.mlix"), "a cache-only open leaves both rejected blocks in place");
     }
 
-    FileIndexOptions MftOptions(bool includeFreed, IReadOnlyCollection<string>? retained, List<string> diagnostics,
+    [TestMethod]
+    public void ForMft_DependsOnlyOnIncludeFreed()
+    {
+        var withoutFreed = ScanShape.ForMft(includeFreed: false);
+        var withFreed = ScanShape.ForMft(includeFreed: true);
+
+        Assert.AreEqual(withoutFreed, ScanShape.ForMft(includeFreed: false));
+        Assert.AreEqual(withFreed, ScanShape.ForMft(includeFreed: true));
+        Assert.AreNotEqual(withoutFreed, withFreed);
+    }
+
+    [TestMethod]
+    public void ForMft_HashesTheProducerKindThenTheFlag()
+    {
+        byte[] payload = [1, 0, 0, 0, 0];
+        var expected = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(
+            System.Security.Cryptography.SHA256.HashData(payload));
+
+        Assert.AreEqual(expected, ScanShape.ForMft(includeFreed: false));
+    }
+
+    FileIndexOptions MftOptions(bool includeFreed, List<string> diagnostics,
         CacheMode mode = CacheMode.Persistent) => new()
         {
             Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), RootA, 123),
             CacheDirectory = Cache,
             CacheMode = mode,
-            RetainedFileNames = retained,
             MftSource = new MftIndexSource(ProduceMft, includeFreed: includeFreed),
             Diagnostics = diagnostics.Add
         };
@@ -357,18 +345,16 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow(true, null, DisplayName = "IncludeFreed")]
-    [DataRow(false, "HEAD", DisplayName = "Retention")]
-    public async Task ChangingAnMftOption_RecordsWrongScanShapeAndColdScans(bool includeFreed, string? retainedName)
+    [DataRow(true, DisplayName = "IncludeFreed")]
+    public async Task ChangingAnMftOption_RecordsWrongScanShapeAndColdScans(bool includeFreed)
     {
         var diagnostics = new List<string>();
-        await using (var first = await FileIndex.OpenAsync(MftOptions(false, null, diagnostics), TestContext.CancellationToken))
+        await using (var first = await FileIndex.OpenAsync(MftOptions(false, diagnostics), TestContext.CancellationToken))
         {
             Assert.AreEqual(RootState.Ready, first.Status.State);
         }
 
-        IReadOnlyCollection<string>? retained = retainedName is null ? null : [retainedName];
-        await using var reopened = await FileIndex.OpenAsync(MftOptions(includeFreed, retained, diagnostics),
+        await using var reopened = await FileIndex.OpenAsync(MftOptions(includeFreed, diagnostics),
             TestContext.CancellationToken);
 
         Assert.IsTrue(RecordedWrongScanShape(diagnostics));
@@ -380,13 +366,12 @@ public sealed class FileIndexScanShapeTests : IDisposable
     public async Task MftRoots_IgnoreTheWalkOptions()
     {
         var diagnostics = new List<string>();
-        await using (var first = await FileIndex.OpenAsync(MftOptions(false, ["head"], diagnostics), TestContext.CancellationToken))
+        await using (var first = await FileIndex.OpenAsync(MftOptions(false, diagnostics), TestContext.CancellationToken))
         {
             Assert.AreEqual(RootState.Ready, first.Status.State);
         }
 
-        // MFT retention compares ignoring case, so another spelling of the same name is the same shape.
-        await using var reopened = await FileIndex.OpenAsync(MftOptions(false, ["HEAD"], diagnostics) with
+        await using var reopened = await FileIndex.OpenAsync(MftOptions(false, diagnostics) with
         {
             DirectoryWalk = new DirectoryWalkOptions
             {
@@ -405,7 +390,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     public async Task AProducerReturningAnotherShape_FailsTheRoot()
     {
         var diagnostics = new List<string>();
-        var options = MftOptions(false, null, diagnostics) with
+        var options = MftOptions(false, diagnostics) with
         {
             MftSource = new MftIndexSource((request, token) => ProduceMft(request with { ScanShape = request.ScanShape + 1 }, token))
         };

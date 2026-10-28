@@ -302,14 +302,11 @@ sealed class JournalMutator
     }
 
     /// <summary>
-    ///     Fills a slot a producer filter never wrote, from the journal entry that just referred
-    ///     to it. A producer that keeps directories and caller-named files only leaves an ordinary
-    ///     file inside a watched tree with no row until it is observed; without this, a
-    ///     modification to it produces no change at all and a delete tombstones an empty slot with
-    ///     no name to report. <paramref name="hydrated" /> tells the caller whether
-    ///     this call is what populated the row, which only the rename arm needs: a rename of a row
-    ///     the index never had is reported as a create, not a rename, because there is no real
-    ///     previous path to give it.
+    ///     Fills an unwritten slot from the journal entry that just referred to it. Without this,
+    ///     a modification produces no change at all and a delete tombstones an empty slot with no
+    ///     name to report. <paramref name="hydrated" /> tells the caller whether this call is what
+    ///     populated the row, which only the rename arm needs: a rename of a row the index never
+    ///     had is reported as a create, not a rename, because there is no real previous path to give it.
     /// </summary>
     bool TryHydrateRow(UsnJournalEntry entry, uint rowIndex, out bool hydrated)
     {

@@ -72,8 +72,8 @@ struct BlockHeader
     /// <summary>Consumer-defined cache identity version.</summary>
     [FieldOffset(108)] public uint CacheTagVersion;
     /// <summary>
-    ///     The library's identity for the options that shaped the rows: retention and freed-record inclusion
-    ///     for an MFT block, retention and the directory walk options for an enumeration block. See
+    ///     The library's identity for the options that shaped the rows: freed-record inclusion for an MFT
+    ///     block, and the directory walk options for an enumeration block. See
     ///     <see cref="MFTLib.Index.ScanShape" />. A warm start rejects a block whose value differs from the requested one.
     /// </summary>
     [FieldOffset(112)] public ulong ScanShape;

@@ -32,24 +32,7 @@ sealed class BrokerMftBlockProducer
     /// </summary>
     /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
     internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync),
-        validateRetainedFileNames: ValidateRetainedFileNames, includeFreed: _scanOptions?.IncludeFreed ?? false);
-
-    /// <summary>
-    ///     Refuses a retained-name set that no scan request frame can carry, so the open fails before any
-    ///     cache directory exists rather than each volume's scan failing later.
-    /// </summary>
-    /// <exception cref="ArgumentException">The set is too long for one request frame.</exception>
-    static void ValidateRetainedFileNames(IReadOnlyCollection<string> retainedFileNames)
-    {
-        var frameLength = BrokerProtocol.ArmAndScanFrameLength(new string('x', BlockSectionNaming.Length),
-            retainedFileNames);
-        if (frameLength > BrokerFrameStream.MaximumFrameLength)
-        {
-            throw new ArgumentException(FormattableString.Invariant(
-                $"FileIndexOptions.RetainedFileNames makes a {frameLength}-byte scan request, over the {BrokerFrameStream.MaximumFrameLength}-byte frame limit."),
-                nameof(retainedFileNames));
-        }
-    }
+        includeFreed: _scanOptions?.IncludeFreed ?? false);
 
     // A result carrying a proven catch-up loss still transfers its block: the scan is complete,
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
@@ -60,8 +43,7 @@ sealed class BrokerMftBlockProducer
         var target = new BlockScanTarget(request.BlockPath, request.VolumeSerial, request.DeleteOnClose)
         {
             CacheTag = request.CacheTag,
-            ScanShape = request.ScanShape,
-            RetainedFileNames = request.RetainedFileNames
+            ScanShape = request.ScanShape
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
         var result = await process.ScanVolumeAsync(request.Volume, target, options, progress, cancellationToken)

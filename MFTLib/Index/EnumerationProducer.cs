@@ -4,8 +4,8 @@ using System.Runtime.ExceptionServices;
 namespace MFTLib.Index;
 
 /// <summary>
-///     The managed, substrate-neutral producer. Concurrent directory readers copy retained
-///     names and metadata from <see cref="FileSystemEnumerable{TResult}" /> into owned buffers.
+///     The managed, substrate-neutral producer. Concurrent directory readers copy names and
+///     metadata from <see cref="FileSystemEnumerable{TResult}" /> into owned buffers.
 ///     One writer commits completed directories before scheduling their children. File names
 ///     stay in character buffers; only the directory frontier needs full path strings.
 /// </summary>

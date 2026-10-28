@@ -216,14 +216,16 @@ public sealed class MftBlockRowWriterTests : IDisposable
     }
 
     [TestMethod]
-    public void WriteBatches_NullRetention_WritesRowsForFilesInUseAndDirectories()
+    public void WriteBatches_WritesEveryInUseRecordWhateverItsName()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "file.txt")
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "directory"),
+            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "a.txt"),
+            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), ".git"),
+            new(12, 5, new MftRecordFields(1, FileAttributes.Normal, 300), "HEAD")
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
@@ -232,74 +234,10 @@ public sealed class MftBlockRowWriterTests : IDisposable
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.InUse, block.Rows[10].Flags);
-        Assert.AreEqual(11L, result.RowCount);
+        Assert.AreEqual(RowFlags.InUse, block.Rows[11].Flags);
+        Assert.AreEqual(RowFlags.InUse, block.Rows[12].Flags);
+        Assert.AreEqual(13L, result.RowCount);
         Assert.AreEqual(0L, result.SkippedRecordCount);
-    }
-
-    [TestMethod]
-    public void WriteBatches_EmptyRetention_WritesOnlyDirectoriesAndSlotsForFilesAreUnused()
-    {
-        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
-            slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
-        MftRecord[] records =
-        [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "file.txt")
-        ];
-
-        var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions(),
-            null, CancellationToken.None, []);
-
-        Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
-        Assert.AreEqual(RowFlags.None, block.Rows[10].Flags);
-        Assert.AreEqual(6L, result.RowCount);
-        Assert.AreEqual(0L, result.SkippedRecordCount);
-    }
-
-    [TestMethod]
-    public void WriteBatches_RetainedFileNames_PreservesNamedFileCaseInsensitively()
-    {
-        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
-            slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
-        MftRecord[] records =
-        [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), ".GIT"),
-            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), "other.txt")
-        ];
-
-        var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions(),
-            null, CancellationToken.None, [".git"]);
-
-        Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
-        Assert.AreEqual(RowFlags.InUse, block.Rows[10].Flags);
-        Assert.AreEqual(RowFlags.None, block.Rows[11].Flags);
-        Assert.AreEqual(11L, result.RowCount);
-        Assert.AreEqual(0L, result.SkippedRecordCount);
-    }
-
-    [TestMethod]
-    public void WriteBatches_FilteredRowsDoNotIncreaseSkippedRecordCountOrProgress()
-    {
-        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
-            slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
-        var reports = new List<BlockWriteProgress>();
-        MftRecord[] records =
-        [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "filtered1.txt"),
-            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), "filtered2.txt")
-        ];
-
-        var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions(),
-            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None, []);
-
-        Assert.AreEqual(0L, result.SkippedRecordCount);
-        Assert.HasCount(1, reports);
-        Assert.AreEqual(1L, reports[0].RecordsProcessed);
     }
 
     static MftRecord Record(ulong recordNumber, string name)

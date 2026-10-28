@@ -11,47 +11,17 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerFrameLengthTests
 {
-    // The cap's arithmetic (BrokerFrameStream.MaximumFrameLength): the largest legitimate frame is an
-    // ArmAndScan retained names. With the 105 bytes of kind, default section name, include-freed flag and count
-    // around it and 514 bytes per maximum-length NTFS name (255 UTF-16 units plus a 4-byte prefix), 32,640 names make
-    // 105 + 514 * 32,640 = 16,777,065 bytes and fit; 32,641 names make 16,777,579 and do not.
-    const int MaximumNameCount = 32_640;
-
-    // The shape of a name NamedBlockSection builds: "mftlib-block-", a drive letter, a dash and 32 hex digits.
-    static readonly string DefaultSectionName = "mftlib-block-C-" + new string('0', 32);
-
     [TestMethod]
-    public void MaximumFrameLength_HoldsAKeepListOfThirtyTwoThousandSixHundredFortyMaximumLengthNames()
+    public void ArmAndScan_FrameLengthIsKindSectionAndFlag()
     {
-        var names = MaximumLengthNames(MaximumNameCount);
-        var sectionName = DefaultSectionName;
+        const string sectionName = "section-C";
         var buffer = new ArrayBufferWriter<byte>();
 
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, names));
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, includeFreed: true));
 
-        var totalLength = BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan);
-        Assert.AreEqual(16_777_065, totalLength);
-        Assert.IsLessThanOrEqualTo(BrokerFrameStream.MaximumFrameLength, totalLength);
-        Assert.HasCount(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RetainedFileNames!);
-    }
-
-    [TestMethod]
-    public void MaximumFrameLength_RefusesAKeepListOneNameOverTheBoundary()
-    {
-        var names = MaximumLengthNames(MaximumNameCount + 1);
-        var sectionName = DefaultSectionName;
-        var buffer = new ArrayBufferWriter<byte>();
-
-        Assert.AreEqual(16_777_579L, BrokerProtocol.ArmAndScanFrameLength(sectionName, names));
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
-            BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, names)));
-        Assert.AreEqual(0, buffer.WrittenCount, "No length prefix is emitted for a frame over the limit.");
-    }
-
-    static string[] MaximumLengthNames(int count)
-    {
-        var name = new string('n', 255);
-        return [.. Enumerable.Repeat(name, count)];
+        var expectedLength = 1 + 4 + (2 * sectionName.Length) + 1;
+        Assert.AreEqual(expectedLength, BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan));
+        Assert.AreEqual(expectedLength + 4, buffer.WrittenCount);
     }
 
     [TestMethod]

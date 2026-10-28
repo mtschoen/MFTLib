@@ -34,14 +34,6 @@ static partial class BrokerProtocol
             return this;
         }
 
-        // [present byte][value int32], so every int value, negative ones included, round-trips.
-        public PayloadWriter NullableInt32(int? value)
-        {
-            _payload.GetSpan(1)[0] = value.HasValue ? (byte)1 : (byte)0;
-            _payload.Advance(1);
-            return Int32(value ?? 0);
-        }
-
         PayloadWriter UInt64(ulong value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(_payload.GetSpan(8), value);
@@ -139,13 +131,6 @@ static partial class BrokerProtocol
             return BinaryPrimitives.ReadInt32LittleEndian(Take(4));
         }
 
-        public int? NullableInt32()
-        {
-            var present = Take(1)[0] != 0;
-            var value = Int32();
-            return present ? value : null;
-        }
-
         public ulong UInt64()
         {
             return BinaryPrimitives.ReadUInt64LittleEndian(Take(8));
@@ -201,17 +186,6 @@ static partial class BrokerProtocol
         }
 
         public int EntryCount() => Count(EntryFixedBytes);
-
-        public int? NullableNameCount()
-        {
-            var count = NullableInt32();
-            if (count is { } value && (value < 0 || value > Remaining / 4))
-            {
-                throw new InvalidDataException($"Broker frame declares {value} names in {Remaining} bytes");
-            }
-
-            return count;
-        }
 
         public readonly void RequireComplete()
         {

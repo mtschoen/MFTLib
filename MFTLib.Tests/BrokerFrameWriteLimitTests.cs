@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Buffers.Binary;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -12,20 +11,6 @@ public class BrokerFrameWriteLimitTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);
 
-    static string[] KeepList(int count) => [.. Enumerable.Repeat(new string('n', 255), count)];
-
-    [TestMethod]
-    public void WriteArmAndScan_KeepListOverTheLimit_ThrowsBeforeWritingAnything()
-    {
-        var buffer = new ArrayBufferWriter<byte>();
-
-        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-            BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", KeepList(32_700))));
-
-        Assert.Contains("frame limit", exception.Message);
-        Assert.AreEqual(0, buffer.WrittenCount);
-    }
-
     [TestMethod]
     public void WriteJournalBatch_OverTheLimit_ThrowsBeforeWritingAnything()
     {
@@ -37,19 +22,6 @@ public class BrokerFrameWriteLimitTests
             BrokerProtocol.WriteJournalBatch(buffer, BrokerFrame.JournalBatch(Armed, entries)));
 
         Assert.AreEqual(0, buffer.WrittenCount);
-    }
-
-    [TestMethod]
-    [DataRow(null)]
-    [DataRow(new string[0])]
-    [DataRow(new[] { ".git", "HEAD" })]
-    public void ArmAndScanFrameLength_MatchesTheWrittenFrame(string[]? names)
-    {
-        var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section-C", names));
-
-        Assert.AreEqual(BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan),
-            BrokerProtocol.ArmAndScanFrameLength("section-C", names));
     }
 
     [TestMethod]

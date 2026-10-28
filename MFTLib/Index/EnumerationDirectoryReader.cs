@@ -5,7 +5,6 @@ namespace MFTLib.Index;
 
 sealed class EnumerationDirectoryReader
 {
-    readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>>? _retainedFileNames;
     readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _prunedNames;
     readonly Regex[] _prunedNamePatterns;
     readonly HashSet<string> _prunedPaths;
@@ -17,11 +16,6 @@ sealed class EnumerationDirectoryReader
     {
         ArgumentNullException.ThrowIfNull(options);
         var walk = options.DirectoryWalk;
-        _retainedFileNames = options.RetainedFileNames is null
-            ? null
-            : new HashSet<string>(options.RetainedFileNames, DirectoryWalkOptions.PathComparer)
-                .GetAlternateLookup<ReadOnlySpan<char>>();
-
         _prunedNames = new HashSet<string>(walk.PrunedDirectoryNames, DirectoryWalkOptions.PathComparer)
             .GetAlternateLookup<ReadOnlySpan<char>>();
 
@@ -47,11 +41,6 @@ sealed class EnumerationDirectoryReader
                 {
                     observed++;
                     var isDirectory = entry.IsDirectory;
-                    if (!isDirectory && _retainedFileNames is { } retained && !retained.Contains(entry.FileName))
-                    {
-                        return false;
-                    }
-
                     var isReparsePoint = (entry.Attributes & FileAttributes.ReparsePoint) != 0;
                     var canDescend = false;
                     if (isDirectory && !isReparsePoint && !IsPrunedByName(ref entry))

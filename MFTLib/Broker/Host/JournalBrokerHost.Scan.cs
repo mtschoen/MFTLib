@@ -100,7 +100,7 @@ sealed partial class JournalBrokerHost
                 progressState.Report(value, progressWriter));
 
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
-            Hooks.ScanStarting?.Invoke(channel.Volume, request.RetainedFileNames);
+            Hooks.ScanStarting?.Invoke(channel.Volume);
             channel.Pipe.WaitingOnVolume();
             var cursor = _volumeAccess.QueryCursor(channel.Volume);
             await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(cursor)),
@@ -114,7 +114,7 @@ sealed partial class JournalBrokerHost
                     count => recordsOmitted += count, cancellationToken),
                 channel.Pipe);
             var result = blockSectionWriter.Write(request.RequireSectionName(channel.Volume), cursor, batches,
-                new MftRowSelection(scanOptions, request.RetainedFileNames), reporting, cancellationToken);
+                scanOptions, reporting, cancellationToken);
             return progressState.Complete(cursor,
                 result with { SkippedRecordCount = result.SkippedRecordCount + recordsOmitted });
         }

@@ -42,8 +42,7 @@ background task and returns an `InProcessBrokerHandle` exposing `Ended`, `Crash(
 elevation and launches no child process. Consumer tests therefore exercise the same
 request routing, per-volume channels, frame decoding, timeouts, producer, and watch source
 used in production. The harness supplies everything except the volumes: the client creates
-real block sections, and each scan's records are written through the production row writer
-and filter.
+real block sections, and each scan's records are written through the production row writer.
 
 `BrokerTestHarness.CreateSession(launchAsync)` returns a `BrokerSession` whose launch callback hands it
 an `InProcessBrokerHandle`, so a test of code that takes a `BrokerSession` needs no
@@ -84,14 +83,12 @@ await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolu
 ```
 
 `InProcessBrokerHandle.Scans` lists every scan the host served, in order, as an
-`InProcessBrokerScan` (the volume and nullable `RetainedFileNames` the client
-requested), so a test asserts what it asked for. Null means full retention, an empty
-collection means directories only, and names mean directories plus matching files.
-The observation preserves null versus empty. The harness does not offer the section
-lifetime or the write path: those are MFTLib's own, and `MFTLib.Tests` covers them. A consumer
-asserts the outcome it owns, such as the block file under its cache directory.
-The harness constructs each `InProcessBrokerScan`. Consumers read its public `Volume` and
-`RetainedFileNames` properties; record copies retain the validated init-only property contract.
+`InProcessBrokerScan` carrying the requested volume, so a test asserts which scans ran.
+The harness does not offer the section lifetime or the write path: those are MFTLib's own,
+and `MFTLib.Tests` covers them. A consumer asserts the outcome it owns, such as the block
+file under its cache directory. The harness constructs each `InProcessBrokerScan`.
+Consumers read its public `Volume` property; record copies retain the validated init-only
+property contract.
 
 The handle owns the harness session from the client side. Disposing the handle
 disposes the process: it closes the control pipe, ends the host, closes the volume pipes, waits for

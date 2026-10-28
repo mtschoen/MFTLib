@@ -5,25 +5,18 @@ namespace MFTLib;
 /// <summary>Maps MFT records to sparse block rows without resolving paths or retaining batches.</summary>
 static class MftBlockRowWriter
 {
-    /// <summary>
-    ///     Writes each batch and reports transfer progress; the caller stamps and completes the block.
-    ///     <paramref name="retainedFileNames" /> is null to keep every eligible record, empty to keep directories only.
-    /// </summary>
+    /// <summary>Writes each batch and reports transfer progress; the caller stamps and completes the block.</summary>
     public static BlockWriteResult WriteBatches(
         BlockWriter writer,
         IEnumerable<IReadOnlyList<MftRecord>> batches,
         MftScanOptions scanOptions,
         IProgress<BlockWriteProgress>? progress,
-        CancellationToken cancellationToken,
-        IReadOnlyCollection<string>? retainedFileNames = null)
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(batches);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var retainedNames = retainedFileNames is { } names
-            ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
-            : null;
         var freedRows = scanOptions.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
         long recordsWritten = 0;
         long skippedRecordCount = 0;
@@ -40,11 +33,6 @@ static class MftBlockRowWriter
                 }
 
                 freedRows?.Observe(in record);
-                if (!ShouldKeepRecord(record, retainedNames))
-                {
-                    continue;
-                }
-
                 if (TryWriteRecord(writer, record))
                 {
                     recordsWritten++;
@@ -65,16 +53,6 @@ static class MftBlockRowWriter
         freedRows?.DetachUntrusted(writer, cancellationToken);
         return new BlockWriteResult(writer.RowCount, writer.Block.NamePoolUsed,
             skippedRecordCount);
-    }
-
-    static bool ShouldKeepRecord(
-        in MftRecord record,
-        HashSet<string>? retainedFileNames)
-    {
-        // Null is a full scan; an empty set keeps directories only.
-        return retainedFileNames is null ||
-            record.IsDirectory ||
-            retainedFileNames.Contains(record.FileName);
     }
 
     static bool TryWriteRecord(BlockWriter writer, MftRecord record)

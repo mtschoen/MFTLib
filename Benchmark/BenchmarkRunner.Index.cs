@@ -128,7 +128,7 @@ public partial class BenchmarkRunner
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
                 NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked((rows * 30) + ((uint)directory.Length * 2))),
-                ScanShape = ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), directory)
+                ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), directory)
             }))
             {
                 var writer = new BlockWriter(block);
@@ -173,8 +173,8 @@ public partial class BenchmarkRunner
             // any others here. A block replaced after inspection is refused by the cache-only open,
             // which never deletes a block, and reported as a failed drive below.
             var benchmarkShape = producer == ProducerKind.Enumeration
-                ? ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), candidate.RootDirectory)
-                : ScanShape.ForMft(null, includeFreed: false);
+                ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), candidate.RootDirectory)
+                : ScanShape.ForMft(includeFreed: false);
             if (storedShape != benchmarkShape)
             {
                 log($"Error: {candidate.File.Path}: unsupported scan shape (built with other row-shaping options); left intact.");
