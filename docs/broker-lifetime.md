@@ -6,7 +6,8 @@
       `QueryVolume`, and `GrowUsnJournal` replies; an id remains reserved until its reply arrives
       or the process ends. Opening a volume operation creates a client-owned pipe, sends its name
       on the control pipe, waits for both the host connection and `ChannelOpened`, and writes one
-      request. Each scan or watch then owns that volume channel, so closing or faulting it cancels
+      request. A VolumeScan owns one channel per production and one per watch instance; attached views share those
+      operations. Each scan or watch then owns that volume channel, so closing or faulting it cancels
       only that operation. Control EOF ends the process and every channel;
       the `BrokerProcess.Ended` task completes with the reason, and pending work fails with
       `BrokerChannelLostException`. The host admits concurrent scans under one processor-sized

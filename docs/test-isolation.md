@@ -111,6 +111,14 @@ MFTLib.Tests calls `JournalIsolation.OverrideJournalWindow` directly for every j
 
 ## Shared scenario fixtures
 
+`VolumeScanRegistry.Process` is process-global state. A test class referencing that getter carries
+`[DoNotParallelize]`; cleanup checks that its own keys are no longer live, never resetting live scans.
+`NativeSeamIsolationTests` checks the compiled member reference with an unexecuted violation control.
+Sharing tests normally inject a private `FileIndexOptions.ScanRegistry`, unique serials, a source instance and
+owned cache directories. `SharedScanFixture` supplies that isolation and deterministic production gates, so those
+classes remain parallel. `IndexPublication` observes a real publication leaving its write gate instead of assuming
+a rescan performs synchronous work before returning its task.
+
 TestSupport owns temporary resources. `TempDirectory` gives each owned root a GUID,
 supports a deferred path for missing-directory scenarios, and retries recursive
 deletion five times before tolerating a Windows IOException from a still-locked
@@ -287,7 +295,7 @@ Single access paths remain for non-substitutable test observation and gate contr
 - `Task FileIndex.WaitForRootWriteGateForTest(RootKey)` and `void FileIndex.ReleaseRootWriteGateForTest(RootKey)` in `MFTLib/Index/FileIndex.Roots.cs`: Tests own a real gate acquisition and release it in `finally`. Used by `FileIndexRescanCleanupTests.cs:RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile` and `FileIndexWatchFailedRescanTests.cs:CancelledPublication_PreservesFaultAndDisposesUnpublishedBlock` to test cancellation while queued at the write gate, and by handoff tests to observe publication leaving its write gate.
 - `bool FileIndex.AreRootGatesFreeForTest(RootKey)` in `MFTLib/Index/FileIndex.Roots.cs`: Nonblocking acquire/release of lifecycle and write gates under a test-controlled ordering. Owned by `FileIndexConcurrentRescanTests.cs:ApplyJournalEntries_TakesOnlyItsRootsWriteGate`, `FileIndexCatchUpLossTests.cs:CatchUpLost_HandlerRunsWithLifecycleGateHeld`, and `FileIndexDisposalOrderTests.cs:Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates`.
 - `bool FileIndex.TryGetRecoveryCompletionForTest(RootKey, [NotNullWhen(true)] out Task?)` in `MFTLib/Index/FileIndex.Roots.cs`: Exposes exact recovery ticket completion identity under the state lock. Owned by `FileIndexWatchRecoveryTests.cs:RecoveryTicketCompletion_ContinuationNotInline`, `QueuedRecovery_SupersededByConsumerStart_DoesNotScan`, and harness recovery waits.
-- `long FileIndex.ContendedWatchStateDeliveriesForTest` in `MFTLib/Index/FileIndex.Roots.cs` observes actual failed `DeliveryLock.TryEnter` attempts through the per-volume Interlocked counter in `FileIndex.RootRuntime.Notifications.cs`. `FileIndexWatchStateChangedTests.Paths.cs:FaultStateTakenByAConcurrentStop_IsDeliveredBeforeTheFaultIsReported` holds the stop's Faulted subscriber until the pump has actually contended for delivery. `BeforeWatchChanged` belongs to file-change delivery after journal application and is absent from this fault path. A signal before lock acquisition, or the final event history alone, cannot establish that the pump attempted delivery while the subscriber was held. Retain the counter to preserve that deterministic race witness.
+- `long FileIndex.ContendedWatchStateDeliveriesForTest` in `MFTLib/Index/FileIndex.Roots.cs` observes actual failed `DeliveryLock.TryEnter` attempts through the per-view Interlocked counter in `FileIndex.IndexView.Delivery.cs`. `FileIndexWatchStateChangedTests.Paths.cs:FaultStateTakenByAConcurrentStop_IsDeliveredBeforeTheFaultIsReported` holds the stop's Faulted subscriber until the pump has actually contended for delivery. `BeforeWatchChanged` belongs to file-change delivery after journal application and is absent from this fault path. A signal before lock acquisition, or the final event history alone, cannot establish that the pump attempted delivery while the subscriber was held. Retain the counter to preserve that deterministic race witness.
 
 Lifecycle races are tested behaviorally without one-use test seams:
 - Freedom from `_stateLock` during `WatchStateChanged` delivery is tested positively in `FileIndexWatchStateChangedTests.cs:Handler_RunsWithoutTheStateLock_SeesItsChange_AndCannotCallLifecycleMethods`: a held subscriber permits a concurrent second thread to read `Drives` while asserting that the subscriber has not yet exited.

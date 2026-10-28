@@ -496,7 +496,7 @@ and no registry exists yet, so the full suite is the test. All later tasks build
   its `Borrows`, clears its watch request if it holds one without retiring a watch other views need, removes it from
   `_views` and detaches; the last view runs today's full sequence as `VolumeScan.CloseAsync` (Task 5.5 owns the tests).
 
-- [ ] **Step 1: Write the failing tests** (`FileIndexSharedOpenTests` on `SharedScanFixture`; parallel-safe: private
+- [x] **Step 1: Write the failing tests** (`FileIndexSharedOpenTests` on `SharedScanFixture`; parallel-safe: private
   registry, own source, unique serial, temporary cache directory)
 
 ```csharp
@@ -537,17 +537,17 @@ public async Task Junction_ToAnotherVolume_AttachesToThatVolumesScan()
 // FinalPath seam maps T\link to U\data; a U view and the T\link view share one scan (ruling 16); ProductionCount 1
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedOpenTests"`.
-- [ ] **Step 3: Implement** the Interfaces, with invariants I1 to I3 and I11 in comments at their state.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileIndexProducerSelectionTests|FullyQualifiedName~FileIndexMftFallbackTests|FullyQualifiedName~FileIndexDirectoryViewTests|FullyQualifiedName~FileIndexRootResolutionTests`.
-- [ ] **Step 5: Triage the full suite.** Run it; every new failure is one of: (a) a test that opens two MFT indexes with
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedOpenTests"`.
+- [x] **Step 3: Implement** the Interfaces, with invariants I1 to I3 and I11 in comments at their state.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileIndexProducerSelectionTests|FullyQualifiedName~FileIndexMftFallbackTests|FullyQualifiedName~FileIndexDirectoryViewTests|FullyQualifiedName~FileIndexRootResolutionTests`.
+- [x] **Step 5: Triage the full suite.** Run it; every new failure is one of: (a) a test that opens two MFT indexes with
   one source instance, volume, serial, cache directory and tag and now shares by design: assert the sharing instead
   (expected in `FileIndexOwnerLockTests`, `CacheDirectoryDeletionLiveOwnerTests`, `FileIndexCacheTagTests` for its
   equal-tag cases); (b) a test about cross-key contention: give its second open a distinct source
   (`SyntheticIndexSource.Create(...)` again) so it keeps testing contention; (c) a message that now names the scan's
   block root (decision 6): update the expectation. List each changed test with its letter in the commit body. Expected
   afterwards: 0 failed.
-- [ ] **Step 6: Commit** `feat: share one volume scan between the MFT indexes of a share key`.
+- [x] **Step 6: Commit** `feat: share one volume scan between the MFT indexes of a share key`.
 
 ### Task 5.5: View disposal and the last detach
 
@@ -573,7 +573,7 @@ public async Task Junction_ToAnotherVolume_AttachesToThatVolumesScan()
 - The final `WatchStateChanged` before `DisposeAsync` returns is delivered only by a disposal that stopped the watch
   (watch-lifetime "Disposal delivers the final change").
 
-- [ ] **Step 1: Write the failing tests** (`FileIndexSharedDisposalTests` on `SharedScanFixture`)
+- [x] **Step 1: Write the failing tests** (`FileIndexSharedDisposalTests` on `SharedScanFixture`)
 
 ```csharp
 [DataRow(true)] [DataRow(false)]
@@ -600,10 +600,10 @@ public async Task Reopen_RacingTheLastDetach_OwnsTheCanonicalSlot()
 public async Task Dispose_TwiceAndConcurrently_IsIdempotent()   // two concurrent DisposeAsync calls on one view, one teardown
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedDisposalTests"`.
-- [ ] **Step 3: Implement**; invariants I5, I6, I9 and I12 in comments.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Disposal|FullyQualifiedName~FileIndexDisposeCancelsQueryTests|FullyQualifiedName~FileEntryDisposalTests`.
-- [ ] **Step 5: Commit** `feat: dispose one view of a shared scan without disturbing the others`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedDisposalTests"`.
+- [x] **Step 3: Implement**; invariants I5, I6, I9 and I12 in comments.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Disposal|FullyQualifiedName~FileIndexDisposeCancelsQueryTests|FullyQualifiedName~FileEntryDisposalTests`.
+- [x] **Step 5: Commit** `feat: dispose one view of a shared scan without disturbing the others`.
 
 ### Task 5.6: Watch requests per view, fault fan-out and event routing
 
@@ -645,7 +645,7 @@ public async Task Dispose_TwiceAndConcurrently_IsIdempotent()   // two concurren
 - `JournalMutation`: after the apply, `ViewRoot.Refresh` for every directory view's handle, still under the write gate
   (cost per batch: path depth per directory view).
 
-- [ ] **Step 1: Write the failing tests** (`SharedScanFixture` with a `ScriptedWatchSource` that counts
+- [x] **Step 1: Write the failing tests** (`SharedScanFixture` with a `ScriptedWatchSource` that counts
   `StartAsync` calls and handle disposals)
 
 ```csharp
@@ -680,11 +680,11 @@ public async Task Route_ABatchConcurrentWithAttach_IsSeenExactlyOnce()
 public async Task ApplyJournalEntries_ReturnsTheCallersRoutedChanges()   // through src: only src's share of the batch
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedWatchTests|FullyQualifiedName~FileIndexSharedRoutingTests"`.
-- [ ] **Step 3: Implement**; invariants I7 and I8 in comments.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileIndexWatch|FullyQualifiedName~FileIndexPerRootWatchTests|FullyQualifiedName~FileIndexDirectoryViewTests`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedWatchTests|FullyQualifiedName~FileIndexSharedRoutingTests"`.
+- [x] **Step 3: Implement**; invariants I7 and I8 in comments.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileIndexWatch|FullyQualifiedName~FileIndexPerRootWatchTests|FullyQualifiedName~FileIndexDirectoryViewTests`.
   Update `FileIndexDirectoryViewTests`' volume-wide `Changed` expectation (slice 4 decision 6) to the routed one.
-- [ ] **Step 5: Commit** `feat: per-view watch requests, fault fan-out and change routing`.
+- [x] **Step 5: Commit** `feat: per-view watch requests, fault fan-out and change routing`.
 
 ### Task 5.7: Coalesced rescans, one recovery per scan, checkpoint loss on every view
 
@@ -712,7 +712,7 @@ public async Task ApplyJournalEntries_ReturnsTheCallersRoutedChanges()   // thro
 - `RootStatus.Watch.CheckpointLoss`, `ConsecutiveLostCatchUps`, `IsRecoveryStopped` and `JournalCheckpointLoss.DetectedDuring`
   are scan facts, identical on every view; `CatchUpLost` faults follow Task 5.6's requesting-view fan-out.
 
-- [ ] **Step 1: Write the failing tests** (`FileIndexSharedRescanTests`; production gated through the fixture)
+- [x] **Step 1: Write the failing tests** (`FileIndexSharedRescanTests`; production gated through the fixture)
 
 ```csharp
 public async Task Rescan_TwoConcurrentCallsWhileIdle_ProduceOnce()          // T and src call together: ProductionCount +1, both Succeeded
@@ -733,10 +733,10 @@ public async Task Generation_IsOneValuePerBlock()
 // a batch through src bumps Generation seen by T; a rescan through T gives both the same new value
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedRescanTests"`.
-- [ ] **Step 3: Implement**; invariant I10 in comments.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Rescan|FullyQualifiedName~Recovery|FullyQualifiedName~CheckpointLoss|FullyQualifiedName~FileIndexConcurrentRescanTests`.
-- [ ] **Step 5: Commit** `feat: coalesce rescans of a shared scan`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedRescanTests"`.
+- [x] **Step 3: Implement**; invariant I10 in comments.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Rescan|FullyQualifiedName~Recovery|FullyQualifiedName~CheckpointLoss|FullyQualifiedName~FileIndexConcurrentRescanTests`.
+- [x] **Step 5: Commit** `feat: coalesce rescans of a shared scan`.
 
 ### Task 5.8: Views, anchors and sets over a shared block
 
@@ -750,7 +750,7 @@ Most behavior here already follows from Tasks 5.2 to 5.6; this task proves it an
 **Interfaces:** none new. `FileIndexSet` keeps ruling 15 (outermost available member, containment by
 `TryMatchRootPrefix`) unchanged; with shared members each member still borrows its own view's handle.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // FileIndexSharedViewTests
@@ -770,10 +770,10 @@ public async Task NestedSharedMembers_OuterDisposed_InnerCovers()          // af
 public async Task SharedMembers_SubtreeQuery_GoesToTheAnchorsMember()
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedViewTests|FullyQualifiedName~FileIndexSetTests"`.
-- [ ] **Step 3: Implement** what fails.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Subtree|FullyQualifiedName~FileIndexDirectoryViewTests`.
-- [ ] **Step 5: Commit** `test: anchors, views and sets over a shared volume block`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedViewTests|FullyQualifiedName~FileIndexSetTests"`.
+- [x] **Step 3: Implement** what fails.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Subtree|FullyQualifiedName~FileIndexDirectoryViewTests`.
+- [x] **Step 5: Commit** `test: anchors, views and sets over a shared volume block`.
 
 ### Task 5.9: The process registry is a guarded seam
 
@@ -783,7 +783,7 @@ public async Task SharedMembers_SubtreeQuery_GoesToTheAnchorsMember()
   control and one isolated control that uses `new VolumeScanRegistry()` and stays parallel)
 - Create: `MFTLib.Tests/Index/VolumeScanRegistryProcessTests.cs` (`[DoNotParallelize]`)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // NativeSeamIsolationTests
@@ -794,12 +794,12 @@ public async Task DefaultOptions_ShareThroughTheProcessRegistry()           // t
 [TestCleanup] public void NoScanOfThisClassStaysLive()                       // Assert.IsFalse(Process.IsLive(key)) for each key used
 ```
 
-- [ ] **Step 2: Run, expect FAIL**, then implement, then **PASS**: `--filter "FullyQualifiedName~NativeSeamIsolationTests|FullyQualifiedName~VolumeScanRegistryProcessTests"`.
+- [x] **Step 2: Run, expect FAIL**, then implement, then **PASS**: `--filter "FullyQualifiedName~NativeSeamIsolationTests|FullyQualifiedName~VolumeScanRegistryProcessTests"`.
 - [ ] **Step 3: Stress** (docs/test-isolation.md): three consecutive full runs with
   `-- MSTest.Parallelize.Workers=32 MSTest.Parallelize.Scope=ClassLevel` on Windows, and on Linux through
   `./scripts/coverage-linux.sh`'s filter under WSL; no exclusion added. Record serial-before and parallel-after wall
   clock and per-run results for the PR body (counts only, never logs).
-- [ ] **Step 4: Commit** `test: guard the process volume scan registry as a process seam`.
+- [x] **Step 4: Commit** `test: guard the process volume scan registry as a process seam`.
 
 ### Task 5.10: Watch sample `add-root <path>`
 
@@ -820,7 +820,7 @@ public async Task DefaultOptions_ShareThroughTheProcessRegistry()           // t
 - Added indexes join the final stop, the change count and a new `FileIndexSet` over every watched index for
   `ReportSetQueriesAsync` (nested members allowed, ruling 15), and are disposed with the others.
 
-- [ ] **Step 1: Write the failing tests** (`WatchHostModeTests`, interactive host, scripted broker, volume T mapped
+- [x] **Step 1: Write the failing tests** (`WatchHostModeTests`, interactive host, scripted broker, volume T mapped
   through `prepareOptions`)
 
 ```csharp
@@ -831,13 +831,13 @@ public async Task Watch_AddRootWithAnUnparsablePath_ReportsIt()
 public async Task Watch_EndOfInput_Stops()
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~WatchHostModeTests|FullyQualifiedName~WatchArgumentsTests"`.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicMemberCallerTests`.
-- [ ] **Step 5: Smoke**: run the built `SampleProgram.Watch.exe watch C: --seconds 5` attended once on Windows (it
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~WatchHostModeTests|FullyQualifiedName~WatchArgumentsTests"`.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicMemberCallerTests`.
+- [x] **Step 5: Smoke**: run the built `SampleProgram.Watch.exe watch C: --seconds 5` attended once on Windows (it
   self-elevates through the broker) and type nothing; then once without `--seconds`, `add-root C:\Windows`, Enter.
   Expected: one scan, `Added root C:\Windows: producer Mft`, changes under both roots. Record the outcome in the PR body.
-- [ ] **Step 6: Commit** `feat: the Watch sample attaches roots while watching`.
+- [x] **Step 6: Commit** `feat: the Watch sample attaches roots while watching`.
 
 ### Task 5.11: Documentation and rulings
 
@@ -851,21 +851,21 @@ registry seam, the process seam rule and the cleanup check), `README.md` (where 
 `CHANGELOG.md` (0.3.0: volume scan sharing, routed `Changed`, Watch `add-root`), the spec's section 7 test-isolation
 row (decision 9).
 
-- [ ] **Step 1: Run the docs-update check**; `grep -rn "RootRuntime\|private fallback until slice 5\|volume-wide\|until slice 5" --include=*.md --include=*.cs .`
+- [x] **Step 1: Run the docs-update check**; `grep -rn "RootRuntime\|private fallback until slice 5\|volume-wide\|until slice 5" --include=*.md --include=*.cs .`
   returns only `docs/superpowers/` lines.
-- [ ] **Step 2: Supersede** the rulings listed under "Public surface changes", each rewritten in place with its reason
+- [x] **Step 2: Supersede** the rulings listed under "Public surface changes", each rewritten in place with its reason
   (MFTLib issue 844 rulings 5 and 15, spec section 2) and a revisit condition. Generation: "identical on every view of a
   scan; strictly increases on every applied batch and rescan of the scan; comparable while the consumer holds any index
   of the scan; a new scan after the last detach adopts the cached value". Anchor: "an anchor is valid when its
   `RootBlock` is the borrowed one, which names both the block and the querying view".
-- [ ] **Step 3: Add the ruling "Volume scan sharing"**: the share key (decision 2), what attaches (decision 1), the
+- [x] **Step 3: Add the ruling "Volume scan sharing"**: the share key (decision 2), what attaches (decision 1), the
   lifetime table of spec section 2 with decisions 3, 4, 5 and 12, routing and fault fan-out (decisions 7 and 8),
   coalescing (decision 10), Offline rules (decision 11), per-view option fan-out (decision 6). Reason: one MFT pass and
   one journal watch per volume however many roots a consumer registers (rulings 3 and 5); revisit only if sharing is
   wanted across processes or across share keys.
-- [ ] **Step 4: Check budgets**: `AGENTS.md` is not edited (its rules stay true); `wc -m AGENTS.md` below 15000 and
+- [x] **Step 4: Check budgets**: `AGENTS.md` is not edited (its rules stay true); `wc -m AGENTS.md` below 15000 and
   `--filter FullyQualifiedName~AgentInstructionsTests` pass.
-- [ ] **Step 5: Commit** `docs: record volume scan sharing`.
+- [x] **Step 5: Commit** `docs: record volume scan sharing`.
 
 ### Task 5.12: Slice verification and PR
 
