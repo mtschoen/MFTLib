@@ -42,7 +42,9 @@ public class FileIndexWatchRescanHandoffTests
             var delivered = source.WatchFor('T').Queue(WatchHarness.Batch(9, "replayed.txt", 700));
             await delivering.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             var original = index.Root(TestContext.CancellationToken).RootBlock;
+            var publication = IndexPublication.ObserveNextAsync(index);
             var rescan = index.RescanAsync(Token);
+            await publication;
             Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).RootBlock,
                 "publication need not wait for an already applied change's delivery");
             Assert.IsEmpty(changes);
@@ -102,6 +104,7 @@ public class FileIndexWatchRescanHandoffTests
             production = harness.HoldNextProduction('T');
         }
 
+        var publication = IndexPublication.ObserveNextAsync(index);
         var rescan = index.RescanAsync(Token);
 
         if (cancelWhileQueued)
@@ -121,12 +124,9 @@ public class FileIndexWatchRescanHandoffTests
                 publishing.Release();
             }
 
-            while (ReferenceEquals(original, index.Root(TestContext.CancellationToken).RootBlock))
-            {
-                await Task.Yield();
-            }
         }
 
+        await publication;
         Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).RootBlock, "publication precedes the pump drain");
         Assert.IsFalse(rescan.IsCompleted);
         await RootResultAssertions.FailureAsync<OperationCanceledException>(() => catchUp);

@@ -63,7 +63,7 @@ public sealed partial class FileIndex
         return RunLifecycleOperationAsync(applicable: null,
             async () =>
             {
-                await _view.Scan.RescanRootAsync(cancellationToken).ConfigureAwait(false);
+                await _view.Scan.RescanAsync(_view, cancellationToken).ConfigureAwait(false);
                 lock (StateLock)
                 {
                     _view.OpenFailure = null;

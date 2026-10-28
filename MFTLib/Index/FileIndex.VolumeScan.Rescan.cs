@@ -4,34 +4,6 @@ public sealed partial class FileIndex
 {
     internal sealed partial class VolumeScan
     {
-        /// <summary>
-        /// Runs one admitted rescan under this root's lifecycle gate. Production keeps the current
-        /// watch; publication commits its replacement and hands off teardown before an eligible restart.
-        /// See docs/watch-lifetime.md for publication, stop-wins and cancellation ordering.
-        /// </summary>
-        public async Task RescanRootAsync(CancellationToken cancellationToken)
-        {
-            if (FileIndex.RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
-            {
-                throw rejection;
-            }
-
-            ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
-            using var rescanCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ClosingToken);
-            await LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
-            try
-            {
-                ThrowIfClosing(rescanCancellation.Token);
-                await RescanWithGateHeldAsync(recovery: null, rescanCancellation.Token)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                LifecycleGate.Release();
-            }
-        }
-
         /// <summary>What one attempt of a scan operation did.</summary>
         /// <param name="Published">False when the producer returned no block, so nothing was published.</param>
         /// <param name="ProducerFailure">The producer's failure when it returned no block.</param>
