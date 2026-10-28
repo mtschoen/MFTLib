@@ -20,7 +20,7 @@ public class FileIndexWatchRescanHandoffTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), directory.Path, 1),
+
             CacheDirectory = directory.Path,
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -28,7 +28,7 @@ public class FileIndexWatchRescanHandoffTests
                 var block = BlockFile.Open(request.BlockPath, 1, out _)!;
                 return Task.FromResult(new MftBlockProduceResult(block, 0));
             }, source.IndexSource)
-        }, Token);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), directory.Path, 1)), Token);
         var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();
         index.Changed += changes.Enqueue;
         await index.StartWatchingAsync(Token);

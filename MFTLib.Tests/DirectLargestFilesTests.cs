@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using MFTLib.Index;
 using MFTLib.Tests.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Direct;
 
@@ -41,10 +42,10 @@ public class DirectLargestFilesTests
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey(builder.Drive), builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration),
+
             CacheDirectory = builder.DirectoryPath,
             CacheMode = CacheMode.ExistingOnly
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(builder.Drive), builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration)), CancellationToken.None);
         Assert.AreEqual(RootState.Ready, index.Status.State, index.Status.Failure?.Message);
         return index;
     }

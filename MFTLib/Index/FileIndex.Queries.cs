@@ -50,7 +50,7 @@ public sealed partial class FileIndex
         ArgumentNullException.ThrowIfNull(query);
         SubtreeAnchor.ThrowIfDefault(query);
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, query));
-        return SearchEngine.Search(scope.RootBlock, query, scope.CancellationToken);
+        return SearchEngine.Search(scope.RootBlock, query, scope.ViewRow, scope.CancellationToken);
     }
 
     /// <summary>
@@ -153,15 +153,15 @@ public sealed partial class FileIndex
     IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
     {
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, query));
-        foreach (var entry in SearchEngine.Enumerate(scope.RootBlock, query, scope.CancellationToken))
+        foreach (var entry in SearchEngine.Enumerate(scope.RootBlock, query, scope.ViewRow, scope.CancellationToken))
         {
             yield return entry;
         }
     }
 
     /// <summary>
-    ///     The entry for the root block's root row, which is the indexed root directory rather
-    ///     than the volume root: a block indexed from a subdirectory roots there.
+    ///     The entry for the index's root: the volume root for a volume root, the walked directory for a walk, and the row
+    ///     the view's directory resolves to for a directory root on an NTFS volume.
     /// </summary>
     /// <param name="cancellationToken">Stops the lookup before it resolves the root row.</param>
     /// <exception cref="InvalidOperationException">
@@ -179,13 +179,15 @@ public sealed partial class FileIndex
             string message;
             lock (_stateLock)
             {
-                message = $"Root {_runtime.Root} has no block (state: {_runtime.BlocklessState}).";
+                // A block with no borrowable root is a directory view whose directory is out of the block.
+                var state = _runtime.Block is { View.IsDirectoryView: true } ? RootState.Offline : _runtime.BlocklessState;
+                message = $"Root {_runtime.Root} has no block (state: {state}).";
             }
 
             throw new InvalidOperationException(message);
         }
 
-        return LookupEngine.Root(query.RootBlock, query.CancellationToken);
+        return LookupEngine.Root(query.RootBlock, query.ViewRow, query.CancellationToken);
     }
 
     /// <summary>
@@ -213,6 +215,29 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
+    ///     Takes the borrow for a query and, for a directory view, rechecks the view's binding while holding it, outside
+    ///     the state lock: a directory the journal renamed away or deleted since the last batch reads as no block, so
+    ///     the query answers empty instead of reading a stale subtree. The borrow is returned before an empty answer.
+    /// </summary>
+    SnapshotBorrow BorrowForQuery(Func<RootBlock?, RootBlock?>? select)
+    {
+        var borrow = BorrowBlock(select);
+        if (borrow.RootBlock is not { View.IsDirectoryView: true } directoryView)
+        {
+            return borrow;
+        }
+
+        if (directoryView.View.TryAdmit(directoryView, out var admittedRow))
+        {
+            borrow.ViewRow = admittedRow;
+            return borrow;
+        }
+
+        borrow.Dispose();
+        return new SnapshotBorrow(null);
+    }
+
+    /// <summary>
     ///     Everything a query needs and nothing it has to remember to give back by hand: the
     ///     block to read, the token to observe, and a borrow that is returned when the query
     ///     returns, whether it answered or threw.
@@ -235,7 +260,7 @@ public sealed partial class FileIndex
         cancellationToken.ThrowIfCancellationRequested();
         if (!cancellationToken.CanBeCanceled)
         {
-            return new QueryScope(BorrowBlock(select), DisposalToken);
+            return new QueryScope(BorrowForQuery(select), DisposalToken);
         }
 
         var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -243,7 +268,7 @@ public sealed partial class FileIndex
         var handedOver = false;
         try
         {
-            var scope = new QueryScope(BorrowBlock(select), linkedCancellation);
+            var scope = new QueryScope(BorrowForQuery(select), linkedCancellation);
             handedOver = true;
             return scope;
         }
@@ -278,6 +303,9 @@ public sealed partial class FileIndex
         }
 
         internal RootBlock? RootBlock => _borrow.RootBlock;
+
+        /// <summary>The row an admitted directory view was bound to; null when the root is not a view.</summary>
+        internal uint? ViewRow => _borrow.ViewRow;
 
         internal bool IsDisposed => _borrow.IsReturned;
 

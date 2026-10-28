@@ -100,21 +100,21 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         char duplicateLetter, bool blocklessFirst)
     {
         var policy = blocklessState == RootState.Offline ? ProducerKind.Enumeration : ProducerKind.Mft;
-        var ready = SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration);
-        var blockless = SyntheticIndexedRoot.Create(new VolumeKey(duplicateLetter),
+        var ready = SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration);
+        var blockless = SyntheticRoot.Create(new VolumeKey(duplicateLetter),
             blocklessState == RootState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 2, policy);
         await using var readyIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = ready,
+
             CacheMode = CacheMode.Disabled
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(ready), CancellationToken.None);
         await using var blocklessIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = blockless,
+
             CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((_, _) =>
                 Task.FromException<MftBlockProduceResult>(new InvalidOperationException("producer failed")))
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(blockless), CancellationToken.None);
 
         var exception = Assert.ThrowsExactly<ArgumentException>(() => new FileIndexSet(
             blocklessFirst ? [blocklessIndex, readyIndex] : [readyIndex, blocklessIndex]));
@@ -148,10 +148,10 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         };
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), state == RootState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1),
+
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(producer)
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), state == RootState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1)), CancellationToken.None);
 
         try
         {

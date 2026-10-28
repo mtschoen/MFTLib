@@ -49,6 +49,39 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     }
 
     [TestMethod]
+    [DataRow("Declined", MftUnavailableReason.ElevationDeclined)]
+    [DataRow("Timeout", MftUnavailableReason.BrokerUnavailable)]
+    [DataRow("Ended", MftUnavailableReason.BrokerUnavailable)]
+    public async Task Produce_AConnectFailureIsAnEligibilityReason(string failure, MftUnavailableReason expected)
+    {
+        Exception connectFailure = failure switch
+        {
+            "Declined" => new BrokerLaunchDeclinedException("Failed to launch the elevated broker."),
+            "Timeout" => new TimeoutException("The broker never connected."),
+            _ => new BrokerEndedException("The elevated broker process for this session has ended.")
+        };
+        var source = new BrokerMftBlockProducer(_ => Task.FromException<BrokerProcess>(connectFailure)).CreateIndexSource();
+
+        var exception = await Assert.ThrowsExactlyAsync<MftUnavailableException>(
+            () => source.Producer(Request(Target()), TestContext.CancellationToken));
+
+        Assert.AreEqual(expected, exception.Reason);
+        Assert.AreSame(connectFailure, exception.InnerException);
+    }
+
+    [TestMethod]
+    public async Task Produce_AnIOExceptionFromConnectPropagatesUnchanged()
+    {
+        var failure = new IOException("the pipe broke");
+        var source = new BrokerMftBlockProducer(_ => Task.FromException<BrokerProcess>(failure)).CreateIndexSource();
+
+        var thrown = await Assert.ThrowsExactlyAsync<IOException>(
+            () => source.Producer(Request(Target()), TestContext.CancellationToken));
+
+        Assert.AreSame(failure, thrown);
+    }
+
+    [TestMethod]
     [DataRow("Incomplete")]
     [DataRow("WrongVolumeSerial")]
     [DataRow("ProducerKind")]

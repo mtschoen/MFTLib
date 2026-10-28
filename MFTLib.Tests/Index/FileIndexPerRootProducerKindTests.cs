@@ -12,9 +12,6 @@ public sealed partial class FileIndexPerRootProducerKindTests : IndexTreeTestBas
 
     protected override bool SeedDocuments => false;
 
-    [TestInitialize]
-    public void Initialize() => File.WriteAllText(Path.Combine(TreeRoot, "walked.txt"), "owned tree");
-
     static SyntheticMftProducer Producer() => new(_ =>
     [
         new SyntheticRow(5, ".", 5) { IsDirectory = true },
@@ -25,15 +22,24 @@ public sealed partial class FileIndexPerRootProducerKindTests : IndexTreeTestBas
         JournalCursor = new SyntheticJournalCursor(7, 4096)
     };
 
-    IndexedRoot Root(char letter, ProducerKind policy) =>
-        SyntheticIndexedRoot.Create(new VolumeKey(letter), Fixture.TreeRoot, 123, policy);
-
-    FileIndexOptions Options(IndexedRoot root) => new()
+    // Each volume roots at its own directory holding one file: the members of a set must not nest.
+    string LetterDirectory(char letter)
     {
-        Root = root,
+        var directory = Path.Combine(TreeRoot, letter.ToString());
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "walked.txt"), "owned tree");
+        return directory;
+    }
+
+    SyntheticRoot Root(char letter, ProducerKind policy) =>
+        SyntheticRoot.Create(new VolumeKey(letter), LetterDirectory(letter), 123, policy);
+
+    FileIndexOptions Options(SyntheticRoot root) => new FileIndexOptions
+    {
+
         CacheDirectory = Fixture.CacheDirectory,
         MftSource = SyntheticIndexSource.Create(Producer())
-    };
+    }.WithSyntheticRoot(root);
 
     [TestMethod]
     public async Task MixedOpen_EachRootUsesItsProducerAndSetQueriesCombineTheirRows()
@@ -63,7 +69,7 @@ public sealed partial class FileIndexPerRootProducerKindTests : IndexTreeTestBas
 
         var failed = indexT.Status;
         Assert.AreEqual(RootState.Failed, failed.State);
-        Assert.AreEqual(RootFailureKind.MftSourceMissing, failed.Failure?.Kind);
+        Assert.AreEqual(RootFailureKind.MftUnavailable, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
         AssertRoot(indexU, 'U', ProducerKind.Enumeration);
         Assert.AreEqual(new VolumeKey('U'), set.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().RecordKey.Root);
@@ -72,7 +78,7 @@ public sealed partial class FileIndexPerRootProducerKindTests : IndexTreeTestBas
         var resultU = await indexU.RescanAsync(CancellationToken.None);
         Assert.AreEqual(RootOperationOutcome.Failed, resultT.Outcome);
         Assert.AreEqual(RootOperationOutcome.Succeeded, resultU.Outcome);
-        Assert.AreEqual(RootFailureKind.MftSourceMissing, indexT.Status.Failure?.Kind);
+        Assert.AreEqual(RootFailureKind.MftUnavailable, indexT.Status.Failure?.Kind);
         AssertRoot(indexU, 'U', ProducerKind.Enumeration);
         Assert.AreEqual(new VolumeKey('U'), set.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Root);
     }
@@ -105,13 +111,13 @@ public sealed partial class FileIndexPerRootProducerKindTests : IndexTreeTestBas
     [TestMethod]
     public async Task MixedOpen_NullMftSourceFailsOnlyTheRootNeedingAScan()
     {
-        await using var indexT = await FileIndex.OpenAsync(Options(SyntheticIndexedRoot.Create(new VolumeKey('T'), Fixture.TreeRoot, 123)) with { MftSource = null }, CancellationToken.None);
+        await using var indexT = await FileIndex.OpenAsync(Options(SyntheticRoot.Create(new VolumeKey('T'), LetterDirectory('T'), 123)) with { MftSource = null }, CancellationToken.None);
         await using var indexU = await FileIndex.OpenAsync(Options(Root('U', ProducerKind.Enumeration)) with { MftSource = null }, CancellationToken.None);
         var set = new FileIndexSet([indexT, indexU]);
 
         var failed = indexT.Status;
         Assert.AreEqual(RootState.Failed, failed.State);
-        Assert.AreEqual(RootFailureKind.MftSourceMissing, failed.Failure?.Kind);
+        Assert.AreEqual(RootFailureKind.MftUnavailable, failed.Failure?.Kind);
         Assert.AreEqual("Volume T: no MFT source is available to scan this volume.", failed.Failure?.Message);
         Assert.IsNull(failed.Block);
         AssertRoot(indexU, 'U', ProducerKind.Enumeration);
@@ -149,13 +155,13 @@ public sealed partial class FileIndexPerRootProducerKindTests : IndexTreeTestBas
         }
 
         var diagnostics = new List<string>();
-        await using var index = await FileIndex.OpenAsync(options with
+        await using var index = await FileIndex.OpenAsync((options with
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), Fixture.TreeRoot, 123, producer: requested),
+
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = requested == ProducerKind.Enumeration ? null : options.MftSource,
             Diagnostics = diagnostics.Add
-        }, CancellationToken.None);
+        }).WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), LetterDirectory('T'), 123, producer: requested)), CancellationToken.None);
 
         if (cacheOnly)
         {

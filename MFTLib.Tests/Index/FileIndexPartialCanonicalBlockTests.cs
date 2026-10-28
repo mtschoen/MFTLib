@@ -29,7 +29,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     }
 
     FileIndexOptions Options(MftBlockProducer producer, List<string> diagnostics, bool cacheOnly = false) =>
-        Fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft, cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
+        Fixture.Options(volumeSerial: VolumeSerial, producer: ProducerSelection.MftOnly, cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             MftSource = new MftIndexSource(producer),
             Diagnostics = diagnostics.Add
@@ -61,11 +61,11 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         var diagnostics = new List<string>();
         var options = new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, VolumeSerial, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath,
             ScanProgress = new CancelingProgress(cancellation),
             Diagnostics = diagnostics.Add
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, VolumeSerial, ProducerKind.Enumeration));
 
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => FileIndex.OpenAsync(options, cancellation.Token));

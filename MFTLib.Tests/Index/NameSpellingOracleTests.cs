@@ -137,8 +137,8 @@ public sealed class NameSpellingOracleTests
         {
             var expected = files.Where(item => OracleMatches(item.Name, pattern, mode, caseSensitive)).ToArray();
             var query = new SearchQuery(pattern, mode, caseSensitive, IsDirectory: false);
-            var searched = SearchEngine.Search(root, query, TestContext.CancellationToken);
-            var streamed = SearchEngine.Enumerate(root, query, TestContext.CancellationToken).ToArray();
+            var searched = SearchEngine.Search(root, query, cancellationToken: TestContext.CancellationToken);
+            var streamed = SearchEngine.Enumerate(root, query, cancellationToken: TestContext.CancellationToken).ToArray();
             var rows = NamePool.EnumerateRows(root, query, TestContext.CancellationToken);
             var label = $"{mode} caseSensitive={caseSensitive} pattern='{pattern}'";
             Assert.AreSequenceEqual(expected.Select(item => item.Row).ToArray(), searched.Select(entry => entry.RowIndex).ToArray(), label);
@@ -168,10 +168,10 @@ public sealed class NameSpellingOracleTests
     {
         using var fixture = new Fixture();
         var sensitive = SearchEngine.Search(fixture.Root,
-            new SearchQuery("readme", CaseSensitive: true, IsDirectory: false), TestContext.CancellationToken);
+            new SearchQuery("readme", CaseSensitive: true, IsDirectory: false), cancellationToken: TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { "readme.md", "readme.txt" }, sensitive.Select(entry => entry.Name).ToArray());
         var insensitive = SearchEngine.Search(fixture.Root,
-            new SearchQuery("readme", CaseSensitive: false, IsDirectory: false), TestContext.CancellationToken);
+            new SearchQuery("readme", CaseSensitive: false, IsDirectory: false), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(4, insensitive.Count);
     }
 
@@ -182,7 +182,7 @@ public sealed class NameSpellingOracleTests
     {
         using var fixture = new Fixture();
         var matches = SearchEngine.Search(fixture.Root,
-            new SearchQuery("*.cs", NameMatchMode.Glob, caseSensitive, IsDirectory: false), TestContext.CancellationToken);
+            new SearchQuery("*.cs", NameMatchMode.Glob, caseSensitive, IsDirectory: false), cancellationToken: TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { "Program.cs" }, matches.Select(entry => entry.Name).ToArray());
     }
 
@@ -230,10 +230,10 @@ public sealed class NameSpellingOracleTests
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, renamed).Name);
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, peer).Name);
         var oldSpelling = SearchEngine.Search(fixture.Root,
-            new SearchQuery("README.md", NameMatchMode.Exact, CaseSensitive: true), TestContext.CancellationToken);
+            new SearchQuery("README.md", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken);
         Assert.IsEmpty(oldSpelling);
         var newSpelling = SearchEngine.Search(fixture.Root,
-            new SearchQuery("readme.md", NameMatchMode.Exact, CaseSensitive: true), TestContext.CancellationToken);
+            new SearchQuery("readme.md", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { renamed, peer }.Order().ToArray(),
             newSpelling.Select(entry => entry.RowIndex).Order().ToArray());
         Assert.IsNull(NamePool.CheckIntegrity(fixture.Block));

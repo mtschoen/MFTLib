@@ -67,7 +67,7 @@ public sealed partial class FileIndex
     ///     <see cref="WatchFaultKind.RescanRestart" /> after a failed restart holds the root's
     ///     lifecycle gate.
     /// </remarks>
-    sealed partial class RootRuntime(FileIndex index, IndexedRoot configuration)
+    sealed partial class RootRuntime(FileIndex index, ResolvedRoot resolved)
     {
         FileIndex Index { get; } = index;
 
@@ -78,11 +78,13 @@ public sealed partial class FileIndex
         bool IsDisposed => Index._disposed;
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
-        IndexedRoot Configuration { get; } = configuration;
-        public RootKey Root => Configuration.Root;
-        public VolumeKey Volume => Root.TryGetVolume(out var volume)
-            ? volume
-            : throw new InvalidOperationException("The volume root is not a volume.");
+        /// <summary>
+        ///     What the open resolved. Replaced once, by the open itself, when an Automatic selection falls back to a
+        ///     walk; that happens before <see cref="FileIndex.OpenAsync" /> returns the index, so no other thread can
+        ///     read it during the swap and the property needs no synchronization.
+        /// </summary>
+        ResolvedRoot Resolved { get; set; } = resolved;
+
         public RootBlock? Block;
         PendingRootResult? _lastResult;
         public RootState BlocklessState = RootState.Offline;

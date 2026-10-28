@@ -202,16 +202,19 @@ public sealed class BrokerFileIndexRescanTests
         /// <summary>Parks T's second scan inside the host until the returned gate is released.</summary>
         public TestGate HoldSecondScanOfT() => _heldScanOfT = new TestGate();
 
+        // Each drive roots at its own directory: the members of a set must not nest.
+        string DriveDirectory(char drive) => Directory.CreateDirectory(Path.Combine(_roots.Path, drive.ToString())).FullName;
+
         public Task<FileIndex> OpenIndexAsync(char drive, MftBlockProducer producer, IIndexWatchSource watchSource,
             CancellationToken token)
         {
             return FileIndex.OpenAsync(new FileIndexOptions
             {
-                Root = SyntheticIndexedRoot.Create(new VolumeKey(drive), _roots.Path, drive == 'T' ? 123u : 456u),
+
                 CacheDirectory = _cache.Path,
                 CacheMode = CacheMode.Disabled,
                 MftSource = new MftIndexSource(producer, watchSource)
-            }, token);
+            }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(drive), DriveDirectory(drive), drive == 'T' ? 123u : 456u)), token);
         }
 
         IEnumerable<IReadOnlyList<MftRecord>> Scan(VolumeKey volume, ParseThreadAllowance parseThreads,

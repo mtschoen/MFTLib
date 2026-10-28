@@ -62,7 +62,7 @@ public sealed class MftIndexSourceTests : IDisposable
         }
         else
         {
-            Assert.AreEqual(RootFailureKind.MftSourceMissing, status.Failure?.Kind);
+            Assert.AreEqual(RootFailureKind.MftUnavailable, status.Failure?.Kind);
             Assert.AreEqual("Volume T: no MFT source is available to scan this volume.",
                 status.Failure?.Message);
         }
@@ -74,7 +74,7 @@ public sealed class MftIndexSourceTests : IDisposable
             status = index.Status;
             Assert.AreEqual(RootState.Failed, status.State);
             Assert.IsNull(status.Block);
-            Assert.AreEqual(RootFailureKind.MftSourceMissing, status.Failure?.Kind);
+            Assert.AreEqual(RootFailureKind.MftUnavailable, status.Failure?.Kind);
             Assert.AreEqual("Volume T: no MFT source is available to scan this volume.",
                 status.Failure?.Message);
             Assert.IsNotNull(status.Failure);
@@ -116,7 +116,7 @@ public sealed class MftIndexSourceTests : IDisposable
                 () => index.RescanAsync(Token));
             var after = index.Status;
             Assert.AreEqual(RootState.Ready, after.State);
-            Assert.AreEqual(RootFailureKind.MftSourceMissing, after.Failure?.Kind);
+            Assert.AreEqual(RootFailureKind.MftUnavailable, after.Failure?.Kind);
             Assert.AreEqual("Volume T: no MFT source is available to scan this volume.",
                 after.Failure?.Message);
             Assert.IsNotNull(after.Block);

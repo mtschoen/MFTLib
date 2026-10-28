@@ -252,10 +252,7 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_Offline_HasNoBlock()
     {
-        var options = Options() with
-        {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), Path.Combine(TreeRoot, "missing"), UniqueVolumeSerial)
-        };
+        var options = Options().WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), Path.Combine(TreeRoot, "missing"), UniqueVolumeSerial));
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(RootState.Offline, index.Status.State);
         Assert.IsNull(index.Status.Block);
@@ -278,11 +275,11 @@ public sealed class FileIndexOwnerLockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_ProducerFailure_HasNoBlock()
     {
-        var options = Options() with
+        var options = (Options() with
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial),
+
             MftSource = new MftIndexSource((_, _) => throw new IOException("Synthetic production failure"))
-        };
+        }).WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial));
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(RootState.Failed, index.Status.State);
         Assert.AreEqual(RootFailureKind.ProducerFailed, index.Status.Failure?.Kind);

@@ -100,29 +100,88 @@ snapshot identity would overcorrect when another root rescans while the anchor's
 **Revisit only if:** consumers need an explicitly specified rebinding operation that verifies directory identity
 across block replacement.
 
-## One producer enum, selection and observation
+## ProducerSelection selects, ProducerKind observes
 
-**Decision:** `IndexedRoot.Producer` selects a `ProducerKind` per root for initial scans and
-rescans, defaulting to `ProducerKind.Mft`. The same enum identifies the producer in `IndexRecordKey.ProducerKind`,
-`CachedBlockStatus.ProducerKind` and the block header. Its underlying type is `uint`, with `Mft = 1` and
-`Enumeration = 2`. Construction, init setters and `FileIndex.OpenAsync` admission reject the default and every
-undefined value before filesystem side effects. Warm adoption compares the selected value directly with the
-stored value; a mismatch cold-scans, or reports `CacheDeclined` for `CacheMode.ExistingOnly` and leaves the block in place.
+**Decision (owner rulings 2 and 3 and owner answers 1 to 3 of [issue 844](/schoen/MFTLib/issues/844)):** a consumer
+names a `RootKey` in `FileIndexOptions.Root` and a `ProducerSelection` in `FileIndexOptions.Producer`; the library
+reads the volume facts once at open, before cache lookup, and picks the producer. `ProducerSelection` is `Automatic = 1`
+(the MFT when the volume is eligible, otherwise a directory walk with the reason on `RootStatus.MftUnavailable`),
+`MftOnly = 2` (the MFT or `RootFailureKind.MftUnavailable`, never a walk) and `WalkOnly = 3` (never touches the MFT
+source); the default value and every undefined value are rejected before filesystem side effects. `ProducerKind`
+(`Mft = 1`, `Enumeration = 2`) stays the observed producer in `RootStatus.Producer`, `IndexRecordKey.ProducerKind`,
+`CachedBlockStatus.ProducerKind` and the block header. A root is a `RootKey`; no wrapper type carries it.
 
-**Reason:** selection and observation describe the same producer. One enum gives consumers one vocabulary and
-lets a cache inspection value select a root's producer directly, while preserving block bytes and per-root
-choice. An MFT failure never selects a directory walk; enumeration ignores `MftSource` and runs only by request.
+Eligibility is one predicate over the volume facts, checked in this order with the first failure winning:
+`PlatformWithoutMft`; a root with no drive letter (a UNC path or an unlettered mount point) is `NotLocalVolume`;
+`VolumeNotReady`; a drive type other than fixed or removable is `NotLocalVolume`; a format other than `NTFS`
+(`OrdinalIgnoreCase`) is `NotNtfs`; a null `MftSource` is `NoMftSource`. A removable NTFS volume is eligible.
+`WindowsVolume.IsIndexable` is the same predicate with a source assumed present. Unreadable volume facts are
+`VolumeNotReady`, never an exception from `OpenAsync`.
 
-**Revisit only if:** producer selection needs a choice that cannot identify a block's actual producer.
+The null-source check is last and applies only when the open must produce: an eligible volume with a cached MFT
+block that the cache mode admits adopts it as `Producer = Mft` with no source (file-wizard's cache-only host opens
+that way). A later rescan or catch-up that needs the source fails with `RootFailureKind.MftUnavailable` and
+`MftUnavailable = NoMftSource`, keeps the retained block and never walks. Only when there is no adoptable block does a
+null source make Automatic walk with `NoMftSource` (and `MftOnly` fail with it).
+
+Automatic falls back to a walk only for eligibility reasons, and `BrokerUnavailable` and `ElevationDeclined` count
+as eligibility reasons at an open's cold scan: a broker launch refused by the user or timed out is a fact about
+the host, like a non-NTFS format. A mid-scan failure never walks; it is `ProducerFailed`. The producer is fixed for the
+index lifetime: a rescan keeps it, and a broker launch or elevation failure during a rescan settles as
+`MftUnavailable` with the reason, keeps any retained block and never walks. `RootStatus.Producer` is null only when
+the root directory is missing at open (`Offline`); `RootStatus.MftUnavailable` means "the MFT could not be used at the
+last selection or scan attempt" and a successful MFT publication clears it. `MftOnly` reports `Producer = Mft` even
+when ineligible, and its rescan returns the same failure without touching the source.
+
+**Reason:** selection and observation are different questions. Before this ruling a consumer classified each root
+itself (git-wizard's `WindowsRootClassifier` already disagreed with the library on removable NTFS), built a
+wrapper type to carry its answer, and could not index a directory on an NTFS volume without walking it. One library
+predicate and one fallback rule remove the copies, and a fallback that is limited to facts known before the scan keeps
+"an MFT failure never selects a walk" true.
+
+**Revisit only if:** a choice is needed that `ProducerKind` cannot identify in a block header, or a consumer needs
+a mid-scan fallback.
+
+## A directory root on an NTFS volume is an MFT view of the volume block
+
+**Decision (issue 844, slice 4):** a directory `RootKey` on an eligible volume is not walked: the index reads the
+whole-volume MFT block and is rooted at the row the directory's path resolves to (`ViewRoot`). The view's row and
+sequence number are rechecked at publication, after each applied journal batch and at query admission; a directory the
+journal renamed away or deleted reads as `RootState.Offline` with no block and empty queries (the block stays mapped
+and watched), and as `Ready` again when the path resolves again. `Find` accepts paths under the view, either spelling
+of separators and (on Windows) case; `Root` is the view root and its `Parent` is null; paths are the real full paths.
+Unscoped queries are restricted to the view by an implicit subtree, decided per row by a two-bitset verdict cache
+shared by a query's partitions, so each directory's ancestry is climbed once per query. `Changed` reports every change
+the watch applies on the volume, not only those under the view. `QueryUsnJournalSettings` serves a view of a volume
+and refuses a walked root.
+
+**Reason:** the MFT scan costs one pass for the volume however many directories are indexed, a walk costs one pass
+per directory, and both consumers index directories on NTFS volumes. Climbing instead of re-walking keeps results
+identical to the volume's own index.
+
+**Revisit only if:** event routing per view or sharing one block between two views is built (issue 844 slice 5 rewrites
+the event text and the anchor ruling for it).
+
+## Every MFT block is named for its volume
+
+**Decision (issue 844, slice 4):** an MFT block's file is `<letter>-<serial>.mlix` whatever the root of the view that
+owns it; a walk block keeps the name derived from its own root key (`<letter>-<serial>` for a walked volume root,
+`D<hash>-<serial>` for a directory). Warm start still discards a block whose stored producer differs. An Automatic
+fallback of a volume root therefore keeps its cache slot, and a directory root's fallback releases the volume slot and
+takes its directory slot.
+
+**Reason:** the block is the volume's, so its identity is the volume's; two views of one volume must find the same
+file. Until slice 5, a second index on the same volume contends for the block's owner lock and takes the private fallback.
+
+**Revisit only if:** blocks stop being one per volume.
 
 ## OpenAsync validates root keys and producer choices before filesystem side effects
 
 **Decision:**
-`IndexedRoot` validates `Root`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `Producer`
-(`Enum.IsDefined`, throwing `ArgumentOutOfRangeException`) on construction and in its `init` setters.
-`FileIndex.OpenAsync` validates `FileIndexOptions.Root` up front, before creating
-`CacheDirectory` or running any producer: a null `Root` on a non-dump open throws `ArgumentException`, and an undefined `ProducerKind` value throws
-`ArgumentOutOfRangeException`.
+`FileIndex.OpenAsync` validates `FileIndexOptions` up front, before creating `CacheDirectory` or running any producer:
+a null `Root` on a non-dump open throws `ArgumentException`, a default `RootKey` throws `ArgumentException`, an
+undefined `ProducerSelection` (zero included) throws `ArgumentOutOfRangeException`, and a dump source with
+`ProducerSelection.WalkOnly` throws `ArgumentException` (a dump is an MFT inventory).
 
 **Reason:** blank roots, missing roots, and undefined enum values are caller configuration bugs that must fail fast with no filesystem
 side effects.
@@ -138,11 +197,11 @@ a cold-production failure on a `ProducerKind.Enumeration` root settles that root
 `RootFailureKind.ProducerFailed`. Argument validation performed at admission (null options, null `Root` on a non-dump open, an undefined
 `CacheMode`, a missing cache directory, dump-source option conflicts) throws before any root is produced. A root
 whose production cannot start or fails for an operational reason settles as `RootState.Failed` with
-`RootFailureKind.ProducerFailed`. An MFT root that needs a scan when
-`FileIndexOptions.MftSource` is null settles as `RootState.Failed` with `RootFailureKind.MftSourceMissing` instead. Caller cancellation (`OperationCanceledException`) aborts the operation, and a
+`RootFailureKind.ProducerFailed`. An MFT-only root whose volume the MFT cannot serve (including a null
+`FileIndexOptions.MftSource` when the open must produce) settles as `RootState.Failed` with `RootFailureKind.MftUnavailable` instead. Caller cancellation (`OperationCanceledException`) aborts the operation, and a
 cancelled `OpenAsync` releases its adopted block.
 
-**Reason:** `IndexedRoot.Producer` is configured per root so an application can open indexes over MFT-scanned and directory-walked
+**Reason:** the producer is selected per root so an application can open indexes over MFT-scanned and directory-walked
 roots alike. An operational production failure must have the same status reporting regardless of the selected
 producer, both during initial open and during rescan. Missing roots settle Offline, and enumeration skips
 missing or inaccessible subtrees; neither is an operational producer failure by itself.
@@ -323,7 +382,8 @@ no way to select it, and git-wizard
 carries a separate hand-rolled walk.
 
 **Rule:** a volume whose MFT scan fails is `Failed`; it is never rebuilt by a directory walk on the
-caller's behalf. Enumeration runs only for a root that asks for it.
+caller's behalf. Enumeration runs for a root that asks for it (`WalkOnly`) and, under `Automatic`, only when a fact
+known before the scan makes the volume ineligible for the MFT (see "ProducerSelection selects, ProducerKind observes").
 
 **Revisit only if:** both consumers decide against indexing anything but elevated NTFS volumes.
 
@@ -366,20 +426,19 @@ holds. `VolumeKey` identifies an NTFS volume by one ASCII letter: it normalizes 
 `VolumeKey` or a normalized directory path: it converts implicitly from `VolumeKey`, exposes `IsVolume`,
 `TryGetVolume`, `FromDirectory`, `TryParse` and `CompareTo` (volumes by letter before directories by ordinal text), and
 has no `Letter`. Directory keys compare under the platform case policy and the default `RootKey` is invalid.
-Volume-only APIs take `VolumeKey`: `MFTUtilities.GetVolumePath`, `MftVolume` opens, `FromWindowsDrive`,
+Volume-only APIs take `VolumeKey`: `MFTUtilities.GetVolumePath`, `MftVolume` opens,
 `FileIndex.QueryUsnJournalSettings`, `BrokerSession.GrowUsnJournalAsync`, `MftIndexSources.FromMftDumpFile`, every
 broker frame, and the watch notifications `WatchFault.Volume`, `WatchStateChange.Volume` and `JournalCheckpointLoss.Volume`.
 Any-root APIs take or carry `RootKey`: `FileEntry`, `IndexRow`, `IndexRecordKey`, `RootStatus`,
 `RootOperationResult`, `IndexScanProgress`, `CachedBlockFile`, `CacheDirectory.DeleteCached`
-and `InspectCached`, and `IndexedRoot.Root`. Each lifecycle verb of `FileIndex`
+and `InspectCached`, and `FileIndexOptions.Root`. Each lifecycle verb of `FileIndex`
 (start watching, stop watching, wait for catch-up, rescan) is one method taking a required `CancellationToken` and returning one
 `RootOperationResult`, with no overloads; a root that cannot be watched answers `NotApplicable`.
-The library derives the key and serial of a walked folder: `IndexedRoot.FromDirectory(rootDirectory)` returns a root
-whose `Root` is `RootKey.FromDirectory(rootDirectory)` and whose `VolumeSerial` is the serial of the volume that
-contains the path, or zero when the platform does not report one. The public record constructor for an arbitrary key
-and serial does not exist; test code gets one from `MFTLibTestExtensions.SyntheticIndexedRoot`. A directory key can
-never reach raw volume access: internal volume boundaries take `VolumeKey` through `TryGetVolume`, and a directory key
-with `ProducerKind.Mft` is rejected at configuration with `ArgumentException`.
+The open derives the volume serial of a walked folder from the volume that contains the path (zero when the platform
+does not report one); no public construction of an arbitrary key and serial exists, and test code names a synthetic
+volume with `MFTLibTestExtensions.SyntheticVolumeFacts.Apply`. A directory key never reaches raw volume access
+directly: internal volume boundaries take `VolumeKey` through `TryGetVolume`, and a directory root on an eligible NTFS
+volume is a view of the volume's block (see "A directory root on an NTFS volume is an MFT view of the volume block").
 
 **Reason:** the letter was the key of the whole API with no owner: case rules, parameter types and collection
 types differed from member to member, both consumers up-cased what the library returned, and the four verbs had
@@ -407,12 +466,12 @@ holds, Volume names NTFS and Windows volume facts, and Drive survives only where
 `DriveFailure`, `DriveFailureKind`, `DriveOperationOutcome`, `DriveOperationResult`, `DriveState` and `DriveWatchStatus` became the `Root...`
 types; every `RootKey`-typed `Drive` member became `Root` and every `VolumeKey`-typed one `Volume` (`JournalCheckpointLoss`, `WatchFault`,
 `WatchStateChange`, `WindowsVolume`, the scripted-watch types); `ScriptedDriveWatch` became `ScriptedVolumeWatch`, `ScriptedBrokerVolumes.ScanDrive`
-and `WatchDrive` became `ScanVolume` and `WatchVolume`, `SyntheticIndexedDrive` became `SyntheticIndexedRoot`, and the `SyntheticNotifications`
+and `WatchDrive` became `ScanVolume` and `WatchVolume`, and the `SyntheticNotifications`
 `CreateDrive...` builders became `CreateRoot...`. Internals follow: `DriveBlock` is `RootBlock`, `DriveRuntime` is `RootRuntime`,
 `IIndexDriveWatch` is `IIndexVolumeWatch`, broker channel and scan types are `BrokerVolume...`. `FileIndex.QueryUsnJournalSettings()` takes no
 argument and reads the journal of the index's own root volume; a source without live journal settings or a walked folder root refuses with
-`InvalidOperationException`. Kept as Drive: `IndexedRoot.FromWindowsDrive`, `WindowsVolume.DriveType`, the `char` and `string` drive-letter
-variables and the samples' command-line drive letters. Routine calls made 2026-10-27 (link 9): `IndexedRoot.Root` and `WindowsVolume.Volume` keep
+`InvalidOperationException`. Kept as Drive: `WindowsVolume.DriveType`, the `char` and `string` drive-letter
+variables and the samples' command-line drive letters. Routine calls made 2026-10-27 (link 9): `WindowsVolume.Volume` keeps
 the rule's name despite the repetition; `JournalCheckpointLossDetection.DriveOpening` is `RootOpening`; `WatchFaultKind.Drive` is `Volume`;
 `DriveCaughtUp` is `VolumeCaughtUp`; `TestDriveRoot` is `TestRootDirectory`; `SyntheticDriveHeader` is `SyntheticRootHeader`; `DriveKind` is
 `RootKind`; `System.IO.DriveType` stays the BCL type. Consumer migration is plain renaming by file in the pin-bump pull requests.
@@ -483,20 +542,21 @@ file-wizard has no consumer uses outside its MFTLib submodule.
 
 ## Source absence is typed; applications own their wording
 
-**Decision (owner ruling 2026-10-19, API review finding F19):**
+**Decision (owner ruling 2026-10-19, API review finding F19; updated for issue 844):**
 `FileIndexOptions.MftSource` is null when the application has no MFT source.
-An MFT volume that needs a scan reports `RootFailureKind.MftSourceMissing`
-with a library-owned, user-readable sentence naming the root. A rescan cannot
-recover it while the source stays null. Warm cache adoption needs no source;
+It is checked last, and only when the open must produce (see "ProducerSelection selects, ProducerKind observes"):
+`MftOnly` reports `RootFailureKind.MftUnavailable` with `RootStatus.MftUnavailable = NoMftSource` and a
+library-owned, user-readable sentence naming the root, `Automatic` walks and reports the same reason, and a rescan of
+an MFT root cannot recover while the source stays null. Warm cache adoption needs no source;
 watch start reports `NotApplicable` without recording a request.
 
 **Reason:** the application already knows why it has no source and chooses its
-own wording where it displays the failure kind. Real sources come from
+own wording where it displays the failure kind and reason. Real sources come from
 `BrokerSession.CreateIndexSource`, `MftIndexSources.FromLocalVolumes`, and
 `MftIndexSources.FromMftDumpFile`.
 
 **Revisit only if:** an application needs a structured distinction that the
-missing-source kind and its own configuration cannot express.
+missing-source reason and its own configuration cannot express.
 
 ## A method named Try returns quickly
 
@@ -870,20 +930,19 @@ exception informed nobody.
 
 ## Windows volume discovery reports every volume with an MFT verdict
 
-**Decision (owner, 2026-10-16; record 2026-10-18; updated for issue 829):** `IndexedRoot.EnumerateWindowsVolumes()` returns every
+**Decision (owner, 2026-10-16; record 2026-10-18; updated for issues 829 and 844):** `WindowsVolume.EnumerateAll()` returns every
 root from `DriveInfo.GetDrives()` as `IReadOnlyList<WindowsVolume>`. `WindowsVolume` is a public sealed record
 of `VolumeKey Volume`, `string RootDirectory`, `DriveType DriveType`, `bool IsReady`, `string? Format`,
-`bool IsIndexable` and `string? Reason`. Only ready fixed NTFS volumes are indexable; NTFS compares with
-`StringComparison.OrdinalIgnoreCase`. `Reason` stays for display: `not ready`, `network`, `removable`,
-`optical`, `other drive type`, `not NTFS (<format>)`. Non-fixed volumes are classified by type alone, so
-`IsReady` is true only for a fixed root read as ready, and `Format` is non-null only for a ready fixed root.
-A per-root `IOException`, `UnauthorizedAccessException` or `SecurityException` means `not ready`.
-Free-space and size stay consumer-side.
+`bool IsIndexable` and `string? Reason`. `IsIndexable` is the predicate `ProducerSelection.Automatic` uses to pick the
+MFT, with a source assumed present: ready fixed or removable NTFS volumes are indexable (owner answer 2 of issue 844,
+so a USB disk with NTFS is); NTFS compares with `StringComparison.OrdinalIgnoreCase`. `Reason` stays for display:
+`not ready`, `network`, `optical`, `other drive type`, `not NTFS (<format>)`. Readiness and format are read for fixed
+and removable roots only; other drive types are classified by type alone. A per-root `IOException`,
+`UnauthorizedAccessException` or `SecurityException` means `not ready`. Free-space and size stay consumer-side.
 
 **Reason:** Watch and file-wizard each carried a diverging copy of "ready, fixed, NTFS"; the library
-owns the policy once. A consumer that wants the ready fixed non-NTFS volumes (the directory-walk candidates)
-branches on `DriveType`, `IsReady` and `Format` instead of parsing the reason text. file-wizard migrates in
-its pin-bump pull request.
+owns the policy once. A consumer that wants the ready non-NTFS volumes (the directory-walk candidates)
+branches on `DriveType`, `IsReady` and `Format` instead of parsing the reason text.
 
 **Revisit only if:** a consumer needs a different selectable discovery policy.
 
@@ -927,7 +986,7 @@ Windows-only API (a Windows P/Invoke, WMI, a named memory-mapped section, a Wind
 elevation), never on a whole type or assembly. Platform-neutral logic and test seams carry no annotation.
 A public Windows-only member whose behavior wraps logic is a one-line entry point over an internal
 platform-neutral member that tests call on every platform: `BrokerLauncher.Launch` over `StartElevated`,
-`IndexedRoot.FromWindowsDrive` over `ReadWindowsVolume`, `FileIndex.QueryUsnJournalSettings` over
+`WindowsVolume.EnumerateAll` over `ReadVolumeVerdicts`, `FileIndex.QueryUsnJournalSettings` over
 `ReadUsnJournalSettings`, and both launcher `BrokerSession` constructors over an internal constructor that takes
 the block section factory (production passes the Windows-only named-section factory). Internal members that
 guard with `OperatingSystem.IsWindows()` and throw `PlatformNotSupportedException` off Windows, such as
@@ -939,18 +998,6 @@ MSTEST0084 or CA1416 hides the mismatch instead of fixing the description of the
 
 **Revisit only if:** a public member's platform-neutral logic is needed by a consumer on Linux, which would
 make the internal member a public one.
-
-## Windows volume construction is named for its volume key
-
-**Decision (owner ruling B6, 2026-10-26; updated for issue 829):** `IndexedRoot.FromWindowsDrive(VolumeKey volume)` is the sole public
-name for the Windows-only factory that reads the volume's serial and returns an MFT `IndexedRoot`. Because the
-parameter is a `VolumeKey`, the volume is a letter by type and the factory has no letter validation of its own.
-
-**Reason:** the factory takes a `VolumeKey`, not a `WindowsVolume`. Naming it for the Windows volume avoids
-suggesting that callers must first construct or supply a `WindowsVolume`.
-
-**Revisit only if:** the factory changes the identity it accepts or no longer constructs a root from a Windows
-volume key.
 
 ## Journal application is asynchronous end to end
 
@@ -1126,20 +1173,45 @@ own naming scheme.
 ## One root per FileIndex, and FileIndexSet for multi-index queries
 
 **Decision (owner rulings 2026-10-27, [issue 775](/schoen/MFTLib/issues/775) and [issue 829](/schoen/MFTLib/issues/829)):**
-Each `FileIndex` coordinates one root: `FileIndexOptions.Root` (`IndexedRoot?`) replaces `FileIndexOptions.Roots`,
+Each `FileIndex` coordinates one root: `FileIndexOptions.Root` (`RootKey?`) replaces `FileIndexOptions.Roots`,
 `FileIndex.Status` (`RootStatus`) replaces `FileIndex.Roots`, and `FileIndex.StartWatchingAsync`,
 `StopWatchingAsync`, `WaitForCatchUpAsync`, and `RescanAsync` take only a required `CancellationToken` and return
 `Task<RootOperationResult>`. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index
 and throws `InvalidOperationException` (`"Root {root} has no block (state: {state})."`) when the index has no block.
-`FileIndexOptions.DriveOpenProgress` and `IndexDriveOpened` are deleted. `IndexedDrive` is renamed to `IndexedRoot`,
-`DriveStatus` to `RootStatus`, while `SyntheticIndexedRoot` and `SyntheticNotifications.CreateRootStatus` return `IndexedRoot` and `RootStatus`.
+`FileIndexOptions.DriveOpenProgress` and `IndexDriveOpened` are deleted. `DriveStatus` is renamed to `RootStatus`, and `SyntheticVolumeFacts.Apply` is the test package's volume seam.
 
 `FileIndexSet` is a public sealed read-only query coordinator over a fixed ordered list of distinct-root `FileIndex`
-instances (`new FileIndexSet(IReadOnlyList<FileIndex> indices)`, which rejects null entries and repeated `RootKey`s). It exposes `Indices`, `Find`, `Search`, `Enumerate`,
+instances (`new FileIndexSet(IReadOnlyList<FileIndex> indices)`, which rejects null entries and repeated `RootKey`s; nested roots such as `D:\` beside `D:\src` are accepted, see below). It exposes `Indices`, `Find`, `Search`, `Enumerate`,
 and `EnumerateRows`; it has no `Root` method (`Root` stays on each `FileIndex`), no lifecycle methods, no events, and
 does not implement `IAsyncDisposable` or `IDisposable`. `FileIndexSet` borrows one member's block at a time in `Indices`
-order (or the single longest-prefix member for `Find`, or the single matching member for a `Subtree` anchor) and never
+order (or the single outermost available matching member for `Find`, or the single matching member for a `Subtree` anchor) and never
 holds borrows across two members at once.
+
+Nested members are answered by the outermost available member (owner ruling 2026-10-28, issue 844, replacing a
+rejection): unscoped `Search`, `Enumerate` and `EnumerateRows` visit only the available members that sit under no
+other available member, and `Find` picks the outermost available member whose root contains the path, with no fallback
+to another member on a miss. Available means the member has a block it could lend (`Status.Block` is not null); an
+Offline or failed outer member lets an inner one cover its own subtree. Containment is `LookupEngine.TryMatchRootPrefix`,
+the matcher `Find` uses, recomputed per query pairwise over the members. A subtree-scoped query goes to the anchor's own
+member, so no file is returned twice and each result's `Root`, `Parent` chain and anchor acceptance are the owning
+member's. **Reason:** consumers register whatever roots they want; the set dedupes by reading only outermost available
+members, and sharing the lookup matcher keeps queries and lookups in agreement. **Revisit only if:** a consumer needs
+every containing member's rows.
+
+Aliased roots are resolved at open (owner ruling 16, issue 844, 2026-10-28): a directory `RootKey` is lexical
+(`GetFullPath`, trimmed separator, case fold), so two keys naming one folder through a junction, symbolic link, subst
+drive, folder-mounted volume or 8.3 name would be neither duplicates nor nested, and the volume facts read from the
+lexical path would name the wrong volume (a junction `C:\repos` to `D:\repos` is volume D). For a directory key the open
+resolves the final path once, before reading the volume facts: Windows opens the directory following links
+(`FILE_FLAG_BACKUP_SEMANTICS`, no `FILE_FLAG_OPEN_REPARSE_POINT`) and reads `GetFinalPathNameByHandleW` with the DOS
+volume name, mapping the `\\?\` prefix to nothing and `\\?\UNC\` to `\\`; elsewhere libc `realpath`. The result is the
+resolved root's host path: the volume facts, `RootDirectory`, the matchable prefix `Find` and set containment use, and
+the set's duplicate check, which rejects two members whose resolved roots are equal, naming both keys and the path.
+The consumer's `RootKey` stays the index's key. A missing directory settles Offline (an Offline root is never rescanned,
+so it is never resolved; reopen it). A failed resolution falls back to the path as named with one diagnostic and never
+throws. The result is read once per open: a re-targeted link needs a reopen. Cache adoption does not trust the key-derived file name: a walk block stores its walked root and warm start compares it with the resolved root (`WrongRootDirectory`, discard and rescan), and an MFT block is named for and stamped with its volume serial, so a link re-pointed to another folder or volume never adopts the old target's block. **Out of scope:** UNC shares that point
+back at a local drive stay distinct roots, and no volume-serial plus file-ID identity is used. **Revisit only if:**
+consumers need alias detection beyond the path (hard links, shares).
 
 Callback reentrancy is one process-wide rule, not a per-index one: a lifecycle call (`StartWatchingAsync`, `StopWatchingAsync`,
 `RescanAsync`, `DisposeAsync`, an unsettled `WaitForCatchUpAsync`) from inside a `Changed`, `WatchFaulted` or

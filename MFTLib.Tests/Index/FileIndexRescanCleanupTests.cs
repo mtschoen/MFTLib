@@ -29,7 +29,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var producerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -44,7 +44,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
                 return Task.FromResult(new MftBlockProduceResult(block,
                     SkippedRecordCount: 0));
             })
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1));
         await using var index = await FileIndex.OpenAsync(options, Token);
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 1));
         Assert.IsTrue(File.Exists(canonicalPath), "the cold scan wrote the canonical cache file");
@@ -87,7 +87,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var lockedReplacement = new ExclusiveFileLock();
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -103,7 +103,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     SkippedRecordCount: 0));
             })
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1));
         await using var index = await FileIndex.OpenAsync(options, Token);
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 1));
         Assert.IsTrue(File.Exists(canonicalPath));
@@ -138,7 +138,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var failTheScan = new System.Runtime.CompilerServices.StrongBox<bool>(false);
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = _ =>
             {
@@ -160,7 +160,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     SkippedRecordCount: 0));
             })
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1));
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 1));
         byte[] previousBlockBytes;
         await using (var index = await FileIndex.OpenAsync(options, Token))
@@ -200,7 +200,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         // is reported through Diagnostics; a throwing callback must not escape the release.
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = line =>
             {
@@ -216,7 +216,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     SkippedRecordCount: 0));
             })
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1));
         var index = await FileIndex.OpenAsync(options, Token);
         try
         {
@@ -264,7 +264,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         var producerMayReturn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource(async (request, cancellationToken) =>
@@ -276,7 +276,7 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     SkippedRecordCount: 0);
             })
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1));
         await using var index = await FileIndex.OpenAsync(options, Token);
         var declined = index.Status;
         Assert.AreEqual(RootState.Failed, declined.State);

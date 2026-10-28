@@ -42,7 +42,7 @@ public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
     ];
 
     FileIndexOptions CacheOnly() =>
-        Fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft, cacheMode: CacheMode.ExistingOnly) with
+        Fixture.Options(volumeSerial: Serial, producer: ProducerSelection.MftOnly, cacheMode: CacheMode.ExistingOnly) with
         {
             MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open"))
         };
@@ -228,7 +228,7 @@ public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
             ScanTimestamp = ScannedMoment
         };
         await using var index = await FileIndex.OpenAsync(
-            Fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
+            Fixture.Options(volumeSerial: Serial, producer: ProducerSelection.MftOnly) with
             {
                 MftSource = new MftIndexSource(producer.Producer)
             }, Token);

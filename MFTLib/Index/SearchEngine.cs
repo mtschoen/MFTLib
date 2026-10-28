@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 static class SearchEngine
 {
     internal static List<FileEntry> Search(RootBlock? rootBlock, SearchQuery query,
-        CancellationToken cancellationToken = default)
+        uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
         NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
@@ -19,7 +19,8 @@ static class SearchEngine
         if (rootBlock is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SearchOneRoot(new RootScan(rootBlock, query, subtree?.RowIndex), results, cancellationToken);
+            using var membership = SubtreeAnchor.CreateMembership(rootBlock, subtree, admittedViewRow);
+            SearchOneRoot(new RootScan(rootBlock, query, membership), results, cancellationToken);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -34,7 +35,7 @@ static class SearchEngine
     ///     block mapped while it does.
     /// </summary>
     internal static IEnumerable<FileEntry> Enumerate(RootBlock? rootBlock, SearchQuery query,
-        CancellationToken cancellationToken = default)
+        uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -42,7 +43,8 @@ static class SearchEngine
         if (rootBlock is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var scan = new RootScan(rootBlock, query, subtree?.RowIndex);
+            using var membership = SubtreeAnchor.CreateMembership(rootBlock, subtree, admittedViewRow);
+            var scan = new RootScan(rootBlock, query, membership);
             foreach (var entry in EnumerateRoot(scan, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -55,7 +57,7 @@ static class SearchEngine
 
     /// <summary>
     ///     Applies the cheap column predicates first and the subtree walk last, because
-    ///     <see cref="IndexNavigation.IsUnder(BlockFile, uint, uint)" /> climbs the parent column for every candidate.
+    ///     <see cref="SubtreeMembership.Contains" /> climbs the parent column for every candidate it has not decided.
     /// </summary>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
@@ -114,11 +116,11 @@ static class SearchEngine
     }
 
     /// <summary>
-    ///     One root's share of a query: the borrowed root block, the query, and the row the
-    ///     subtree restriction is anchored at, resolved by <see cref="SubtreeAnchor" />. It is null when the
-    ///     query has no restriction.
+    ///     One root's share of a query: the borrowed root block, the query, and the subtree membership test the
+    ///     scan shares between its partitions (an explicit anchor resolved by <see cref="SubtreeAnchor" />, or the
+    ///     directory a view is rooted at). It is null when the query excludes no row.
     /// </summary>
-    readonly record struct RootScan(RootBlock RootBlock, SearchQuery Query, uint? UnderRow);
+    readonly record struct RootScan(RootBlock RootBlock, SearchQuery Query, SubtreeMembership? Membership);
 
     static void SearchOneRoot(RootScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
@@ -167,7 +169,7 @@ static class SearchEngine
     static void CollectPartition(RootScan scan, NameQueryMatches names, (uint StartRow, uint EndRowExclusive) partition,
         List<FileEntry> destination, CancellationToken cancellationToken)
     {
-        var (rootBlock, query, underRow) = scan;
+        var (rootBlock, query, membership) = scan;
         var candidates = new List<uint>();
         var scanner = new RowScanner(rootBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
         while (scanner.MoveNext())
@@ -180,15 +182,14 @@ static class SearchEngine
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var block = rootBlock.Block;
         var checkCadence = 0;
 
         foreach (var rowIndex in candidates)
         {
-            if (underRow is { } anchorRow)
+            if (membership is not null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!IndexNavigation.IsUnder(block, rowIndex, anchorRow))
+                if (!membership.Contains(rowIndex))
                 {
                     continue;
                 }
@@ -214,7 +215,7 @@ static class SearchEngine
     /// </summary>
     static IEnumerable<FileEntry> EnumerateRoot(RootScan scan, CancellationToken cancellationToken)
     {
-        var (rootBlock, query, underRow) = scan;
+        var (rootBlock, query, membership) = scan;
         var block = rootBlock.Block;
         using var names = new NameQueryMatches(block, query, cancellationToken);
         var rowCount = block.Header.RowCount;
@@ -234,7 +235,7 @@ static class SearchEngine
                 continue;
             }
 
-            if (underRow is { } anchorRow && !IndexNavigation.IsUnder(block, rowIndex, anchorRow))
+            if (membership is not null && !membership.Contains(rowIndex))
             {
                 continue;
             }

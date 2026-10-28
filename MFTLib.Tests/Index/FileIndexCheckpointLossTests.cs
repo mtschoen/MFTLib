@@ -112,9 +112,9 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     {
         var enumerationOptions = new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), _fixture.Root().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration),
+
             CacheDirectory = _fixture.CacheDirectory
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), _fixture.Root().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration));
         await using (await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None))
         {
         }

@@ -1,6 +1,5 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -47,12 +46,125 @@ public sealed class FileIndexSetTests
         Assert.AreEqual(0, rowCount);
     }
 
+    static Task<FileIndex> OpenWalkAsync(string directory, CancellationToken token) =>
+        FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Root = RootKey.FromDirectory(directory),
+            Producer = ProducerSelection.WalkOnly,
+            CacheMode = CacheMode.Disabled
+        }, token);
+
+    static void NestedWorkspace(string workspace, out string outerPath, out string innerPath)
+    {
+        outerPath = Path.Combine(workspace, "src");
+        innerPath = Path.Combine(outerPath, "deeper");
+        Directory.CreateDirectory(innerPath);
+        File.WriteAllText(Path.Combine(innerPath, "inner.txt"), "x");
+        File.WriteAllText(Path.Combine(outerPath, "outer.txt"), "x");
+    }
+
     [TestMethod]
-    public async Task Find_SelectsLongestPrefixAndDoesNotFallBackOnMissOrBlocklessMember()
+    public async Task NestedMembers_ReturnEachFileOnceAttributedToTheOutermost()
+    {
+        using var temp = new TempDirectory("mftlib-set-nested");
+        NestedWorkspace(temp.Path, out var outerPath, out var innerPath);
+        await using var outer = await OpenWalkAsync(outerPath, Token);
+        await using var inner = await OpenWalkAsync(innerPath, Token);
+        foreach (var set in new[] { new FileIndexSet([outer, inner]), new FileIndexSet([inner, outer]) })
+        {
+            var query = new SearchQuery(".txt");
+            var found = set.Search(query, Token);
+            Assert.AreSequenceEqual(["inner.txt", "outer.txt"], [.. found.Select(entry => entry.Name)], SequenceOrder.InAnyOrder);
+            Assert.IsTrue(found.All(entry => entry.Root == outer.Status.Root));
+            Assert.HasCount(2, set.Enumerate(query, Token).ToArray());
+            var rows = 0;
+            foreach (var _ in set.EnumerateRows(query, Token))
+            {
+                rows++;
+            }
+
+            Assert.AreEqual(2, rows);
+            var innerFile = Path.Combine(innerPath, "inner.txt");
+            Assert.AreEqual(found.Single(entry => entry.Name == "inner.txt"), set.Find(innerFile, Token));
+        }
+    }
+
+    [TestMethod]
+    public async Task NestedMembers_SharingAPrefixButNotASegment_AreNotNested()
+    {
+        using var temp = new TempDirectory("mftlib-set-prefix");
+        NestedWorkspace(temp.Path, out var outerPath, out _);
+        var siblingPath = outerPath + "2";
+        Directory.CreateDirectory(siblingPath);
+        await File.WriteAllTextAsync(Path.Combine(siblingPath, "sibling.txt"), "x", Token);
+        await using var outer = await OpenWalkAsync(outerPath, Token);
+        await using var sibling = await OpenWalkAsync(siblingPath, Token);
+        var set = new FileIndexSet([outer, sibling]);
+
+        var roots = set.Search(new SearchQuery(".txt"), Token).Select(entry => entry.Root).Distinct().ToArray();
+
+        Assert.HasCount(2, roots);
+    }
+
+    [TestMethod]
+    public async Task NestedMembers_RootsThatDifferOnlyInCase_AreNestedOnWindows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Case folding of roots applies on Windows only.");
+        }
+
+        using var temp = new TempDirectory("mftlib-set-case");
+        NestedWorkspace(temp.Path, out var outerPath, out var innerPath);
+        await using var outer = await OpenWalkAsync(outerPath.ToUpperInvariant(), Token);
+        await using var inner = await OpenWalkAsync(innerPath, Token);
+        var set = new FileIndexSet([outer, inner]);
+
+        Assert.HasCount(2, set.Search(new SearchQuery(".txt"), Token));
+    }
+
+    [TestMethod]
+    public async Task NestedMembers_UnavailableOuter_LetsTheInnerCoverItsOwnSubtree()
+    {
+        using var temp = new TempDirectory("mftlib-set-outer-down");
+        NestedWorkspace(temp.Path, out _, out var innerPath);
+        await using var outer = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            CacheMode = CacheMode.Disabled
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), temp.Path, 1)), Token);
+        await using var inner = await OpenWalkAsync(innerPath, Token);
+        Assert.IsNull(outer.Status.Block);
+        var set = new FileIndexSet([outer, inner]);
+
+        var found = set.Search(new SearchQuery(".txt"), Token);
+
+        Assert.AreSequenceEqual(["inner.txt"], [.. found.Select(entry => entry.Name)]);
+        Assert.AreEqual(inner.Status.Root, found[0].Root);
+        Assert.AreEqual(found[0], set.Find(Path.Combine(innerPath, "inner.txt"), Token));
+    }
+
+    [TestMethod]
+    public async Task Constructor_AcceptsSiblingViews()
+    {
+        using var workspace = new TempDirectory("mftlib-set-siblings");
+        var sourcePath = Path.Combine(workspace.Path, "src");
+        var otherPath = Path.Combine(workspace.Path, "other");
+        Directory.CreateDirectory(sourcePath);
+        Directory.CreateDirectory(otherPath);
+
+        await using var source = await OpenWalkAsync(sourcePath, Token);
+        await using var other = await OpenWalkAsync(otherPath, Token);
+
+        var set = new FileIndexSet([source, other]);
+        Assert.HasCount(2, set.Indices);
+    }
+
+    [TestMethod]
+    public async Task Find_RoutesToTheOwningMemberAndDoesNotFallBackOnMissOrBlocklessMember()
     {
         using var rootDir = new TempDirectory("mftlib-set-find");
         var volumeRoot = Path.Combine(rootDir.Path, "volume");
-        var repoRoot = Path.Combine(volumeRoot, "work", "repo");
+        var repoRoot = Path.Combine(rootDir.Path, "work", "repo");
         Directory.CreateDirectory(Path.Combine(volumeRoot, "work"));
         Directory.CreateDirectory(Path.Combine(repoRoot, "src"));
         await File.WriteAllTextAsync(Path.Combine(volumeRoot, "work", "other.txt"), "volume-file", Token);
@@ -60,12 +172,13 @@ public sealed class FileIndexSetTests
 
         await using var volumeIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration),
+
             CacheMode = CacheMode.Disabled
-        }, Token);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration)), Token);
         await using var repoIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = IndexedRoot.FromDirectory(repoRoot),
+            Root = RootKey.FromDirectory(repoRoot),
+            Producer = ProducerSelection.WalkOnly,
             CacheMode = CacheMode.Disabled
         }, Token);
 
@@ -81,7 +194,7 @@ public sealed class FileIndexSetTests
         Assert.AreEqual(new VolumeKey('T'), inVolume.Value.Root);
         Assert.AreEqual("other.txt", inVolume.Value.Name);
 
-        // A path inside repoRoot that does not exist in repoIndex does not fall back to volumeIndex.
+        // A path inside repoRoot that does not exist in repoIndex is a miss, not a lookup in another member.
         Assert.IsNull(set.Find(Path.Combine(repoRoot, "missing.txt"), Token));
 
         // A path outside every member root returns null without borrowing any member.
@@ -93,24 +206,26 @@ public sealed class FileIndexSetTests
     }
 
     [TestMethod]
-    public async Task Find_WhenLongestMatchingMemberIsBlockless_ReturnsNullWithoutFallingBackToOuterRoot()
+    public async Task Find_WhenTheOwningMemberIsBlockless_ReturnsNull()
     {
         using var rootDir = new TempDirectory("mftlib-set-blockless");
         using var cacheDir = new TempDirectory("mftlib-set-cache");
         var volumeRoot = Path.Combine(rootDir.Path, "volume");
-        var repoRoot = Path.Combine(volumeRoot, "work", "repo");
+        var repoRoot = Path.Combine(rootDir.Path, "work", "repo");
+        Directory.CreateDirectory(volumeRoot);
         Directory.CreateDirectory(repoRoot);
         var sharedFile = Path.Combine(repoRoot, "shared.txt");
-        await File.WriteAllTextAsync(sharedFile, "visible-in-volume", Token);
+        await File.WriteAllTextAsync(sharedFile, "visible-only-to-the-declined-member", Token);
 
         await using var volumeIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration),
+
             CacheMode = CacheMode.Disabled
-        }, Token);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration)), Token);
         await using var declinedRepoIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = IndexedRoot.FromDirectory(repoRoot),
+            Root = RootKey.FromDirectory(repoRoot),
+            Producer = ProducerSelection.WalkOnly,
             CacheDirectory = cacheDir.Path,
             CacheMode = CacheMode.ExistingOnly
         }, Token);
@@ -125,14 +240,15 @@ public sealed class FileIndexSetTests
     {
         using var fixture = new TwoRootQueryFixture();
         using var cacheDir = new TempDirectory("mftlib-set-fanout-cache");
+        using var blocklessRoot = new TempDirectory("mftlib-set-fanout-blockless");
         await using var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
         await using var blockless = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('V'), fixture.FirstRoot, 3),
+
             CacheDirectory = cacheDir.Path,
             CacheMode = CacheMode.ExistingOnly
-        }, Token);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('V'), blocklessRoot.Path, 3)), Token);
 
         var forward = new FileIndexSet([first, blockless, second]);
         var reverse = new FileIndexSet([second, blockless, first]);

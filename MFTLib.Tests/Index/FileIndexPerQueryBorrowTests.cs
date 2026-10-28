@@ -44,17 +44,17 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
 
     public TestContext TestContext { get; set; } = null!;
 
-    FileIndexOptions FirstRootOptions() => new()
+    FileIndexOptions FirstRootOptions() => new FileIndexOptions
     {
-        Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
-        CacheDirectory = CacheDirectoryPath
-    };
 
-    FileIndexOptions SecondRootOptions() => new()
-    {
-        Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), _secondTree!.Path, _secondSerial, ProducerKind.Enumeration),
         CacheDirectory = CacheDirectoryPath
-    };
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, UniqueVolumeSerial, ProducerKind.Enumeration));
+
+    FileIndexOptions SecondRootOptions() => new FileIndexOptions
+    {
+
+        CacheDirectory = CacheDirectoryPath
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('U'), _secondTree!.Path, _secondSerial, ProducerKind.Enumeration));
 
     string ReadmePath => Path.Combine(TreeRoot, "Documents", "readme.md");
 

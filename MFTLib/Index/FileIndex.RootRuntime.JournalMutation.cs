@@ -55,7 +55,11 @@ public sealed partial class FileIndex
                 Hooks.ApplyJournalEntriesInsideWriteGate?.Invoke(Root);
                 var writer = new BlockWriter(rootBlock.Block);
                 var mutator = new JournalMutator(writer);
-                return mutator.Apply(rootBlock, entries, journalIdentifier, nextUsn);
+                var changes = mutator.Apply(rootBlock, entries, journalIdentifier, nextUsn);
+                // Still under the write gate: a directory view follows its directory through renames, deletions and
+                // re-creations by rechecking its binding once per applied batch.
+                rootBlock.View.RefreshAfterBatch(rootBlock, entries, DisposalToken);
+                return changes;
             }
             finally
             {

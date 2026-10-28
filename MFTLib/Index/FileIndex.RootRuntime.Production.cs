@@ -16,7 +16,7 @@ public sealed partial class FileIndex
         {
             try
             {
-                if (Configuration.Producer == ProducerKind.Enumeration)
+                if (Resolved.Producer == ProducerKind.Enumeration)
                 {
                     using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
                     // ReSharper disable once AccessToDisposedClosure
@@ -31,13 +31,16 @@ public sealed partial class FileIndex
                     };
                 }
 
+                // The producer is fixed at open, so a root the MFT cannot serve fails here, on every attempt, and
+                // never walks. MftOnly over an ineligible volume is the only way Resolved carries a reason.
+                if (Resolved.MftUnavailable is { } ineligible)
+                {
+                    return DescribeUnavailable(ineligible);
+                }
+
                 if (Options.MftSource is not { } source)
                 {
-                    return new PendingRootResult
-                    {
-                        ScanFailureKind = RootFailureKind.MftSourceMissing,
-                        ProducerFailureMessage = $"Volume {Root}: no MFT source is available to scan this volume."
-                    };
+                    return DescribeUnavailable(MftUnavailableReason.NoMftSource);
                 }
 
                 var producer = source.Producer;
@@ -51,11 +54,35 @@ public sealed partial class FileIndex
                     CatchUpLoss = produced.CatchUpLoss
                 };
             }
+            catch (MftUnavailableException exception)
+            {
+                return new PendingRootResult
+                {
+                    ScanFailureKind = RootFailureKind.MftUnavailable,
+                    MftUnavailable = exception.Reason,
+                    ProducerFailure = exception,
+                    ProducerFailureMessage = exception.Message
+                };
+            }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 return new PendingRootResult { ProducerFailure = exception, ProducerFailureMessage = exception.Message };
             }
         }
+
+        /// <summary>The blockless result of an attempt the MFT could not serve because of a volume fact or a missing source.</summary>
+        PendingRootResult DescribeUnavailable(MftUnavailableReason reason) => new()
+        {
+            ScanFailureKind = RootFailureKind.MftUnavailable,
+            MftUnavailable = reason,
+            ProducerFailureMessage = reason switch
+            {
+                MftUnavailableReason.NoMftSource => $"Volume {Root}: no MFT source is available to scan this volume.",
+                MftUnavailableReason.PlatformWithoutMft =>
+                    $"Root {Root}: the MFT is read on Windows only (PlatformWithoutMft) and FileIndexOptions.Producer is MftOnly.",
+                _ => $"Root {Root}: the MFT cannot serve this root ({reason}) and FileIndexOptions.Producer is MftOnly."
+            }
+        };
 
         /// <summary>
         ///     Runs the MFT producer for one volume and checks its finished block before anything adopts
@@ -70,7 +97,7 @@ public sealed partial class FileIndex
             var request = new MftBlockProduceRequest
             {
                 Volume = Volume,
-                VolumeSerial = Configuration.VolumeSerial,
+                VolumeSerial = Resolved.VolumeSerial,
                 BlockPath = blockPath,
                 DeleteOnClose = deleteOnClose,
                 MinimumCapacities = GrowthMinimumLocked(),
@@ -109,14 +136,14 @@ public sealed partial class FileIndex
             EnumerationWalkLimit.Lease walkLease, CancellationToken cancellationToken)
         {
             var capacities = BlockLayout.PlanCapacities(
-                EnumerationProducer.EstimateRowCount(Configuration.RootDirectory), GrowthMinimumLocked());
+                EnumerationProducer.EstimateRowCount(Resolved.RootDirectory), GrowthMinimumLocked());
 
             cancellationToken.ThrowIfCancellationRequested();
             using var growth = new EnumerationBlockGrowth(this, blockPath, deleteOnClose, capacities);
             var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
-                RootDirectory = Configuration.RootDirectory,
-                Root = Root,
+                RootDirectory = Resolved.RootDirectory,
+                Root = BlockRoot,
                 DirectoryWalk = Options.DirectoryWalk
             })
             {
@@ -133,8 +160,8 @@ public sealed partial class FileIndex
             BlockFile.Create(new BlockFileCreateOptions
             {
                 Path = blockPath,
-                Root = Root,
-                VolumeSerial = Configuration.VolumeSerial,
+                Root = BlockRoot,
+                VolumeSerial = Resolved.VolumeSerial,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = capacities.SlotCapacity,
                 NameEntryCapacity = capacities.NameEntryCapacity,

@@ -1,18 +1,22 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One resource owner shared by every struct copy of a row enumerator: the active name pass and the reusable
+///     One resource owner shared by every struct copy of a row enumerator: the active name pass, the subtree membership cache and the reusable
 ///     ASCII capture buffer. Advancing any copy bumps the version and invalidates older copies, which is what keeps a
 ///     row and its captured name from mismatching.
 /// </summary>
 sealed class RowEnumerationResources : IDisposable
 {
     NameQueryMatches? _names;
+    SubtreeMembership? _membership;
     char[] _nameCharacters = [];
     int _version;
 
     internal NameQueryMatches Names => _names ??
         throw new InvalidOperationException("Name matching requires an active root.");
+
+    /// <summary>The active root's subtree membership test, or null when the root's scan excludes no row.</summary>
+    internal SubtreeMembership? Membership => _membership;
 
     internal void ValidateVersion(int version)
     {
@@ -28,16 +32,20 @@ sealed class RowEnumerationResources : IDisposable
         return ++_version;
     }
 
-    internal void BeginRoot(BlockFile block, SearchQuery query, CancellationToken cancellationToken)
+    internal void BeginRoot(RootBlock rootBlock, SearchQuery query, ResolvedSubtree? explicitAnchor,
+        uint? admittedViewRow, CancellationToken cancellationToken)
     {
         EndRoot();
-        _names = new NameQueryMatches(block, query, cancellationToken);
+        _names = new NameQueryMatches(rootBlock.Block, query, cancellationToken);
+        _membership = SubtreeAnchor.CreateMembership(rootBlock, explicitAnchor, admittedViewRow);
     }
 
     internal void EndRoot()
     {
         _names?.Dispose();
         _names = null;
+        _membership?.Dispose();
+        _membership = null;
     }
 
     /// <summary>Exposes a name as characters: mapped UTF-16 text directly, ASCII through the shared buffer.</summary>

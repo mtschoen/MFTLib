@@ -109,7 +109,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_MftRootsStillAdmitTheWalkOptions()
     {
-        var options = Fixture.Options(producer: ProducerKind.Mft) with
+        var options = Fixture.Options(producer: ProducerSelection.MftOnly) with
         {
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = ["bad/name", @"bad\name"] }
         };
@@ -118,7 +118,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
             FileIndex.OpenAsync(options, TestContext.CancellationToken));
         Assert.IsFalse(Directory.Exists(Fixture.CacheDirectory));
 
-        var invalidPatterns = Fixture.Options(producer: ProducerKind.Mft) with
+        var invalidPatterns = Fixture.Options(producer: ProducerSelection.MftOnly) with
         {
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNamePatterns = [null!] }
         };

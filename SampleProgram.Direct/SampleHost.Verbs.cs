@@ -8,14 +8,14 @@ partial class SampleHost
     Task RunVerbAsync(DirectArguments parsed, CancellationToken cancellationToken)
     {
         var source = CreateSourceNative(parsed);
-        var root = parsed.Source is SourceKind.Dump ? null : ResolveRootNative(parsed.Drive);
-        return RunSourceAsync(parsed, source, root, cancellationToken);
+        RootKey? root = parsed.Source is SourceKind.Dump ? null : new VolumeKey(parsed.Drive[0]);
+        return RunSourceAsync(parsed, source, root, options => options, cancellationToken);
     }
 
     internal async Task RunSourceAsync(DirectArguments parsed, MftIndexSource source,
-        IndexedRoot? root, CancellationToken cancellationToken)
+        RootKey? root, Func<FileIndexOptions, FileIndexOptions> prepareOptions, CancellationToken cancellationToken)
     {
-        await using var index = await OpenIndexAsync(source, root, cancellationToken).ConfigureAwait(false);
+        await using var index = await OpenIndexAsync(source, root, prepareOptions, cancellationToken).ConfigureAwait(false);
         WriteVerb(index, parsed, cancellationToken);
     }
 

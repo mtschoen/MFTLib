@@ -301,7 +301,7 @@ public class BrokerProcessLaunchTests
     static async Task<string> CaptureDeclinedLaunchArgumentsAsync()
     {
         string? captured = null;
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<BrokerLaunchDeclinedException>(() =>
             BrokerProcess.LaunchAsync(arguments =>
             {
                 captured = arguments;

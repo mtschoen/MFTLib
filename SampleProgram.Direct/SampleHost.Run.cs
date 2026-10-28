@@ -91,22 +91,28 @@ partial class SampleHost
             : MftIndexSources.FromLocalVolumes(ScanOptions(parsed));
     }
 
-    async Task<FileIndex> OpenIndexAsync(MftIndexSource source, IndexedRoot? root, CancellationToken cancellationToken)
+    // The Direct sample demonstrates MFT scans, so it asks for MftOnly and never walks. prepareOptions is the test seam for volume facts;
+    // production passes options => options.
+    async Task<FileIndex> OpenIndexAsync(MftIndexSource source, RootKey? root,
+        Func<FileIndexOptions, FileIndexOptions> prepareOptions, CancellationToken cancellationToken)
     {
         var options = new FileIndexOptions
         {
             MftSource = source,
             ScanProgress = new PhaseReporter(_output)
         };
-        if (root is not null)
+        if (root is { } rootKey)
         {
-            await _output.WriteLineAsync($"Indexing {root.Root}: root {root.RootDirectory}, serial {root.VolumeSerial}, producer {root.Producer}.").ConfigureAwait(false);
+            await _output.WriteLineAsync($"Indexing {rootKey}.").ConfigureAwait(false);
             options = options with
             {
-                Root = root,
+                Root = rootKey,
+                Producer = ProducerSelection.MftOnly,
                 CacheMode = CacheMode.Disabled
             };
         }
+
+        options = prepareOptions(options);
 
         var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
         try

@@ -15,11 +15,6 @@ static class DeletionHooksReferenceFixture
     public static void Reference() => CacheDirectory.Hooks._beforeDelete = null;
 }
 
-static class VolumeDependenciesReferenceFixture
-{
-    public static void Reference() => IndexedRoot.Dependencies._volumeSerialReader = null;
-}
-
 static class OpenDependenciesReferenceFixture
 {
     public static object Reference() => FileEntry.Dependencies._openById;

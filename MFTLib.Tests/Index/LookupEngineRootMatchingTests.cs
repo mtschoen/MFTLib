@@ -179,9 +179,9 @@ public class LookupEngineRootMatchingTests
         {
             await using var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
-                Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('E'), indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration),
+
                 CacheDirectory = cacheDirectory
-            }, CancellationToken.None);
+            }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('E'), indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration)), CancellationToken.None);
 
             var entry = index.Find(Path.Combine(root, "file.txt"), TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);

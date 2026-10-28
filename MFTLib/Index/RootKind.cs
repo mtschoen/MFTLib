@@ -16,8 +16,11 @@ sealed class RootKind
 
     // Producer values have already been validated at option/block admission.
     internal static RootKind For(ProducerKind producer, MftIndexSource? source) =>
+        For(producer, source?.DumpIdentity is not null);
+
+    internal static RootKind For(ProducerKind producer, bool isDump) =>
         producer == ProducerKind.Enumeration ? DirectoryWalk :
-        source?.DumpIdentity is not null ? Dump : LiveVolume;
+        isDump ? Dump : LiveVolume;
 
     internal bool CanOpen => _kind != Kind.Dump;
     internal bool CanWatch => _kind == Kind.LiveVolume;
@@ -79,12 +82,18 @@ sealed class RootKind
 
     internal static FileIndexOptions PrepareOpenOptions(FileIndexOptions options)
     {
+        if (!Enum.IsDefined(options.Producer))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.Producer,
+                "Unknown producer selection.");
+        }
+
         if (options.MftSource?.DumpIdentity is { } identity)
         {
             MftDumpSourceIdentity.ValidateOptions(options);
             return options with
             {
-                Root = identity.VirtualRoot,
+                Root = identity.Volume,
                 CacheMode = CacheMode.Disabled,
                 DirectoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk)
             };

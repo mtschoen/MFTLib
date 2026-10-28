@@ -50,7 +50,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
     static MftBlockProducer ProducerOf(LocalMftBlockProducer producer) => producer.CreateIndexSource().Producer;
 
     FileIndexOptions Options(MftIndexSource source, IProgress<IndexScanProgress>? progress = null) =>
-        Fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+        Fixture.Options(producer: ProducerSelection.MftOnly, cacheMode: CacheMode.Disabled) with
         {
             MftSource = source,
             ScanProgress = progress
@@ -170,7 +170,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         var source = producer.CreateIndexSource();
 
         FileIndexOptions CachingOptions(bool isCacheOnly) =>
-            Fixture.Options(producer: ProducerKind.Mft,
+            Fixture.Options(producer: ProducerSelection.MftOnly,
                 cacheMode: isCacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
             {
                 MftSource = source

@@ -102,7 +102,7 @@ public partial class FileIndexCatchUpLossTests
         public static string CanonicalBlockName => CacheDirectory.BlockFileName(new VolumeKey('T'), VolumeSerial);
 
         public FileIndexOptions Options() =>
-            _fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft) with
+            _fixture.Options(volumeSerial: VolumeSerial, producer: ProducerSelection.MftOnly) with
             {
                 MftSource = new MftIndexSource(Produce, Source.IndexSource)
             };

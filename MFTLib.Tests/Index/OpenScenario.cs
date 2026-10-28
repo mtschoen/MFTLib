@@ -61,13 +61,13 @@ sealed class OpenScenario : IDisposable
 
     public string CanonicalBlockPath(char driveLetter) => Path.Combine(CacheDirectory, CanonicalBlockName(driveLetter));
 
-    public FileIndexOptions Options(char driveLetter, bool cacheOnly = false) => new()
+    public FileIndexOptions Options(char driveLetter, bool cacheOnly = false) => new FileIndexOptions
     {
-        Root = SyntheticIndexedRoot.Create(new VolumeKey(driveLetter), TreeRoot, SerialOf(driveLetter)),
+
         CacheDirectory = CacheDirectory,
         MftSource = new MftIndexSource(ProduceAsync, Source.IndexSource),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
-    };
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(driveLetter), TreeRoot, SerialOf(driveLetter)));
 
     public void Dispose() => _fixture.Dispose();
 

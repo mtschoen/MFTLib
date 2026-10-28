@@ -58,8 +58,8 @@ public sealed class WatchFirstRunTests : IDisposable
 
         Assert.IsTrue(result);
         Assert.Contains(@"Skipping drive F:\ (Fixed, ready, format exFAT: not NTFS (exFAT))", lines);
-        Assert.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others.", lines, string.Join(Environment.NewLine, lines));
-        Assert.AreSequenceEqual(["C", "G", "H"], [.. parsed.Drives]);
+        Assert.Contains("No root was named, so this run covers every ready local NTFS drive: C, G, H. Name roots to choose others.", lines, string.Join(Environment.NewLine, lines));
+        Assert.AreSequenceEqual(["C", "G", "H"], [.. parsed.Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -67,13 +67,13 @@ public sealed class WatchFirstRunTests : IDisposable
     {
         var lines = new List<string>();
         var host = new SampleHost(new LineCollectingWriter(lines), TextReader.Null);
-        var parsed = new WatchArguments(WatchVerb.Watch, ["Z"]);
+        var parsed = new WatchArguments(WatchVerb.Watch, [new VolumeKey('Z')]);
 
         var result = host.TryChooseDrives(ref parsed, []);
 
         Assert.IsTrue(result);
         Assert.DoesNotContain(line => line.StartsWith("No root was named", StringComparison.Ordinal), lines);
-        Assert.AreSequenceEqual(["Z"], [.. parsed.Drives]);
+        Assert.AreSequenceEqual(["Z"], [.. parsed.Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -86,7 +86,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.TryChooseDrives(ref parsed, [Facts(@"D:\", "optical")]);
 
         Assert.IsFalse(result);
-        Assert.Contains(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal), lines);
+        Assert.Contains(line => line.StartsWith("No root was named and no ready local NTFS drive", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -130,9 +130,9 @@ public sealed class WatchFirstRunTests : IDisposable
         Assert.AreEqual(0, result);
         var received = probe.Received.Single();
         Assert.AreEqual(WatchVerb.Watch, received.Verb);
-        Assert.AreSequenceEqual(["C", "G", "H"], [.. received.Drives]);
+        Assert.AreSequenceEqual(["C", "G", "H"], [.. received.Roots.Select(root => root.ToString())]);
         Assert.IsFalse(string.IsNullOrEmpty(received.CacheDirectory), "A cached verb reaches execution with its cache directory resolved.");
-        Assert.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others.", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("No root was named, so this run covers every ready local NTFS drive: C, G, H. Name roots to choose others.", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -143,7 +143,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = HostOver([]).Run(["scan", "Z"], MachineThatMustNotBeListed(), probe.Execute);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(["Z"], [.. probe.Received.Single().Drives]);
+        Assert.AreSequenceEqual(["Z"], [.. probe.Received.Single().Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -161,7 +161,7 @@ public sealed class WatchFirstRunTests : IDisposable
 
         Assert.AreEqual(1, result);
         Assert.IsEmpty(probe.Received);
-        Assert.Contains(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal), lines);
+        Assert.Contains(line => line.StartsWith("No root was named and no ready local NTFS drive", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -222,7 +222,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureRoot, TestContext.CancellationToken);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, [new VolumeKey('X')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureOptions, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result);
         Assert.Contains("Watching X. Press any key to stop.", lines, string.Join(Environment.NewLine, lines));
@@ -244,7 +244,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         try
         {
-            var run = host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureRoot, cancellation.Token);
+            var run = host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, [new VolumeKey('X')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureOptions, cancellation.Token);
 
             await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => run);
         }
@@ -268,7 +268,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureRoot, TestContext.CancellationToken);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, [new VolumeKey('X')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureOptions, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.AreEqual(TimeSpan.FromSeconds(WatchArguments.DefaultSeconds), clock.TotalAdvanced);
@@ -284,7 +284,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { Seconds = 3, CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureRoot, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, [new VolumeKey('X')]) { Seconds = 3, CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureOptions, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(TimeSpan.FromSeconds(3), clock.TotalAdvanced);
@@ -301,9 +301,9 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
         var result = await host.RunThroughBrokerAsync(
-            new WatchArguments(WatchVerb.Watch, ["X", "Q"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") },
+            new WatchArguments(WatchVerb.Watch, [new VolumeKey('X'), new VolumeKey('Q')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") },
             session,
-            FixtureRoot,
+            FixtureOptions,
             CancellationToken.None);
 
         Assert.AreEqual(1, result, string.Join(Environment.NewLine, lines));
@@ -322,9 +322,9 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
         var result = await host.RunThroughBrokerAsync(
-            new WatchArguments(WatchVerb.Watch, ["Q"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") },
+            new WatchArguments(WatchVerb.Watch, [new VolumeKey('Q')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") },
             session,
-            FixtureRoot,
+            FixtureOptions,
             CancellationToken.None);
 
         Assert.AreEqual(1, result);
@@ -340,17 +340,27 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
         var result = await host.RunThroughBrokerAsync(
-            new WatchArguments(WatchVerb.Scan, ["Q"]),
+            new WatchArguments(WatchVerb.Scan, [new VolumeKey('Q')]),
             session,
-            FixtureRoot,
+            FixtureOptions,
             CancellationToken.None);
 
         Assert.AreEqual(1, result);
     }
 
-    // Every root roots at the fixture directory except Q, whose root is missing, so it is offline.
-    IndexedRoot FixtureRoot(string letter) =>
-        new(new VolumeKey(letter[0]), letter == "Q" ? Path.Combine(TemporaryDirectoryPath, "missing-root") : TemporaryDirectoryPath, 4242);
+    // Each root roots at its own directory under the fixture (members of a set must not nest), except Q, whose
+    // root is missing, so it is offline.
+    FileIndexOptions FixtureOptions(FileIndexOptions options)
+    {
+        var letter = options.Root!.Value.ToString()[0];
+        var rootDirectory = Path.Combine(TemporaryDirectoryPath, letter == 'Q' ? "missing-root" : letter.ToString());
+        if (letter != 'Q')
+        {
+            Directory.CreateDirectory(rootDirectory);
+        }
+
+        return SyntheticVolumeFacts.Apply(options, 4242, volume: new VolumeKey(letter), volumeRootDirectory: rootDirectory);
+    }
 
     static SampleHost HostOver(List<string> lines, TextReader? input = null, TimeProvider? timeProvider = null, bool? interactive = null) =>
         HostOver(new LineCollectingWriter(lines), input, timeProvider, interactive);

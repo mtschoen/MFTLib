@@ -21,7 +21,7 @@ partial class SampleHost
     internal async Task<int> RunThroughBrokerAsync(
         WatchArguments parsed,
         BrokerSession session,
-        Func<string, IndexedRoot> resolveRoot,
+        Func<FileIndexOptions, FileIndexOptions> prepareOptions,
         CancellationToken cancellationToken)
     {
         await using var ownedSession = session.ConfigureAwait(false);
@@ -32,7 +32,7 @@ partial class SampleHost
         }
 
         var source = session.CreateIndexSource();
-        var failureCount = await RunIndexAsync(session, source, parsed, resolveRoot, cancellationToken).ConfigureAwait(false);
+        var failureCount = await RunIndexAsync(session, source, parsed, prepareOptions, cancellationToken).ConfigureAwait(false);
 
         if (session.Ended.IsCompleted)
         {
@@ -47,52 +47,37 @@ partial class SampleHost
         return failureCount > 0 ? 1 : 0;
     }
 
-    // Resolves the drives, opens one index per resolved drive and runs the verb on them. Returns how many root
-    // operations failed; a drive that cannot be resolved or settles unusable is printed and counted, the others run.
+    // Opens one index per named root and runs the verb on them. Returns how many root operations failed; a root that
+    // settles unusable is printed and counted, the others run. prepareOptions is the test seam for volume facts.
     async Task<int> RunIndexAsync(
         BrokerSession session,
         MftIndexSource source,
         WatchArguments parsed,
-        Func<string, IndexedRoot> resolveRoot,
+        Func<FileIndexOptions, FileIndexOptions> prepareOptions,
         CancellationToken cancellationToken)
     {
-        var failureCount = 0;
-        var roots = new List<IndexedRoot>();
-        foreach (var letter in parsed.Drives)
+        if (parsed.Roots.Count == 0)
         {
-            try
-            {
-                roots.Add(resolveRoot(letter));
-            }
-            catch (Exception exception)
-            {
-                failureCount++;
-                await _output.WriteLineAsync($"Error on drive {letter}: {exception.Message}").ConfigureAwait(false);
-            }
-        }
-
-        if (roots.Count == 0)
-        {
-            return failureCount;
+            return 0;
         }
 
         IReadOnlyList<FileIndex> indices;
         try
         {
-            indices = await OpenIndicesAsync(source, parsed, roots, cancellationToken).ConfigureAwait(false);
+            indices = await OpenIndicesAsync(source, parsed, prepareOptions, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             await _output.WriteLineAsync($"Error opening the index: {exception.Message}").ConfigureAwait(false);
-            return failureCount + 1;
+            return 1;
         }
 
         try
         {
             var indexSet = new FileIndexSet(indices);
-            return failureCount + (parsed.Verb is WatchVerb.Watch
+            return parsed.Verb is WatchVerb.Watch
                 ? await WatchIndexAsync(indexSet, parsed, cancellationToken).ConfigureAwait(false)
-                : await RunEachRootAsync(session, indexSet.Indices, parsed, cancellationToken).ConfigureAwait(false));
+                : await RunEachRootAsync(session, indexSet.Indices, parsed, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -121,13 +106,13 @@ partial class SampleHost
     async Task<IReadOnlyList<FileIndex>> OpenIndicesAsync(
         MftIndexSource source,
         WatchArguments parsed,
-        List<IndexedRoot> roots,
+        Func<FileIndexOptions, FileIndexOptions> prepareOptions,
         CancellationToken cancellationToken)
     {
         var scanProgress = new PhaseReporter(_output);
-        var openReporter = new RootOpenedReporter(_output, roots.Count);
-        var tasks = roots.Select(root => OpenRootIndexAsync(
-            source, parsed, root, scanProgress, openReporter, cancellationToken)).ToArray();
+        var openReporter = new RootOpenedReporter(_output, parsed.Roots.Count);
+        var tasks = parsed.Roots.Select(root => OpenRootIndexAsync(
+            root, OptionsFor(source, parsed, root, scanProgress, prepareOptions), openReporter, cancellationToken)).ToArray();
         try
         {
             return await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -147,28 +132,35 @@ partial class SampleHost
         }
     }
 
-    async Task<FileIndex> OpenRootIndexAsync(
+    FileIndexOptions OptionsFor(
         MftIndexSource source,
         WatchArguments parsed,
-        IndexedRoot root,
+        RootKey root,
         IProgress<IndexScanProgress> scanProgress,
-        RootOpenedReporter openReporter,
-        CancellationToken cancellationToken)
+        Func<FileIndexOptions, FileIndexOptions> prepareOptions)
     {
         var cached = parsed.Verb is not WatchVerb.Scan;
-        var options = new FileIndexOptions
+        return prepareOptions(new FileIndexOptions
         {
             Root = root,
+            Producer = parsed.Producer,
             CacheMode = cached ? CacheMode.Persistent : CacheMode.Disabled,
             CacheDirectory = cached ? parsed.CacheDirectory : null,
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _output.WriteLine : null,
             MftSource = source,
             ScanProgress = scanProgress
-        };
+        });
+    }
 
+    static async Task<FileIndex> OpenRootIndexAsync(
+        RootKey root,
+        FileIndexOptions options,
+        RootOpenedReporter openReporter,
+        CancellationToken cancellationToken)
+    {
         var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
-        openReporter.Report(root.Root);
+        openReporter.Report(root);
         return index;
     }
 
@@ -208,9 +200,7 @@ partial class SampleHost
                     WriteRootDetail(index.Status);
                     break;
                 case WatchVerb.Journal:
-                    var volume = root.TryGetVolume(out var journalVolume)
-                        ? journalVolume
-                        : throw new InvalidOperationException($"Root {root} is a directory root with no USN journal.");
+                    var volume = JournalVolumeOf(index, root, cancellationToken);
                     await WriteJournalAsync(session, index, volume, parsed, cancellationToken).ConfigureAwait(false);
                     break;
             }
@@ -225,6 +215,32 @@ partial class SampleHost
 
         await _output.WriteLineAsync(string.Empty).ConfigureAwait(false);
         return succeeded;
+    }
+
+    // The volume whose journal serves a root: the volume itself, or, for a directory root read from the MFT, the volume
+    // holding the folder. Entry paths render under the real volume root (links already followed), so the longest
+    // volume root that prefixes the root entry's path names it. A walked directory has no journal.
+    VolumeKey JournalVolumeOf(FileIndex index, RootKey root, CancellationToken cancellationToken)
+    {
+        if (root.TryGetVolume(out var volume))
+        {
+            return volume;
+        }
+
+        if (index.Status.Producer == ProducerKind.Mft)
+        {
+            var path = index.Root(cancellationToken).Path;
+            var holder = _volumes()
+                .Where(candidate => path.StartsWith(candidate.RootDirectory, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(candidate => candidate.RootDirectory.Length)
+                .FirstOrDefault();
+            if (holder is not null)
+            {
+                return holder.Volume;
+            }
+        }
+
+        throw new InvalidOperationException($"Root {root} is a directory with no USN journal.");
     }
 
     // Reports each drive as its OpenAsync completes, one self-describing line per drive. Reports can overlap or arrive out

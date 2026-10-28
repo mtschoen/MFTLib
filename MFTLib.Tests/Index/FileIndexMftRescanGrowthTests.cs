@@ -76,7 +76,7 @@ public sealed class FileIndexMftRescanGrowthTests : IndexTreeTestBase
     }
 
     FileIndexOptions Options(RecordingMftProducer producer) =>
-        Fixture.Options(producer: ProducerKind.Mft) with
+        Fixture.Options(producer: ProducerSelection.MftOnly) with
         {
             MftSource = new MftIndexSource(producer.ProduceAsync)
         };

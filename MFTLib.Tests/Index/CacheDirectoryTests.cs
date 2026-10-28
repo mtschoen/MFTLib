@@ -135,8 +135,8 @@ public sealed class CacheDirectoryTests : IDisposable
                 new FileIndexOptions
                 {
                     CacheDirectory = directory,
-                    Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), _root, 1)
-                },
+
+                }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), _root, 1)),
                 CancellationToken.None);
         });
 
@@ -153,10 +153,10 @@ public sealed class CacheDirectoryTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             new FileIndexOptions
             {
-                Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
+
                 CacheMode = CacheMode.Disabled,
                 CacheDirectory = supplyDirectory ? _root : null
-            },
+            }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1)),
             CancellationToken.None);
 
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
@@ -170,9 +170,9 @@ public sealed class CacheDirectoryTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             new FileIndexOptions
             {
-                Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
+
                 CacheDirectory = _root
-            },
+            }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1)),
             CancellationToken.None);
 
         Assert.AreEqual(_root, index.CacheDirectoryPath);

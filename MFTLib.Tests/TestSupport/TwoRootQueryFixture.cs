@@ -18,19 +18,13 @@ public sealed class TwoRootQueryFixture : IDisposable
     public async Task<FileIndex> OpenAsync()
     {
         await SeedRootAsync();
-        return await FileIndex.OpenAsync(_fixture.Options() with
-        {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), FirstRoot, 1, ProducerKind.Enumeration)
-        }, CancellationToken.None);
+        return await FileIndex.OpenAsync(_fixture.Options().WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), FirstRoot, 1, ProducerKind.Enumeration)), CancellationToken.None);
     }
 
     public async Task<FileIndex> OpenSecondAsync()
     {
         await SeedRootAsync();
-        return await FileIndex.OpenAsync(_fixture.Options() with
-        {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), SecondRoot, 2, ProducerKind.Enumeration)
-        }, CancellationToken.None);
+        return await FileIndex.OpenAsync(_fixture.Options().WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('U'), SecondRoot, 2, ProducerKind.Enumeration)), CancellationToken.None);
     }
 
     public async Task<FileIndexSet> OpenSetAsync()

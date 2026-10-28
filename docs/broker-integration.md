@@ -77,7 +77,7 @@ Application code owns a `BrokerSession`; test sessions use
 `BrokerSession.CreateIndexSource()` adapts broker scans to `FileIndex`. Its watch source
 uses the same session and opens a separate broker channel for every volume watch.
 
-Given an `IndexedRoot` named `root` and an application-owned
+Given a `RootKey` named `root` (for example `new VolumeKey('C')`) and an application-owned
 cache directory named `cacheDirectory`:
 
 ```csharp
@@ -111,7 +111,7 @@ watch handle and the block producer are internal to MFTLib; a consumer holds
 only the opaque `MftIndexSource`.
 
 A process with no MFT source leaves `FileIndexOptions.MftSource` null. When an
-MFT volume needs a scan, its failure kind is `RootFailureKind.MftSourceMissing`
+MFT volume needs a scan, its failure kind is `RootFailureKind.MftUnavailable` with reason `NoMftSource`
 and its library message is `Volume {volume}: no MFT source is available to scan this volume.`
 The application maps the kind to its own display text using its known context.
 A rescan cannot recover the root while the source remains null. Usable cached
@@ -126,20 +126,21 @@ and its scan fails; a block that passes transfers to the index.
 
 ### Mixed producers and root failures
 
-`IndexedRoot.Producer` chooses each root's producer. `ProducerKind.Mft`, the
-default and what `IndexedRoot.FromWindowsDrive` produces, scans through `MftSource`.
-`ProducerKind.Enumeration` walks the directory tree from `IndexedRoot.FromDirectory`, so an
-application can open indexes over both and query them together through `FileIndexSet`:
+`FileIndexOptions.Producer` (`ProducerSelection`) chooses how each root is read. `Automatic`, the
+default, scans the MFT through `MftSource` when the volume is eligible and otherwise walks, reporting the reason in
+`RootStatus.MftUnavailable`; `MftOnly` never walks; `WalkOnly` walks the directory tree and never touches
+`MftSource`. An application can open indexes over both and query them together through `FileIndexSet`:
 
 ```csharp
-var roots = new[]
+var roots = new RootKey[]
 {
-    IndexedRoot.FromWindowsDrive('C'),
-    IndexedRoot.FromDirectory(enumerationRoot)
+    new VolumeKey('C'),
+    RootKey.FromDirectory(enumerationRoot)
 };
 ```
 
-A failed MFT scan never falls back to a directory walk. Enumeration roots accept a null
+A broker launch that the user declines or that times out is an eligibility reason at an open's cold scan
+(`ElevationDeclined`, `BrokerUnavailable`), so `Automatic` walks. A failed MFT scan never falls back to a directory walk. Enumeration roots accept a null
 `MftSource` and report `Watch.IsSupported == false`; a watch start reports `NotApplicable` for
 them, and `RescanAsync` refreshes them.
 
@@ -151,9 +152,9 @@ A root that settles `RootState.Failed` has no block, and `RootStatus.Failure.Kin
 | `CacheIdentityMismatch` | `CacheMode.ExistingOnly` found a block whose cache tag differs from `FileIndexOptions.CacheTag`. |
 | `InUse` | `CacheMode.ExistingOnly` found the block owned by another live `FileIndex`. |
 | `ProducerFailed` | The selected producer ran and failed. |
-| `MftSourceMissing` | An MFT volume needed a scan but `MftSource` was null. Retrying with the same null source cannot recover it. |
+| `MftUnavailable` | The MFT could not serve the root: `MftOnly` found the volume ineligible, no `MftSource` was available for a scan, or a broker launch or elevation failed during a rescan. `RootStatus.MftUnavailable` says why. |
 
-`RescanAsync` clears `Failure` only after successful publication. A failed attempt can retain a `Ready` block with `ProducerFailed` or `MftSourceMissing`. `CacheMode.ExistingOnly` opens still report their cache refusal before attempting production.
+`RescanAsync` clears `Failure` only after successful publication. A failed attempt can retain a `Ready` block with `ProducerFailed` or `MftUnavailable`. `CacheMode.ExistingOnly` opens still report their cache refusal before attempting production.
 
 For implementation details, see [scan protocol](broker-lifetime.md#scan-protocol)
 and [block sizing and parse threads](broker-scan-tuning.md). The open

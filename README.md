@@ -59,7 +59,7 @@ tests exercise the production code paths without elevation or a real volume.
 | Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
 | Saved MFT image on Windows or Linux | `MftIndexSources.FromMftDumpFile` as the only option set |
 | Unelevated app, one UAC prompt, live changes | `BrokerSession.CreateIndexSource`, then `StartWatchingAsync` and `Changed` |
-| Any directory tree on any filesystem | `IndexedRoot.FromDirectory` with `ProducerKind.Enumeration`; refresh by rescanning |
+| Any directory tree on any filesystem | `RootKey.FromDirectory` (on NTFS the MFT serves it unless `WalkOnly`); a walk refreshes by rescanning |
 | Query across several open indexes | `FileIndexSet` over one `FileIndex` per root |
 | Warm start across runs | A persistent `CacheDirectory`; each cached block records its journal position |
 
@@ -73,7 +73,7 @@ using MFTLib;
 using MFTLib.Index;
 
 var cancellationToken = CancellationToken.None;
-var root = IndexedRoot.FromWindowsDrive('C');
+RootKey root = new VolumeKey('C');
 var options = new FileIndexOptions
 {
     Root = root,
@@ -99,8 +99,8 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 }
 ```
 
-- `IndexedRoot.FromWindowsDrive('C')` reads the volume serial from Windows and throws
-  `IOException` when Windows cannot report it.
+- `Producer` defaults to `ProducerSelection.Automatic`: the MFT when the volume allows it, otherwise a
+  directory walk with the reason in `RootStatus.MftUnavailable`. `MftOnly` fails the root instead of walking.
 - Check `RootStatus.State` before treating zero results as an empty root. An unelevated
   process settles the root `Failed` with `RootFailureKind.ProducerFailed` rather than throwing.
 - One open is one scan. Run as many queries as you like against it, and finish every
@@ -167,7 +167,7 @@ var cacheDirectory = Path.Combine(
 await using var session = new BrokerSession();
 var options = new FileIndexOptions
 {
-    Root = IndexedRoot.FromWindowsDrive('C'),
+    Root = new VolumeKey('C'),
     CacheDirectory = cacheDirectory,
     MftSource = session.CreateIndexSource()
 };
@@ -207,8 +207,8 @@ Console.ReadLine();
 ## Failure channels
 
 - **`RootStatus.Failure`** reports why opening or scanning a root failed: `CacheDeclined`,
-  `CacheIdentityMismatch`, `InUse`, `ProducerFailed` or `MftSourceMissing`. A failed root accepts
-  `RescanAsync`, except that `MftSourceMissing` stays failed while `FileIndexOptions.MftSource` is null.
+  `CacheIdentityMismatch`, `InUse`, `ProducerFailed` or `MftUnavailable`. A failed root accepts
+  `RescanAsync`, except that `MftUnavailable` with `NoMftSource` stays failed while `FileIndexOptions.MftSource` is null.
 - **`RootOperationResult.Failure`** carries the failure of the four lifecycle verbs on `FileIndex`.
   `StopWatchingAsync` returns an outstanding watch fault once as a `Failed` result.
 - **`FileIndex.WatchFaulted`** reports live watch faults. `WatchFault.IsRecovering` says

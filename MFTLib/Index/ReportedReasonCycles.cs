@@ -19,7 +19,8 @@ namespace MFTLib.Index;
 ///     <see cref="RootBlock" /> that owns it, which is the lifecycle reset a rescan (block
 ///     replacement) provides. Not thread-safe: every journal mutation
 ///     of a volume's block is already serialized by that volume's write gate
-///     (<see cref="FileIndex.ApplyJournalEntriesAsync" />), and tests root it single-threaded.
+///     (<see cref="FileIndex.ApplyJournalEntriesAsync(VolumeKey, IReadOnlyList{UsnJournalEntry}, ulong, long)" />),
+///     and tests root it single-threaded.
 /// </summary>
 sealed class ReportedReasonCycles
 {

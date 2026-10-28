@@ -23,9 +23,6 @@ sealed record MftDumpSourceIdentity
     /// <summary>The prefix of every path this dump renders, which no host path can start with.</summary>
     internal string Root => MftDumpPaths.CanonicalRoot(Volume);
 
-    /// <summary>The one virtual volume the index files this dump under: the dump root, serial zero, MFT producer.</summary>
-    internal IndexedRoot VirtualRoot => new(Volume, Root, 0);
-
     /// <summary>
     ///     Checks that the options leave every volume and cache fact to the dump source, before any
     ///     file or cache write.
@@ -34,6 +31,12 @@ sealed record MftDumpSourceIdentity
     internal static void ValidateOptions(FileIndexOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        if (options.Producer == ProducerSelection.WalkOnly)
+        {
+            throw new ArgumentException(
+                "A dump source is an MFT inventory, so FileIndexOptions.Producer cannot be WalkOnly.", nameof(options));
+        }
+
         if (options.Root is not null)
         {
             throw new ArgumentException("A dump source supplies its own volume, so FileIndexOptions.Root must be unset.",

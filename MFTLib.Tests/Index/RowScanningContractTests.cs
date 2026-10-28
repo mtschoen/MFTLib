@@ -142,13 +142,13 @@ public sealed class RowScanningContractTests
         Func<uint, uint>? parentFactory = null) =>
         FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1),
+
             CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(
                     SeededBlocks.Build(request, rowCount, fileNameFactory, FixedMoment, parentFactory),
                     SkippedRecordCount: 0)))
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1)), CancellationToken.None);
 
     // Consumes a stream and cancels its token after cancelAfter items; returns how many items were yielded.
     static int VisitUntilCancelled(FileIndex index, bool rows, SearchQuery query, int cancelAfter,

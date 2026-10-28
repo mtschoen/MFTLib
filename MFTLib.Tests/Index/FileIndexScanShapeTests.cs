@@ -54,9 +54,9 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
     public void Dispose() => Cleanup();
 
-    FileIndexOptions EnumerationOptions(List<string> diagnostics, CacheMode mode = CacheMode.Persistent) => new()
+    FileIndexOptions EnumerationOptions(List<string> diagnostics, CacheMode mode = CacheMode.Persistent) => new FileIndexOptions
     {
-        Root = SyntheticIndexedRoot.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration),
+
         CacheDirectory = Cache,
         CacheMode = mode,
         Diagnostics = line =>
@@ -66,12 +66,9 @@ public sealed class FileIndexScanShapeTests : IDisposable
                 diagnostics.Add(line);
             }
         }
-    };
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration));
 
-    FileIndexOptions ForB(FileIndexOptions baseOptions) => baseOptions with
-    {
-        Root = SyntheticIndexedRoot.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration)
-    };
+    FileIndexOptions ForB(FileIndexOptions baseOptions) => baseOptions.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration));
 
     static bool RecordedWrongScanShape(List<string> diagnostics)
     {
@@ -310,14 +307,14 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     FileIndexOptions MftOptions(bool includeFreed, List<string> diagnostics,
-        CacheMode mode = CacheMode.Persistent) => new()
+        CacheMode mode = CacheMode.Persistent) => new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), RootA, 123),
+
             CacheDirectory = Cache,
             CacheMode = mode,
             MftSource = new MftIndexSource(ProduceMft, includeFreed: includeFreed),
             Diagnostics = diagnostics.Add
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), RootA, 123));
 
     Task<MftBlockProduceResult> ProduceMft(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {

@@ -50,7 +50,7 @@ serial and root directory at open, as `FromDirectory` and `FromWindowsDrive` do 
 | Deleted | `IndexedRoot` and its members `FromWindowsDrive`, `FromDirectory`, `EnumerateWindowsVolumes`, `Producer`, `Root`, `RootDirectory`, `VolumeSerial` | |
 | Deleted | `RootFailureKind.MftSourceMissing` (now `MftUnavailable` with `NoMftSource`) | |
 | Deleted (test package) | `InProcessBrokerScan.RetainedFileNames`, `SyntheticIndexedRoot` | |
-| Added (test package) | `SyntheticVolumeFacts.Apply(FileIndexOptions, uint volumeSerial, bool isNtfs = true, bool isLocal = true)`, forwarding to an internal volume-facts seam so tests choose the serial and eligibility a synthetic root reports | MFTLib.Tests; git-wizard and file-wizard tests replacing `SyntheticIndexedRoot.Create` |
+| Added (test package) | `SyntheticVolumeFacts.Apply(FileIndexOptions, uint volumeSerial, bool isNtfs = true, bool isLocal = true, VolumeKey? volume = null, string? volumeRootDirectory = null)`, forwarding to an internal volume-facts seam so tests choose the serial and eligibility a synthetic root reports; with both optional parameters set, synthetic volume `volume` is rooted at host directory `volumeRootDirectory` (a volume key for it resolves there, and a directory key under that host path belongs to it), and unset the facts describe the real volume of `options.Root` | MFTLib.Tests; git-wizard and file-wizard tests replacing `SyntheticIndexedRoot.Create` |
 
 Internal deletions that exist only for retention: `MftRowSelection` (its `IncludeFreed` moves onto the scan
 request), `FileIndexOptions.ValidateRetainedFileNames`, `MftIndexSource`'s `validateRetainedFileNames`
@@ -354,5 +354,11 @@ Each slice is one pull request, green on `test / windows`, `test / linux`, `test
 2. **Removable NTFS volumes: MFT-eligible?** Recommended: yes, and `WindowsVolume.IsIndexable` uses the
    same predicate, so the library and Automatic agree and git-wizard's existing behavior is kept.
 3. **Nested roots in one `FileIndexSet`** (`D:\` beside `D:\src`): unscoped set queries would return each
-   file once per containing member. Recommended: reject nested members with `ArgumentException` in the
-   constructor, so consumers dedupe their root lists once.
+   file once per containing member. Owner ruling (2026-10-28, replacing the recommendation to reject): the
+   constructor accepts nested members, and unscoped set queries and `Find` read only the outermost available
+   members (those under no other available member), using the matcher `Find` uses, so each file is returned once and
+   belongs to the outermost available member containing it; when the outer member is unavailable the inner one
+   covers its own subtree. Owner ruling 16 (2026-10-28): a directory root's final path (links followed) is resolved
+   once at open and used for the volume facts, the root directory, containment and the set's duplicate check, so two
+   aliases of one folder are duplicates and an alias under another member is nested; a failed resolution falls back
+   to the path as named with one diagnostic, and a directory missing at open stays Offline.

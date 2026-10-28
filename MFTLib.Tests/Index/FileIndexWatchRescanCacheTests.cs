@@ -22,7 +22,7 @@ public class FileIndexWatchRescanCacheTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), directory.Path, 1),
+
             CacheDirectory = directory.Path,
             MftSource = new MftIndexSource(async (request, cancellationToken) =>
             {
@@ -36,7 +36,7 @@ public class FileIndexWatchRescanCacheTests
                 SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);
                 return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, 1, out _)!, 0);
             }, source.IndexSource)
-        }, token);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), directory.Path, 1)), token);
         try
         {
             await index.StartWatchingAsync(token);

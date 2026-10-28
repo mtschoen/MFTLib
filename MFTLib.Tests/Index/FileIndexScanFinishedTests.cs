@@ -25,16 +25,16 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
         return root;
     }
 
-    FileIndexOptions Options(IndexedRoot root, ConcurrentQueue<IndexScanProgress> samples,
+    FileIndexOptions Options(SyntheticRoot root, ConcurrentQueue<IndexScanProgress> samples,
         ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null)
     {
         return new FileIndexOptions
         {
-            Root = root with { Producer = producer },
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             ScanProgress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
-        };
+        }.WithSyntheticRoot(root with { Producer = producer });
     }
 
     /// <summary>The root's Finished sample; asserts the count and that it follows every other sample.</summary>
@@ -64,9 +64,9 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
         var samples = new ConcurrentQueue<IndexScanProgress>();
         var roots = new[]
         {
-            MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1),
-            MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2),
-            MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('V'), CreateRoot("third"), 3)
+            SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1),
+            SyntheticRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2),
+            SyntheticRoot.Create(new VolumeKey('V'), CreateRoot("third"), 3)
         };
 
         var opened = await Task.WhenAll(roots.Select(root =>
@@ -95,7 +95,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task OpenAsync_MftRoot_FinishesAfterProducerSamples()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var root = SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
 
         await using var index = await FileIndex.OpenAsync(
             Options(root, samples, ProducerKind.Mft, (request, _) => ProduceBlock(request)),
@@ -110,7 +110,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task OpenAsync_MftProducerFails_FinishesFailedWithZeroRows()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var root = SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
 
         await using var index = await FileIndex.OpenAsync(
             Options(root, samples, ProducerKind.Mft,
@@ -126,7 +126,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task OpenAsync_CancelledScan_FinishesCancelledOnce()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var root = SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
         var options = Options(root, samples, ProducerKind.Mft,
             (_, _) => throw new OperationCanceledException());
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
@@ -141,8 +141,8 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task RescanAsync_ReportsOneMoreFinishedPerScan()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var rootT = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
-        var rootU = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2);
+        var rootT = SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var rootU = SyntheticRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2);
         await using var indexT = await FileIndex.OpenAsync(Options(rootT, samples), TestContext.CancellationToken);
         await using var indexU = await FileIndex.OpenAsync(Options(rootU, samples), TestContext.CancellationToken);
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T').Outcome);
@@ -169,7 +169,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task OpenAsync_FinishedHandlerThrowsAfterSuccess_RootStillReadyAndFaultLogged()
     {
         var diagnostics = new ConcurrentQueue<string>();
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (request, _) => ProduceBlock(request)) with
         {
             ScanProgress = new ThrowingOnFinished(),
@@ -185,7 +185,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_FinishedHandlerThrowsAfterCancellation_OriginalCancellationWins()
     {
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (_, _) => throw new OperationCanceledException()) with
         {
             ScanProgress = new ThrowingOnFinished()
@@ -200,7 +200,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterSuccess_RootReadyWithBlockAdopted()
     {
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (request, _) => ProduceBlock(request)) with
         {
             ScanProgress = new ThrowingOnFinished(),
@@ -217,7 +217,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterCancellation_CancellationPreserved()
     {
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (_, _) => throw new OperationCanceledException()) with
         {
             ScanProgress = new ThrowingOnFinished(),

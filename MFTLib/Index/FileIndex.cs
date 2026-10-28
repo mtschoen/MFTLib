@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     The client surface over one mapped root block. Opening picks a producer for the configured
-///     root, warm-starts from a valid block or cold-scans, and publishes the block. A rescan
+///     root from its volume facts, warm-starts from a valid block or cold-scans, and publishes the block. A rescan
 ///     writes a new block beside the old one and swaps it in; handles minted from the old
 ///     block keep it mapped until they are collected, so a held handle never dangles across a rescan.
 /// </summary>
@@ -43,22 +43,22 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </summary>
     internal const int LostCatchUpRecoveryLimit = 3;
 
-    FileIndex(FileIndexOptions options, string cacheDirectoryPath, IndexHooks hooks)
+    FileIndex(FileIndexOptions options, ResolvedRoot resolved, string cacheDirectoryPath, IndexHooks hooks)
     {
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         Hooks = hooks;
-        var configuredRoot = _options.Root ?? throw new InvalidOperationException("Prepared options must have a Root.");
-        _runtime = new RootRuntime(this, configuredRoot);
-        Kind = RootKind.For(configuredRoot.Producer, _options.MftSource);
-        MatchableRootDirectoryPath = Kind.ToMatchablePrefix(Kind.NormalizeRoot(configuredRoot.RootDirectory));
+        _runtime = new RootRuntime(this, resolved);
     }
 
     internal RootKey RootKey => _runtime.Root;
 
-    internal RootKind Kind { get; }
+    internal RootKind Kind => _runtime.Kind;
 
-    internal string? MatchableRootDirectoryPath { get; }
+    /// <summary>The normalized host path of the root: the volume root, the directory, or a dump's virtual root.</summary>
+    internal string RootDirectory => _runtime.RootDirectory;
+
+    internal string? MatchableRootDirectoryPath => _runtime.MatchableRootDirectoryPath;
 
     internal void ThrowIfDisposed()
     {
@@ -107,8 +107,8 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     Opens an index over the configured root, adopting a valid cached block or
     ///     producing a fresh one. A missing root settles as <see cref="RootState.Offline" />, and an
     ///     operational scan failure settles as <see cref="RootState.Failed" /> in <see cref="Status" />
-    ///     without failing the open, for both MFT and enumeration producers; this includes an MFT root
-    ///     that needs a scan when <see cref="FileIndexOptions.MftSource" /> is null. Argument validation
+    ///     without failing the open, for both MFT and enumeration producers; this includes
+    ///     <see cref="ProducerSelection.MftOnly" /> over a root the MFT cannot serve. Argument validation
     ///     performed before production throws. Caller cancellation fails the open and releases any adopted block.
     /// </summary>
     /// <param name="options">The root to index and the cache, progress and producer settings.</param>
@@ -118,12 +118,12 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <returns>The opened index, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" /> or the root
-    ///     specifies an undefined <see cref="IndexedRoot.Producer" />.
+    ///     <paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" /> or an
+    ///     undefined <see cref="FileIndexOptions.Producer" />.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     Cache configuration is missing, dump options are invalid, or <see cref="FileIndexOptions.Root" /> is null
-    ///     or invalid.
+    ///     Cache configuration is missing, dump options are invalid (including <see cref="ProducerSelection.WalkOnly" />),
+    ///     or <see cref="FileIndexOptions.Root" /> is null or invalid.
     /// </exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
     public static Task<FileIndex> OpenAsync(FileIndexOptions options,
@@ -139,6 +139,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
 
         options = RootKind.PrepareOpenOptions(options);
+        var resolved = RootResolution.Resolve(options);
         var cacheDirectoryPath = string.Empty;
         if (options.CacheMode != CacheMode.Disabled)
         {
@@ -154,7 +155,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             CacheDirectory.EnsureCreated(cacheDirectoryPath);
         }
 
-        var index = new FileIndex(options, cacheDirectoryPath, hooks);
+        var index = new FileIndex(options, resolved, cacheDirectoryPath, hooks);
         try
         {
             await index.SettleRootAsync(cancellationToken).ConfigureAwait(false);

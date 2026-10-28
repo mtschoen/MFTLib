@@ -36,25 +36,24 @@ sealed class CheckpointLossFixture : IDisposable
 
     public string CacheDirectory => _trees.First().Value.CacheDirectory;
 
-    public IndexedRoot Root(char driveLetter = 'T')
+    public SyntheticRoot Root(char driveLetter = 'T')
     {
         var key = new VolumeKey(char.ToUpperInvariant(driveLetter));
         var fixture = _trees[key];
         var serial = key.Letter == 'U' ? 0x0BADBEEFu : 0x0BADF00Du;
-        return fixture.Root(key.Letter, serial, producer: ProducerKind.Mft);
+        return SyntheticRoot.Create(key, fixture.TreeRoot, serial);
     }
 
     public FileIndexOptions Options(MftBlockProducer? producer = null,
         IIndexWatchSource? watchSource = null, CacheMode cacheMode = CacheMode.Persistent,
-        IndexedRoot? root = null, char driveLetter = 'T')
+        SyntheticRoot? root = null, char driveLetter = 'T')
     {
         return new FileIndexOptions
         {
-            Root = root ?? Root(driveLetter),
             CacheDirectory = CacheDirectory,
             CacheMode = cacheMode,
             MftSource = new MftIndexSource(producer ?? ProduceMftShapedBlock, watchSource)
-        };
+        }.WithSyntheticRoot(root ?? Root(driveLetter));
     }
 
     static VolumeKey VolumeOf(RootKey root) =>
@@ -62,15 +61,15 @@ sealed class CheckpointLossFixture : IDisposable
 
     public async Task Seed(FileIndexOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var roots = options?.Root is { } explicitRoot
-            ? [explicitRoot]
-            : _trees.Keys.Select(key => Root(key.Letter)).ToArray();
         var baseOptions = options ?? Options();
+        var perRoot = options?.Root is not null
+            ? [baseOptions]
+            : _trees.Keys.Select(key => baseOptions.WithSyntheticRoot(Root(key.Letter))).ToArray();
         using var journals = JournalWindows.ForVolumes(
-            roots.ToDictionary(root => VolumeOf(root.Root), _ => HealthyWindow));
-        foreach (var root in roots)
+            perRoot.ToDictionary(each => VolumeOf(each.Root!.Value), _ => HealthyWindow));
+        foreach (var each in perRoot)
         {
-            await using var index = await FileIndex.OpenAsync(baseOptions with { Root = root }, cancellationToken);
+            await using var index = await FileIndex.OpenAsync(each, cancellationToken);
             var status = index.Status;
             Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             Assert.IsNull(status.Watch.CheckpointLoss);

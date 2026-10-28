@@ -17,10 +17,10 @@ namespace MFTLib.Index;
 static class ScanShape
 {
     /// <summary>The shape a root's block must carry under the given admitted options.</summary>
-    /// <param name="root">The root's configuration, which names its producer and root.</param>
+    /// <param name="root">The resolved root, which names its producer and the directory a walk starts at.</param>
     /// <param name="options">The admitted index options.</param>
     /// <returns>The expected scan shape.</returns>
-    public static ulong For(IndexedRoot root, FileIndexOptions options) =>
+    public static ulong For(ResolvedRoot root, FileIndexOptions options) =>
         root.Producer == ProducerKind.Enumeration
             ? ForEnumeration(options.DirectoryWalk, root.RootDirectory)
             : ForMft(options.MftSource?.IncludeFreed ?? false);

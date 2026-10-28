@@ -211,7 +211,7 @@ public sealed class BrokerSession : IAsyncDisposable
             : _process is { Ended.IsCompleted: true } process ? CompletedReason(process.Ended) : null;
         if (reason is not null)
         {
-            throw new InvalidOperationException(
+            throw new BrokerEndedException(
                 $"The elevated broker process for this session has ended: {reason} Start a new session.");
         }
     }

@@ -52,7 +52,7 @@ sealed partial class BrokerProcess
         {
             if (!launchBroker(FormattableString.Invariant($"--broker --pipe {pipeName}{DiagnosticsArguments()}")))
             {
-                throw new InvalidOperationException(
+                throw new BrokerLaunchDeclinedException(
                     "Failed to launch the elevated broker (the UAC prompt was declined?)");
             }
 

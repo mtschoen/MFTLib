@@ -172,7 +172,8 @@ MFTLib.Index.FileIndexOptions :: property public CacheTag { get; init; } : MFTLi
 MFTLib.Index.FileIndexOptions :: property public Diagnostics { get; init; } : System.Action<string>?
 MFTLib.Index.FileIndexOptions :: property public DirectoryWalk { get; init; } : MFTLib.Index.DirectoryWalkOptions
 MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?
-MFTLib.Index.FileIndexOptions :: property public Root { get; init; } : MFTLib.Index.IndexedRoot?
+MFTLib.Index.FileIndexOptions :: property public Producer { get; init; } : MFTLib.Index.ProducerSelection
+MFTLib.Index.FileIndexOptions :: property public Root { get; init; } : MFTLib.Index.RootKey?
 MFTLib.Index.FileIndexOptions :: property public ScanProgress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>
 MFTLib.Index.FileIndexSet :: constructor public (System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileIndex> indices)
@@ -234,21 +235,6 @@ MFTLib.Index.IndexScanProgress :: property public Phase { get; init; } : MFTLib.
 MFTLib.Index.IndexScanProgress :: property public Root { get; init; } : MFTLib.Index.RootKey
 MFTLib.Index.IndexScanProgress :: property public WrittenRowCount { get; init; } : uint
 MFTLib.Index.IndexScanProgress :: type public sealed class : System.IEquatable<MFTLib.Index.IndexScanProgress>
-MFTLib.Index.IndexedRoot :: method public <Clone>$() : MFTLib.Index.IndexedRoot
-MFTLib.Index.IndexedRoot :: method public Equals(MFTLib.Index.IndexedRoot? other) : bool
-MFTLib.Index.IndexedRoot :: method public override Equals(object? obj) : bool
-MFTLib.Index.IndexedRoot :: method public override GetHashCode() : int
-MFTLib.Index.IndexedRoot :: method public override ToString() : string
-MFTLib.Index.IndexedRoot :: method public static EnumerateWindowsVolumes() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>
-MFTLib.Index.IndexedRoot :: method public static FromDirectory(string rootDirectory) : MFTLib.Index.IndexedRoot
-MFTLib.Index.IndexedRoot :: method public static FromWindowsDrive(MFTLib.Index.VolumeKey volume) : MFTLib.Index.IndexedRoot
-MFTLib.Index.IndexedRoot :: method public static op_Equality(MFTLib.Index.IndexedRoot? left, MFTLib.Index.IndexedRoot? right) : bool
-MFTLib.Index.IndexedRoot :: method public static op_Inequality(MFTLib.Index.IndexedRoot? left, MFTLib.Index.IndexedRoot? right) : bool
-MFTLib.Index.IndexedRoot :: property public Producer { get; init; } : MFTLib.Index.ProducerKind
-MFTLib.Index.IndexedRoot :: property public Root { get; init; } : MFTLib.Index.RootKey
-MFTLib.Index.IndexedRoot :: property public RootDirectory { get; init; } : string
-MFTLib.Index.IndexedRoot :: property public VolumeSerial { get; init; } : uint
-MFTLib.Index.IndexedRoot :: type public sealed class : System.IEquatable<MFTLib.Index.IndexedRoot>
 MFTLib.Index.JournalCatchUpLostException :: property public IsRecoveryStopped { get; } : bool
 MFTLib.Index.JournalCatchUpLostException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
 MFTLib.Index.JournalCheckpointLoss :: method public <Clone>$() : MFTLib.Index.JournalCheckpointLoss
@@ -282,6 +268,14 @@ MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const RetentionSiz
 MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const RetentionSizeUnavailable : MFTLib.Index.JournalGrowthTargetRefusalReason = 1
 MFTLib.Index.JournalGrowthTargetRefusalReason :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.MftIndexSource :: type public sealed class
+MFTLib.Index.MftUnavailableReason :: field public const BrokerUnavailable : MFTLib.Index.MftUnavailableReason = 6
+MFTLib.Index.MftUnavailableReason :: field public const ElevationDeclined : MFTLib.Index.MftUnavailableReason = 7
+MFTLib.Index.MftUnavailableReason :: field public const NoMftSource : MFTLib.Index.MftUnavailableReason = 5
+MFTLib.Index.MftUnavailableReason :: field public const NotLocalVolume : MFTLib.Index.MftUnavailableReason = 3
+MFTLib.Index.MftUnavailableReason :: field public const NotNtfs : MFTLib.Index.MftUnavailableReason = 4
+MFTLib.Index.MftUnavailableReason :: field public const PlatformWithoutMft : MFTLib.Index.MftUnavailableReason = 1
+MFTLib.Index.MftUnavailableReason :: field public const VolumeNotReady : MFTLib.Index.MftUnavailableReason = 2
+MFTLib.Index.MftUnavailableReason :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.NameMatchMode :: field public const Exact : MFTLib.Index.NameMatchMode = 0
 MFTLib.Index.NameMatchMode :: field public const Glob : MFTLib.Index.NameMatchMode = 2
 MFTLib.Index.NameMatchMode :: field public const Substring : MFTLib.Index.NameMatchMode = 1
@@ -289,6 +283,10 @@ MFTLib.Index.NameMatchMode :: type public enum : int, System.IComparable, System
 MFTLib.Index.ProducerKind :: field public const Enumeration : MFTLib.Index.ProducerKind = 2
 MFTLib.Index.ProducerKind :: field public const Mft : MFTLib.Index.ProducerKind = 1
 MFTLib.Index.ProducerKind :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLib.Index.ProducerSelection :: field public const Automatic : MFTLib.Index.ProducerSelection = 1
+MFTLib.Index.ProducerSelection :: field public const MftOnly : MFTLib.Index.ProducerSelection = 2
+MFTLib.Index.ProducerSelection :: field public const WalkOnly : MFTLib.Index.ProducerSelection = 3
+MFTLib.Index.ProducerSelection :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.RootBlockStatus :: method public <Clone>$() : MFTLib.Index.RootBlockStatus
 MFTLib.Index.RootBlockStatus :: method public Equals(MFTLib.Index.RootBlockStatus? other) : bool
 MFTLib.Index.RootBlockStatus :: method public override Equals(object? obj) : bool
@@ -318,7 +316,7 @@ MFTLib.Index.RootFailure :: type public sealed class : System.IEquatable<MFTLib.
 MFTLib.Index.RootFailureKind :: field public const CacheDeclined : MFTLib.Index.RootFailureKind = 0
 MFTLib.Index.RootFailureKind :: field public const CacheIdentityMismatch : MFTLib.Index.RootFailureKind = 3
 MFTLib.Index.RootFailureKind :: field public const InUse : MFTLib.Index.RootFailureKind = 2
-MFTLib.Index.RootFailureKind :: field public const MftSourceMissing : MFTLib.Index.RootFailureKind = 4
+MFTLib.Index.RootFailureKind :: field public const MftUnavailable : MFTLib.Index.RootFailureKind = 4
 MFTLib.Index.RootFailureKind :: field public const ProducerFailed : MFTLib.Index.RootFailureKind = 1
 MFTLib.Index.RootFailureKind :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.RootKey :: method public CompareTo(MFTLib.Index.RootKey other) : int
@@ -362,6 +360,8 @@ MFTLib.Index.RootStatus :: method public static op_Equality(MFTLib.Index.RootSta
 MFTLib.Index.RootStatus :: method public static op_Inequality(MFTLib.Index.RootStatus? left, MFTLib.Index.RootStatus? right) : bool
 MFTLib.Index.RootStatus :: property public Block { get; init; } : MFTLib.Index.RootBlockStatus?
 MFTLib.Index.RootStatus :: property public Failure { get; init; } : MFTLib.Index.RootFailure?
+MFTLib.Index.RootStatus :: property public MftUnavailable { get; init; } : MFTLib.Index.MftUnavailableReason?
+MFTLib.Index.RootStatus :: property public Producer { get; init; } : MFTLib.Index.ProducerKind?
 MFTLib.Index.RootStatus :: property public Root { get; init; } : MFTLib.Index.RootKey
 MFTLib.Index.RootStatus :: property public State { get; init; } : MFTLib.Index.RootState
 MFTLib.Index.RootStatus :: property public Watch { get; init; } : MFTLib.Index.RootWatchStatus
@@ -454,6 +454,7 @@ MFTLib.Index.WindowsVolume :: method public Equals(MFTLib.Index.WindowsVolume? o
 MFTLib.Index.WindowsVolume :: method public override Equals(object? obj) : bool
 MFTLib.Index.WindowsVolume :: method public override GetHashCode() : int
 MFTLib.Index.WindowsVolume :: method public override ToString() : string
+MFTLib.Index.WindowsVolume :: method public static EnumerateAll() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>
 MFTLib.Index.WindowsVolume :: method public static op_Equality(MFTLib.Index.WindowsVolume? left, MFTLib.Index.WindowsVolume? right) : bool
 MFTLib.Index.WindowsVolume :: method public static op_Inequality(MFTLib.Index.WindowsVolume? left, MFTLib.Index.WindowsVolume? right) : bool
 MFTLib.Index.WindowsVolume :: property public DriveType { get; init; } : System.IO.DriveType

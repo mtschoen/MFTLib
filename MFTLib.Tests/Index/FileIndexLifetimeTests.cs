@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexLifetimeTests : IndexTreeTestBase
 {
     FileIndexOptions Options(bool cacheDisabled = false, ProducerKind producerKind = ProducerKind.Enumeration) =>
-        Fixture.Options(volumeSerial: UniqueVolumeSerial, producer: producerKind,
+        Fixture.Options(volumeSerial: UniqueVolumeSerial, producer: SyntheticRoot.SelectionFor(producerKind),
             cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent);
 
     [TestMethod]
@@ -57,9 +57,9 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1),
+
             CacheDirectory = CacheDirectoryPath
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1));
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(RootState.Offline, index.Status.State);

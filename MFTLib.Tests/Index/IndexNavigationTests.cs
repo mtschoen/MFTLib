@@ -97,14 +97,21 @@ public partial class IndexNavigationTests
         Assert.HasCount(1, children);
     }
 
+    // One membership per anchor, as a query builds it: the verdict a fresh cache gives for one row.
+    static bool IsUnder(BlockFile block, uint candidateRow, uint anchorRow)
+    {
+        using var membership = new SubtreeMembership(block, anchorRow);
+        return membership.Contains(candidateRow);
+    }
+
     [TestMethod]
-    public void IsUnder_MatchesTransitiveContainmentAndExcludesSiblings()
+    public void Membership_MatchesTransitiveContainmentAndExcludesSiblings()
     {
         var block = _snapshot[0].Block;
-        Assert.IsTrue(IndexNavigation.IsUnder(block, _reportRow, _documentsRow));
-        Assert.IsTrue(IndexNavigation.IsUnder(block, _reportRow, _projectsRow));
-        Assert.IsFalse(IndexNavigation.IsUnder(block, _notesRow, _projectsRow));
-        Assert.IsTrue(IndexNavigation.IsUnder(block, _projectsRow, _projectsRow));
+        Assert.IsTrue(IsUnder(block, _reportRow, _documentsRow));
+        Assert.IsTrue(IsUnder(block, _reportRow, _projectsRow));
+        Assert.IsFalse(IsUnder(block, _notesRow, _projectsRow));
+        Assert.IsTrue(IsUnder(block, _projectsRow, _projectsRow));
     }
 
     [TestMethod]
@@ -129,7 +136,7 @@ public partial class IndexNavigationTests
     ///     match, so the answer is false rather than the depth-exceeded throw.
     /// </summary>
     [TestMethod]
-    public async Task IsUnder_WhenTheCappedChainEndsAtARoot_ReturnsFalse()
+    public async Task Membership_WhenTheCappedChainEndsAtARoot_ReturnsFalse()
     {
         using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
@@ -147,7 +154,7 @@ public partial class IndexNavigationTests
         {
             // The candidate sits exactly MaximumPathDepth hops below the root; the target
             // is a real row that is not on that chain.
-            Assert.IsFalse(IndexNavigation.IsUnder(block, candidate, unrelated));
+            Assert.IsFalse(IsUnder(block, candidate, unrelated));
         }
         finally
         {
@@ -194,7 +201,7 @@ public partial class IndexNavigationTests
             var liveFile = FileEntry.Create(snapshot[0], liveFileRow);
 
             Assert.AreEqual(Path.Combine(TestRootDirectory.For('V'), "Old", "survivor.txt"), liveFile.Path);
-            Assert.IsTrue(IndexNavigation.IsUnder(block, liveFileRow, deletedDirectoryRow));
+            Assert.IsTrue(IsUnder(block, liveFileRow, deletedDirectoryRow));
         }
         finally
         {
@@ -305,7 +312,7 @@ public partial class IndexNavigationTests
     }
 
     [TestMethod]
-    public async Task IsUnder_AncestorExactlyAtTheDepthCap_ReturnsTrue()
+    public async Task Membership_AncestorExactlyAtTheDepthCap_ReturnsTrue()
     {
         using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
@@ -320,7 +327,7 @@ public partial class IndexNavigationTests
         RootBlock[] snapshot = [new RootBlock(new VolumeKey('Z'), block, rootDirectoryPath: TestRootDirectory.For('Z'))];
         try
         {
-            Assert.IsTrue(IndexNavigation.IsUnder(block, candidate, root));
+            Assert.IsTrue(IsUnder(block, candidate, root));
         }
         finally
         {
@@ -329,7 +336,7 @@ public partial class IndexNavigationTests
     }
 
     [TestMethod]
-    public async Task IsUnder_WithACyclicParentColumn_ReturnsFalseInsteadOfThrowing()
+    public async Task Membership_WithACyclicParentColumn_ReturnsFalseInsteadOfThrowing()
     {
         using var builder = new SyntheticBlockBuilder('W');
         var root = builder.AddRoot();
@@ -343,14 +350,14 @@ public partial class IndexNavigationTests
         try
         {
             // Rows 1 and 2 point at each other. None of these reach root.
-            Assert.IsFalse(IndexNavigation.IsUnder(block, second, root));
-            Assert.IsFalse(IndexNavigation.IsUnder(block, first, root));
-            Assert.IsFalse(IndexNavigation.IsUnder(block, child, root));
+            Assert.IsFalse(IsUnder(block, second, root));
+            Assert.IsFalse(IsUnder(block, first, root));
+            Assert.IsFalse(IsUnder(block, child, root));
 
             // But rows in the cycle or under the cycle are under cycle members.
-            Assert.IsTrue(IndexNavigation.IsUnder(block, second, first));
-            Assert.IsTrue(IndexNavigation.IsUnder(block, first, second));
-            Assert.IsTrue(IndexNavigation.IsUnder(block, child, first));
+            Assert.IsTrue(IsUnder(block, second, first));
+            Assert.IsTrue(IsUnder(block, first, second));
+            Assert.IsTrue(IsUnder(block, child, first));
         }
         finally
         {

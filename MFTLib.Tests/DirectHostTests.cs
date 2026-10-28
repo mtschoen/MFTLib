@@ -182,13 +182,23 @@ public sealed class DirectHostTests : IDisposable
     }
 
     [TestMethod]
+    public void Direct_PrintsTheProducer()
+    {
+        var lines = new List<string>();
+
+        HostOver(lines).Run(Dump("scan"));
+
+        Assert.Contains("producer Mft", lines, string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
     public async Task Run_ScanOverAScriptedSource_ReportsLiveAndRetainedDeletedCounts()
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "C", "--include-freed"], out var parsed, out var error), error);
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None);
 
         Assert.Contains("C: 2 live files, 2 live directories, 1 retained deleted rows", output.ToString());
     }
@@ -231,7 +241,7 @@ public sealed class DirectHostTests : IDisposable
             new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
-        await host.RunSourceAsync(parsed!, source, SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, source, new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None);
 
         var report = output.ToString();
         Assert.Contains($"{path} ({new IndexRecordKey(new VolumeKey('C'), 7, ProducerKind.Mft)}): record ", report);
@@ -300,7 +310,7 @@ public sealed class DirectHostTests : IDisposable
         {
             Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt", "--include-freed"], out var parsed, out var error), error);
             seen = parsed;
-            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None).GetAwaiter().GetResult();
+            host.RunSourceAsync(parsed!, ScriptedSource(), new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         });
 
@@ -324,7 +334,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None);
 
         var report = output.ToString();
         Assert.DoesNotContain("deleted=", report, report);
@@ -348,7 +358,7 @@ public sealed class DirectHostTests : IDisposable
             new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
         ]));
 
-        await elevatedHost.RunSourceAsync(parsed!, source, SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await elevatedHost.RunSourceAsync(parsed!, source, new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None);
 
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
@@ -378,7 +388,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None);
 
         Assert.Contains("a.txt: 2 entries", output.ToString());
     }
@@ -391,7 +401,7 @@ public sealed class DirectHostTests : IDisposable
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('Q'), Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, ScriptedSource(), new VolumeKey('Q'), options => SyntheticRoot.Create(new VolumeKey('Q'), Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242).Apply(options), CancellationToken.None));
         Assert.Contains("The root is offline; nothing was scanned.", exception.Message);
     }
 
@@ -404,7 +414,7 @@ public sealed class DirectHostTests : IDisposable
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, source, SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, source, new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None));
         Assert.Contains("volume unreadable", exception.Message);
     }
 
@@ -418,7 +428,7 @@ public sealed class DirectHostTests : IDisposable
         var result = host.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
-        Assert.Contains(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("Volume serials are read on Windows only."), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("the MFT is read on Windows only") && line.Contains("PlatformWithoutMft"), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

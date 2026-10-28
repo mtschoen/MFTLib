@@ -148,12 +148,17 @@ public sealed partial class FileIndex
     // No caller token: a direct apply has no stop of its own, and the index's disposal token would
     // let disposal turn a batch already queued for the gate into a cancellation instead of the
     // ObjectDisposedException a disposed index reports.
-    internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey volume,
+    internal Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey volume,
+        IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn) =>
+        ApplyJournalEntriesAsync(_runtime.ServesVolume(volume) ? _runtime.Root : volume, entries, journalIdentifier,
+            nextUsn);
+
+    internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(RootKey root,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(entries);
-        var runtime = GetRootRuntime(volume);
+        var runtime = GetRootRuntime(root);
         var changes = await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn,
             CancellationToken.None).ConfigureAwait(false);
         runtime.RaiseChanged(changes);

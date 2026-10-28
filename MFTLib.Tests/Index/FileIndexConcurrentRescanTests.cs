@@ -232,13 +232,13 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
             }
         }
 
-        public FileIndexOptions CacheOnlyOptions(char driveLetter) => new()
+        public FileIndexOptions CacheOnlyOptions(char driveLetter) => new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey(driveLetter), owner.TreeRoot, driveLetter == 'T' ? 1u : 2u),
+
             CacheDirectory = owner.CacheDirectoryPath,
             CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource(ProduceAsync)
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(driveLetter), owner.TreeRoot, driveLetter == 'T' ? 1u : 2u));
 
         async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,
             CancellationToken cancellationToken)

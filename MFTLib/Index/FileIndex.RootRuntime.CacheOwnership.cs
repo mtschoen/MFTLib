@@ -30,7 +30,7 @@ public sealed partial class FileIndex
         }
 
         string CanonicalBlockPath() =>
-            Path.Combine(Index.CacheDirectoryPath, CacheDirectory.BlockFileName(Root, Configuration.VolumeSerial));
+            Path.Combine(Index.CacheDirectoryPath, CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial));
 
         CacheLocation? DescribeCacheLocation(bool ownsCanonicalSlot) =>
             Options.CacheMode == CacheMode.Disabled
@@ -77,7 +77,7 @@ public sealed partial class FileIndex
 
         void CleanupRetiredSiblings()
         {
-            var pattern = CacheDirectory.BlockFileName(Root, Configuration.VolumeSerial) + ".retired-*";
+            var pattern = CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial) + ".retired-*";
             try
             {
                 foreach (var path in Hooks.EnumerateCacheFiles(Index.CacheDirectoryPath, pattern))

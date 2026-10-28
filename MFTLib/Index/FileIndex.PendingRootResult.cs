@@ -24,6 +24,9 @@ public sealed partial class FileIndex
         /// <summary>The classification to publish when a scan attempt returns no block.</summary>
         public RootFailureKind ScanFailureKind { get; init; } = RootFailureKind.ProducerFailed;
 
+        /// <summary>Why the MFT could not serve the scan when <see cref="ScanFailureKind" /> is <see cref="RootFailureKind.MftUnavailable" />.</summary>
+        public MftUnavailableReason? MftUnavailable { get; init; }
+
         /// <summary>The MFT producer's failure when it produced no block.</summary>
         public Exception? ProducerFailure { get; init; }
 

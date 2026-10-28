@@ -63,11 +63,13 @@ public ref struct IndexRowEnumerator
     readonly RowEnumerationSegments? _segments;
     readonly SearchQuery _query;
     readonly RootBlock? _singleBlock;
-    readonly bool _flagsOnly;
+    readonly bool _queryNeedsOnlyFlags;
+    bool _flagsOnly;
     readonly bool _includeDeleted;
     readonly bool _filterDirectories;
     readonly bool _wantDirectories;
     readonly ResolvedSubtree? _subtree;
+    readonly uint? _admittedViewRow;
     CancellationToken _cancellationToken;
     RowScanner _scanner;
     RootBlock? _rootBlock;
@@ -88,10 +90,12 @@ public ref struct IndexRowEnumerator
         _query = query;
         _cancellationToken = scope.CancellationToken;
         _singleBlock = scope.RootBlock;
+        _admittedViewRow = scope.ViewRow;
 
         // A query with no name, size, date or subtree predicate needs only the row flags, so its loop
-        // skips the general predicate and reads no query field per row.
-        _flagsOnly = query.NamePattern is null && query.SizeMinimum is null && query.SizeMaximum is null &&
+        // skips the general predicate and reads no query field per row. A directory view restricts rows to
+        // its subtree, so a root bound to one never takes that loop (AdvanceRoot decides per root).
+        _queryNeedsOnlyFlags = query.NamePattern is null && query.SizeMinimum is null && query.SizeMaximum is null &&
                      query.LastWriteTimeMinimum is null && query.LastWriteTimeMaximum is null && query.Subtree is null;
         _includeDeleted = query.IncludeDeleted;
         _filterDirectories = query.IsDirectory.HasValue;
@@ -122,7 +126,8 @@ public ref struct IndexRowEnumerator
         _query = query;
         _cancellationToken = default;
         _singleBlock = null;
-        _flagsOnly = query.NamePattern is null && query.SizeMinimum is null && query.SizeMaximum is null &&
+        _admittedViewRow = null;
+        _queryNeedsOnlyFlags = query.NamePattern is null && query.SizeMinimum is null && query.SizeMaximum is null &&
                      query.LastWriteTimeMinimum is null && query.LastWriteTimeMaximum is null && query.Subtree is null;
         _includeDeleted = query.IncludeDeleted;
         _filterDirectories = query.IsDirectory.HasValue;
@@ -165,7 +170,7 @@ public ref struct IndexRowEnumerator
         {
             if (_rootBlock is not null)
             {
-                if (_flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch(_rootBlock))
+                if (_flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch())
                 {
                     _currentName = _resources.Capture(_scanner.CurrentName);
                     return true;
@@ -199,7 +204,7 @@ public ref struct IndexRowEnumerator
         return false;
     }
 
-    bool MoveToNextGeneralMatch(RootBlock rootBlock)
+    bool MoveToNextGeneralMatch()
     {
         var names = _resources.Names;
         while (_scanner.MoveNext())
@@ -210,8 +215,7 @@ public ref struct IndexRowEnumerator
                 continue;
             }
 
-            if (_subtree is { } under &&
-                !IndexNavigation.IsUnder(rootBlock.Block, _scanner.CurrentRowIndex, under.RowIndex))
+            if (_resources.Membership is { } membership && !membership.Contains(_scanner.CurrentRowIndex))
             {
                 continue;
             }
@@ -226,11 +230,12 @@ public ref struct IndexRowEnumerator
     {
         if (_segments is not null)
         {
-            if (_segments.TryMoveNextSegment(out var nextBlock, out _cancellationToken, ref _segment))
+            if (_segments.TryMoveNextSegment(out var nextBlock, out var segmentViewRow, out _cancellationToken, ref _segment))
             {
                 _rootBlock = nextBlock;
                 _scanner = new RowScanner(nextBlock, _cancellationToken);
-                _resources.BeginRoot(nextBlock.Block, _query, _cancellationToken);
+                _flagsOnly = _queryNeedsOnlyFlags && !nextBlock.View.IsDirectoryView;
+                _resources.BeginRoot(nextBlock, _query, null, segmentViewRow, _cancellationToken);
                 return true;
             }
 
@@ -246,7 +251,8 @@ public ref struct IndexRowEnumerator
             {
                 _rootBlock = rootBlock;
                 _scanner = new RowScanner(rootBlock, _cancellationToken);
-                _resources.BeginRoot(rootBlock.Block, _query, _cancellationToken);
+                _flagsOnly = _queryNeedsOnlyFlags && !rootBlock.View.IsDirectoryView;
+                _resources.BeginRoot(rootBlock, _query, _subtree, _admittedViewRow, _cancellationToken);
                 return true;
             }
         }
@@ -332,8 +338,8 @@ sealed class RowEnumerationSegments : IDisposable
 
     internal int ActiveSegment => Volatile.Read(ref _activeSegment);
 
-    internal bool TryMoveNextSegment([NotNullWhen(true)] out RootBlock? rootBlock, out CancellationToken cancellationToken,
-        ref int enumeratorSegment)
+    internal bool TryMoveNextSegment([NotNullWhen(true)] out RootBlock? rootBlock, out uint? admittedViewRow,
+        out CancellationToken cancellationToken, ref int enumeratorSegment)
     {
         while (true)
         {
@@ -344,6 +350,7 @@ sealed class RowEnumerationSegments : IDisposable
                 {
                     _callerCancellationToken.ThrowIfCancellationRequested();
                     rootBlock = null;
+                    admittedViewRow = null;
                     cancellationToken = default;
                     return false;
                 }
@@ -363,6 +370,7 @@ sealed class RowEnumerationSegments : IDisposable
                     enumeratorSegment = _activeSegment;
                     _callerCancellationToken.ThrowIfCancellationRequested();
                     rootBlock = null;
+                    admittedViewRow = null;
                     cancellationToken = default;
                     return false;
                 }
@@ -377,6 +385,7 @@ sealed class RowEnumerationSegments : IDisposable
             if (_activeScope.RootBlock is { } block)
             {
                 rootBlock = block;
+                admittedViewRow = _activeScope.ViewRow;
                 cancellationToken = _activeScope.CancellationToken;
                 return true;
             }

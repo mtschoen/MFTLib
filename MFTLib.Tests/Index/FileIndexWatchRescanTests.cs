@@ -270,7 +270,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
             volumeSerial: 2, journalIdentifier: 22, nextUsn: 8484, moment: SeededBlocks.SeededMoment);
         return new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey(driveLetter), TreeRoot, driveLetter == 'T' ? 1u : 2u),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -285,7 +285,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
                     SkippedRecordCount: 0));
             }, source.IndexSource),
             CacheMode = CacheMode.ExistingOnly
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(driveLetter), TreeRoot, driveLetter == 'T' ? 1u : 2u));
     }
 
     [TestMethod]

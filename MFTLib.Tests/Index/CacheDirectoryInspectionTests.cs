@@ -78,6 +78,20 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
     }
 
     [TestMethod]
+    public void InspectCached_ListsADirectoryViewsMftBlockUnderItsVolumeOnly()
+    {
+        // A directory view shares the volume's block, which is named for the volume, so the directory has no slot of its own.
+        var volumeBlock = TestBlocks.WriteCache(_cacheDirectory, 'T', producer: ProducerKind.Mft);
+        var viewDirectory = RootKey.FromDirectory(Path.Combine(_cacheDirectory, "src"));
+
+        var underVolume = CacheDirectory.InspectCached(_cacheDirectory, [new VolumeKey('T')]);
+        var underDirectory = CacheDirectory.InspectCached(_cacheDirectory, [viewDirectory]);
+
+        Assert.AreEqual(volumeBlock, underVolume.Single().File.Path);
+        Assert.IsEmpty(underDirectory);
+    }
+
+    [TestMethod]
     public void InspectCached_AvailableRootsAreMaterializedAndMappingsReleased()
     {
         var enumeration = TestBlocks.WriteCache(_cacheDirectory, 'C');

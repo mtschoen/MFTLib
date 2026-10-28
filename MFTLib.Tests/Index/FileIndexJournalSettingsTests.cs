@@ -35,7 +35,7 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
     }
 
     Task<FileIndex> OpenIndexAsync() =>
-        FileIndex.OpenAsync(Fixture.Options(), CancellationToken.None);
+        FileIndex.OpenAsync(Fixture.Options(producer: ProducerSelection.MftOnly), CancellationToken.None);
 
     [TestMethod]
     public async Task QueryUsnJournalSettings_ConfiguredRoot_ReturnsEngineResult()
@@ -70,7 +70,7 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
     {
         FileUtilities.Hooks._getVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
-        await using var index = await FileIndex.OpenAsync(Fixture.Options('C'), CancellationToken.None);
+        await using var index = await FileIndex.OpenAsync(Fixture.Options('C', producer: ProducerSelection.MftOnly), CancellationToken.None);
         using var volume = MftVolume.Open('C');
 
         var fromVolume = volume.Journal.QueryUsnJournalSettings();
@@ -79,6 +79,18 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
         Assert.AreEqual(fromVolume, fromIndex);
         Assert.AreEqual(0x08000000L, fromVolume.MaximumSize);
         Assert.AreEqual(0x01000000L, fromVolume.AllocationDelta);
+    }
+
+    [TestMethod]
+    public async Task QueryUsnJournalSettings_WalkedRoot_RefusesAndNamesTheRoot()
+    {
+        UsnJournalSettingsQuery.Dependencies._queryOverride = _ => throw new AssertFailedException("A walked root has no journal.");
+        await using var index = await FileIndex.OpenAsync(Fixture.Options(producer: ProducerSelection.WalkOnly), CancellationToken.None);
+
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(() => index.ReadUsnJournalSettings());
+
+        Assert.Contains("Root T", failure.Message);
+        Assert.Contains("walked", failure.Message);
     }
 
     [TestMethod]

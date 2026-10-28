@@ -76,7 +76,7 @@ public sealed class LocalMftBlockProducerCursorTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(Fixture.Options(
             drive: 'T',
             volumeSerial: 123,
-            producer: ProducerKind.Mft,
+            producer: ProducerSelection.MftOnly,
             cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent) with
         {
             MftSource = source

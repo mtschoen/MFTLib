@@ -21,7 +21,7 @@ public sealed partial class FileIndex
             if (Options.CacheMode == CacheMode.Disabled)
             {
                 return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
-                    $"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(Root, Configuration.VolumeSerial)}"),
+                    $"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial)}"),
                     DeleteOnClose: true, OwnsCanonicalSlot: false);
             }
 
@@ -33,7 +33,7 @@ public sealed partial class FileIndex
             }
 
             return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
-                $"mftlib-private-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(Root, Configuration.VolumeSerial)}"),
+                $"mftlib-private-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial)}"),
                 DeleteOnClose: true, OwnsCanonicalSlot: false);
         }
 
@@ -72,7 +72,7 @@ public sealed partial class FileIndex
                 RestoreRetiredFile(retired);
             }
             else if (target.OwnsCanonicalSlot &&
-                     !(target.ExistedBeforeScan && HoldsCompleteBlock(target.Path, Configuration.VolumeSerial)))
+                     !(target.ExistedBeforeScan && HoldsCompleteBlock(target.Path, Resolved.VolumeSerial)))
             {
                 DeletePartialCanonicalBlock(target.Path);
             }

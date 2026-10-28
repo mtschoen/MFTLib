@@ -86,15 +86,15 @@ public class LookupEngineTests
     [TestMethod]
     public void SearchExact_IsAnExactNameMatchNotASubstring()
     {
-        Assert.IsEmpty(SearchEngine.Search(_rootBlock, new SearchQuery("readme", NameMatchMode.Exact), TestContext.CancellationToken));
-        Assert.HasCount(1, SearchEngine.Search(_rootBlock, new SearchQuery("README.MD", NameMatchMode.Exact), TestContext.CancellationToken));
-        Assert.IsEmpty(SearchEngine.Search(_rootBlock, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true), TestContext.CancellationToken));
+        Assert.IsEmpty(SearchEngine.Search(_rootBlock, new SearchQuery("readme", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
+        Assert.HasCount(1, SearchEngine.Search(_rootBlock, new SearchQuery("README.MD", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
+        Assert.IsEmpty(SearchEngine.Search(_rootBlock, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Root_ReturnsTheRootRoot()
     {
-        Assert.AreEqual(TestRootDirectory.For('T'), LookupEngine.Root(_rootBlock, TestContext.CancellationToken).Path);
+        Assert.AreEqual(TestRootDirectory.For('T'), LookupEngine.Root(_rootBlock, cancellationToken: TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
@@ -118,7 +118,7 @@ public class LookupEngineTests
         var rootBlock = new RootBlock(new VolumeKey('V'), block, rootDirectoryPath: TestRootDirectory.For('V'));
         try
         {
-            Assert.AreEqual(rootRow, LookupEngine.Root(rootBlock, TestContext.CancellationToken).RowIndex);
+            Assert.AreEqual(rootRow, LookupEngine.Root(rootBlock, cancellationToken: TestContext.CancellationToken).RowIndex);
             var entry = LookupEngine.Find(rootBlock, Path.Combine(TestRootDirectory.For('V'), "Documents", "report.pdf"), TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
@@ -137,7 +137,7 @@ public class LookupEngineTests
         Assert.IsNull(validation);
         var rootBlock = new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: TestRootDirectory.For('T'));
 
-        var root = LookupEngine.Root(rootBlock, TestContext.CancellationToken);
+        var root = LookupEngine.Root(rootBlock, cancellationToken: TestContext.CancellationToken);
 
         Assert.AreEqual(5u, root.RowIndex);
     }
@@ -200,7 +200,7 @@ public class LookupEngineTests
         var rootBlock = new RootBlock(new VolumeKey('T'), block);
         try
         {
-            var partitioned = SearchEngine.Search(rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), TestContext.CancellationToken);
+            var partitioned = SearchEngine.Search(rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken);
             var reference = SequentialExactName(rootBlock, "needle.txt", caseSensitive: false);
 
             Assert.HasCount(3, partitioned);
@@ -223,7 +223,7 @@ public class LookupEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(
-            () => SearchEngine.Search(_rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), token));
+            () => SearchEngine.Search(_rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: token));
     }
 
     [TestMethod]
@@ -234,7 +234,7 @@ public class LookupEngineTests
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.IsEmpty(SearchEngine.Search(rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), TestContext.CancellationToken));
+            Assert.IsEmpty(SearchEngine.Search(rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
         }
         finally
         {

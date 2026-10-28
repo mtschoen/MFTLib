@@ -82,12 +82,12 @@ public partial class BenchmarkRunner
         }
 
         var tag = CacheTag.FromStorage(input.PackedFourCc, input.TagVersion);
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        await using var index = await FileIndex.OpenAsync(CachedBlockOptions(rootKey, input.RootDirectory,
+            input.VolumeSerial, input.Producer) with
         {
             CacheDirectory = request.InputPath,
             CacheMode = CacheMode.ExistingOnly,
-            CacheTag = tag,
-            Root = new IndexedRoot(rootKey, input.RootDirectory, input.VolumeSerial, input.Producer)
+            CacheTag = tag
         }, CancellationToken.None).ConfigureAwait(false);
         using var borrow = index.BorrowCurrentSnapshot();
         var root = borrow.RootBlock;

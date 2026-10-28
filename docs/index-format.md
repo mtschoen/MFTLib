@@ -8,7 +8,7 @@ that read and write it (`BlockFile`, `BlockWriter`, `BlockHeader`, `BlockLayout`
 write blocks through `MFTLibTestExtensions`. A block is rebuildable from the filesystem, so there is no migration
 code: incompatible format, identity, serial, or completeness means reject the
 cache and rescan on a normal open. The stored producer kind must also match
-`IndexedRoot.Producer`: warm adoption rejects a mismatch before cache-tag,
+the selected producer: warm adoption rejects a mismatch before cache-tag,
 scan-shape, root and journal checks, closes the mapping and best-effort deletes the file under
 the owner lock. A normal open scans with the requested producer; a cache-only open
 reports `RootState.Failed` with `RootFailureKind.CacheDeclined`. A cache-only open never
@@ -35,8 +35,9 @@ capacity-exhausted flag independently of either count.
 Two shapes, both ending in the serial of the volume that contains the root as eight
 uppercase hexadecimal digits and the extension `.mlix`:
 
-- A volume root: `<drive letter>-<serial>.mlix`, for example `C-0BADF00D.mlix`.
-- A directory root: `D<sixteen lowercase hexadecimal digits>-<serial>.mlix`, for example
+- A volume root, and every MFT block whatever the root of the view that owns it: `<drive letter>-<serial>.mlix`,
+  for example `C-0BADF00D.mlix`. An MFT block is the volume's, so a directory view of it shares that name.
+- A walked directory root: `D<sixteen lowercase hexadecimal digits>-<serial>.mlix`, for example
   `D0123456789abcdef-0BADF00D.mlix`. The digits are the first eight bytes of the SHA-256
   of the root key text (the normalized directory path) encoded as UTF-8. On a
   case-insensitive platform (Windows) the text is first mapped with the invariant simple uppercase

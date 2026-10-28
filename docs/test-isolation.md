@@ -323,7 +323,6 @@ before disposing the host harness.
 | --- | --- | --- |
 | `EnumerationWalkLimit.Hooks._walkQueued` | Process-global; reset after opens drain. | `FileIndexConcurrentOpenTests.Open_EnumerationWalks_NeverExceedTheWalkLimit` |
 | `CacheDirectory.Hooks._beforeDelete` | Process-global; runs under the owner lock, reset after deletion drains. | `CacheDirectoryDeletionLiveOwnerTests`; `CacheDirectoryDeletionTests` |
-| `IndexedRoot.Dependencies._volumeSerialReader` | Process-global; null selects the native reader. | `IndexedRootTests`; `ReadmeWalkthroughTests` |
 | `FileEntry.Dependencies._openById` | Process-global; defaults to `DefaultOpenById`. | `FileEntryOpenTests`; `FileEntryIncarnationTests`; `MftDumpPathTests`; `DirectHostTests` |
 | `UsnJournalSettingsQuery.Dependencies._queryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
 | `JournalCheckpointCheck.Hooks.ObservationOverride` and one-way guard | Process-global; exclusive scope only through public `JournalIsolation`, the guard never resets. | `JournalWindowOverrideTests`; `ConsumerJournalIsolationTests`; `UsnJournalVolumeInteropTests` |

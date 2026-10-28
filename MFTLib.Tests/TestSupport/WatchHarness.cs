@@ -66,10 +66,10 @@ sealed class WatchHarness : IDisposable
             {
                 var index = FileIndex.OpenAsync(new FileIndexOptions
                 {
-                    Root = SyntheticIndexedRoot.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial),
+
                     CacheDirectory = CacheDirectory,
                     MftSource = mftSource
-                }, CancellationToken.None).GetAwaiter().GetResult();
+                }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial)), CancellationToken.None).GetAwaiter().GetResult();
                 index.Changed += _changes.Enqueue;
                 index.WatchFaulted += fault => RecordFault(index, fault);
                 _indicesByDrive[letter] = index;

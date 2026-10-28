@@ -8,10 +8,26 @@ public sealed partial class FileIndex
         {
             if (Block is not { } rootBlock)
             {
+                // Offline here is a root absent at open, which never reached selection.
+                var reachedSelection = BlocklessState != RootState.Offline;
                 return new RootStatus(Root, BlocklessState)
                 {
                     Failure = _failure,
-                    Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss }
+                    Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss },
+                    Producer = reachedSelection ? Resolved.Producer : null,
+                    MftUnavailable = reachedSelection ? ReportedMftUnavailable : null
+                };
+            }
+
+            if (!rootBlock.View.IsPresent)
+            {
+                // A directory view whose directory is out of the block (renamed away, or not yet created) reads as
+                // offline with no block: the volume block stays mapped and watched, and a later batch can bring it back.
+                return new RootStatus(Root, RootState.Offline)
+                {
+                    Watch = DescribeWatchLocked(),
+                    Producer = Resolved.Producer,
+                    MftUnavailable = ReportedMftUnavailable
                 };
             }
 
@@ -21,6 +37,8 @@ public sealed partial class FileIndex
             return new RootStatus(Root, RootState.Ready)
             {
                 Failure = _failure,
+                Producer = Resolved.Producer,
+                MftUnavailable = ReportedMftUnavailable,
                 Block = new RootBlockStatus
                 {
                     Origin = result.Origin,
@@ -95,15 +113,24 @@ public sealed partial class FileIndex
         public bool IsWatchingLocked() =>
             _watchRequested || Current is not null || _retiring is not null;
 
+        /// <summary>The selection-time reason, or the last scan attempt's when a broker launch or elevation failed.</summary>
+        MftUnavailableReason? ReportedMftUnavailable => Resolved.MftUnavailable ?? _lastMftFailure;
+
         public UsnJournalSettings QueryUsnJournalSettings()
         {
-            if (!RootKind.For(Configuration.Producer, Options.MftSource).HasJournalSettings)
+            if (Resolved.IsDump)
             {
                 throw new InvalidOperationException(
                     MftIndexSource.FormatUnavailable(Volume, MftIndexSource.NoJournalSettingsReason));
             }
 
-            return UsnJournalSettingsQuery.Query(Volume);
+            if (Resolved is not { Producer: ProducerKind.Mft, Volume: { } volume })
+            {
+                throw new InvalidOperationException(
+                    $"Root {Root} is walked rather than read from the MFT, so it has no USN journal settings.");
+            }
+
+            return UsnJournalSettingsQuery.Query(volume);
         }
     }
 }

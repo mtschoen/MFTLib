@@ -238,7 +238,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
         ReadAcrossDisposalAsync((index, root, _) => read(index, root));
 
     FileIndexOptions SyntheticRootOptions() =>
-        Fixture.Options(producer: ProducerKind.Mft) with
+        Fixture.Options(producer: ProducerSelection.MftOnly) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment),

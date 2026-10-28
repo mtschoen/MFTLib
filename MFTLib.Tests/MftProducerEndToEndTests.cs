@@ -236,12 +236,12 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
 
     string At(params string[] segments) => Path.Combine([_rootDirectory, .. segments]);
 
-    FileIndexOptions Options(MftIndexSource source) => new()
+    FileIndexOptions Options(MftIndexSource source) => new FileIndexOptions
     {
-        Root = SyntheticIndexedRoot.Create(new VolumeKey('C'), _rootDirectory, 123),
+
         CacheDirectory = _cacheDirectory,
         MftSource = source
-    };
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('C'), _rootDirectory, 123));
 
     static void AssertReady(FileIndex index)
     {

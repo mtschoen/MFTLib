@@ -242,11 +242,11 @@ sealed class CrossRootScenario : IAsyncDisposable
         {
             var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
-                Root = SyntheticIndexedRoot.Create(new VolumeKey(letter), _roots.Path, serial),
+
                 CacheDirectory = _cache.Path,
                 CacheMode = CacheMode.Disabled,
                 MftSource = source
-            }, Token);
+            }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(letter), _roots.Path, serial)), Token);
             index.WatchFaulted += fault => RecordFault(index, fault);
             _indices[letter] = index;
         }

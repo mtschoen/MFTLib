@@ -46,10 +46,29 @@ sealed class BrokerMftBlockProducer
             ScanShape = request.ScanShape,
             MinimumCapacities = request.MinimumCapacities
         };
-        var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
+        var process = await ConnectAsMftAvailabilityAsync(cancellationToken).ConfigureAwait(false);
         var result = await process.ScanVolumeAsync(request.Volume, target, options, progress, cancellationToken)
             .ConfigureAwait(false);
         return MftBlockValidation.Finish(request, result.Block.Block, result.ArmedCursor,
             MftBlockScan.SaturateSkippedRecordCount(result.Block.SkippedRecordCount), result.CatchUpLoss);
+    }
+
+    // Only the connect is translated: a broker that was never reached (declined elevation, a connect timeout, a
+    // session that already ended) is an eligibility reason, and an Automatic open walks. Everything after the connect,
+    // and every other connect failure, is the producer failing and propagates unchanged.
+    async Task<BrokerProcess> ConnectAsMftAvailabilityAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _connectAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (BrokerLaunchDeclinedException exception)
+        {
+            throw new MftUnavailableException(MftUnavailableReason.ElevationDeclined, exception.Message, exception);
+        }
+        catch (Exception exception) when (exception is TimeoutException or BrokerEndedException)
+        {
+            throw new MftUnavailableException(MftUnavailableReason.BrokerUnavailable, exception.Message, exception);
+        }
     }
 }

@@ -25,14 +25,14 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
         return root;
     }
 
-    FileIndexOptions Options(IndexedRoot root, bool cacheOnly = false,
+    FileIndexOptions Options(SyntheticRoot root, bool cacheOnly = false,
         ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null) =>
-        Fixture.Options(producer: producer,
+        (Fixture.Options(producer: SyntheticRoot.SelectionFor(producer),
             cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
-            Root = root with { Producer = producer },
+
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
-        };
+        }).WithSyntheticRoot(root with { Producer = producer });
 
     static void AssertSettled(FileIndex index, char driveLetter, BlockOrigin? blockOrigin, RootState state)
     {
@@ -71,8 +71,8 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_CacheOnlyDeclinedRoot_ReportsItsBlocklessState()
     {
-        var warmRoot = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
-        var coldRoot = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2);
+        var warmRoot = SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var coldRoot = SyntheticRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2);
 
         await using (await FileIndex.OpenAsync(Options(warmRoot), TestContext.CancellationToken))
         {
@@ -88,7 +88,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_OfflineRoot_ReportsOfflineWithNoBlock()
     {
-        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1);
+        var root = SyntheticRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1);
 
         await using var index = await FileIndex.OpenAsync(Options(root), TestContext.CancellationToken);
 
@@ -106,7 +106,7 @@ public sealed class FileIndexOpenProgressTests : IndexTreeTestBase
             throw new IOException("simulated MFT producer failure");
         }
 
-        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("failing"), 1);
+        var root = SyntheticRoot.Create(new VolumeKey('T'), CreateRoot("failing"), 1);
         var options = Options(root, producer: ProducerKind.Mft, mftProducer: FailingProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 

@@ -227,7 +227,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task LaunchAsync_LaunchDeclined_Throws()
     {
-        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<BrokerLaunchDeclinedException>(() =>
             BrokerProcess.LaunchAsync(_ => false, null, NoScanBlockSections.Factory, CancellationToken.None));
 
         Assert.Contains("declined", exception.Message);

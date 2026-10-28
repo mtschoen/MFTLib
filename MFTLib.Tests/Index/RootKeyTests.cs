@@ -178,15 +178,12 @@ public class RootKeyTests
     [TestMethod]
     public void PublicRecords_RejectDefaultKeysOnConstructionAndWithInitialization()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => SyntheticIndexedRoot.Create(default, "unused", 0));
         Assert.ThrowsExactly<ArgumentException>(() => new IndexRecordKey(default, 5, ProducerKind.Mft));
         Assert.ThrowsExactly<ArgumentException>(() => new RootOperationResult(default, RootOperationOutcome.Succeeded, null));
         Assert.ThrowsExactly<ArgumentException>(() => new WatchStateChange(default, new RootWatchStatus(), null));
-        var root = SyntheticIndexedRoot.Create(new VolumeKey('c'), "unused", 0);
         var recordKey = new IndexRecordKey(new VolumeKey('C'), 5, ProducerKind.Mft);
         var operationResult = new RootOperationResult(new VolumeKey('C'), RootOperationOutcome.Succeeded, null);
         var stateChange = new WatchStateChange(new VolumeKey('C'), new RootWatchStatus(), null);
-        Assert.ThrowsExactly<ArgumentException>(() => root with { Root = default });
         Assert.ThrowsExactly<ArgumentException>(() => recordKey with { Root = default });
         Assert.ThrowsExactly<ArgumentException>(() => operationResult with { Root = default });
         Assert.ThrowsExactly<ArgumentException>(() => stateChange with { Volume = default });

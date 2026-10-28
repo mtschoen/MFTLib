@@ -16,6 +16,7 @@ static partial class HandleBoundFile
     const uint OpenExisting = 3;
     const uint FileFlagDeleteOnClose = 0x04000000;
     const uint FileFlagOpenReparsePoint = 0x00200000;
+    const uint FileFlagBackupSemantics = 0x02000000;
     const uint FileNameNormalized = 0x0;
     const uint VolumeNameDos = 0x0;
 
@@ -126,6 +127,15 @@ static partial class HandleBoundFile
     [SupportedOSPlatform("windows")]
     internal static SafeFileHandle OpenAttributesOnly(string path) =>
         Checked(CreateFileW(path, FileReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, FileFlagOpenReparsePoint,
+            IntPtr.Zero), $"Could not open '{path}'.");
+
+    /// <summary>
+    ///     A handle on the directory <paramref name="path" /> that follows junctions and symbolic links in every
+    ///     component, including the last, so its final path is the real folder.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    internal static SafeFileHandle OpenDirectoryFollowingLinks(string path) =>
+        Checked(CreateFileW(path, FileReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, FileFlagBackupSemantics,
             IntPtr.Zero), $"Could not open '{path}'.");
 
     static SafeFileHandle Checked(SafeFileHandle handle, string message)

@@ -35,7 +35,7 @@ public class LocalMftCacheFreshnessTests
         var source = new LocalMftBlockProducer(
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
             .CreateIndexSource();
-        var options = fixture.Options(drive: 'T', volumeSerial: 123, producer: ProducerKind.Mft) with
+        var options = fixture.Options(drive: 'T', volumeSerial: 123, producer: ProducerSelection.MftOnly) with
         {
             MftSource = source
         };

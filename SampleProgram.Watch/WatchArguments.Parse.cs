@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
@@ -22,8 +23,10 @@ sealed partial record WatchArguments
         _ = reader.Flag("--directories-only");
         var seconds = reader.Number("--seconds");
         var connectTimeout = reader.Number("--connect-timeout");
+        var producerText = reader.Text("--producer");
         var candidate = new WatchArguments(verb, [])
         {
+            Producer = ParseProducer(producerText),
             Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : null,
             ConnectTimeoutSeconds = connectTimeout is >= 1 and <= MaximumSeconds ? (int)connectTimeout : null,
             MaximumSize = reader.Number("--maximum-size"),
@@ -32,20 +35,33 @@ sealed partial record WatchArguments
             Clear = reader.Flag("--clear")
         };
         var tokens = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, seconds, connectTimeout) ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotARoot(tokens);
+        error = reader.Error ?? Validate(candidate, seconds, connectTimeout) ?? UnknownProducer(producerText)
+            ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotARoot(tokens);
         if (error is not null)
         {
             return false;
         }
 
-        parsed = candidate with { Drives = tokens.Select(token => char.ToUpperInvariant(token[0]).ToString()).Distinct().ToList() };
+        parsed = candidate with { Roots = tokens.Select(token => RootKey.TryParse(token, out var root) ? root : default).Distinct().ToList() };
         return true;
     }
 
+    static ProducerSelection ParseProducer(string? text) => text?.ToLowerInvariant() switch
+    {
+        "mft" => ProducerSelection.MftOnly,
+        "walk" => ProducerSelection.WalkOnly,
+        _ => ProducerSelection.Automatic
+    };
+
+    static string? UnknownProducer(string? text) =>
+        text is null || text.ToLowerInvariant() is "automatic" or "mft" or "walk"
+            ? null
+            : "Option --producer must be automatic, mft or walk.";
+
     static string? NotARoot(IEnumerable<string> tokens)
     {
-        var stray = tokens.FirstOrDefault(token => !ArgumentReader.IsRoot(token));
-        return stray is null ? null : $"'{stray}' is not a drive letter.";
+        var stray = tokens.FirstOrDefault(token => !RootKey.TryParse(token, out _));
+        return stray is null ? null : $"Root '{stray}' is neither a drive nor a full path.";
     }
 
     // The first flag on the command line that the verb never reads, named with the verb as the user knows it.

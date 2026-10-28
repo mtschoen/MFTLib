@@ -11,7 +11,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     public TestContext TestContext { get; set; } = null!;
 
     FileIndexOptions Options(ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null) =>
-        Fixture.Options(producer: producer) with
+        Fixture.Options(producer: SyntheticRoot.SelectionFor(producer)) with
         {
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
@@ -56,9 +56,9 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration));
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 

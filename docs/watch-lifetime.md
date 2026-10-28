@@ -4,7 +4,7 @@
     - **Root identity and lifecycle admission**: `VolumeKey` is an ASCII letter normalized once to upper
       case, with implicit conversion from `char` and no string conversion, and `RootKey` is a volume or a directory path that
       widens implicitly from it. The default of either is invalid.
-      Each `FileIndex` coordinates one `IndexedRoot`. Start, stop, catch-up wait and rescan each expose one method taking
+      Each `FileIndex` coordinates one root (`FileIndexOptions.Root`). Start, stop, catch-up wait and rescan each expose one method taking
       `(CancellationToken cancellationToken)`, the token required, and returning
       `Task<RootOperationResult>`. Caller cancellation and disposal at
       admission fail the call; operational failures are returned in `RootOperationResult.Failure`. Disposal after

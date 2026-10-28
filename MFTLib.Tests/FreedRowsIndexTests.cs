@@ -189,7 +189,7 @@ public sealed class FreedRowsIndexTests : IndexTreeTestBase
         };
         var producer = new LocalMftBlockProducer(new FakeTimeProvider(new DateTimeOffset(FixedMoment)),
             new MftScanOptions { IncludeFreed = includeFreed }, access);
-        return FileIndex.OpenAsync(Fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+        return FileIndex.OpenAsync(Fixture.Options(producer: ProducerSelection.MftOnly, cacheMode: CacheMode.Disabled) with
         {
             MftSource = producer.CreateIndexSource()
         }, CancellationToken.None);

@@ -5,11 +5,11 @@ namespace SampleProgram.Watch;
 enum WatchVerb { Scan, Watch, Rescan, Journal, Cache, ElevationStatus }
 
 /// <summary>
-///     The parsed command line: an optional verb name, then drive letters and the verb's flags. A first argument
-///     that names no verb is a drive letter and selects <see cref="WatchVerb.Watch" />. An index verb that names
-///     no drive leaves <see cref="Drives" /> empty for the host to fill from the machine.
+///     The parsed command line: an optional verb name, then roots (drive letters or full directory paths) and the verb's
+///     flags. A first argument that names no verb is a root and selects <see cref="WatchVerb.Watch" />. An index verb that
+///     names no root leaves <see cref="Roots" /> empty for the host to fill from the machine.
 /// </summary>
-sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drives)
+sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Roots)
 {
     /// <summary>How long an unattended watch runs when <c>--seconds</c> is not given; an attended one runs until a key press.</summary>
     internal const int DefaultSeconds = 10;
@@ -18,8 +18,9 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drive
     const int MaximumSeconds = int.MaxValue / 1000;
 
     internal static string Usage =>
-        "Usage: SampleProgram.Watch [verb] [drive ...] [--connect-timeout N]" + Environment.NewLine +
-        "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); with no drive, every ready NTFS fixed drive" + Environment.NewLine +
+        "Usage: SampleProgram.Watch [verb] [root ...] [--producer automatic|mft|walk] [--connect-timeout N]" + Environment.NewLine +
+        "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); a root is a drive letter or a full directory path; with no root, every ready local NTFS drive" + Environment.NewLine +
+        "  --producer picks how a root is read: automatic (default) scans the MFT when the volume allows it and otherwise walks, mft never walks, walk never reads the MFT" + Environment.NewLine +
         "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch runs until a key press, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
         "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
         "  cache exits 0 when listing; --clear attempts every selected block and exits 1 if any is InUse or Failed, otherwise 0" + Environment.NewLine +
@@ -28,10 +29,10 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drive
     // The flags each verb reads; any other flag on the command line is a usage error rather than silently ignored.
     static readonly Dictionary<WatchVerb, string[]> VerbFlags = new()
     {
-        [WatchVerb.Scan] = ["--connect-timeout"],
-        [WatchVerb.Watch] = ["--cache-directory", "--seconds", "--connect-timeout"],
-        [WatchVerb.Rescan] = ["--cache-directory", "--connect-timeout"],
-        [WatchVerb.Journal] = ["--cache-directory", "--maximum-size", "--allocation-delta", "--connect-timeout"],
+        [WatchVerb.Scan] = ["--connect-timeout", "--producer"],
+        [WatchVerb.Watch] = ["--cache-directory", "--seconds", "--connect-timeout", "--producer"],
+        [WatchVerb.Rescan] = ["--cache-directory", "--connect-timeout", "--producer"],
+        [WatchVerb.Journal] = ["--cache-directory", "--maximum-size", "--allocation-delta", "--connect-timeout", "--producer"],
         [WatchVerb.Cache] = ["--cache-directory", "--clear"],
         [WatchVerb.ElevationStatus] = []
     };
@@ -40,13 +41,15 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drive
     internal int? Seconds { get; init; }
     /// <summary>The <c>--connect-timeout</c> in seconds the broker session waits for the elevated broker; null waits the library default.</summary>
     internal int? ConnectTimeoutSeconds { get; init; }
+    /// <summary>The <c>--producer</c> every opened root asks for.</summary>
+    internal ProducerSelection Producer { get; init; } = ProducerSelection.Automatic;
     internal long? MaximumSize { get; init; }
     internal long? AllocationDelta { get; init; }
     internal string? CacheDirectory { get; init; }
     internal bool Clear { get; private init; }
 
-    /// <summary>Whether the verb opens an index, so it needs the drives it works on.</summary>
-    internal bool NeedsDrives => Verb is not (WatchVerb.Cache or WatchVerb.ElevationStatus);
+    /// <summary>Whether the verb opens an index, so it needs the roots it works on.</summary>
+    internal bool NeedsRoots => Verb is not (WatchVerb.Cache or WatchVerb.ElevationStatus);
 
     // Verbs that open an index launch the broker, which asks for elevation itself; cache and elevation-status touch no volume.
     internal ElevationNeed Need => Verb is WatchVerb.Cache or WatchVerb.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;

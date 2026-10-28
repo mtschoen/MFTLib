@@ -81,7 +81,7 @@ public class MftDumpApplicabilityTests
     [TestMethod]
     public async Task Open_WithRootSet_IsRejectedNamingRoot()
     {
-        var options = MftDumpIndexes.Options() with { Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('D'), MftDumpIndexes.Root, 0) };
+        var options = MftDumpIndexes.Options().WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('D'), MftDumpIndexes.Root, 0));
 
         await AssertRejectedAsync(options, "FileIndexOptions.Root");
     }
@@ -164,7 +164,7 @@ public class MftDumpApplicabilityTests
     public async Task StartWatching_ASourceWithNoWatchSourceIsNotApplicable()
     {
         using var fixture = new IndexTreeFixture(seedDocuments: false);
-        var options = fixture.Options(volumeSerial: 0, producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+        var options = fixture.Options(volumeSerial: 0, producer: ProducerSelection.MftOnly, cacheMode: CacheMode.Disabled) with
         {
             MftSource = new MftIndexSource(MftDumpIndexes.Produce)
         };
@@ -231,7 +231,7 @@ public class MftDumpApplicabilityTests
         {
             using var fixture = new IndexTreeFixture(seedDocuments: false);
             await using var index = await FileIndex.OpenAsync(
-                fixture.Options(volumeSerial: 0, producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+                fixture.Options(volumeSerial: 0, producer: ProducerSelection.MftOnly, cacheMode: CacheMode.Disabled) with
                 {
                     MftSource = new MftIndexSource(MftDumpIndexes.Produce, watchSource)
                 }, CancellationToken.None);

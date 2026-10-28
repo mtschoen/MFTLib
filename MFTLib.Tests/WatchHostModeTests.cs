@@ -61,13 +61,31 @@ public sealed class WatchHostModeTests : IDisposable
         var sessionLaunch = Task.FromResult(broker.Handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveRoot, CancellationToken.None);
+        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C')]), session, ResolveOptions, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.Contains("Index holds 2 rows; 0 records skipped", lines, string.Join(Environment.NewLine, lines));
         Assert.Contains("Catch-up held; watch supported: True", lines);
         Assert.Contains(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal), lines);
         Assert.Contains("=== Root C: done ===", lines);
+    }
+
+    [TestMethod]
+    public async Task Scan_PrintsTheProducerAndTheUnavailableReason()
+    {
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
+        var lines = new List<string>();
+        var scanner = ScannerOverBroker(lines);
+        var sessionLaunch = Task.FromResult(broker.Handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+
+        // The volume is not NTFS, so Automatic walks the directory and says why.
+        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C')]), session,
+            options => SyntheticVolumeFacts.Apply(options, 4242, isNtfs: false, volume: new VolumeKey('C'),
+                volumeRootDirectory: _directory), CancellationToken.None);
+
+        Assert.AreEqual(0, result);
+        Assert.Contains("producer Enumeration; MFT unavailable: NotNtfs", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -80,7 +98,7 @@ public sealed class WatchHostModeTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C", "D"]), session, ResolveRoot, CancellationToken.None);
+        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C'), new VolumeKey('D')]), session, ResolveOptions, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
@@ -102,7 +120,7 @@ public sealed class WatchHostModeTests : IDisposable
         var sessionLaunch = Task.FromResult(broker.Handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveRoot, CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C')]), session, ResolveOptions, CancellationToken.None);
 
         Assert.Contains(line => line.StartsWith("Index holds ", StringComparison.Ordinal), lines);
         Assert.Contains("Catch-up lost: CheckpointTrimmed", lines);
@@ -120,7 +138,7 @@ public sealed class WatchHostModeTests : IDisposable
         var sessionLaunch = Task.FromResult(broker.Handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveRoot, CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C')]), session, ResolveOptions, CancellationToken.None);
 
         Assert.Contains(line => line.StartsWith("Error on root C: ", StringComparison.Ordinal) &&
                                         line.Contains("volume unreadable"), lines, string.Join(Environment.NewLine, lines));
@@ -128,14 +146,15 @@ public sealed class WatchHostModeTests : IDisposable
     }
 
     [TestMethod]
-    public void ResolveRoot_SyntheticRoots_RootAtTheFixtureDirectoryNotARealVolume()
+    public async Task ResolveOptions_SyntheticRoots_RootAtTheFixtureDirectoryNotARealVolume()
     {
-        foreach (var letter in new[] { "C", "D", "Z" })
+        foreach (var letter in new[] { 'C', 'D', 'Z' })
         {
-            var root = ResolveRoot(letter);
+            var options = ResolveOptions(new FileIndexOptions { Root = new VolumeKey(letter), CacheMode = CacheMode.Disabled });
 
-            Assert.AreEqual(_directory, root.RootDirectory);
-            Assert.IsTrue(Directory.Exists(root.RootDirectory));
+            await using var index = await FileIndex.OpenAsync(options with { Producer = ProducerSelection.WalkOnly }, CancellationToken.None);
+
+            Assert.AreEqual(RootState.Ready, index.Status.State);
         }
     }
 
@@ -149,7 +168,7 @@ public sealed class WatchHostModeTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), session, _ => SyntheticIndexedRoot.Create(new VolumeKey('Q'), Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('Q')]), session, options => SyntheticVolumeFacts.Apply(options, 4242, volume: new VolumeKey('Q'), volumeRootDirectory: Path.Combine(_directory, "missing-root")), CancellationToken.None);
 
         Assert.Contains("Error on root Q: The root is offline; nothing was scanned.", lines,
             string.Join(Environment.NewLine, lines));
@@ -164,7 +183,7 @@ public sealed class WatchHostModeTests : IDisposable
         var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null);
         var session = BrokerTestHarness.CreateSession(_ => throw new InvalidOperationException("UAC prompt declined"));
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveRoot, CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, [new VolumeKey('C')]), session, ResolveOptions, CancellationToken.None);
 
         Assert.Contains(line => line.StartsWith("Error on root C: ", StringComparison.Ordinal) &&
                                         line.Contains("UAC prompt declined", StringComparison.Ordinal), lines,
@@ -201,9 +220,12 @@ public sealed class WatchHostModeTests : IDisposable
         return scanner;
     }
 
-    IndexedRoot ResolveRoot(string letter)
+    // Each volume roots at its own directory: the members of a set must not nest.
+    FileIndexOptions ResolveOptions(FileIndexOptions options)
     {
-        var driveLetter = char.ToUpperInvariant(letter[0]);
-        return SyntheticIndexedRoot.Create(new VolumeKey(driveLetter), _directory, 4242);
+        var letter = options.Root!.Value.ToString()[0];
+        var rootDirectory = Path.Combine(_directory, letter.ToString());
+        Directory.CreateDirectory(rootDirectory);
+        return SyntheticVolumeFacts.Apply(options, 4242, volume: new VolumeKey(letter), volumeRootDirectory: rootDirectory);
     }
 }

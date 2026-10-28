@@ -25,9 +25,9 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration));
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
@@ -49,9 +49,9 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
             TestContext.CancellationToken);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 4242, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 4242, ProducerKind.Enumeration)), TestContext.CancellationToken);
 
         var status = index.Status;
         Assert.AreEqual(3u, status.Block!.LiveRowCount);
@@ -64,9 +64,9 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
     {
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration));
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 

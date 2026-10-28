@@ -91,63 +91,6 @@ static class IndexNavigation
         return children;
     }
 
-    /// <summary>
-    ///     Walks the parent chain from <paramref name="candidateRow" /> toward <paramref name="targetRow" />.
-    ///     Query engines supply rows from the same block after resolving the subtree anchor.
-    /// </summary>
-    internal static bool IsUnder(BlockFile block, uint candidateRow, uint targetRow)
-    {
-        var current = candidateRow;
-        var target = targetRow;
-        var hare = current;
-        var cycleDetectionActive = true;
-
-        for (var depth = 0; depth < BlockLayout.MaximumPathDepth; depth++)
-        {
-            if (current == target)
-            {
-                return true;
-            }
-
-            if (!TryGetParentRow(block, current, out var parent))
-            {
-                return false;
-            }
-
-            current = parent;
-            if (current == target)
-            {
-                return true;
-            }
-
-            if (cycleDetectionActive)
-            {
-                if (TryGetParentRow(block, hare, out hare) &&
-                    TryGetParentRow(block, hare, out hare))
-                {
-                    if (hare == current)
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    cycleDetectionActive = false;
-                }
-            }
-        }
-
-        // Every hop above compared the row it reached with the target, so the walk that ran out
-        // of depth ended on a row that is not the target.
-        if (!TryGetParentRow(block, current, out _))
-        {
-            return false;
-        }
-
-        throw new InvalidDataException(
-            $"Parent chain for row {candidateRow} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
-    }
-
     static List<string> CollectSegments(BlockFile block, uint rowIndex)
     {
         var segments = new List<string>();

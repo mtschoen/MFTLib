@@ -46,12 +46,8 @@ public class PublicMemberCallerTests
             "Owner-approved consumer migrations: file-wizard FileWizard/DriveSelectionParser.cs and FileWizard/FileWizardSettings.cs parse CLI and saved volume specs; git-wizard GitWizard/MftIndexSession.Windows.cs NormalizeVolume parses requested volumes",
         ["property MFTLib.Index.VolumeKey.Letter : System.Char"] =
             "file-wizard FileWizard/ContentHashSidecar.cs persists the letter of a volume key, and git-wizard GitWizard/Watch/IndexVolumeChangeSource.cs maps a volume key to its volume root",
-        ["method MFTLib.Index.IndexedRoot.FromDirectory(System.String) : MFTLib.Index.IndexedRoot"] =
-            "file-wizard FileWizard/FileIndexHost.cs DriveFor and git-wizard GitWizard/Discovery/EnumerationDiscovery.cs CreateIndexOptions create walked-folder roots through it",
         ["method MFTLib.Index.RootKey.FromDirectory(System.String) : MFTLib.Index.RootKey"] =
             "file-wizard FileWizard/FileIndexHost.cs DriveFor and git-wizard GitWizard/Discovery/EnumerationDiscovery.cs derive the key of a walked folder to select its root",
-        ["method MFTLib.Index.RootKey.TryParse(System.String, MFTLib.Index.RootKey&) : System.Boolean"] =
-            "file-wizard FileWizard/FileIndexHost.cs DriveFor parses a root spec or folder path into a root key",
         ["property MFTLib.Index.RootKey.IsVolume : System.Boolean"] =
             "file-wizard FileWizard/JournalCommand.cs and git-wizard GitWizard/Watch/IndexVolumeChangeSource.cs branch on whether a root is a volume before journal work",
         ["method MFTLib.Index.RootKey.CompareTo(MFTLib.Index.RootKey) : System.Int32"] =

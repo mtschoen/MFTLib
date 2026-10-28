@@ -119,8 +119,6 @@ MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournal
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
-MFTLibTestExtensions.SyntheticIndexedRoot :: method public static Create(MFTLib.Index.RootKey root, string rootDirectory, uint volumeSerial, MFTLib.Index.ProducerKind producer = 1) : MFTLib.Index.IndexedRoot
-MFTLibTestExtensions.SyntheticIndexedRoot :: type public static class
 MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUsn)
 MFTLibTestExtensions.SyntheticJournalCursor :: method public Deconstruct(out ulong JournalIdentifier, out long NextUsn) : void
 MFTLibTestExtensions.SyntheticJournalCursor :: method public Equals(MFTLibTestExtensions.SyntheticJournalCursor other) : bool
@@ -244,3 +242,5 @@ MFTLibTestExtensions.SyntheticScanRecord :: property public required FileName { 
 MFTLibTestExtensions.SyntheticScanRecord :: property public required ParentRecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticScanRecord :: property public required RecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticScanRecord :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticScanRecord>
+MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Apply(MFTLib.Index.FileIndexOptions options, uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default) : MFTLib.Index.FileIndexOptions
+MFTLibTestExtensions.SyntheticVolumeFacts :: type public static class

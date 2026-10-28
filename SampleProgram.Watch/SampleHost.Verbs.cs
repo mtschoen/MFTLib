@@ -47,7 +47,7 @@ partial class SampleHost
     {
         var exitCode = 0;
         var directory = parsed.CacheDirectory ?? string.Empty;
-        var roots = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => (RootKey)new VolumeKey(drive[0])).ToArray();
+        var roots = parsed.Roots.Count == 0 ? null : parsed.Roots.ToArray();
         foreach (var block in CacheDirectory.InspectCached(directory, roots, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Message}")))
         {
             _output.WriteLine($"{block.File.Root}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}");

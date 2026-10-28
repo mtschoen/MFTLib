@@ -53,7 +53,6 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(LaunchMemberReferenceFixture), "LaunchDependencies._startProcess")]
     [DataRow(typeof(WalkHooksReferenceFixture), "EnumerationWalkLimit.Hooks")]
     [DataRow(typeof(DeletionHooksReferenceFixture), "CacheDirectory.Hooks")]
-    [DataRow(typeof(VolumeDependenciesReferenceFixture), "IndexedRoot.Dependencies")]
     [DataRow(typeof(OpenDependenciesReferenceFixture), "FileEntry.Dependencies")]
     [DataRow(typeof(QueryDependenciesReferenceFixture), "UsnJournalSettingsQuery.Dependencies")]
     [DataRow(typeof(JournalHooksReferenceFixture), "JournalCheckpointCheck.Hooks")]
@@ -169,7 +168,6 @@ public class NativeSeamIsolationTests
         type == typeof(BrokerDiagnostics.DiagnosticsDependencies) ||
         type == typeof(EnumerationWalkLimit.WalkHooks) ||
         type == typeof(CacheDirectory.DeletionHooks) ||
-        type == typeof(IndexedRoot.VolumeDependencies) ||
         type == typeof(FileEntry.OpenDependencies) ||
         type == typeof(UsnJournalSettingsQuery.QueryDependencies) ||
         type == typeof(JournalCheckpointCheck.JournalHooks);

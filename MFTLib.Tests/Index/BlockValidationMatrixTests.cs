@@ -142,9 +142,9 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
         await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello", TestContext.CancellationToken);
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration));
 
         await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);
     }

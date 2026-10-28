@@ -6,11 +6,18 @@ namespace MFTLib.Index;
 /// </summary>
 static class LookupEngine
 {
-    internal static FileEntry Root(RootBlock rootBlock, CancellationToken cancellationToken = default)
+    /// <summary>
+    ///     The entry for the index's root: the block's root row, or the row a directory view is bound to. The binding is
+    ///     read once; the caller holds a block borrow, and a view that is absent is answered by the caller never lending
+    ///     the block.
+    /// </summary>
+    internal static FileEntry Root(RootBlock rootBlock, uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rootBlock);
         cancellationToken.ThrowIfCancellationRequested();
-        return FileEntry.Create(rootBlock, rootBlock.Block.Header.RootRow);
+
+        // The row admission bound, never a fresh read of a binding a later batch may have cleared.
+        return FileEntry.Create(rootBlock, admittedViewRow ?? rootBlock.View.Row);
     }
 
     /// <summary>The block <see cref="Find" /> reads for this path, or null when the root does not match.</summary>
@@ -22,7 +29,8 @@ static class LookupEngine
         }
 
         string? foldedPath = null;
-        return TryMatchRootPrefix(current.Kind, current.MatchableRootDirectoryPath, nativePath, ref foldedPath, out _)
+        return current.View.IsPresent &&
+               TryMatchRootPrefix(current.Kind, current.MatchableRootDirectoryPath, nativePath, ref foldedPath, out _)
             ? current
             : null;
     }
@@ -50,26 +58,55 @@ static class LookupEngine
             return null;
         }
 
-        var remainder = nativePath.AsSpan(rootLength);
-        var currentRow = rootBlock.Block.Header.RootRow;
+        if (!rootBlock.View.TryGetRow(out var viewRow) ||
+            !TryDescend(rootBlock, viewRow, nativePath.AsSpan(rootLength), cancellationToken, out var foundRow))
+        {
+            return null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return FileEntry.Create(rootBlock, foundRow);
+    }
+
+    /// <summary>
+    ///     Walks <paramref name="relativePath" />, a path below the row <paramref name="startRow" />, one name per
+    ///     level. False when a level has no live child of that name.
+    /// </summary>
+    internal static bool TryDescend(RootBlock rootBlock, uint startRow, ReadOnlySpan<char> relativePath,
+        CancellationToken cancellationToken, out uint row) =>
+        TryDescend(rootBlock, startRow, relativePath, null, cancellationToken, out row);
+
+    /// <summary>
+    ///     <see cref="TryDescend(RootBlock, uint, ReadOnlySpan{char}, CancellationToken, out uint)" /> that also reports how
+    ///     far the walk got: every level it tried is added to <paramref name="trace" />, and when a level has no live
+    ///     child, <paramref name="row" /> is the last row found and the trace's last level names what was missing.
+    /// </summary>
+    internal static bool TryDescend(RootBlock rootBlock, uint startRow, ReadOnlySpan<char> relativePath,
+        DescentTrace? trace, CancellationToken cancellationToken, out uint row)
+    {
+        row = startRow;
         var descent = new PathDescent(rootBlock, IsCaseSensitive(rootBlock), cancellationToken);
-        foreach (var segmentRange in remainder.SplitAny(rootBlock.Kind.Separators))
+        foreach (var segmentRange in relativePath.SplitAny(rootBlock.Kind.Separators))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var segment = remainder[segmentRange];
+            var segment = relativePath[segmentRange];
             if (segment.IsEmpty)
             {
                 continue;
             }
 
-            if (!TryFindChild(in descent, currentRow, segment, out currentRow))
+            var parent = row;
+            if (!TryFindChild(in descent, parent, segment, out row))
             {
-                return null;
+                row = parent;
+                trace?.Levels.Add(new DescentLevel(parent, segment.ToString(), null));
+                return false;
             }
+
+            trace?.Levels.Add(new DescentLevel(parent, segment.ToString(), row));
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        return FileEntry.Create(rootBlock, currentRow);
+        return true;
     }
 
     /// <summary>
@@ -117,6 +154,15 @@ static class LookupEngine
 
         rootLength = trimmed.Length;
         return true;
+    }
+
+    /// <summary>One level of a path descent: the row searched, the name looked for, and the child found (null when none).</summary>
+    internal readonly record struct DescentLevel(uint ParentRow, string Name, uint? FoundRow);
+
+    /// <summary>Where a path descent stood: every level it tried, in order. The last level has no child when the descent failed.</summary>
+    internal sealed class DescentTrace
+    {
+        internal List<DescentLevel> Levels { get; } = [];
     }
 
     /// <summary>

@@ -12,8 +12,31 @@ public sealed partial class FileIndex
         RootBlock BuildRootBlock(BlockFile block)
         {
             block.Diagnostics = Options.Diagnostics;
-            return new RootBlock(Root, block, rootDirectoryPath: Configuration.RootDirectory,
-                mftSource: Options.MftSource);
+            var view = Resolved.Producer == ProducerKind.Mft && IsDirectoryViewOfVolume()
+                ? ViewRoot.ForDirectory(Resolved.RootDirectory, RootKind.For(ProducerKind.Mft, Resolved.IsDump),
+                    Resolved.RenderRootDirectory)
+                : null;
+            var rootBlock = new RootBlock(Root, block, rootDirectoryPath: Resolved.RenderRootDirectory,
+                mftSource: Options.MftSource, view);
+            view?.Resolve(rootBlock, DisposalToken);
+            return rootBlock;
+        }
+
+        /// <summary>
+        ///     True when the root names a directory below its volume's root: such a root is a view of the whole-volume
+        ///     block, rooted at its resolved row, while a volume key (or a directory key naming the volume root itself)
+        ///     reads the block from its own root row.
+        /// </summary>
+        bool IsDirectoryViewOfVolume()
+        {
+            if (Resolved.IsDump || Resolved.Root.IsVolume || Resolved.VolumeRootDirectory is not { } volumeRoot)
+            {
+                return false;
+            }
+
+            var kind = RootKind.For(ProducerKind.Mft, isDump: false);
+            return !string.Equals(kind.ToMatchablePrefix(Resolved.RootDirectory),
+                kind.ToMatchablePrefix(volumeRoot), kind.Comparison);
         }
 
         /// <summary>
@@ -28,6 +51,7 @@ public sealed partial class FileIndex
         {
             _lastResult = published;
             _failure = null;
+            _lastMftFailure = null;
             if (published.CatchUpLoss is { } catchUpLoss)
             {
                 _consecutiveLostCatchUps++;

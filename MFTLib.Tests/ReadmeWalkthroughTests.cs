@@ -33,7 +33,6 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
-        IndexedRoot.Dependencies.ResetToDefaults();
         _tempDirectory.Dispose();
     }
 
@@ -114,23 +113,22 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [TestMethod]
     public async Task LocalOneShotWalkthrough_CompilesPublicRecipeAndRunsMultipleQueriesOverOneScan()
     {
-        IndexedRoot.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
-
         var cancellationToken = TestContext.CancellationToken;
-        var root = IndexedRoot.ReadWindowsVolume('C');
         var productionOptions = new FileIndexOptions
         {
-            Root = root,
+            Root = new VolumeKey('C'),
             CacheMode = CacheMode.Disabled,
             MftSource = MftIndexSources.FromLocalVolumes()
         };
-        Assert.AreEqual(new VolumeKey('C'), productionOptions.Root!.Root);
+        Assert.AreEqual(new VolumeKey('C'), productionOptions.Root);
+        Assert.AreEqual(ProducerSelection.Automatic, productionOptions.Producer);
         Assert.AreEqual(CacheMode.Disabled, productionOptions.CacheMode);
         Assert.IsNotNull(productionOptions.MftSource);
 
-        // The production setup above is compiled as shown; execution swaps in the owned directory so the
-        // synthetic scan never depends on a real C:\ root.
-        root = root with { RootDirectory = TemporaryDirectoryPath };
+        // The production setup above is compiled as shown; execution answers its volume facts with the owned directory
+        // so the synthetic scan never depends on a real C:\ root.
+        var synthetic = SyntheticVolumeFacts.Apply(productionOptions, 0x0BADF00Du, volume: new VolumeKey('C'),
+            volumeRootDirectory: TemporaryDirectoryPath);
 
         var scanCount = 0;
         var syntheticProducer = new SyntheticMftProducer(_ =>
@@ -148,9 +146,8 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         });
 
         var ignoredCachePath = Path.Combine(TemporaryDirectoryPath, "never-created-cache");
-        var options = productionOptions with
+        var options = synthetic with
         {
-            Root = root,
             CacheDirectory = ignoredCachePath,
             MftSource = SyntheticIndexSource.Create(syntheticProducer)
         };
@@ -198,16 +195,13 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [TestMethod]
     public async Task LocalOneShotWalkthrough_FailedAndCancelledOperations_SurfaceExpectedOutcomes()
     {
-        IndexedRoot.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
-        var root = IndexedRoot.ReadWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
-
-        var failingOptions = new FileIndexOptions
+        var failingOptions = SyntheticVolumeFacts.Apply(new FileIndexOptions
         {
-            Root = root,
+            Root = new VolumeKey('C'),
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(
                 new SyntheticMftProducer(_ => throw new InvalidOperationException("Access to the volume was denied.")))
-        };
+        }, 0x0BADF00Du, volume: new VolumeKey('C'), volumeRootDirectory: TemporaryDirectoryPath);
 
         await using (var failedIndex = await FileIndex.OpenAsync(failingOptions, TestContext.CancellationToken))
         {

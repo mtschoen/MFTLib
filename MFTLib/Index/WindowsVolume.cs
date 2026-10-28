@@ -1,10 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One Windows volume root with the facts <see cref="IndexedRoot.EnumerateWindowsVolumes" /> read and its
+///     One Windows volume root with the facts <see cref="EnumerateAll" /> read and its
 ///     verdict. A consumer branches on the fields and renders its own words.
 /// </summary>
-public sealed record WindowsVolume
+public sealed partial record WindowsVolume
 {
     /// <summary>Creates the identity of one volume root; the readiness facts and verdict are set by initializers.</summary>
     /// <param name="volume">The drive letter of <paramref name="rootDirectory" />.</param>
@@ -27,18 +27,18 @@ public sealed record WindowsVolume
     public DriveType DriveType { get; init; }
 
     /// <summary>
-    ///     True only when the root was read as ready. Readiness is read for fixed roots alone, so every other
-    ///     drive type reports false.
+    ///     True only when the root was read as ready. Readiness is read for fixed and removable roots alone, so
+    ///     every other drive type reports false.
     /// </summary>
     public bool IsReady { get; init; }
 
     /// <summary>
-    ///     The file system name, for example <c>NTFS</c> or <c>exFAT</c>. Null unless the root is a ready fixed root
-    ///     whose format was read.
+    ///     The file system name, for example <c>NTFS</c> or <c>exFAT</c>. Null unless the root is a ready fixed or
+    ///     removable root whose format was read.
     /// </summary>
     public string? Format { get; init; }
 
-    /// <summary>True only for a ready fixed NTFS volume, which an MFT scan can index.</summary>
+    /// <summary>True only for a ready fixed or removable NTFS volume, which <c>ProducerSelection.Automatic</c> scans through the MFT.</summary>
     public bool IsIndexable { get; init; }
 
     /// <summary>

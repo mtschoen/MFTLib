@@ -15,7 +15,9 @@ public sealed class FileIndexSet
     /// <param name="indices">The member indices to query across.</param>
     /// <exception cref="ArgumentNullException"><paramref name="indices" /> is null.</exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="indices" /> contains a null element or lists the same <see cref="RootKey" /> more than once.
+    ///     <paramref name="indices" /> contains a null element or lists the same <see cref="RootKey" /> more than once, or
+    ///     lists two roots that resolve to the same directory at open (an alias such as a junction or symbolic link).
+    ///     Members whose roots nest are accepted; see <see cref="Search" /> for which member answers.
     /// </exception>
     public FileIndexSet(IReadOnlyList<FileIndex> indices)
     {
@@ -35,17 +37,76 @@ public sealed class FileIndexSet
             }
         }
 
+        RejectSharedResolvedRoots(copy);
+
         _indices = copy;
         Indices = Array.AsReadOnly(copy);
+    }
+
+    // A member can serve a query now when it has a block it could lend: Status.Block is null for an Offline root, a
+    // failed root without a retained block, and a directory view whose directory is out of the block.
+    static bool IsAvailable(FileIndex index) => index.Status.Block is not null;
+
+    // Whether outer's root contains inner's root, by the matcher Find uses, so queries and lookups agree on segment
+    // boundaries, case folding and real-path rules.
+    static bool Contains(FileIndex outer, FileIndex inner)
+    {
+        string? foldedPath = null;
+        return LookupEngine.TryMatchRootPrefix(outer.Kind, outer.MatchableRootDirectoryPath, inner.RootDirectory,
+            ref foldedPath, out _);
+    }
+
+    // The available members that sit under no other available member, in list order. Two members whose roots contain
+    // each other keep the earlier one. Pairwise over the members, once per query; no per-row cost.
+    FileIndex[] SelectOutermostAvailable()
+    {
+        var available = _indices.Where(IsAvailable).ToArray();
+        var selected = new List<FileIndex>(available.Length);
+        for (var position = 0; position < available.Length; position++)
+        {
+            var candidate = available[position];
+            var covered = false;
+            for (var other = 0; other < available.Length && !covered; other++)
+            {
+                covered = other != position && Contains(available[other], candidate) &&
+                          (other < position || !Contains(candidate, available[other]));
+            }
+
+            if (!covered)
+            {
+                selected.Add(candidate);
+            }
+        }
+
+        return [.. selected];
+    }
+
+    // Two keys that name one folder through an alias (junction, symbolic link, 8.3 name) resolve to the same final path
+    // at open; they are duplicates exactly as two equal keys are. Equality is mutual containment by the lookup matcher.
+    static void RejectSharedResolvedRoots(FileIndex[] indices)
+    {
+        for (var first = 0; first < indices.Length; first++)
+        {
+            for (var second = first + 1; second < indices.Length; second++)
+            {
+                if (Contains(indices[first], indices[second]) && Contains(indices[second], indices[first]))
+                {
+                    throw new ArgumentException(
+                        $"Roots {indices[first].RootKey} and {indices[second].RootKey} resolve to the same directory " +
+                        $"{indices[first].RootDirectory}; the indexes of a FileIndexSet must not repeat a root.",
+                        nameof(indices));
+                }
+            }
+        }
     }
 
     /// <summary>The member indices, in the order every set query visits them.</summary>
     public IReadOnlyList<FileIndex> Indices { get; }
 
     /// <summary>
-    ///     Resolves a native filesystem path against the member indices. The member whose root
-    ///     directory is the longest matching prefix of <paramref name="path" /> is selected, and
-    ///     the lookup is delegated to that index alone, with no fallback to an outer root on a miss.
+    ///     Resolves a native filesystem path against the member indices. The outermost available member whose root
+    ///     contains <paramref name="path" /> is selected (the same member a set query attributes the file to), and
+    ///     the lookup is delegated to that index alone, with no fallback to another member on a miss.
     /// </summary>
     /// <param name="path">The path to resolve, in the form <see cref="FileEntry.Path" /> emits.</param>
     /// <param name="cancellationToken">Stops the walk before the first row and at least every 4096 rows.</param>
@@ -59,7 +120,7 @@ public sealed class FileIndexSet
         ThrowIfAnyDisposed();
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (FindLongestMatchingIndex(path) is not { } selected)
+        if (FindOutermostMatchingIndex(path) is not { } selected)
         {
             return null;
         }
@@ -68,7 +129,9 @@ public sealed class FileIndexSet
     }
 
     /// <summary>
-    ///     Materializes the whole match set across <see cref="Indices" /> in list order. When
+    ///     Materializes the whole match set across the outermost available members of <see cref="Indices" /> in list
+    ///     order: a member that lies under another available member is not visited, so no file is returned twice
+    ///     and each belongs to the outermost available member containing it. When
     ///     <see cref="SearchQuery.Subtree" /> is set, only the member index owning that anchor is
     ///     borrowed and scanned.
     /// </summary>
@@ -98,7 +161,7 @@ public sealed class FileIndexSet
 
         cancellationToken.ThrowIfCancellationRequested();
         var results = new List<FileEntry>();
-        foreach (var index in _indices)
+        foreach (var index in SelectOutermostAvailable())
         {
             cancellationToken.ThrowIfCancellationRequested();
             results.AddRange(index.Search(query, cancellationToken));
@@ -109,7 +172,7 @@ public sealed class FileIndexSet
     }
 
     /// <summary>
-    ///     The streaming form of <see cref="Search" />: visits <see cref="Indices" /> in list order,
+    ///     The streaming form of <see cref="Search" />: visits the outermost available members in list order,
     ///     borrowing one member index at a time and releasing its borrow before advancing to the next.
     ///     When <see cref="SearchQuery.Subtree" /> is set, only the member index owning that anchor is
     ///     borrowed and scanned.
@@ -138,7 +201,7 @@ public sealed class FileIndexSet
     }
 
     /// <summary>
-    ///     Enumerates the rows matching <paramref name="query" /> across <see cref="Indices" /> in list order
+    ///     Enumerates the rows matching <paramref name="query" /> across the outermost available members in list order
     ///     as non-allocating <see cref="IndexRow" /> views, borrowing one member index at a time and releasing
     ///     its borrow before advancing to the next.
     /// </summary>
@@ -174,7 +237,7 @@ public sealed class FileIndexSet
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return new IndexRowEnumerator(new RowEnumerationSegments(_indices, cancellationToken), query);
+        return new IndexRowEnumerator(new RowEnumerationSegments(SelectOutermostAvailable(), cancellationToken), query);
     }
 
     IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
@@ -191,7 +254,7 @@ public sealed class FileIndexSet
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        foreach (var index in _indices)
+        foreach (var index in SelectOutermostAvailable())
         {
             cancellationToken.ThrowIfCancellationRequested();
             foreach (var entry in index.Enumerate(query, cancellationToken))
@@ -225,7 +288,7 @@ public sealed class FileIndexSet
         }
     }
 
-    FileIndex? FindLongestMatchingIndex(string nativePath)
+    FileIndex? FindOutermostMatchingIndex(string nativePath)
     {
         if (nativePath.Length == 0)
         {
@@ -233,23 +296,15 @@ public sealed class FileIndexSet
         }
 
         string? foldedPath = null;
-        FileIndex? best = null;
-        var bestLength = -1;
-        foreach (var candidate in _indices)
+        foreach (var candidate in SelectOutermostAvailable())
         {
-            if (!LookupEngine.TryMatchRootPrefix(candidate.Kind, candidate.MatchableRootDirectoryPath, nativePath,
-                    ref foldedPath, out var rootLength))
+            if (LookupEngine.TryMatchRootPrefix(candidate.Kind, candidate.MatchableRootDirectoryPath, nativePath,
+                    ref foldedPath, out _))
             {
-                continue;
-            }
-
-            if (rootLength > bestLength)
-            {
-                best = candidate;
-                bestLength = rootLength;
+                return candidate;
             }
         }
 
-        return best;
+        return null;
     }
 }

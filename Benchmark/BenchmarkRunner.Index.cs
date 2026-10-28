@@ -184,13 +184,12 @@ public partial class BenchmarkRunner
             }
 
             var lines = new List<string>();
-            await using (var index = await FileIndex.OpenAsync(new FileIndexOptions
+            await using (var index = await FileIndex.OpenAsync(CachedBlockOptions(candidate.File.Root,
+                candidate.RootDirectory, candidate.File.VolumeSerial, producer) with
             {
                 CacheDirectory = directory,
                 CacheMode = CacheMode.ExistingOnly,
-                CacheTag = cacheTag,
-                Root = new IndexedRoot(candidate.File.Root, candidate.RootDirectory, candidate.File.VolumeSerial,
-                    producer)
+                CacheTag = cacheTag
             }, CancellationToken.None))
             {
                 using var borrow = index.BorrowCurrentSnapshot();
@@ -210,6 +209,23 @@ public partial class BenchmarkRunner
             await AppendIndexMemoryAsync(lines, directory, iterations, input, log).ConfigureAwait(false);
         }
         return exitCode;
+    }
+
+    /// <summary>
+    ///     Options that open a cached block by the identity stored in it, on any machine: the producer is forced to the
+    ///     block's, and the volume facts report the stored serial and root directory instead of the host's drives.
+    /// </summary>
+    internal static FileIndexOptions CachedBlockOptions(RootKey root, string rootDirectory, uint volumeSerial,
+        ProducerKind producer)
+    {
+        VolumeKey? volume = root.TryGetVolume(out var volumeKey) ? volumeKey : null;
+        return new FileIndexOptions
+        {
+            Root = root,
+            Producer = producer == ProducerKind.Mft ? ProducerSelection.MftOnly : ProducerSelection.WalkOnly,
+            VolumeFacts = (_, _) => new VolumeFacts(true, volume, rootDirectory, volumeSerial, true, DriveType.Fixed,
+                "NTFS")
+        };
     }
 
     async Task AppendIndexMemoryAsync(List<string> lines, string directory, int iterations,

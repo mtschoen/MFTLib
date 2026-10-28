@@ -43,13 +43,13 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
 
     public void Dispose() => Cleanup();
 
-    FileIndexOptions Options(bool cacheOnly, IIndexWatchSource? source = null) => new()
+    FileIndexOptions Options(bool cacheOnly, IIndexWatchSource? source = null) => new FileIndexOptions
     {
-        Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), _directory, 0xBADF00D),
+
         CacheDirectory = Path.Combine(_directory, "cache"),
         MftSource = new MftIndexSource(Produce, source),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
-    };
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), _directory, 0xBADF00D));
 
     Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request,
         CancellationToken cancellationToken)

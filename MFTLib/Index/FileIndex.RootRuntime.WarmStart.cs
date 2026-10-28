@@ -22,15 +22,15 @@ public sealed partial class FileIndex
 
             // Ownership of a successfully opened block passes to the DriveBlock its adoption builds,
             // which releases it through its DriveBlockRelease state, not through IDisposable.
-            if (BlockFile.OpenCanonical(path, Configuration.VolumeSerial, out var validation) is { } block)
+            if (BlockFile.OpenCanonical(path, Resolved.VolumeSerial, out var validation) is { } block)
             {
                 block.Diagnostics = Options.Diagnostics;
-                if (block.Header.ProducerKind != Configuration.Producer)
+                if (block.Header.ProducerKind != Resolved.Producer)
                 {
                     var storedProducerKind = block.Header.ProducerKind;
                     block.Dispose();
                     DiscardRejectedBlock(path,
-                        $"cache producer kind mismatch: stored {storedProducerKind}; requested {Configuration.Producer}");
+                        $"cache producer kind mismatch: stored {storedProducerKind}; requested {Resolved.Producer}");
                     return new WarmStartResult(null, null);
                 }
 
@@ -58,7 +58,7 @@ public sealed partial class FileIndex
                         return new WarmStartResult(null, BlockValidationResult.InvalidNameDescriptor);
                     }
 
-                    if (!NameMatching.EqualsName(cachedRoot, Configuration.RootDirectory, caseSensitive: !OperatingSystem.IsWindows()))
+                    if (!NameMatching.EqualsName(cachedRoot, Resolved.RootDirectory, caseSensitive: !OperatingSystem.IsWindows()))
                     {
                         block.Dispose();
                         DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongRootDirectory}");
@@ -179,6 +179,6 @@ public sealed partial class FileIndex
         }
 
         /// <summary>The scan shape this root's block must carry under the index's admitted options.</summary>
-        ulong ExpectedScanShape => ScanShape.For(Configuration, Options);
+        ulong ExpectedScanShape => ScanShape.For(Resolved, Options);
     }
 }

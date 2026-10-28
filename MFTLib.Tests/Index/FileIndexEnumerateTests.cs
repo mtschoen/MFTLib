@@ -134,7 +134,7 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
     }
 
     Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
-        FileIndex.OpenAsync(Fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
+        FileIndex.OpenAsync(Fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerSelection.MftOnly) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
@@ -142,7 +142,7 @@ public sealed class FileIndexEnumerateTests : IndexTreeTestBase
         }, CancellationToken.None);
 
     Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync() =>
-        FileIndex.OpenAsync(Fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
+        FileIndex.OpenAsync(Fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerSelection.MftOnly) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request),

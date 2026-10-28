@@ -11,17 +11,20 @@ partial class SampleHost
             yield break;
         }
 
-        foreach (var volume in IndexedRoot.EnumerateWindowsVolumes())
+        foreach (var volume in WindowsVolume.EnumerateAll())
         {
             yield return volume;
         }
     }
 
+    // The volumes the host knows; tests replace it with synthetic ones.
+    internal Func<IEnumerable<WindowsVolume>> _volumes = EnumerateDrives;
+
     internal bool TryChooseDrives(
         ref WatchArguments parsed,
         IEnumerable<WindowsVolume> availableDrives)
     {
-        if (!parsed.NeedsDrives || parsed.Drives.Count > 0)
+        if (!parsed.NeedsRoots || parsed.Roots.Count > 0)
         {
             return true;
         }
@@ -33,17 +36,17 @@ partial class SampleHost
             _output.WriteLine($"Skipping drive {volume.RootDirectory} ({volume.DriveType}, {(volume.IsReady ? "ready" : "not ready")}, format {volume.Format ?? "unknown"}: {volume.Reason})");
         }
 
-        var chosen = volumes.Where(volume => volume.IsIndexable)
-            .Select(volume => volume.Volume.ToString())
-            .Order(StringComparer.Ordinal).ToArray();
+        var indexable = volumes.Where(volume => volume.IsIndexable)
+            .OrderBy(volume => volume.Volume.ToString(), StringComparer.Ordinal).ToArray();
+        var chosen = indexable.Select(volume => (RootKey)volume.Volume).ToArray();
         if (chosen.Length == 0)
         {
-            _output.WriteLine("No drive was named and no ready NTFS fixed drive was found. Name the drives to use, for example: C D");
+            _output.WriteLine("No root was named and no ready local NTFS drive was found. Name the roots to use, for example: C D");
             return false;
         }
 
-        _output.WriteLine($"No drive was named, so this run covers every ready NTFS fixed drive: {string.Join(", ", chosen)}. Name drives to choose others.");
-        parsed = parsed with { Drives = chosen };
+        _output.WriteLine($"No root was named, so this run covers every ready local NTFS drive: {string.Join(", ", indexable.Select(volume => volume.Volume.ToString()))}. Name roots to choose others.");
+        parsed = parsed with { Roots = chosen };
         return true;
     }
 }

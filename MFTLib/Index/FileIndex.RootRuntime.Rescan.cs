@@ -138,6 +138,7 @@ public sealed partial class FileIndex
             {
                 _failure = new RootFailure(failed.ScanFailureKind,
                     failed.RequireFailureMessage(Root));
+                _lastMftFailure = failed.ScanFailureKind == RootFailureKind.MftUnavailable ? failed.MftUnavailable : null;
                 if (Block is null)
                 {
                     _lastResult = failed;

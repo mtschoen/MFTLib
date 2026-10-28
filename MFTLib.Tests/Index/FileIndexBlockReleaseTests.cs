@@ -22,9 +22,9 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
     {
         return new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('U'), secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('U'), secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration));
     }
 
     /// <summary>Disposal closes the current block even when a query handle is retained.</summary>

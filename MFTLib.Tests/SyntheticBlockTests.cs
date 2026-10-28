@@ -46,14 +46,14 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
     FileIndexOptions CacheOnly(bool enumeration = false) =>
         Fixture.Options(volumeSerial: Serial,
-            producer: enumeration ? ProducerKind.Enumeration : ProducerKind.Mft,
+            producer: enumeration ? ProducerSelection.WalkOnly : ProducerSelection.MftOnly,
             cacheMode: CacheMode.ExistingOnly) with
         {
             MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open"))
         };
 
     FileIndexOptions Scanning(SyntheticMftProducer producer, CacheTag cacheTag = default) =>
-        Fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
+        Fixture.Options(volumeSerial: Serial, producer: ProducerSelection.MftOnly) with
         {
             MftSource = new MftIndexSource(producer.Producer),
             CacheTag = cacheTag

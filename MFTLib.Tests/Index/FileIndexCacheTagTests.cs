@@ -39,14 +39,14 @@ public sealed class FileIndexCacheTagTests : IDisposable
 
     public void Dispose() => Cleanup();
 
-    FileIndexOptions Options(CacheTag tag, bool cacheOnly = false) => new()
+    FileIndexOptions Options(CacheTag tag, bool cacheOnly = false) => new FileIndexOptions
     {
-        Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), Root, 123),
+
         CacheDirectory = Cache,
         CacheTag = tag,
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
         MftSource = new MftIndexSource(Produce)
-    };
+    }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), Root, 123));
 
     static BlockFile Build(MftBlockProduceRequest request)
     {
@@ -95,11 +95,11 @@ public sealed class FileIndexCacheTagTests : IDisposable
     [DataRow(ProducerKind.Mft, true)]
     public async Task CreationAndRescanKeepTheRequestedTag(ProducerKind producerKind, bool cacheDisabled)
     {
-        var options = Options(OriginalTag) with
+        var options = (Options(OriginalTag) with
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), Root, 123, producerKind),
+
             CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent
-        };
+        }).WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), Root, 123, producerKind));
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             Assert.AreEqual(RootState.Ready, index.Status.State);

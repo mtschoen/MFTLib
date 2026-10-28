@@ -25,6 +25,7 @@ partial class SampleHost
     {
         var block = RequireReadyBlock(status);
         _output.WriteLine($"Index holds {block.LiveRowCount} rows; {block.SkippedRecordCount} records skipped");
+        _output.WriteLine($"producer {status.Producer?.ToString() ?? "none"}{(status.MftUnavailable is { } unavailable ? $"; MFT unavailable: {unavailable}" : string.Empty)}");
         _output.WriteLine(status.Watch.CheckpointLoss is { } loss
             ? $"Catch-up lost: {loss.Cause}"
             : $"Catch-up held; watch supported: {status.Watch.IsSupported}");

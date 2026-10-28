@@ -9,13 +9,13 @@
       a normalized key. Invalid input returns false with the default key.
       `RootKey` is what the index holds: a `VolumeKey` or a normalized directory path
       (`RootKey.FromDirectory`, `RootKey.TryParse`), widened implicitly from `VolumeKey`, with `TryGetVolume`
-      for volume-only boundaries and no `Letter`. `IndexedRoot.FromDirectory` derives the key and the containing
-      volume's serial (zero when unreported) of a walked folder.
+      for volume-only boundaries and no `Letter`. The open derives the containing volume's serial (zero when
+      unreported) of a walked folder.
       `Letter` and `ToString()` reject the invalid
       default key, as do index operations, cache selections and key-bearing record initializers.
       Public key members are `Root`. Each lifecycle verb on `FileIndex` acts on its single root and returns one `RootOperationResult`.
-      Volume identity remains `VolumeKey` through local-volume sources and broker clients, hosts, and channels; a directory key with `ProducerKind.Mft` is rejected at configuration. Cache filenames derive from the key at the cache boundary. Volume-bearing broker control requests encode one uppercase ASCII character as two UTF-16LE bytes. `MFTUtilities.GetVolumePath(VolumeKey)` is the single raw device-path formatter used by volume opens and NTFS sizing queries.
-    - **Root runtime and index state ownership**: Each `FileIndex` coordinates one `IndexedRoot` and owns one `RootRuntime`. It owns the configuration, current `RootBlock`, last adopted `PendingRootResult`, canonical owner lock, producer failure, watch failure and checkpoint facts. Publication updates that owner under the state lock. Block metadata is read from the adopted result; live row counts, timestamps and capacity state are read from the block header. A failed replacement preserves the adopted result and records its producer failure separately. `RootRuntime` is the behavior owner. Its partial files implement open, production, cache ownership, publication preparation, watch, catch-up, rescan, recovery and teardown. It retains outstanding recovery completions and retired block release states independently of its current ticket and block. `FileIndex` owns query borrowing, shutdown coordination and the callback reentrancy marker. Event subscriptions remain on `FileIndex`; the runtime delivers through that index's per-handler marker. State and fault callbacks use the runtime's separate delivery locks; `Changed` retains its existing unlocked delivery. All owners use the same index state lock.
+      Volume identity remains `VolumeKey` through local-volume sources and broker clients, hosts, and channels; a directory key on an eligible volume is a view of the volume's MFT block and reaches volume boundaries through the volume it resolves to. Cache filenames derive from the block's root at the cache boundary: an MFT block, and so every view of it, is named for its volume; a walk block for its own root key. Volume-bearing broker control requests encode one uppercase ASCII character as two UTF-16LE bytes. `MFTUtilities.GetVolumePath(VolumeKey)` is the single raw device-path formatter used by volume opens and NTFS sizing queries.
+    - **Root runtime and index state ownership**: Each `FileIndex` coordinates one root (`FileIndexOptions.Root`) and owns one `RootRuntime`. It owns the resolved root (key, volume facts, selected producer and the reason the MFT was not used), current `RootBlock`, last adopted `PendingRootResult`, canonical owner lock, producer failure, watch failure and checkpoint facts. Publication updates that owner under the state lock. Block metadata is read from the adopted result; live row counts, timestamps and capacity state are read from the block header. A failed replacement preserves the adopted result and records its producer failure separately. `RootRuntime` is the behavior owner. Its partial files implement open, production, cache ownership, publication preparation, watch, catch-up, rescan, recovery and teardown. It retains outstanding recovery completions and retired block release states independently of its current ticket and block. `FileIndex` owns query borrowing, shutdown coordination and the callback reentrancy marker. Event subscriptions remain on `FileIndex`; the runtime delivers through that index's per-handler marker. State and fault callbacks use the runtime's separate delivery locks; `Changed` retains its existing unlocked delivery. All owners use the same index state lock.
     - **Public queries and FileIndexSet**: `FileIndex.Search` materializes `FileEntry` values, `Enumerate` streams them for LINQ,
       and `EnumerateRows` provides ref-struct `IndexRow` views with span names, sizes and flags for whole-root
       passes that retain few rows. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index.
@@ -148,20 +148,23 @@
 
     - **Native export header**: `MFTLibNative/mft_api.h` declares every production C-linkage export, with the USN read/watch exports guarded by `_WIN32`. The volume and dump parse exports take a `MftProgressCallback` and a `callbackContext` pointer; the callback receives that context unchanged with `recordsScanned`, `totalRecords` and `elapsedMs`. Progress runs synchronously on the calling parse thread after each merged chunk. The managed side passes one `[UnmanagedCallersOnly]` trampoline and a `GCHandle` to the caller's `IProgress` as the context (`NativeProgressRegistration`), so every parse import is a blittable `LibraryImport` and no delegate has to be kept alive. Native and managed binaries are built and deployed together from the same revision under ABI version 11.
 
-    - **Per-root producer**: `IndexedRoot` carries `(Root, RootDirectory, VolumeSerial,
-      Producer = ProducerKind.Mft)`. Each root selects its own producer for initial scans
-      and rescans, so an application can combine MFT-scanned roots with directory-walked roots across its indexes.
-      `FromWindowsDrive` selects Mft; `FromDirectory` selects Enumeration and starts at that root's `RootDirectory`;
-      an operational producer failure leaves the root `Failed` with
+    - **Producer selection**: `FileIndexOptions` names a `Root` (`RootKey`) and a `Producer`
+      (`ProducerSelection`: `Automatic`, `MftOnly`, `WalkOnly`). The open reads the volume facts once, before cache
+      lookup, and `RootResolution` picks the producer: the MFT when `MftEligibility` finds the volume eligible,
+      otherwise a walk with the reason on `RootStatus.MftUnavailable` (`Automatic`) or a `Failed` root
+      (`MftOnly`); `WalkOnly` never touches the MFT source. The producer is fixed for the index lifetime and each
+      root selects its own, so an application can combine MFT-scanned roots with directory-walked roots across its
+      indexes. A directory root on an eligible volume is a view of the volume's block rooted at its resolved row.
+      An operational producer failure leaves the root `Failed` with
       `RootFailureKind.ProducerFailed`, for MFT and enumeration alike.
       A failed rescan keeps the previous block and records `RootStatus.Failure` with the scan
-      attempt's kind (`ProducerFailed` or `MftSourceMissing`);
+      attempt's kind (`ProducerFailed` or `MftUnavailable`);
       a successful replacement clears it. Argument validation at admission (null options, null `Root` on a non-dump open, undefined
       `CacheMode`, missing cache directory, dump-source option conflicts) throws before any root is
-      produced. A root that cannot start production, including an MFT volume needing a scan with a null
-      `MftSource`, settles `Failed` / `RootFailureKind.MftSourceMissing`. Caller cancellation aborts
+      produced. A root that cannot start production, including an MFT-only volume needing a scan with a null
+      `MftSource`, settles `Failed` / `RootFailureKind.MftUnavailable`. Caller cancellation aborts
       the operation, and a cancelled open releases its adopted block. An MFT failure never selects enumeration.
-      Warm adoption compares the header's `ProducerKind` directly with `IndexedRoot.Producer` before
+      Warm adoption compares the header's `ProducerKind` directly with the selected producer before
       cache-tag, root and journal checks. A mismatch closes and best-effort deletes the rejected
       block under the owner lock, then cold-scans; cache-only opens report `CacheDeclined`.
       A cache-only open never scans, so it never deletes a rejected block: every rejection
@@ -207,7 +210,7 @@
       Dump blocks retain zero cursors and are never cached, so they never reach a cache freshness check. The factory
       opens nothing until the first scan; a process that cannot open the volume fails the volume
       as `ProducerFailed`. A process with no MFT source leaves `FileIndexOptions.MftSource` null. When an
-      MFT volume needs a scan, its failure kind is `RootFailureKind.MftSourceMissing`
+      MFT volume needs a scan, its failure kind is `RootFailureKind.MftUnavailable` with reason `NoMftSource`
       and its library message is `Volume {volume}: no MFT source is available to scan this volume.`
       The application maps the kind to its own display text using its known context.
       A rescan cannot recover the root while the source remains null. Usable cached

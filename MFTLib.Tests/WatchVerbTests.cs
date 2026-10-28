@@ -26,6 +26,7 @@ public sealed partial class WatchVerbTests : IDisposable
 
     public void Dispose()
     {
+        UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
         CacheDirectory.Hooks.ResetToDefaults();
         _tempDirectory.Dispose();
     }
@@ -65,7 +66,7 @@ public sealed partial class WatchVerbTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureRoot, TestContext.CancellationToken);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, [new VolumeKey('X')]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureOptions, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result);
         Assert.Contains(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
@@ -92,7 +93,7 @@ public sealed partial class WatchVerbTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDir }, session, FixtureRoot, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, [new VolumeKey('X')]) { CacheDirectory = cacheDir }, session, FixtureOptions, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
@@ -115,10 +116,97 @@ public sealed partial class WatchVerbTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, ["X"]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureRoot, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, [new VolumeKey('X')]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureOptions, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.Contains("Journal X: maximum size 9000, allocation delta 4096", lines, string.Join(Environment.NewLine, lines));
+    }
+
+    // A directory root read from the MFT is a view of its volume's block: the journal verb must reach that volume's
+    // journal, both to grow it and to read its settings.
+    static ScriptedBrokerVolumes DirectoryViewVolumes() => Volumes() with
+    {
+        ScanVolume = _ =>
+        [
+            [
+                new SyntheticScanRecord { RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true },
+                new SyntheticScanRecord { RecordNumber = 7, ParentRecordNumber = 5, FileName = "sub", IsDirectory = true },
+                new SyntheticScanRecord { RecordNumber = 8, ParentRecordNumber = 7, FileName = "file.txt", Size = 4096 }
+            ]
+        ],
+        GrowUsnJournal = (_, target) => target
+    };
+
+    SampleHost DirectoryViewHost(List<string> lines)
+    {
+        var host = HostOver(lines.Add);
+        host._volumes = () =>
+            [new WindowsVolume(new VolumeKey('X'), TemporaryDirectoryPath + Path.DirectorySeparatorChar, DriveType.Fixed)];
+        return host;
+    }
+
+    [TestMethod]
+    public async Task Run_JournalGrowthOnADirectoryRoot_GrowsTheJournalOfItsVolume()
+    {
+        await using var handle = BrokerTestHarness.StartInProcess(DirectoryViewVolumes());
+        var lines = new List<string>();
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var directory = Directory.CreateDirectory(Path.Combine(TemporaryDirectoryPath, "sub")).FullName;
+        var arguments = new WatchArguments(WatchVerb.Journal, [RootKey.FromDirectory(directory)])
+        {
+            CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache"),
+            MaximumSize = 9000,
+            AllocationDelta = 4096
+        };
+
+        var result = await DirectoryViewHost(lines).RunThroughBrokerAsync(arguments, session, FixtureOptions, CancellationToken.None);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Journal X: maximum size 9000, allocation delta 4096", lines, string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Windows)]
+    public async Task Run_JournalSettingsOfADirectoryRoot_ReportTheJournalOfItsVolume()
+    {
+        UsnJournalSettingsQuery.Dependencies._queryOverride =
+            volume => volume == 'X' ? new UsnJournalSettings { MaximumSize = 8000, AllocationDelta = 2000 } : throw new IOException($"Unexpected volume {volume}");
+        await using var handle = BrokerTestHarness.StartInProcess(DirectoryViewVolumes());
+        var lines = new List<string>();
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var directory = Directory.CreateDirectory(Path.Combine(TemporaryDirectoryPath, "sub")).FullName;
+        var arguments = new WatchArguments(WatchVerb.Journal, [RootKey.FromDirectory(directory)])
+        {
+            CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache")
+        };
+
+        var result = await DirectoryViewHost(lines).RunThroughBrokerAsync(arguments, session, FixtureOptions, CancellationToken.None);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Journal X: maximum size 8000, allocation delta 2000", lines, string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    public async Task Run_Journal_OnAWalkedDirectory_ReportsThatItHasNoJournal()
+    {
+        await using var handle = BrokerTestHarness.StartInProcess(DirectoryViewVolumes());
+        var lines = new List<string>();
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var directory = Directory.CreateDirectory(Path.Combine(TemporaryDirectoryPath, "sub")).FullName;
+        var arguments = new WatchArguments(WatchVerb.Journal, [RootKey.FromDirectory(directory)])
+        {
+            CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache"),
+            MaximumSize = 9000,
+            AllocationDelta = 4096,
+            Producer = ProducerSelection.WalkOnly
+        };
+
+        await DirectoryViewHost(lines).RunThroughBrokerAsync(arguments, session, FixtureOptions, CancellationToken.None);
+
+        Assert.Contains(line => line.Contains("with no USN journal", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -128,7 +216,7 @@ public sealed partial class WatchVerbTests : IDisposable
         var cacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache");
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDirectory }, session, FixtureRoot, CancellationToken.None);
+        await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, [new VolumeKey('X')]) { CacheDirectory = cacheDirectory }, session, FixtureOptions, CancellationToken.None);
 
         var listing = new List<string>();
         var clearing = new List<string>();
@@ -228,7 +316,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         {
             var sLaunch = Task.FromResult(handle);
             var s = BrokerTestHarness.CreateSession(_ => sLaunch);
-            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, s, FixtureRoot, CancellationToken.None));
+            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, [new VolumeKey('X')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, s, FixtureOptions, CancellationToken.None));
         }
 
         using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(8, 0, 2000, 4096, 8192));
@@ -237,7 +325,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         var replacementSessionLaunch = Task.FromResult(replacement);
         var replacementSession = BrokerTestHarness.CreateSession(_ => replacementSessionLaunch);
 
-        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, replacementSession, FixtureRoot, CancellationToken.None));
+        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, [new VolumeKey('X')]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, replacementSession, FixtureOptions, CancellationToken.None));
 
         Assert.Contains("Journal growth target unavailable: CheckpointNotTrimmed", lines, string.Join(Environment.NewLine, lines));
     }
@@ -271,7 +359,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         var host = HostOver(lines.Add);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        Assert.AreEqual(0, await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = root }, session, FixtureRoot, CancellationToken.None));
+        Assert.AreEqual(0, await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, [new VolumeKey('X')]) { CacheDirectory = root }, session, FixtureOptions, CancellationToken.None));
         lines.Clear();
 
         Assert.AreEqual(0, host.Run(["cache", "--clear", "--cache-directory", root]));
@@ -311,8 +399,12 @@ clearing, string.Join(Environment.NewLine, clearing));
     }
 
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
-    IndexedRoot FixtureRoot(string letter) =>
-        SyntheticIndexedRoot.Create(new VolumeKey(letter[0]), TemporaryDirectoryPath, 4242);
+    // A drive root maps to its own letter; a directory root (its text starts with a drive letter of the host) maps to
+    // synthetic volume X, rooted at the temporary directory that holds it.
+    FileIndexOptions FixtureOptions(FileIndexOptions options) =>
+        SyntheticVolumeFacts.Apply(options, 4242,
+            volume: options.Root!.Value.IsVolume ? new VolumeKey(options.Root!.Value.ToString()[0]) : new VolumeKey('X'),
+            volumeRootDirectory: TemporaryDirectoryPath);
 
     static SampleHost HostOver(Action<string> writeLine, TimeProvider? timeProvider = null)
     {

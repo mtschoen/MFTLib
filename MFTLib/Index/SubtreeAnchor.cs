@@ -87,6 +87,29 @@ static class SubtreeAnchor
         return new ResolvedSubtree(anchor.RowIndex);
     }
 
+    /// <summary>
+    ///     The membership test that restricts a query on <paramref name="rootBlock" /> to a subtree, or null when no row
+    ///     is excluded: the explicit anchor when the query has one, intersected with the directory a view is rooted at.
+    ///     The caller disposes it when the root's scan ends.
+    /// </summary>
+    internal static SubtreeMembership? CreateMembership(RootBlock rootBlock, ResolvedSubtree? explicitAnchor,
+        uint? admittedViewRow)
+    {
+        // A directory view is never unrestricted: its admitted row is mandatory, and an explicit anchor narrows it
+        // further, so an anchor that has moved out of the view matches nothing.
+        if (rootBlock.View.IsDirectoryView && admittedViewRow is null)
+        {
+            throw new InvalidOperationException("A directory view must be admitted with its bound row before it is scanned.");
+        }
+
+        var view = admittedViewRow is { } viewRow && rootBlock.View.IsDirectoryView
+            ? new SubtreeMembership(rootBlock.Block, viewRow)
+            : null;
+        return explicitAnchor is { } anchor
+            ? new SubtreeMembership(rootBlock.Block, anchor.RowIndex, view)
+            : view;
+    }
+
     internal static Exception ForeignOrDisposed(RootBlock anchorBlock, string parameterName)
     {
         ObjectDisposedException.ThrowIf(anchorBlock.IsReleased, typeof(FileEntry));

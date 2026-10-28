@@ -25,11 +25,11 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
     public void Initialize() => File.WriteAllText(Path.Combine(TreeRoot, "readme.md"), "hello");
 
     FileIndexOptions Options(string root, CacheTag cacheTag = default) =>
-        Fixture.Options(volumeSerial: Serial) with
+        (Fixture.Options(volumeSerial: Serial) with
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration),
+
             CacheTag = cacheTag
-        };
+        }).WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration));
 
     [TestMethod]
     public async Task ReadHeader_OfAReadyRoot_ReportsTheBlockTheIndexHolds()

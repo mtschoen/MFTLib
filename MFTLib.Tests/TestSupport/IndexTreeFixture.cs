@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
@@ -41,17 +42,16 @@ sealed class IndexTreeFixture : IDisposable
         }
     }
 
-    public IndexedRoot Root(char drive = 'T', uint volumeSerial = 0x0BADF00D,
-        ProducerKind producer = ProducerKind.Enumeration) =>
-        new(new VolumeKey(drive), TreeRoot, volumeSerial, producer);
-
+    /// <summary>Options that open the drive letter as a synthetic volume rooted at <see cref="TreeRoot" />.</summary>
     public FileIndexOptions Options(char drive = 'T', uint volumeSerial = 0x0BADF00D,
-        ProducerKind producer = ProducerKind.Enumeration, CacheMode? cacheMode = null) => new()
+        ProducerSelection producer = ProducerSelection.WalkOnly, CacheMode? cacheMode = null) =>
+        SyntheticVolumeFacts.Apply(new FileIndexOptions
         {
-            Root = Root(drive, volumeSerial, producer),
+            Root = new VolumeKey(drive),
+            Producer = producer,
             CacheDirectory = CacheDirectory,
             CacheMode = cacheMode
-        };
+        }, volumeSerial, volume: new VolumeKey(drive), volumeRootDirectory: TreeRoot);
 
     public void Dispose()
     {

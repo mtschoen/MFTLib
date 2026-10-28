@@ -27,14 +27,16 @@ public readonly partial record struct FileEntry
         }
     }
 
-    /// <summary>The parent directory, or null for the volume root, whose parent is itself.</summary>
+    /// <summary>The parent directory, or null for the index's root: the volume root, or the directory a view is rooted at.</summary>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's root block released.</exception>
     /// <exception cref="InvalidOperationException">A newer file has reused this entry's row slot.</exception>
     public FileEntry? Parent
     {
         get
         {
-            if (!IndexNavigation.TryGetParentRow(CurrentBlock(), RowIndex, out var parentRow))
+            var current = CurrentBlock();
+            if ((RootBlock.View.TryGetRow(out var viewRow) && RowIndex == viewRow) ||
+                !IndexNavigation.TryGetParentRow(current, RowIndex, out var parentRow))
             {
                 return null;
             }

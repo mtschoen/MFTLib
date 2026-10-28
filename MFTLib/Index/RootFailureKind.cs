@@ -4,8 +4,8 @@ namespace MFTLib.Index;
 ///     Why a root failed, as <see cref="RootFailure.Kind" />. The distinction a consumer
 ///     needs to decide whether a scan would recover the root: cache failures can be recovered
 ///     by an available producer (<see cref="FileIndex.RescanAsync" />), <see cref="ProducerFailed" />
-///     means a selected producer (MFT or enumeration) ran and failed, and <see cref="MftSourceMissing" />
-///     means an MFT volume needed a scan but no MFT source is configured.
+///     means a selected producer (MFT or enumeration) ran and failed, and <see cref="MftUnavailable" />
+///     means the MFT could not serve the root at all.
 /// </summary>
 public enum RootFailureKind
 {
@@ -41,9 +41,10 @@ public enum RootFailureKind
     CacheIdentityMismatch,
 
     /// <summary>
-    ///     An MFT volume needs a scan but <see cref="FileIndexOptions.MftSource" /> is null.
-    ///     <see cref="FileIndex.RescanAsync" /> cannot recover the root while the source remains null.
-    ///     Reopen the index with an MFT source to enable scanning.
+    ///     The MFT could not serve this root: <see cref="ProducerSelection.MftOnly" /> found it ineligible, or a broker
+    ///     launch or elevation failed during a scan. <see cref="RootStatus.MftUnavailable" /> says why. The producer is
+    ///     fixed for the index's life, so a rescan never walks instead; it fails again until the cause is gone
+    ///     (a source supplied on a reopen, an elevation prompt accepted).
     /// </summary>
-    MftSourceMissing
+    MftUnavailable
 }

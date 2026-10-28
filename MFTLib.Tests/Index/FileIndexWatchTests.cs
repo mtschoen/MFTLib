@@ -44,22 +44,22 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
 
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)), CancellationToken.None);
         _enumIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('E'), EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('E'), EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration)), CancellationToken.None);
         _offlineIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration)), CancellationToken.None);
     }
 
     public async ValueTask DisposeAsync()
@@ -127,10 +127,10 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('E'), TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
+
             CacheDirectory = Path.Combine(CacheDirectoryPath, "enumeration-only"),
             MftSource = TestMftSources.WatchOnly(source)
-        }, CancellationToken.None);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('E'), TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration)), CancellationToken.None);
 
         await RootResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(CancellationToken.None));

@@ -25,6 +25,13 @@ sealed class SnapshotBorrow : IDisposable
         _acquired = 1;
     }
 
+    /// <summary>
+    ///     For a query on a directory view, the row the view was bound to when the query was admitted; null for a root that
+    ///     is not a view. The query restricts itself to this row's subtree for its whole length, so a later rename of the
+    ///     directory can narrow what the query saw but never widen it to the rest of the volume.
+    /// </summary>
+    internal uint? ViewRow { get; set; }
+
     /// <summary>The block this borrow keeps mapped, for the query that took it to read through, or null when the query reads no block.</summary>
     internal RootBlock? RootBlock { get; }
 

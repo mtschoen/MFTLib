@@ -85,10 +85,10 @@ public partial class FileIndexResilienceTests
         var deletions = new List<string>();
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
+
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = deletions.Add
-        };
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration));
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial));

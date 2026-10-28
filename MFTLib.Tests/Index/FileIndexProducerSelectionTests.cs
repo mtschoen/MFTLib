@@ -13,14 +13,14 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="BlockFile" /> and <see cref="BlockWriter" />, so these tests run on Linux too.
 /// </summary>
 [TestClass]
-public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
+public sealed partial class FileIndexProducerSelectionTests : IndexTreeTestBase
 {
     static readonly DateTime FixedMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     public TestContext TestContext { get; set; } = null!;
 
     FileIndexOptions Options(ProducerKind producer, MftBlockProducer? mftProducer) =>
-        Fixture.Options(producer: producer) with
+        Fixture.Options(producer: SyntheticRoot.SelectionFor(producer)) with
         {
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
@@ -63,16 +63,16 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
             : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 0)));
         await using var failedIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), firstRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), firstRoot, 1)), TestContext.CancellationToken);
         await using var readyIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), secondRoot, 2),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('U'), secondRoot, 2)), TestContext.CancellationToken);
 
         var failed = failedIndex.Status;
         Assert.AreEqual(RootState.Failed, failed.State);
@@ -105,16 +105,16 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
         var source = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"));
         await using var failedIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), firstRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), firstRoot, 1)), TestContext.CancellationToken);
         await using var warmIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), secondRoot, 2),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = source
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('U'), secondRoot, 2)), TestContext.CancellationToken);
 
         Assert.AreEqual("elevation declined", failedIndex.Status.Failure?.Message);
         var warmStarted = warmIndex.Status;
@@ -140,11 +140,11 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(CountingProducer),
             CacheMode = CacheMode.ExistingOnly
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1)), TestContext.CancellationToken);
 
         Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
         var failed = index.Status;
@@ -160,10 +160,10 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
     {
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(static (_, token) => throw new OperationCanceledException(token))
-        }, TestContext.CancellationToken));
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1)), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -411,11 +411,11 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer),
             CacheMode = CacheMode.ExistingOnly
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)), TestContext.CancellationToken);
         Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
         Assert.AreEqual(RootState.Failed, index.Status.State);
         Assert.AreEqual(RootFailureKind.CacheDeclined, index.Status.Failure?.Kind);
@@ -438,11 +438,11 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined")),
             CacheMode = CacheMode.ExistingOnly
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)), TestContext.CancellationToken);
         Assert.AreEqual(RootFailureKind.CacheDeclined, index.Status.Failure?.Kind);
 
         await RootResultAssertions.FailureAsync<InvalidOperationException>(
@@ -470,10 +470,10 @@ public sealed class FileIndexProducerSelectionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D),
+
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer)
-        }, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 0x0BADF00D)), TestContext.CancellationToken);
         Assert.AreEqual(RootState.Failed, index.Status.State);
         Assert.AreEqual(RootFailureKind.ProducerFailed, index.Status.Failure?.Kind);
 

@@ -12,7 +12,7 @@ namespace MFTLib.Index;
 sealed class RootBlock
 {
     public RootBlock(RootKey root, BlockFile block,
-        string? rootDirectoryPath = null, MftIndexSource? mftSource = null)
+        string? rootDirectoryPath = null, MftIndexSource? mftSource = null, ViewRoot? view = null)
     {
         ArgumentNullException.ThrowIfNull(block);
         Root = root.Validated();
@@ -21,10 +21,17 @@ sealed class RootBlock
         ProducerKind = block.Header.ProducerKind;
         Kind = RootKind.For(ProducerKind, mftSource);
         RootDirectoryPath = Kind.NormalizeRoot(rootDirectoryPath);
-        MatchableRootDirectoryPath = Kind.ToMatchablePrefix(RootDirectoryPath);
+        View = view ?? ViewRoot.ForBlockRoot(block.Header.RootRow);
+        MatchableRootDirectoryPath = View.MatchablePath ?? Kind.ToMatchablePrefix(RootDirectoryPath);
     }
 
     internal RootKind Kind { get; }
+
+    /// <summary>
+    ///     The row this index is rooted at: the block's root row, or the row of the directory a view is bound to.
+    ///     <see cref="RootDirectoryPath" /> stays the block's rendering root, so entry paths are always real full paths.
+    /// </summary>
+    internal ViewRoot View { get; }
 
     /// <summary>
     ///     Releases the block for a caller who simply dropped every handle. The catch is
@@ -74,7 +81,8 @@ sealed class RootBlock
     public string? RootDirectoryPath { get; }
 
     /// <summary>
-    ///     <see cref="RootDirectoryPath" /> in the form <c>LookupEngine.Find</c> compares a native
+    ///     The view's path (or, without a directory view, <see cref="RootDirectoryPath" />) in the form
+    ///     <c>LookupEngine.Find</c> compares a native
     ///     path's prefix against: Windows separator spellings folded to <c>/</c> and any trailing
     ///     separator removed. On other platforms a backslash remains a filename character.
     ///     Computed once here because it is invariant for the life of the block, where recomputing

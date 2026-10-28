@@ -390,7 +390,7 @@ public partial class BrokerSessionTests
         handle.Crash();
         var (beforeDispose, afterDispose) = await callback.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(typeof(InvalidOperationException), beforeDispose.GetType());
+        Assert.AreEqual(typeof(BrokerEndedException), beforeDispose.GetType());
         Assert.Contains(await brokerProcess.Ended.WaitAsync(HangGuard, TestContext.CancellationToken), beforeDispose.Message);
         Assert.IsInstanceOfType<ObjectDisposedException>(afterDispose);
     }
@@ -673,11 +673,11 @@ public partial class BrokerSessionTests
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedRoot.Create(new VolumeKey('X'), roots.Path, 123),
+
             CacheDirectory = cache.Path,
             CacheMode = CacheMode.Disabled,
             MftSource = session.CreateIndexSource()
-        }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+        }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('X'), roots.Path, 123)), CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(1, launches);
         Assert.AreEqual(RootState.Ready, index.Status.State);

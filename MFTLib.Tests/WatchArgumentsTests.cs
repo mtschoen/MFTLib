@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using MFTLib.Index;
 using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
@@ -13,9 +14,9 @@ public class WatchArgumentsTests
 
         Assert.IsNull(error);
         Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
-        Assert.IsEmpty(parsed.Drives);
+        Assert.IsEmpty(parsed.Roots);
         Assert.IsNull(parsed.Seconds);
-        Assert.IsTrue(parsed.NeedsDrives);
+        Assert.IsTrue(parsed.NeedsRoots);
     }
 
     [TestMethod]
@@ -24,7 +25,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
-        Assert.AreSequenceEqual(["C", "D"], [.. parsed.Drives]);
+        Assert.AreSequenceEqual(["C", "D"], [.. parsed.Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -33,7 +34,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["scan", "c:", "C", "D"], out var parsed, out var error));
 
         Assert.IsNull(error);
-        Assert.AreSequenceEqual(["C", "D"], [.. parsed!.Drives]);
+        Assert.AreSequenceEqual(["C", "D"], [.. parsed!.Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -44,7 +45,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([name, "C", "E"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
-        Assert.AreSequenceEqual(["C", "E"], [.. parsed.Drives]);
+        Assert.AreSequenceEqual(["C", "E"], [.. parsed.Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -53,7 +54,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["scan"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
-        Assert.IsEmpty(parsed.Drives);
+        Assert.IsEmpty(parsed.Roots);
     }
 
     [TestMethod]
@@ -65,7 +66,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
-        Assert.AreEqual(expected, parsed!.NeedsDrives);
+        Assert.AreEqual(expected, parsed!.NeedsRoots);
     }
 
     [TestMethod]
@@ -113,7 +114,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
         Assert.AreEqual(verb, parsed!.Verb.ToString());
-        Assert.IsEmpty(parsed.Drives);
+        Assert.IsEmpty(parsed.Roots);
         Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
     }
 
@@ -161,9 +162,9 @@ public class WatchArgumentsTests
         Assert.IsFalse(WatchArguments.TryParse([verb, "Cjunk"], out _, out var garbage));
         Assert.IsFalse(WatchArguments.TryParse([verb, "C:x"], out _, out var path));
 
-        Assert.AreEqual("'' is not a drive letter.", empty);
-        Assert.AreEqual("'Cjunk' is not a drive letter.", garbage);
-        Assert.AreEqual("'C:x' is not a drive letter.", path);
+        Assert.AreEqual("Root '' is neither a drive nor a full path.", empty);
+        Assert.AreEqual("Root 'Cjunk' is neither a drive nor a full path.", garbage);
+        Assert.AreEqual("Root 'C:x' is neither a drive nor a full path.", path);
     }
 
     [TestMethod]
@@ -175,7 +176,7 @@ public class WatchArgumentsTests
 
         Assert.IsFalse(WatchArguments.TryParse(arguments, out _, out var error));
 
-        Assert.AreEqual("'junk' is not a drive letter.", error);
+        Assert.AreEqual("Root 'junk' is neither a drive nor a full path.", error);
     }
 
     [TestMethod]
@@ -183,7 +184,7 @@ public class WatchArgumentsTests
     {
         Assert.IsFalse(WatchArguments.TryParse(["watch", "C", "9", "d:"], out _, out var error));
 
-        Assert.AreEqual("'9' is not a drive letter.", error);
+        Assert.AreEqual("Root '9' is neither a drive nor a full path.", error);
     }
 
     [TestMethod]
@@ -191,7 +192,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["cache", "c:", "d"], out var parsed, out _));
 
-        Assert.AreSequenceEqual(["C", "D"], [.. parsed!.Drives]);
+        Assert.AreSequenceEqual(["C", "D"], [.. parsed!.Roots.Select(root => root.ToString())]);
     }
 
     [TestMethod]
@@ -295,12 +296,44 @@ public class WatchArgumentsTests
 
         Assert.AreEqual(ElevationNeed.None, cache!.Need);
         Assert.AreEqual(ElevationNeed.None, status!.Need);
-        Assert.IsEmpty(cache.Drives);
+        Assert.IsEmpty(cache.Roots);
         Assert.AreEqual("cache-folder", cache.CacheDirectory);
         Assert.IsTrue(cache.Clear);
     }
 
     [TestMethod]
+    [DataRow(null, ProducerSelection.Automatic)]
+    [DataRow("automatic", ProducerSelection.Automatic)]
+    [DataRow("mft", ProducerSelection.MftOnly)]
+    [DataRow("WALK", ProducerSelection.WalkOnly)]
+    public void TryParse_ProducerFlag_SelectsTheProducer(string? text, ProducerSelection expected)
+    {
+        string[] arguments = text is null ? ["scan", "C"] : ["scan", "C", "--producer", text];
+
+        Assert.IsTrue(WatchArguments.TryParse(arguments, out var parsed, out var error), error);
+
+        Assert.AreEqual(expected, parsed!.Producer);
+    }
+
+    [TestMethod]
+    public void TryParse_UnknownProducer_IsAUsageError()
+    {
+        Assert.IsFalse(WatchArguments.TryParse(["scan", "C", "--producer", "fast"], out _, out var error));
+
+        Assert.AreEqual("Option --producer must be automatic, mft or walk.", error);
+    }
+
+    [TestMethod]
+    public void TryParse_ADirectoryRoot_ParsesAsADirectoryKey()
+    {
+        var directory = Path.GetFullPath(Path.GetTempPath());
+
+        Assert.IsTrue(WatchArguments.TryParse(["scan", directory], out var parsed, out var error), error);
+
+        Assert.AreSequenceEqual([RootKey.FromDirectory(directory)], parsed!.Roots);
+    }
+
+    [TestMethod]
     public void CacheTag_IsSmpw3() =>
-        Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 3), WatchArguments.CacheTag);
+        Assert.AreEqual(new CacheTag("SMPW", 3), WatchArguments.CacheTag);
 }
