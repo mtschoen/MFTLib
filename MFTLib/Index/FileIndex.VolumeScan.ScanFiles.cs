@@ -52,7 +52,7 @@ public sealed partial class FileIndex
 
             var retiredPath = $"{target.Path}.retired-{Guid.NewGuid():N}";
             File.Move(target.Path, retiredPath);
-            superseded.ReleaseState.ScheduleDeleteAt(retiredPath, Options.Diagnostics);
+            superseded.ReleaseState.ScheduleDeleteAt(retiredPath, Diagnostics);
             return new RetiredCanonicalFile(retiredPath, target.Path, superseded);
         }
 
@@ -116,7 +116,7 @@ public sealed partial class FileIndex
                     $"Could not delete block file '{path}': the partial block a failed or cancelled scan left in the canonical cache slot ({exception.Message}).";
             }
 
-            DiagnosticsReport.Send(Options.Diagnostics, report);
+            DiagnosticsReport.Send(Diagnostics, report);
         }
 
         /// <summary>
@@ -138,7 +138,7 @@ public sealed partial class FileIndex
                     if (File.Exists(canonicalPath))
                     {
                         File.Delete(canonicalPath);
-                        DiagnosticsReport.Send(Options.Diagnostics,
+                        DiagnosticsReport.Send(Diagnostics,
                             $"Deleted block file '{canonicalPath}': removing the partial replacement a failed or cancelled scan left before restoring the renamed-aside cache file.");
                     }
 
@@ -159,7 +159,7 @@ public sealed partial class FileIndex
             try
             {
                 File.Delete(path);
-                DiagnosticsReport.Send(Options.Diagnostics, $"Deleted block file '{path}': {reason}.");
+                DiagnosticsReport.Send(Diagnostics, $"Deleted block file '{path}': {reason}.");
             }
             catch (IOException)
             {

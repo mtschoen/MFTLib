@@ -26,7 +26,7 @@ public sealed partial class FileIndex
                 return CanonicalSlotOutcome.Owned;
             }
 
-            return Options.CacheMode == CacheMode.ExistingOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
+            return !_settleWrites ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
         }
 
         string CanonicalBlockPath() =>

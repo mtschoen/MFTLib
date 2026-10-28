@@ -48,14 +48,14 @@ public sealed partial class FileIndex
         {
             try
             {
-                Options.ScanProgress?.Report(new IndexScanProgress(Root, IndexScanPhase.Finished, rowsWritten)
+                ((IProgress<IndexScanProgress>)this).Report(new IndexScanProgress(Root, IndexScanPhase.Finished, rowsWritten)
                 {
                     Outcome = outcome
                 });
             }
             catch (Exception exception)
             {
-                DiagnosticsReport.Send(Options.Diagnostics,
+                DiagnosticsReport.Send(Diagnostics,
                     $"Root {Root}: the progress handler threw on the Finished sample: {exception.Message}");
             }
         }

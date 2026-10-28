@@ -5,7 +5,7 @@ public sealed partial class FileIndex
     internal sealed partial class VolumeScan
     {
         /// <summary>The root the options named, which is what <see cref="RootStatus.Root" /> reports.</summary>
-        public RootKey Root => Resolved.Root;
+        public RootKey Root => Key is null ? Resolved.Root : Resolved.BlockRoot;
 
         /// <summary>
         ///     The key the block header stores and the cache file is named for: the volume for an MFT block, whatever the

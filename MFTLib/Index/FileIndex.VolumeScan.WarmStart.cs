@@ -24,7 +24,7 @@ public sealed partial class FileIndex
             // which releases it through its DriveBlockRelease state, not through IDisposable.
             if (BlockFile.OpenCanonical(path, Resolved.VolumeSerial, out var validation) is { } block)
             {
-                block.Diagnostics = Options.Diagnostics;
+                block.Diagnostics = Diagnostics;
                 if (block.Header.ProducerKind != Resolved.Producer)
                 {
                     var storedProducerKind = block.Header.ProducerKind;
@@ -119,7 +119,7 @@ public sealed partial class FileIndex
                     return warmStart;
                 }
 
-                if (Options.CacheMode == CacheMode.ExistingOnly)
+                if (!_settleWrites)
                 {
                     accepted = true;
                     return warmStart with { CheckpointLoss = loss, CacheOnlyUnresumable = true };
@@ -141,7 +141,7 @@ public sealed partial class FileIndex
         {
             var stored = block.Header.CacheTag;
             block.Dispose();
-            DiagnosticsReport.Send(Options.Diagnostics,
+            DiagnosticsReport.Send(Diagnostics,
                 $"Cache tag mismatch for '{path}': stored {stored}; requested {Options.CacheTag}.");
             DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongCacheTag}");
             return new WarmStartResult(null, BlockValidationResult.WrongCacheTag);
@@ -155,9 +155,9 @@ public sealed partial class FileIndex
         /// </summary>
         void DiscardRejectedBlock(string path, string reason)
         {
-            if (Options.CacheMode == CacheMode.ExistingOnly)
+            if (!_settleWrites)
             {
-                DiagnosticsReport.Send(Options.Diagnostics, $"Left block file '{path}' in place for a cache-only open: {reason}.");
+                DiagnosticsReport.Send(Diagnostics, $"Left block file '{path}' in place for a cache-only open: {reason}.");
                 return;
             }
 
@@ -172,7 +172,7 @@ public sealed partial class FileIndex
         {
             var stored = block.Header.ScanShape;
             block.Dispose();
-            DiagnosticsReport.Send(Options.Diagnostics, FormattableString.Invariant(
+            DiagnosticsReport.Send(Diagnostics, FormattableString.Invariant(
                 $"Cache scan shape mismatch for '{path}': stored {stored:X16}; requested {ExpectedScanShape:X16}."));
             DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongScanShape}");
             return new WarmStartResult(null, BlockValidationResult.WrongScanShape);

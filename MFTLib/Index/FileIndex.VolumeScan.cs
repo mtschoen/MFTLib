@@ -72,8 +72,12 @@ public sealed partial class FileIndex
     [SuppressMessage("Design", "CA1001",
         Justification = "FileIndex owns asynchronous scan teardown. The closing source, like the lifecycle gates, " +
                         "stays readable by operations racing teardown and is intentionally not disposed.")]
-    internal sealed partial class VolumeScan(VolumeScanCreation creation)
+    internal sealed partial class VolumeScan(VolumeScanCreation creation, VolumeScanKey? key = null, Task? previousClosed = null)
     {
+        internal VolumeScanKey? Key { get; } = key;
+        internal Task PreviousClosed { get; } = previousClosed ?? Task.CompletedTask;
+        readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal Task Closed => _closed.Task;
         internal Lock StateLock { get; } = new();
         FileIndexOptions Options => creation.Options;
         IndexHooks Hooks => creation.Hooks;

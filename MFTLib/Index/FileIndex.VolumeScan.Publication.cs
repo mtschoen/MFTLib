@@ -11,7 +11,7 @@ public sealed partial class FileIndex
         /// </summary>
         RootBlock BuildRootBlock(BlockFile block)
         {
-            block.Diagnostics = Options.Diagnostics;
+            block.Diagnostics = Diagnostics;
             return new RootBlock(BlockRoot, block, rootDirectoryPath: Resolved.RenderRootDirectory,
                 mftSource: Options.MftSource);
         }

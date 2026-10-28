@@ -116,7 +116,22 @@ public sealed partial class FileIndex
                 var (newlyAdopted, consecutiveLostCatchUps) = await AdoptOpenedRootAsync(
                     block, settled, replacing: adopted).ConfigureAwait(false);
                 // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
-                adopted?.ReleaseState.ReleaseUnborrowed();
+                if (adopted is not null)
+                {
+                    bool visible;
+                    lock (StateLock)
+                    {
+                        visible = _views.Any(view => view.OpenCompleted && view.OpenFailure is null);
+                        if (visible)
+                        {
+                            RetireBlockLocked(adopted);
+                        }
+                    }
+                    if (!visible)
+                    {
+                        adopted.ReleaseState.ReleaseUnborrowed();
+                    }
+                }
                 adopted = newlyAdopted;
                 if (settled.CatchUpLoss is not { } catchUpLoss ||
                     RecordLostCatchUp(catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)

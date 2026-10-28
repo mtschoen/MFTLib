@@ -19,6 +19,13 @@ public sealed partial class FileIndex
         }
         internal RootBlock? Block { get; set; }
         internal ViewBorrows Borrows { get; } = new();
+        internal FileIndexOptions Options => Index._options;
+        internal VolumeScanRegistry Registry => Options.ScanRegistry ?? VolumeScanRegistry.Process;
+        internal (RootFailure Failure, PendingRootResult Result)? OpenFailure { get; set; }
+        // StateLock protects publication to the consumer as well as block publication. A failed
+        // open can later read a sibling's settle, so its retry mappings must retain handle lifetime.
+        internal bool OpenCompleted { get; private set; }
+        internal void CompleteOpenLocked() => OpenCompleted = true;
         internal bool IsDisposed { get; private set; }
         internal void MarkDisposedLocked() => IsDisposed = true;
         internal CancellationToken DisposalToken => Index.DisposalToken;

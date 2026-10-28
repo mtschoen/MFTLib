@@ -6,6 +6,15 @@ public sealed partial class FileIndex
     {
         public RootStatus DescribeLocked(IndexView view)
         {
+            if (view.OpenFailure is { } declined)
+            {
+                return new RootStatus(view.Root, RootState.Failed)
+                {
+                    Failure = declined.Failure,
+                    Producer = view.Resolved.Producer,
+                    Watch = new RootWatchStatus { CheckpointLoss = _checkpointLoss }
+                };
+            }
             var resolved = view.Resolved;
             var root = view.Root;
             var unavailable = resolved.MftUnavailable ?? _lastMftFailure;
