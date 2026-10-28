@@ -53,9 +53,9 @@ Direct local scans relaunch themselves elevated, waiting indefinitely for the el
 elevated run writes to `output.log` beside the executable, the unelevated console prints that path before it starts
 the elevated run, and the elevated window closes without waiting.
 
-Watch with no arguments is `watch` over every ready NTFS fixed volume: it prints which volumes it chose, scans each with a
-running row count (a line each 250000 rows within a scan phase), then prints changes until a key press. `--seconds N`
-replaces the key press with a fixed length, and an unattended run that is elevated, or one whose input is redirected,
+Watch with no arguments is `watch` over every ready local NTFS volume: it prints which volumes it chose, scans each with a
+running row count (a line each 250000 rows within a scan phase), then prints changes while accepting `add-root <path>`.
+Enter or end of input stops. `--seconds N` replaces the command loop with a fixed length, and an unattended run that is elevated, or one whose input is redirected,
 watches for ten seconds. An unattended run that is not elevated exits 1 without watching, as the Unattended section
 below describes. `scan` makes one pass per listed root and returns. Any root that failed makes the exit code 1.
 

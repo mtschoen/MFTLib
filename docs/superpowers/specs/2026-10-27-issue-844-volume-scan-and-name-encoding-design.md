@@ -285,7 +285,7 @@ roots parse as `RootKey`; print `Producer` and `MftUnavailable`; tag `SMPW` 3.
 | [watch lifetime](../../watch-lifetime.md) | one watch per scan, requests per view, fault fan-out rules above |
 | [block ownership](../../block-ownership.md) | one lock per scan; unchanged otherwise |
 | [broker lifetime](../../broker-lifetime.md) | `ArmAndScan` loses the retained-name count |
-| [test isolation](../../test-isolation.md) | the registry is process-global state: classes that open shared scans reset it in cleanup; journal isolation unchanged |
+| [test isolation](../../test-isolation.md) | sharing tests inject private registries; explicit Process references require class-level isolation and cleanup checks that their keys are no longer live; live scans are never reset; journal isolation unchanged |
 | [API decisions](../../api-decisions.md) | superseded: "One producer enum, selection and observation", "The enumeration producer is a product feature, chosen per root" (its no-fallback rule becomes the eligibility-only fallback), "Retention is an index option applied by every producer", "Retained names and pruning share the root comparison" (retained-name half), "Windows volume discovery" (moves to `WindowsVolume.EnumerateAll`), "Block Generation is a per-root change version" (per volume block), the anchor ruling (per view). New: producer selection, volume scan sharing, exact-spelling name identity |
 
 ## 8. Verification

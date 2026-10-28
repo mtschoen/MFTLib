@@ -79,19 +79,21 @@ metadata the journal does not carry, and journal modifications (`DataOverwrite`,
 **Revisit only if:** consumers explicitly request a separately identified metadata-refresh operation or need
 freshness information that the observation/invalidation model cannot express.
 
-## A subtree anchor belongs to the queried index's current root block
+## A subtree anchor belongs to the queried view's current root block
 
 **Decision:**
 all three query forms (`Search`, `Enumerate`, and `EnumerateRows`) reject `Subtree = default(FileEntry)` with
 `ArgumentException` on call entry. They then validate a non-null `Subtree` anchor, through one shared helper,
 against the snapshot actually borrowed by the query. They throw `ObjectDisposedException` when the anchor's block
-has been released, and `ArgumentException` when the anchor belongs to another `FileIndex`, belongs to a replaced
-root block, or has been superseded by row reuse. A retained handle remains readable against its original block
+has been released, and `ArgumentException` when the anchor belongs to another `FileIndex` or another view of the same
+volume, belongs to a replaced root block, or has been superseded by row reuse. The anchor's `RootBlock` must be the
+borrowed one, naming both the mapping and the querying view. A retained handle remains readable against its original block
 until disposed, and rescanning another root does not invalidate an anchor whose own root block remains current;
 the root block is compared, not the whole snapshot. Callers reacquire an anchor from the current index for a new
 query after the anchor's root is rescanned.
 
-**Reason:** private root ordinals and row numbers are coordinates, not ownership, and `default(FileEntry)` is
+**Reason:** MFTLib issue 844 rulings 5 and 15 give each view its own query and anchor scope, even when mappings are shared.
+Private root ordinals and row numbers are coordinates, not ownership, and `default(FileEntry)` is
 not a valid subtree anchor. The audit reproduced a C-root volume selecting D-root rows in another index,
 including after the first index was disposed, as well as an old directory handle selecting a different directory
 at the same row after rescan and `default(FileEntry)` silently returning an empty result. Comparing whole
@@ -144,23 +146,23 @@ a mid-scan fallback.
 
 ## A directory root on an NTFS volume is an MFT view of the volume block
 
-**Decision (issue 844, slice 4):** a directory `RootKey` on an eligible volume is not walked: the index reads the
+**Decision (MFTLib issue 844, rulings 3, 5 and 15):** a directory `RootKey` on an eligible volume reads the
 whole-volume MFT block and is rooted at the row the directory's path resolves to (`ViewRoot`). The view's row and
 sequence number are rechecked at publication, after each applied journal batch and at query admission; a directory the
 journal renamed away or deleted reads as `RootState.Offline` with no block and empty queries (the block stays mapped
 and watched), and as `Ready` again when the path resolves again. `Find` accepts paths under the view, either spelling
 of separators and (on Windows) case; `Root` is the view root and its `Parent` is null; paths are the real full paths.
 Unscoped queries are restricted to the view by an implicit subtree, decided per row by a two-bitset verdict cache
-shared by a query's partitions, so each directory's ancestry is climbed once per query. `Changed` reports every change
-the watch applies on the volume, not only those under the view. `QueryUsnJournalSettings` serves a view of a volume
+shared by a query's partitions, so each directory's ancestry is climbed once per query. `Changed` reports a change when
+its current or previous path is inside the view, including its root itself. A cross-view move reaches both views as
+`Renamed`, with entries bound to the receiving view. `QueryUsnJournalSettings` serves a view of a volume
 and refuses a walked root.
 
 **Reason:** the MFT scan costs one pass for the volume however many directories are indexed, a walk costs one pass
 per directory, and both consumers index directories on NTFS volumes. Climbing instead of re-walking keeps results
 identical to the volume's own index.
 
-**Revisit only if:** event routing per view or sharing one block between two views is built (issue 844 slice 5 rewrites
-the event text and the anchor ruling for it).
+**Revisit only if:** consumers need a scope other than resolved-path containment for queries or changes.
 
 ## Every MFT block is named for its volume
 
@@ -170,10 +172,63 @@ owns it; a walk block keeps the name derived from its own root key (`<letter>-<s
 fallback of a volume root therefore keeps its cache slot, and a directory root's fallback releases the volume slot and
 takes its directory slot.
 
-**Reason:** the block is the volume's, so its identity is the volume's; two views of one volume must find the same
-file. Until slice 5, a second index on the same volume contends for the block's owner lock and takes the private fallback.
+**Reason:** the block is the volume's, so its identity is the volume's; views of one share key find the same file and
+share one owner lock (MFTLib issue 844, ruling 5). Different share keys contend for that slot.
 
 **Revisit only if:** blocks stop being one per volume.
+
+## Volume scan sharing
+
+**Decision (MFTLib issue 844, rulings 3, 5 and 15):** eligible live MFT roots whose resolved directory exists at open
+attach to one process-wide `VolumeScan` per share key. The key is the `MftIndexSource` instance by reference (null is
+a value), volume, serial, normalized full cache directory (Windows ordinal-ignore-case, ordinal elsewhere), and exact
+`CacheTag`. Disabled caching uses a null directory; Persistent and ExistingOnly share a key. Walks, dumps, ineligible
+MftOnly roots and roots missing at open own private scans. Each `FileIndex` owns an `IndexView` with its root,
+resolved path, block handle, borrows, disposal, event delivery, watch request and outstanding fault.
+
+| Event | Contract |
+| --- | --- |
+| First open | Creates the scan and settles by warm adoption or cold production. |
+| Concurrent open | Joins the settle; a published block attaches under the write gate without another scan. |
+| Cache-only open | Awaits the warm verdict; declines a cold settle or blockless manual rescan without waiting for production. |
+| Writing joiner of a cache-only settle | Waits for its verdict, then joins one writing settle if it remained blockless. |
+| New open after failed settlement | Retries settlement; already attached views observe the scan's outcome. |
+| Automatic MFT-unavailable result | Each Automatic view detaches and settles one private walk; MftOnly siblings retain the failure. |
+| Cancelled open | Detaches that view; remaining views retain production. Cancellation reports the caller's token after cleanup. |
+| View disposal | Refuses new access, cancels its waits and queries, drains its own borrows and deliveries, and withdraws its request. |
+| Last detach | Cancels and drains scan work, releases retired/current mappings and the owner lock, then completes Closed. |
+| Reopen racing last detach | Waits for Closed before acquiring canonical ownership. |
+
+Settle mode is fixed at lifecycle-gate acquisition: Persistent when a joined view writes, otherwise ExistingOnly.
+An earlier attached writer is not a joiner of a later cache-only settle. A cache-only view declined during writing
+records its own CacheDeclined, CacheIdentityMismatch or InUse and lends no block until its successful RescanAsync.
+The scan's root is its volume, independent of the directory of the creating view. Cache directories are resolved
+once at open so a later current-directory change cannot retarget canonical operations.
+
+One watch serves the nonempty set of requesting views. Each view reports shared watch state with its own IsRequested.
+Stopping one request leaves the other requests running and consumes only that view's outstanding fault. The last stop
+retires and drains the watch and prevents rescan/recovery restart. Changed reaches every attached view whose current or
+previous change path matches `LookupEngine.TryMatchRootPrefix`; a block-root view receives every change.
+WatchStateChanged reaches every attached view in version order. Volume, Apply, Channel, Recovery, RescanRestart and
+CatchUpLost faults capture requesting recipients at settlement. Subscriber faults belong only to the throwing view,
+once per watch generation per view. Outstanding faults are per view; a superseding consumer start clears the prior
+instance's copies, while a refused start preserves them.
+
+Manual rescans have at most one running and one pending production. Calls join the pending production until it takes
+the lifecycle gate; later calls queue another, so no caller receives a production started before its call. Cancelling
+or disposing one caller ends only its wait; the last departing caller cancels and drains that production. Automatic
+recovery remains one ticket per scan and is independent of manual coalescing. Block generation, live rows, skipped rows,
+capacity exhaustion and checkpoint-loss facts are shared.
+
+A directory missing at open remains Offline on a private scan. A directory that later disappears from the block
+becomes Offline and returns to Ready at its resolved final path; links are resolved once per open. Diagnostics and
+progress fan out to attached views, diagnostics deduplicating equal delegates and progress carrying each receiving Root.
+TimeProvider, DirectoryWalk and scan hooks come from the creating view; query/disposal hooks remain per view.
+Scan messages name the block root; view refusals and cache-only declines name the view key.
+
+**Reason:** one MFT pass and one journal watch per volume regardless of how many roots a consumer registers.
+
+**Revisit only if:** sharing is wanted across processes or across share keys.
 
 ## OpenAsync validates root keys and producer choices before filesystem side effects
 
@@ -210,15 +265,15 @@ missing or inaccessible subtrees; neither is an operational producer failure by 
 
 ## A retained FileEntry keeps only its own root block mapped
 
-**Decision:** A `FileEntry` holds its `RootBlock` directly. A held handle keeps that one block mapped and no
-other root's: rescanning another root releases that root's retired block once nothing else reaches it. The
+**Decision:** A `FileEntry` holds its view's `RootBlock`, which holds one shared `MappedBlock`. A held handle keeps
+only that mapping alive; it does not retain the scan, other views or later mappings. The
 16-byte layout holds (`RootBlock?`, `uint` row index, `ushort` sequence number); the root ordinal comes from
-the block. Queries borrow every current block they read, and index disposal drains those borrows and releases
-every current and retired block regardless of held handles.
+the block. Queries acquire their view's borrow counter before the mapping's counter and return in reverse.
+Closing a view invalidates its handles and drains only its borrows. Last-detach teardown drains and releases every
+current and retired mapping regardless of held handles; an unreachable retired MappedBlock finalizes independently.
 
-**Reason:** Owner ruling (MFTLib#584): rooting the whole multi-root snapshot from one handle was a residue of
-the retired root-bundle design, and the per-root lifetime deleted the snapshot-wide release state and the
-per-block reference count rather than adding a lease layer.
+**Reason:** MFTLib issue 844 ruling 5 requires independent view lifetime over shared storage. Retaining only the
+mapped block preserves the handle-isolation decision: a handle cannot pin unrelated or replacement blocks.
 
 **Revisit only if:** a consumer needs a handle to pin a consistent multi-root view.
 
@@ -238,7 +293,7 @@ previously retained handles do not silently alias the new file: `IsDeleted` read
 `FileNotFoundException` without an open-by-id call, `Children` returns empty, `Subtree` queries reject the
 superseded anchor with `ArgumentException`, and reading overwritten row columns (`Name`, `Path`, `Parent`,
 `IsDirectory`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`, `Attributes`) throws `InvalidOperationException`.
-Equality (`Equals`, `GetHashCode`, `==`, `!=`) compares the underlying root block, row index and sequence
+Equality (`Equals`, `GetHashCode`, `==`, `!=`) compares the view's root block, row index and sequence
 number. A rename or move of the same file keeps its sequence number, so its handles stay live. `FileChange.Entry`
 of a `Deleted` notification whose slot was later reused reports `IsDeleted`; callers read `FileChange.Path`,
 `PreviousPath` and `Timestamp` for the event facts.
@@ -246,7 +301,8 @@ of a `Deleted` notification whose slot was later reused reports `IsDeleted`; cal
 **Reason:** NTFS reuses MFT segment numbers when creating new files after deletions. Because `FileEntry` already
 has 2 bytes of tail padding in its 16-byte layout and `BlockFile.SequenceNumbers` already stores a `ushort` per
 row, binding `FileEntry` to the row's sequence number prevents silent data corruption (opening or querying the
-wrong file through a retained handle) at zero struct-size cost.
+wrong file through a retained handle) at zero struct-size cost. MFTLib issue 844 ruling 5 also requires two views
+of the same row to remain distinct handles, with their own root and anchor scope.
 
 **Revisit only if:** consumers require cached tombstone snapshots of overwritten columns on superseded handles
 beyond `IsDeleted`.
@@ -467,7 +523,7 @@ holds, Volume names NTFS and Windows volume facts, and Drive survives only where
 types; every `RootKey`-typed `Drive` member became `Root` and every `VolumeKey`-typed one `Volume` (`JournalCheckpointLoss`, `WatchFault`,
 `WatchStateChange`, `WindowsVolume`, the scripted-watch types); `ScriptedDriveWatch` became `ScriptedVolumeWatch`, `ScriptedBrokerVolumes.ScanDrive`
 and `WatchDrive` became `ScanVolume` and `WatchVolume`, and the `SyntheticNotifications`
-`CreateDrive...` builders became `CreateRoot...`. Internals follow: `DriveBlock` is `RootBlock`, `DriveRuntime` is `RootRuntime`,
+`CreateDrive...` builders became `CreateRoot...`. Internals follow: `DriveBlock` is `RootBlock`, `DriveRuntime` is `VolumeScan` with per-index `IndexView`,
 `IIndexDriveWatch` is `IIndexVolumeWatch`, broker channel and scan types are `BrokerVolume...`. `FileIndex.QueryUsnJournalSettings()` takes no
 argument and reads the journal of the index's own root volume; a source without live journal settings or a walked folder root refuses with
 `InvalidOperationException`. Kept as Drive: `WindowsVolume.DriveType`, the `char` and `string` drive-letter
@@ -916,17 +972,18 @@ does not fall back to a direct scan. `FileIndex.Root(CancellationToken = default
 
 **Revisit only if:** `Root` gains a non-throwing form for a root without a block.
 
-## A root watch's pump owns fault attribution
+## A volume scan's pump owns fault attribution
 
 **Decision:** `IIndexVolumeWatch` supplies a read stream and asynchronous disposal; it carries no
-`Volume`. `FileIndex` attributes batches and faults to the `RootRuntime` that started the pump, and
+`Volume`. `FileIndex` attributes batches and faults to the `VolumeScan` that started the pump, and
 `VolumeWatchFaultException` carries only a message and optional inner exception to classify a
-`WatchFaultKind.Volume` fault. Consumers read `WatchFault.Volume`.
+`WatchFaultKind.Volume` fault. Consumers read `WatchFault.Volume`. Scan faults fan out to requesting views captured
+at settlement; subscriber faults stay on the view whose handler threw.
 
-**Reason:** the pump already owns the authoritative root; repeating it on the handle and the marker
-exception informed nobody.
+**Reason:** the pump owns the authoritative volume and MFTLib issue 844 ruling 5 shares that stream across views.
+Recipient ownership belongs to those views rather than to another volume field on the handle or exception.
 
-**Revisit only if:** one watch stream can represent several independently owned root runtimes.
+**Revisit only if:** one watch stream can represent several independently owned volume scans.
 
 ## Windows volume discovery reports every volume with an MFT verdict
 
@@ -1031,17 +1088,17 @@ that a sample can show.
 **Revisit only if:** a consumer needs the cache split by policy outside the library's scan-shape
 comparison, or the connect timeout stops being a consumer setting.
 
-## Block Generation is a per-root change version
+## Block Generation is a per-volume-block change version
 
 **Decision (2026-10-26, owner ruling B8):** the block header's `Generation` stays and is exposed as
-`RootBlockStatus.Generation` (`ulong`). Within one `FileIndex` it strictly increases on every applied journal
+`RootBlockStatus.Generation` (`ulong`). It is identical on every view of one scan and strictly increases on every applied journal
 mutation batch and on every rescan: a replacement block starts at the superseded block's value plus one, a warm
 start adopts the cached block's value, and a cold scan with no previous block starts at 1. It is comparable only
-within one `FileIndex` instance; a deleted cache or a new process can restart it, so a consumer remembers the last
-value it saw for a root and compares for inequality.
+while a consumer holds any index of that scan. A new scan after the last detach adopts the cached value; a deleted
+cache or another process can restart it, so a consumer remembers the last value it saw and compares for inequality.
 
-**Reason:** the field was written but never read, and a rescan restarted it at 1, so no single value could say
-whether a root changed. file-wizard `FileWizardMaui.Logic/DuplicateNameCounter.cs` uses it to skip a
+**Reason:** MFTLib issue 844 ruling 5 makes generation a fact of shared storage, so every view must report the same
+change version. file-wizard `FileWizardMaui.Logic/DuplicateNameCounter.cs` uses it to skip a
 duplicate-name recount when no root's Generation changed.
 
 **Revisit only if:** a consumer needs change versions that survive a deleted cache or span processes.
@@ -1218,13 +1275,11 @@ Callback reentrancy is one process-wide rule, not a per-index one: a lifecycle c
 `WatchStateChanged` handler of any `FileIndex` throws `InvalidOperationException`, whichever index the call names, because separated indices
 whose handlers stop each other would otherwise deadlock both pumps ([contract](watch-lifetime.md)).
 
-**Reason:** every per-root runtime (`RootRuntime`), block (`RootBlock`), cache lock, broker channel, and watch pump
-was already independent, while `FileIndex` carried an internal multi-root dictionary, snapshot array, ordinal
-assignment, batched verb fan-out, and settle-all open gate. Meanwhile, git-wizard already opened one `FileIndex` per
-repository root so warm roots could be queried before cold roots finished scanning, and file-wizard wanted each volume
-to become queryable as soon as its own open settled. Making `FileIndex` single-root lets each root open, watch, rescan,
-and dispose independently while `FileIndexSet` provides the cross-index read queries (`Find`, `Search`, `Enumerate`,
-`EnumerateRows`) that file-wizard and the Watch sample need.
+**Reason:** git-wizard registers one index per repository root and file-wizard needs each volume queryable as its open
+settles. Each index has independent view ownership while MFTLib issue 844 rulings 5 and 15 share storage and watches
+within a volume scan and deduplicate outermost-member queries. FileIndexSet supplies cross-index reads without taking
+over member lifetimes. Reentrancy remains process-wide because callbacks can deadlock across independent scans as
+well as among views of a shared scan.
 
 **Revisit only if:** a consumer requires a cross-index atomic snapshot borrow across multiple roots at once.
 

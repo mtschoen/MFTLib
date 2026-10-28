@@ -3,6 +3,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     The block behind one root's <see cref="RootStatus" />, captured with that status. Present
 ///     only on a <see cref="RootState.Ready" /> root.
+///     Views of one volume scan report the same block facts, including counts outside a directory view's scope.
 /// </summary>
 public sealed record RootBlockStatus
 {
@@ -27,7 +28,7 @@ public sealed record RootBlockStatus
     public CacheLocation? CacheLocation { get; init; }
 
     /// <summary>
-    ///     Rows that are in use and not tombstoned: the rows a query can return.
+    ///     Rows in the shared block that are in use and not tombstoned; a directory view's queries return only its subtree.
     /// </summary>
     public uint LiveRowCount { get; init; }
 
@@ -40,8 +41,8 @@ public sealed record RootBlockStatus
 
     /// <summary>
     ///     The current block's change version. It increases on every applied journal change batch and on
-    ///     every rescan, and a warm start adopts the cached block's value. It is comparable only within
-    ///     one <see cref="FileIndex" /> instance: a deleted cache or a new process can restart it. A
+    ///     every rescan, and a warm start adopts the cached block's value. It is identical across views and
+    ///     comparable while any <see cref="FileIndex" /> holds that scan: a deleted cache or a new process can restart it. A
     ///     consumer remembers the last value it saw for a root and compares; a different value means
     ///     the root's rows may have changed.
     /// </summary>

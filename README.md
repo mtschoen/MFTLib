@@ -103,7 +103,7 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
   directory walk with the reason in `RootStatus.MftUnavailable`. `MftOnly` fails the root instead of walking.
 - Check `RootStatus.State` before treating zero results as an empty root. An unelevated
   process settles the root `Failed` with `RootFailureKind.ProducerFailed` rather than throwing.
-- One open is one scan. Run as many queries as you like against it, and finish every
+- Eligible MFT opens of one share key use one scan. Run as many queries as you like against it, and finish every
   enumeration inside the `await using` scope. Sizes and times are what the scan observed.
 
 ## Quick start: query a saved MFT dump
@@ -204,6 +204,14 @@ Console.ReadLine();
 - When `BrokerSession.Ended` completes, the elevated process is gone. Dispose the indexes
   built over that session, then the session, and create new ones.
 
+## Shared volume views
+
+Eligible MFT indexes with the same source instance, volume, serial, cache directory and CacheTag share one scan,
+mapping, owner lock and journal watch. Each index keeps its own root, query scope, borrows and disposal. Adding a
+directory view while watching attaches without another scan. Its Changed event reports changes whose current or
+previous path lies inside that view; a move across two views reaches both as Renamed. Rescans coalesce per scan,
+and block generation and checkpoint facts are shared. Walks and dumps own private scans.
+
 ## Failure channels
 
 - **`RootStatus.Failure`** reports why opening or scanning a root failed: `CacheDeclined`,
@@ -222,7 +230,8 @@ Console.ReadLine();
 `SampleProgram.Direct` runs one-shot queries over a live volume or a saved dump: `search`,
 `tree`, `children`, `open`, `largest`, `duplicate-names` and `scan`. `SampleProgram.Watch` uses the broker:
 `scan`, `watch`, `rescan`, `journal`, `cache` and `elevation-status`. With no arguments
-it watches every ready NTFS fixed volume until a key press.
+it watches every ready local NTFS volume until Enter. During an attended watch, type `add-root C:\Windows` to attach
+another root. An empty line or end of input stops; `--seconds N` keeps a timed run free of input reads.
 
 ```powershell
 .\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes

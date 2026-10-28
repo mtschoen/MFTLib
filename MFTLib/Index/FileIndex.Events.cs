@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Raised once per applied change, in the order the journal batch delivered them, to
+    ///     Raised once per applied change whose current or previous path lies inside this view, in journal order, to
     ///     every subscriber, even when an earlier subscriber threw for an earlier change (or for
     ///     this one). The mutation and the USN cursor are already applied to the mapped block by the time any handler
     ///     runs: the watch applies the whole batch and releases its root's
@@ -15,16 +15,18 @@ public sealed partial class FileIndex
     ///     through <see cref="WatchFaulted" /> as <see cref="WatchFaultKind.Subscriber" />. A rescan
     ///     can publish before an old change is delivered, and its new watch can repeat that change
     ///     during catch-up. Queries can lag until that watch is CaughtUp.
+    ///     Cross-view moves reach both views as Renamed, and each Entry belongs to its receiving view's root block.
     ///     A handler must not block on a lifecycle call of any index: see
     ///     <see cref="WatchFaulted" />.
     /// </summary>
     public event Action<FileChange>? Changed;
 
     /// <summary>
-    ///     Raised when a root's watch first sees a subscriber fault, every time a root's watch
+    ///     Raised for this view's first subscriber fault per watch instance, and for requesting views every time the shared watch
     ///     ends with a volume, apply, or channel fault, and after every scan of a volume whose
     ///     journal catch-up was lost or whose replacement watch could not start. Every fault names
-    ///     its root. Raised from that root's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
+    ///     its volume. Requesting recipients are captured when a scan fault settles; subscriber faults stay on their view.
+    ///     Raised from that scan's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
     ///     and <see cref="WatchFaultKind.RescanRestart" /> from the scan after publication drained
     ///     the old pump, so faults of different roots may be raised
     ///     concurrently while one root's faults never overlap. The scan operation raises its
@@ -47,7 +49,7 @@ public sealed partial class FileIndex
     public event Action<WatchFault>? WatchFaulted;
 
     /// <summary>
-    ///     Raised once for every change of a root's <see cref="RootWatchStatus.State" />, with
+    ///     Raised on every attached view for each change of the scan's <see cref="RootWatchStatus.State" />, with
     ///     the root's <see cref="RootStatus.Watch" /> after the change, whose
     ///     <see cref="RootWatchStatus.StateVersion" /> is the change's version: a start,
     ///     a catch-up, a fault, a recovery being queued, finishing (the restarted watch reads

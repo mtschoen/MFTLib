@@ -32,8 +32,8 @@ namespace MFTLib.Index;
 /// <remarks>
 ///     The root block reference keeps that block mapped for as long as the handle is held, so a
 ///     rescan that supersedes the block cannot pull the memory out from under it while the
-///     owning <see cref="FileIndex" /> lives. It holds no other root's block. Once index disposal
-///     releases the block, row-backed reads and access to
+///     owning <see cref="FileIndex" /> lives. It holds no other mapping. Once its view closes,
+///     row-backed reads and access to
 ///     <see cref="Root" /> and <see cref="RecordKey" /> throw <see cref="ObjectDisposedException" />.
 ///     Equality and hashing use the stored handle identity and remain available, as do
 ///     <see cref="IsValid" /> and <see cref="IsDisposed" />. <see cref="ToString" /> remains safe
@@ -167,7 +167,7 @@ public readonly partial record struct FileEntry
     /// </summary>
     public bool IsDisposed => NamedRootBlock is { IsReleased: true };
 
-    /// <summary>Gets the configured logical volume key, including for virtual dump roots. Equals <see cref="IndexRecordKey.Root" /> on <see cref="RecordKey" />.</summary>
+    /// <summary>Gets this view's root key, including directory views and virtual dump roots. Equals <see cref="IndexRecordKey.Root" /> on <see cref="RecordKey" />.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
     public RootKey Root => RootBlock.Root;

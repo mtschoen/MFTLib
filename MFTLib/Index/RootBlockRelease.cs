@@ -1,8 +1,8 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Owns one root block's mapping and the readers inside it independently of the
-///     <see cref="RootBlock" /> object's lifetime, so index disposal can release a retired block
+///     Owns one mapped block's release and readers independently of the
+///     <see cref="MappedBlock" /> object's lifetime, so scan teardown can release a retired block
 ///     after garbage collection but before its finalizer runs. Released once: by the
 ///     <see cref="MappedBlock" /> finalizer when the last handle on a retired block becomes
 ///     unreachable, or by index disposal, which drains borrows first. A released block rejects

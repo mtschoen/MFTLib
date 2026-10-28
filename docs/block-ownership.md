@@ -20,7 +20,7 @@ receive full control and inherited access-control entries are blocked. On Unix
 the directory has owner read/write/execute permissions (`0700`). This protects
 the directory; it is not a recursive repair of every existing file's permissions.
 
-Cached `FileIndex.OpenAsync` calls `EnsureCreated` automatically before opening
+Cached `FileIndex.OpenAsync` resolves the full path once and calls `EnsureCreated` automatically before opening
 roots. An application preparing the directory or writing its own sidecar before
 an index open should call it explicitly first. For example, file-wizard's
 `FileWizard/ContentHashSidecar.cs` calls it before using `content-hashes` inside
@@ -29,17 +29,19 @@ Dump sources require null `CacheMode` and `CacheDirectory` and default `CacheTag
 ownership; block operations still follow the locks described below.
 
 - Index contracts:
-    - **Block ownership**: a cache-mode root's `RootRuntime` holds a sibling `<block>.lock` (opened with
+    - **Block ownership**: a cache-mode `VolumeScan` holds one sibling `<block>.lock` (opened with
       `FileShare.None`, an exclusive non-blocking `flock` on Unix) for as long as it owns a canonical
       cache block, and that lock is taken before any validation, retired-sibling sweep, rename, or
-      delete. A second `FileIndex` over the same cache directory, in any process, that cannot take the
+      delete. Views of the same process share key attach to that scan and lock. A different share key or process that cannot take the
       lock reports the root `Failed` with `RootFailureKind.InUse` on a cache-only open; a non-cache-only
       open instead scans into a private `mftlib-private-*` delete-on-close block and leaves the canonical
       cache untouched. `.lock` files are deliberately never unlinked (unlinking races a fresh
       create-and-lock), so cache-pruning tooling must leave `*.mlix.lock` alone. `FileIndexOptions.Diagnostics`
       receives one line with the path and reason for each block file the index deletes
-      explicitly; null by default (the internal block creation options forward it). Consumers that deliberately shared one cache block between two live indexes
-      must open the second with `CacheMode.Disabled` or expect the in-use outcome.
+      explicitly; null by default (the internal block creation options forward it). Reuse the same source instance,
+      volume, serial, normalized cache directory and CacheTag to share a scan. A null source is a key value too.
+      The registry retains a closing scan's Closed task until canonical ownership is released, so a racing reopen waits
+      rather than taking a private fallback. A view's disposal leaves the mapping and owner lock live for other views.
       `CacheMode.Disabled` and private fallback blocks are created delete-on-close, so the
       operating system removes them when the last handle closes, including when the process is
       killed, and that removal produces no `Diagnostics` line. The operating system likewise
@@ -66,14 +68,14 @@ ownership; block operations still follow the locks described below.
       or deleted. Consumers can collect these reports to
       preserve their own corruption diagnostics without globbing the cache directory themselves.
       A scan into the canonical slot that fails or is cancelled without producing a block deletes its
-      partial file itself, while `RootRuntime` still holds the owner lock, and logs the delete (or the
+      partial file itself, while `VolumeScan` still holds the owner lock, and logs the delete (or the
       failure to delete) through `Diagnostics`; a throwing callback never replaces the scan's own exception.
       A file that already sat in the slot before the scan, such as a complete block rejected only for an
       unresumable checkpoint, is judged by what is there after the failure: it stays only while it still
       opens as a complete, valid block, and a truncated or half-written replacement is deleted. A rescan
       restores its renamed-aside previous block instead; a throwing callback there neither replaces the scan's
       exception nor stops the previous block from returning to the canonical slot.
-      `RootBlockStatus.CacheLocation` reports the current published block's backing, read from the root owner's adopted `LastResult.CacheLocation`. The root owner (`RootRuntime`) holds the canonical lock (`CanonicalLock`) when it owns the slot, but `LastResult.CacheLocation` describes the published block:
+      `RootBlockStatus.CacheLocation` reports the shared block's backing on every view, read from the scan's adopted result. The scan (`VolumeScan`) holds the canonical lock when it owns the slot, but CacheLocation describes the published block:
       `CacheLocation.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and null for
       a `CacheMode.Disabled` block (a blockless root has no `Block` at all). It is independent of
