@@ -247,5 +247,19 @@ try {
     if ($runCoverage -notmatch $childTimeoutAssignment) {
         throw 'Managed coverage child request must carry the coverlet shutdown timeout'
     }
+    # Coverlet's default hit recorder is one locked increment on a process-wide counter per sequence point, so
+    # parallel test classes running the same instrumented loops contend for its cache lines; SingleHit only reads after
+    # the first hit. Every gate reads hits as zero or nonzero, so the measurement is unchanged.
+    function Assert-SingleHit([xml]$Project, [string]$Label) {
+        $settings = @($Project.SelectNodes('/Project/PropertyGroup[not(@Condition)]/SingleHit[not(@Condition)]'))
+        if ($settings.Count -ne 1 -or $settings[0].InnerText.Trim() -ne 'true') {
+            throw "$Label does not record coverlet hits once"
+        }
+    }
+    $testProjectText = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..' 'MFTLib.Tests' 'MFTLib.Tests.csproj') -Raw
+    Assert-SingleHit $testProjectText 'MFTLib.Tests.csproj'
+    Assert-Throws { Assert-SingleHit ($testProjectText -replace '<SingleHit>true</SingleHit>', '') 'mutant' } 'once'
+    Assert-Throws { Assert-SingleHit ($testProjectText -replace '<SingleHit>true</SingleHit>', '<SingleHit>false</SingleHit>') 'mutant' } 'once'
+    Assert-Throws { Assert-SingleHit ($testProjectText -replace '<SingleHit>true</SingleHit>', '<SingleHit Condition="false">true</SingleHit>') 'mutant' } 'once'
     Write-Host 'Coverage status regression tests passed.'
 } finally { Remove-Item $directory -Recurse -Force }
