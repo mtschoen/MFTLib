@@ -275,6 +275,7 @@ public partial class BenchmarkRunner
         var substringQuery = new SearchQuery(IndexQueryName);
         index.Search(exactQuery);
         index.Search(substringQuery);
+        PrintMultiNameExactMedian(index, iterations, log);
         PrintIndexMedian("exact-search", () => index.Search(exactQuery), iterations, log);
         PrintIndexMedian("substring-search", () => index.Search(substringQuery), iterations, log);
     }

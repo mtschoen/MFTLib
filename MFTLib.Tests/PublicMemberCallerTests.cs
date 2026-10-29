@@ -62,6 +62,8 @@ public class PublicMemberCallerTests
             "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
         ["method MFTLib.Index.DirectoryWalkOptions..ctor() : System.Void"] =
             "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["method MFTLib.Index.FileIndexSet.SearchExactNames(System.Collections.Generic.IReadOnlyList`1<System.String>, MFTLib.Index.SearchQuery, System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>>"] =
+            "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs ScanByNames (lands in git-wizard's 0.3.0 pin-bump pull request) answers its four discovery names with one call per volume",
         ["property MFTLib.Index.DirectoryWalkOptions.PruneDotDirectories : System.Boolean"] =
             "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
         ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryAttributes : System.IO.FileAttributes"] =

@@ -75,7 +75,7 @@ have Syntax as their baseline coverage.
 | `scripts/package-smoke/PackageSmoke.csproj` | Load and validate an MFT dump as a package consumer | agent, release, CI via smoke scripts | Windows and Linux package smoke steps |
 | `SampleProgram.Direct/SampleProgram.Direct.csproj` | Direct volume and dump command-line sample | attended, agent | Both platform coverage jobs: DirectArgumentsTests and DirectHostTests |
 | `SampleProgram.Watch/SampleProgram.Watch.csproj` | Broker-backed index and watch command-line sample | attended, agent | Both platform coverage jobs: WatchArgumentsTests and WatchHostTests |
-| `Benchmark/Benchmark.csproj` | `index`: packed-index queries; `compare`: saved timing and private-memory regression gate; `native-timings`: native parse phases; `enumeration-walk`: sequential/parallel enumeration over a generated tree | developer, release, agent | Both platform coverage jobs: BenchmarkRunnerTests, including isolated worker/report round trips and fail-closed memory parsing, generated-tree rows, both walk modes, fake-clock reports and cleanup |
+| `Benchmark/Benchmark.csproj` | `index`: packed-index queries, including a five-name `FileIndexSet.SearchExactNames` median with its differing-row count against per-name search; `compare`: saved timing and private-memory regression gate; `native-timings`: native parse phases; `enumeration-walk`: sequential/parallel enumeration over a generated tree | developer, release, agent | Both platform coverage jobs: BenchmarkRunnerTests, including isolated worker/report round trips and fail-closed memory parsing, generated-tree rows, both walk modes, fake-clock reports and cleanup |
 
 ## Local checks
 
