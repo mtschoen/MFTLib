@@ -76,7 +76,13 @@ sealed partial class BlockWriter
         // ordering holds for a fresh slot too, so there is no separate unpublished-slot case.
         ref var row = ref Block.Rows[(int)rowIndex];
         Hooks._rowCaptured?.Invoke();
-        var previousFlags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
+        var previousDescriptor = FileRow.ReadDescriptorWord(in row);
+        var previousFlags = FileRow.DescriptorFlags(previousDescriptor);
+        if (!TryPublishPosting(rowIndex, FileRow.DescriptorNameId(previousDescriptor), nameId))
+        {
+            return false;
+        }
+
         var previousParentRow = row.ParentRow;
         var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
         var isLive = (columns.Flags & RowFlags.InUse) != 0 && (columns.Flags & RowFlags.Tombstone) == 0;
@@ -159,7 +165,13 @@ sealed partial class BlockWriter
             return false;
         }
 
-        var flags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
+        var previousDescriptor = FileRow.ReadDescriptorWord(in row);
+        if (!TryPublishPosting(rowIndex, FileRow.DescriptorNameId(previousDescriptor), nameId))
+        {
+            return false;
+        }
+
+        var flags = FileRow.DescriptorFlags(previousDescriptor);
         row.ParentRow = parentRow;
         RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
         FileRow.WriteDescriptorWord(ref row, nameId, flags);
@@ -361,6 +373,24 @@ sealed partial class BlockWriter
         FileRow.WriteDescriptorWord(ref row,
             FileRow.DescriptorNameId(descriptor),
             flags | additionalFlags);
+    }
+
+    /// <summary>
+    ///     Appends the posting for a row whose name identifier is about to change to a nonzero value, before the row's
+    ///     descriptor word is stored, so a descriptor naming a name always has an association. Nothing is appended before
+    ///     the posting base exists, because the base build covers every row, or when the name is unchanged, because the
+    ///     earlier association still holds. A full delta marks the block capacity-exhausted and refuses the write, as a
+    ///     name that does not fit does. Callers reach this only from members already holding an access scope.
+    /// </summary>
+    bool TryPublishPosting(uint rowIndex, uint previousNameId, uint nameId)
+    {
+        if (nameId == 0 || nameId == previousNameId || !Block.PostingsBuilt || Block.TryAppendDelta(rowIndex, nameId))
+        {
+            return true;
+        }
+
+        MarkCapacityExhaustedCore();
+        return false;
     }
 
     /// <summary>Callers reach this only from members already holding an access scope.</summary>

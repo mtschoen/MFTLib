@@ -193,8 +193,9 @@ public sealed class PostingBuildTests : IDisposable
         Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
         Assert.IsTrue(writer.TryWriteRow(1, "a", FileColumns()));
         writer.Complete(Moment, null);
-        // Rename row 1 behind the posting structures' back: its new name has no posting.
-        Assert.IsTrue(writer.TryRenameRow(1, "b", 0));
+        // Rename row 1 behind the writer's back, so the new name gets no delta entry.
+        Assert.IsTrue(NamePool.TryGetOrAdd(block, "b", out var nameId));
+        FileRow.WriteDescriptorWord(ref block.Rows[1], nameId, RowFlags.InUse);
 
         var failure = PostingIntegrity.Check(block);
 
