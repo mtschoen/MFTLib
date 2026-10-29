@@ -118,6 +118,15 @@ static partial class Kernel32
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static unsafe partial bool FlushViewOfFile(byte* baseAddress, nuint numberOfBytesToFlush);
 
+    /// <summary>
+    ///     Called on a range that was never locked, removes its pages from the working set and reports
+    ///     <c>ERROR_NOT_LOCKED</c> (158) with a FALSE return. That failure is the expected success signal of
+    ///     <c>BlockFile.TryReleaseRowPages</c>.
+    /// </summary>
+    [LibraryImport("kernel32.dll", EntryPoint = "VirtualUnlock", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static unsafe partial bool VirtualUnlock(byte* address, nuint size);
+
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true,
         StringMarshalling = StringMarshalling.Utf16)]
