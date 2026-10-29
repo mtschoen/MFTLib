@@ -19,6 +19,8 @@ internal static class SyntheticNamePool
 
     internal static string? CheckIntegrity(BlockFile block) => NamePoolIntegrity.Check(block);
 
+    internal static string? CheckPostingIntegrity(BlockFile block) => PostingIntegrity.Check(block);
+
     internal static ulong Hash(ReadOnlySpan<char> name) => NameHash.Compute(name);
 
     /// <summary>Streams the rows a query matches through the borrowed row enumerator, with each row's name.</summary>

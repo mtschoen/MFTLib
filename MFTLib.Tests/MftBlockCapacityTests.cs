@@ -24,9 +24,9 @@ public class MftBlockCapacityTests
     {
         var volumeInformation = new NtfsVolumeInformation(1_000_000L * 1024, 1024);
 
-        var capacities = MftBlockCapacity.Plan(volumeInformation, new BlockCapacities(0, 2_500_000, 0));
+        var capacities = MftBlockCapacity.Plan(volumeInformation, new BlockCapacities(0, 2_500_000, 0, 0));
 
-        Assert.AreEqual(new BlockCapacities(1_250_000, 2_500_000, 30_003_200), capacities);
+        Assert.AreEqual(new BlockCapacities(1_250_000, 2_500_000, 30_003_200, 156_250), capacities);
     }
 
     [TestMethod]

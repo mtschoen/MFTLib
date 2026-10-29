@@ -29,6 +29,8 @@ public class NamePoolValidationTests
         using (builder)
         {
             var writable = builder.OpenForWriting();
+            // Postings are built from the intact rows; the corruption lands afterwards, as damage to a stored block would.
+            builder.Complete(ScanMoment);
             switch (corruption)
             {
                 case "OutOfRangeId": builder.MutateNameDescriptor(row, writable.NameEntryCount + 5); break;
@@ -38,7 +40,7 @@ public class NamePoolValidationTests
                 default: Assert.Fail("Unknown corruption case."); break;
             }
 
-            builder.Complete(ScanMoment);
+            writable.Flush(null);
 
             using var reopened = builder.OpenForReading(out var validation);
             Assert.IsNull(validation);

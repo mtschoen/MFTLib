@@ -18,7 +18,7 @@
       a watch waiting on its volume, a queued scan, and a processing operation that has reported
       progress less than 30 seconds ago receive `Heartbeat`. This includes a `Processing` step
       that reports progress without writing an operation frame, such as bounded catch-up after
-      `ScanReady` or block flush. Heartbeats do not reset the processing progress clock: at or
+      `ScanReady`, posting build or block flush. Heartbeats do not reset the processing progress clock: at or
       beyond `ProcessingLimit` (30 seconds) without progress, the pipe writes `Stalled` and its
       channel is cancelled. A pipe that wrote an operation frame since the previous visit skips
       that visit. A pipe with a frame write in flight is also skipped, so it cannot delay other

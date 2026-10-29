@@ -152,7 +152,7 @@ public sealed partial class FileIndex
 
             producer.Produce(new BlockWriter(growth.Block), this, walkLease, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            new BlockWriter(growth.Block).Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
+            new BlockWriter(growth.Block).Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null, cancellationToken: cancellationToken);
             return growth.Release();
         }
 
@@ -166,6 +166,7 @@ public sealed partial class FileIndex
                 SlotCapacity = capacities.SlotCapacity,
                 NameEntryCapacity = capacities.NameEntryCapacity,
                 NamePoolCapacity = capacities.NamePoolCapacity,
+                DeltaCapacity = capacities.DeltaCapacity,
                 DeleteOnClose = deleteOnClose,
                 Diagnostics = Diagnostics,
                 CacheTag = Options.CacheTag,

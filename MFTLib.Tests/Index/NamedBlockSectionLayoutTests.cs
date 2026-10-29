@@ -25,7 +25,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
     const uint EvilRow = 6;
 
     static readonly long SequenceRegionOffset = BlockLayout.SequenceRegionOffset(SlotCapacity);
-    static readonly long NamePoolOffset = BlockLayout.NamePoolOffset(SlotCapacity, SlotCapacity);
+    static readonly long NamePoolOffset = BlockLayout.NamePoolOffset(SlotCapacity, SlotCapacity, BlockLayout.ComputeDeltaCapacity(SlotCapacity));
 
     TempDirectory _directory = null!;
     string _sectionName = null!;
@@ -99,7 +99,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         using (creator)
         {
             using var opened = NamedBlockSection.OpenExisting(_sectionName);
-            Assert.AreEqual(BlockLayout.TotalBlockBytes(SlotCapacity, 3 * SlotCapacity, NamePoolCapacity), creator.Length);
+            Assert.AreEqual(BlockLayout.TotalBlockBytes(SlotCapacity, 3 * SlotCapacity, BlockLayout.ComputeDeltaCapacity(SlotCapacity), NamePoolCapacity), creator.Length);
             Assert.AreEqual(creator.Length, opened.Length);
             Assert.AreEqual(3 * SlotCapacity, opened.NameEntryCapacity);
         }
@@ -148,7 +148,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
             case "SlotCapacityWithMatchingOffsets":
                 header.SlotCapacity *= 2;
                 header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity);
-                header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity);
+                header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity, header.DeltaCapacity);
                 break;
             case "NameEntryCapacity": header.NameEntryCapacity *= 64; break;
             case "BucketCount": header.BucketCount++; break;

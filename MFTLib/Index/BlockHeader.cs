@@ -89,8 +89,14 @@ struct BlockHeader
     [FieldOffset(136)] public ulong NameEntryRegionOffset;
     /// <summary>Byte offset of the hash bucket region from the start of the file.</summary>
     [FieldOffset(144)] public ulong BucketRegionOffset;
-    /// <summary>Reserved; written as zero.</summary>
-    [FieldOffset(152)] public ulong Reserved;
+    /// <summary>Names that existed when the posting base was built; names interned later appear only in delta chains.</summary>
+    [FieldOffset(152)] public uint PostingBaseNameCount;
+    /// <summary>Row indices held by the posting base: the sum of the base lists, at most <see cref="RowCount" />.</summary>
+    [FieldOffset(156)] public uint PostingBaseRowCount;
+    /// <summary>Published delta entries, excluding reserved entry zero.</summary>
+    [FieldOffset(160)] public uint DeltaEntryCount;
+    /// <summary>Number of allocatable delta entries, excluding reserved entry zero.</summary>
+    [FieldOffset(164)] public uint DeltaCapacity;
     /// <summary>Consumer cache identity reconstructed from its on-disk fields.</summary>
     public readonly CacheTag CacheTag => CacheTag.FromStorage(CacheTagFourCc, CacheTagVersion);
 
@@ -179,7 +185,8 @@ struct BlockHeader
             return BlockValidationResult.InvalidNameDescriptor;
         }
 
-        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NameEntryCapacity, header.NamePoolCapacity);
+        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NameEntryCapacity, header.DeltaCapacity,
+            header.NamePoolCapacity);
         return mappedLength != required ? BlockValidationResult.InconsistentRegions : null;
     }
 
@@ -197,7 +204,8 @@ struct BlockHeader
             return BlockValidationResult.InvalidNameDescriptor;
         }
 
-        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NameEntryCapacity, header.NamePoolCapacity);
+        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NameEntryCapacity, header.DeltaCapacity,
+            header.NamePoolCapacity);
         return fileLength < required ? BlockValidationResult.InconsistentRegions : null;
     }
 
@@ -215,17 +223,26 @@ struct BlockHeader
                header.NamePoolUsed >= header.NameEntryCount;
     }
 
-    /// <summary>Row cursor within the slot capacity, and every region offset where the capacities put it.</summary>
+    /// <summary>
+    ///     Row cursor within the slot capacity, the posting cursors within their capacities, and every region offset
+    ///     where the capacities put it. The posting region offsets are derived from the capacities and not stored, so
+    ///     the total size check covers them.
+    /// </summary>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
     static bool HasConsistentGeometry(in BlockHeader header)
     {
-        return header.SlotCapacity < int.MaxValue && header.NameEntryCapacity < int.MaxValue &&
+        return header.SlotCapacity < int.MaxValue && header.NameEntryCapacity <= BlockLayout.MaximumNameEntryCapacity &&
+               header.DeltaCapacity is >= 1 and < int.MaxValue &&
                header.RowCount <= header.SlotCapacity &&
+               header.PostingBaseNameCount <= header.NameEntryCount &&
+               header.PostingBaseRowCount <= header.RowCount &&
+               header.DeltaEntryCount <= header.DeltaCapacity &&
                header.RowRegionOffset == BlockLayout.RowRegionOffset &&
                header.SequenceRegionOffset == (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity) &&
                header.NameEntryRegionOffset == (ulong)BlockLayout.NameEntryRegionOffset(header.SlotCapacity) &&
                header.BucketRegionOffset == (ulong)BlockLayout.BucketRegionOffset(header.SlotCapacity, header.NameEntryCapacity) &&
-               header.NamePoolOffset == (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity);
+               header.NamePoolOffset == (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity,
+                   header.DeltaCapacity);
     }
 }
