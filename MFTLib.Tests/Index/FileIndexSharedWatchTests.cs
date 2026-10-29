@@ -106,17 +106,76 @@ public sealed class FileIndexSharedWatchTests
     }
 
     [TestMethod]
-    public async Task SecondStart_WhileReady_ReturnsWithoutASecondWatch()
+    [DataRow("ready")]
+    [DataRow("stop")]
+    [DataRow("cancel")]
+    [DataRow("dispose")]
+    public async Task SecondStart_WhileReady_ReturnsWithoutASecondWatch(string mode)
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };
         using var fixture = new SharedScanFixture(watches);
-        await using var volume = await fixture.OpenAsync(fixture.Volume);
-        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
-        await volume.StartWatchingAsync(CancellationToken.None);
-        await source.StartWatchingAsync(CancellationToken.None);
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
+        if (mode == "ready")
+        {
+            await volume.StartWatchingAsync(CancellationToken.None);
+            await source.StartWatchingAsync(CancellationToken.None);
 
-        Assert.HasCount(1, watches.Starts);
-        Assert.IsTrue(volume.Status.Watch.IsRequested);
+            Assert.HasCount(1, watches.Starts);
+            Assert.IsTrue(volume.Status.Watch.IsRequested);
+            Assert.IsTrue(source.Status.Watch.IsRequested);
+            return;
+        }
+
+        var gate = new TestGate();
+        watches.HoldStart(gate, observeToken: false);
+        using var cancellation = new CancellationTokenSource();
+        var notStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.WatchStateChanged += change =>
+        {
+            if (change.Watch.State == WatchState.NotStarted)
+            {
+                notStarted.TrySetResult();
+            }
+        };
+        var first = volume.StartWatchingAsync(cancellation.Token);
+        Task withdrawal;
+        Task<RootOperationResult> second;
+        try
+        {
+            await gate.Entered.WaitAsync(HangGuard);
+            if (mode == "stop")
+            {
+                withdrawal = volume.StopWatchingAsync(CancellationToken.None);
+            }
+            else if (mode == "cancel")
+            {
+                await cancellation.CancelAsync();
+                withdrawal = Assert.ThrowsExactlyAsync<OperationCanceledException>(() => first);
+            }
+            else
+            {
+                withdrawal = volume.DisposeAsync().AsTask();
+            }
+
+            await notStarted.Task.WaitAsync(HangGuard);
+            second = source.StartWatchingAsync(CancellationToken.None);
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        await withdrawal.WaitAsync(HangGuard);
+        if (mode != "cancel")
+        {
+            Assert.AreEqual(RootOperationOutcome.Failed, (await first.WaitAsync(HangGuard)).Outcome);
+        }
+
+        Assert.AreEqual(RootOperationOutcome.Succeeded, (await second.WaitAsync(HangGuard)).Outcome);
+        Assert.HasCount(2, watches.Starts);
+        Assert.HasCount(1, watches.Watches.Where(watch => watch.DisposeCount == 0));
         Assert.IsTrue(source.Status.Watch.IsRequested);
     }
 

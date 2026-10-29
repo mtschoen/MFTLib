@@ -11,13 +11,20 @@ public sealed partial class FileIndex
             WatchHandoff handoff;
             lock (StateLock)
             {
+                var removed = _requesters.Remove(view);
                 view.WatchRequested = false;
-                _requesters.Remove(view);
+                _ = TakeOutstandingFaultLocked(view);
+                if (!removed)
+                {
+                    return view.WithdrawalDrain ?? Task.CompletedTask;
+                }
                 if (AnyRequestLocked)
                 {
+                    view.WithdrawalDrain = null;
                     return Task.CompletedTask;
                 }
                 handoff = PrepareDisposalLocked();
+                view.WithdrawalDrain = handoff.Drained;
             }
             RaiseWatchStateChanged();
             return handoff.DrainAsync();
@@ -44,6 +51,7 @@ public sealed partial class FileIndex
         /// </summary>
         public WatchHandoff PrepareDisposalLocked()
         {
+            AbandonConsumerStartLocked();
             ClearRequestsLocked();
             _refusedStartFault = null;
             CancelRestartPendingWaiterLocked();

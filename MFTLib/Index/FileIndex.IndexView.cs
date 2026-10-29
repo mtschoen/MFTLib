@@ -31,6 +31,7 @@ public sealed partial class FileIndex
         internal bool OpenCompleted { get; private set; }
         internal void CompleteOpenLocked() => OpenCompleted = true;
         internal bool WatchRequested { get; set; }
+        internal Task? WithdrawalDrain { get; set; }
         internal Exception? OutstandingFault { get; set; }
         internal long? OutstandingFaultGeneration { get; set; }
         internal bool IsDisposed { get; private set; }

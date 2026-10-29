@@ -115,7 +115,8 @@ public sealed partial class FileIndex
                 return;
             }
 
-            await ScanOpenedRootAsync(ownsCanonicalSlot, opened, cancellationToken).ConfigureAwait(false);
+            await Task.Run(() => ScanOpenedRootAsync(ownsCanonicalSlot, opened, cancellationToken),
+                CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <summary>

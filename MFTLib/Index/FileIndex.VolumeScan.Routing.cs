@@ -10,12 +10,11 @@ public sealed partial class FileIndex
 
         // WriteGate orders this snapshot against attach and publication. Every entry is rebound here,
         // while its receiving view still names the mapping on which this batch was applied.
-        List<RoutedChanges> RouteLocked(IReadOnlyList<FileChange> changes, CancellationToken cancellationToken)
+        List<RoutedChanges> RouteLocked(IReadOnlyList<FileChange> changes)
         {
             var bindings = new List<(IndexView View, RootBlock Block, List<FileChange> Changes)>();
             foreach (var view in ViewsSnapshot())
             {
-                cancellationToken.ThrowIfCancellationRequested();
                 if (view.Block is { } block)
                 {
                     bindings.Add((view, block, []));
@@ -27,7 +26,6 @@ public sealed partial class FileIndex
                 string? foldedPreviousPath = null;
                 foreach (var binding in bindings)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
                     if (Contains(binding.Block, change, ref foldedPath, ref foldedPreviousPath))
                     {
                         binding.Changes.Add(change with { Entry = change.Entry.WithRootBlock(binding.Block) });

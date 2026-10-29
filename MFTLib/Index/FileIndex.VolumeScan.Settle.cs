@@ -26,6 +26,7 @@ public sealed partial class FileIndex
             while (true)
             {
                 SettleRun run;
+                SettleRun? started = null;
                 lock (StateLock)
                 {
                     if (Block is not null && _settle is null)
@@ -39,15 +40,18 @@ public sealed partial class FileIndex
                     }
                     if (_settle is null)
                     {
-                        _settle = new SettleRun();
-                        var started = _settle;
-                        _ = Task.Run(() => RunSettleAsync(started), CancellationToken.None);
+                        started = new SettleRun();
+                        _settle = started;
                     }
                     run = _settle;
                     if (!run.ModeSelected && view.Options.CacheMode != CacheMode.ExistingOnly)
                     {
                         run.RequestedWrites = true;
                     }
+                }
+                if (started is not null)
+                {
+                    _ = RunSettleAsync(started);
                 }
 
                 if (view.Options.CacheMode == CacheMode.ExistingOnly)

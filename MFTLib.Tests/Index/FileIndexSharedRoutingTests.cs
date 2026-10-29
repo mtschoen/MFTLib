@@ -117,9 +117,12 @@ public sealed class FileIndexSharedRoutingTests
     }
 
     [TestMethod]
-    public async Task Route_AChangeInsideAView_ReachesItAndTheVolumeView()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Route_AChangeInsideAView_ReachesItAndTheVolumeView(bool stopDuringWatchBatch)
     {
-        using var fixture = new SharedScanFixture();
+        var watches = new ScriptedWatchSource { CatchUpOnStart = true };
+        using var fixture = new SharedScanFixture(watches);
         await using var volume = await fixture.OpenAsync(fixture.Volume);
         await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
         await using var work = await fixture.OpenAsync(RootKey.FromDirectory(fixture.WorkPath));
@@ -130,12 +133,42 @@ public sealed class FileIndexSharedRoutingTests
         source.Changed += sourceChanges.Add;
         work.Changed += workChanges.Add;
 
-        var returned = await SharedScanFixture.ApplyAsync(source, SharedScanFixture.Record(31, 30, "a.txt", UsnReason.DataOverwrite));
+        if (!stopDuringWatchBatch)
+        {
+            var returned = await SharedScanFixture.ApplyAsync(source,
+                SharedScanFixture.Record(31, 30, "a.txt", UsnReason.DataOverwrite));
+            Assert.AreSequenceEqual(sourceChanges, returned);
+        }
+        else
+        {
+            await volume.StartWatchingAsync(CancellationToken.None);
+            var gate = new TestGate();
+            volume.Hooks.ApplyJournalEntriesInsideWriteGate = _ =>
+            {
+                gate.MarkEntered();
+                gate.WaitForRelease();
+            };
+            var batch = watches.Watches.Single().Publish(new JournalBatch(
+                [SharedScanFixture.Record(40, 30, "created.txt", UsnReason.FileCreate)], 7, 5001));
+            Task<RootOperationResult> stop;
+            try
+            {
+                await gate.Entered.WaitAsync(HangGuard);
+                stop = volume.StopWatchingAsync(CancellationToken.None);
+                Assert.AreEqual(WatchState.NotStarted, volume.Status.Watch.State);
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            await Task.WhenAll(batch, stop).WaitAsync(HangGuard);
+            Assert.IsNotNull(source.Find(Path.Combine(fixture.SourcePath, "created.txt")));
+        }
 
         Assert.HasCount(1, volumeChanges);
         Assert.HasCount(1, sourceChanges);
         Assert.IsEmpty(workChanges);
-        Assert.AreSequenceEqual(sourceChanges, returned);
         Assert.AreSame(source.CurrentBlock, sourceChanges[0].Entry.NamedRootBlock);
         Assert.AreNotEqual(sourceChanges[0].Entry, volumeChanges[0].Entry);
     }

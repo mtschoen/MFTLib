@@ -124,9 +124,7 @@ sealed class ViewRoot
     /// </summary>
     /// <param name="rootBlock">The block the view is bound to.</param>
     /// <param name="entries">The batch that was just applied.</param>
-    /// <param name="cancellationToken">Stops a descent.</param>
-    internal void RefreshAfterBatch(RootBlock rootBlock, IReadOnlyList<UsnJournalEntry> entries,
-        CancellationToken cancellationToken)
+    internal void RefreshAfterBatch(RootBlock rootBlock, IReadOnlyList<UsnJournalEntry> entries)
     {
         if (_target is not { } target)
         {
@@ -148,7 +146,7 @@ sealed class ViewRoot
                 return;
             }
 
-            _ = ResolveLocked(target, rootBlock, cancellationToken, out _);
+            _ = ResolveLocked(target, rootBlock, CancellationToken.None, out _);
         }
     }
 

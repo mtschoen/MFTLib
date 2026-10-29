@@ -47,8 +47,11 @@ sealed class VolumeScanRegistry
                 return false;
             }
             _live.Remove(key);
-            _closing[key] = scan.Closed;
-            _ = RemoveClosedAsync(key, scan.Closed);
+            var closed = _closing.TryGetValue(key, out var previousClosed) && !previousClosed.IsCompleted
+                ? Task.WhenAll(previousClosed, scan.Closed)
+                : scan.Closed;
+            _closing[key] = closed;
+            _ = RemoveClosedAsync(key, closed);
             return true;
         }
     }

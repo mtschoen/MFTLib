@@ -7,7 +7,28 @@ public sealed partial class FileIndex
         // I7 Watch requests: membership and the view flag change together under StateLock.
         readonly HashSet<IndexView> _requesters = [];
         bool AnyRequestLocked => _requesters.Count != 0;
-        Task? _consumerStart;
+        ConsumerStart? _consumerStart;
+
+        sealed class ConsumerStart
+        {
+            readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public Task Task => _completion.Task;
+            public bool Abandoned { get; set; }
+            public void Complete() => _completion.TrySetResult();
+            public void Fail(Exception exception) => _completion.TrySetException(exception);
+        }
+
+        void AbandonConsumerStartLocked()
+        {
+            if (_consumerStart is { } start)
+            {
+                start.Abandoned = true;
+                _consumerStart = null;
+            }
+        }
+
+        bool IsCurrentConsumerStartLocked(ConsumerStart? start) =>
+            AnyRequestLocked && start is not { Abandoned: true };
 
         /// <summary>Starts this root for an admitted consumer request; readiness is handle publication.</summary>
         public Task StartRootWatchingAsync(IndexView view, CancellationToken cancellationToken)
@@ -19,10 +40,11 @@ public sealed partial class FileIndex
 
             ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             cancellationToken.ThrowIfCancellationRequested();
-            Task start;
+            ConsumerStart start;
             lock (StateLock)
             {
                 view.WatchRequested = true;
+                view.WithdrawalDrain = null;
                 _requesters.Add(view);
                 if (Current is { State: WatchInstanceState.Running })
                 {
@@ -30,57 +52,53 @@ public sealed partial class FileIndex
                 }
                 if (_consumerStart is null)
                 {
-                    var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    _consumerStart = completion.Task;
-                    _ = Task.Run(() => CompleteConsumerStartAsync(completion), CancellationToken.None);
+                    start = new ConsumerStart();
+                    _consumerStart = start;
+                    _ = Task.Run(() => CompleteConsumerStartAsync(start), CancellationToken.None);
                 }
-                start = _consumerStart;
+                else
+                {
+                    start = _consumerStart;
+                }
             }
             return AwaitConsumerStartAsync(view, start, cancellationToken);
         }
 
-        async Task CompleteConsumerStartAsync(TaskCompletionSource completion)
+        async Task CompleteConsumerStartAsync(ConsumerStart start)
         {
             try
             {
-                await StartConsumerWatchingAsync(ClosingToken).ConfigureAwait(false);
-                completion.TrySetResult();
+                await StartConsumerWatchingAsync(start, ClosingToken).ConfigureAwait(false);
+                start.Complete();
             }
             catch (Exception exception)
             {
                 // An independent source cancellation is a fault, preserving its original exception.
-                completion.TrySetException(exception);
+                start.Fail(exception);
             }
         }
 
-        async Task AwaitConsumerStartAsync(IndexView view, Task start, CancellationToken cancellationToken)
+        async Task AwaitConsumerStartAsync(IndexView view, ConsumerStart start, CancellationToken cancellationToken)
         {
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, view.DisposalToken);
             try
             {
-                await AwaitQueuedAsync(start, wait.Token).ConfigureAwait(false);
+                await AwaitQueuedAsync(start.Task, wait.Token).ConfigureAwait(false);
                 wait.Token.ThrowIfCancellationRequested();
             }
             catch (OperationCanceledException) when (wait.IsCancellationRequested && !IsClosing)
             {
-                await StopRootWatchingAsync(view, CancellationToken.None).ConfigureAwait(false);
+                await WithdrawViewForDisposalAsync(view).ConfigureAwait(false);
                 throw;
             }
         }
 
-        async Task StartConsumerWatchingAsync(CancellationToken cancellationToken)
+        async Task StartConsumerWatchingAsync(ConsumerStart start, CancellationToken cancellationToken)
         {
             await LifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                lock (StateLock)
-                {
-                    if (!AnyRequestLocked)
-                    {
-                        throw new OperationCanceledException("The watch request was withdrawn before startup.");
-                    }
-                }
-                await StartWatchingWithGateHeldAsync(restart: false, recovery: null, cancellationToken)
+                await StartWatchingWithGateHeldAsync(restart: false, recovery: null, cancellationToken, start)
                     .ConfigureAwait(false);
             }
             finally
@@ -88,13 +106,16 @@ public sealed partial class FileIndex
                 LifecycleGate.Release();
                 lock (StateLock)
                 {
-                    _consumerStart = null;
+                    if (ReferenceEquals(_consumerStart, start))
+                    {
+                        _consumerStart = null;
+                    }
                 }
             }
         }
 
         async Task StartWatchingWithGateHeldAsync(bool restart, RecoveryTicket? recovery,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken, ConsumerStart? consumerStart = null)
         {
             ThrowIfClosing(cancellationToken);
             var source = WatchSourceOrNull ?? throw new InvalidOperationException(
@@ -128,7 +149,7 @@ public sealed partial class FileIndex
                 await beforeRegistration(Root).ConfigureAwait(false);
             }
 
-            var registration = RegisterStartingInstance(armedBlock, restart, recovery);
+            var registration = RegisterStartingInstance(armedBlock, restart, recovery, consumerStart);
             RaiseWatchStateChanged();
             if (registration is not { } registered)
             {
@@ -233,12 +254,12 @@ public sealed partial class FileIndex
         }
 
         RegisteredWatchStart? RegisterStartingInstance(
-            RootBlock armedBlock, bool restart, RecoveryTicket? recovery)
+            RootBlock armedBlock, bool restart, RecoveryTicket? recovery, ConsumerStart? consumerStart)
         {
             lock (StateLock)
             {
                 ThrowIfClosing(CancellationToken.None);
-                if (!restart && !AnyRequestLocked)
+                if (!restart && !IsCurrentConsumerStartLocked(consumerStart))
                 {
                     throw new OperationCanceledException("The watch request was withdrawn before registration.");
                 }

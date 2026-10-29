@@ -17,6 +17,7 @@ public sealed partial class FileIndex
             ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             WatchInstance? retired;
             Task? previousDrain;
+            Task? drain;
             Exception? outstandingFault;
             lock (StateLock)
             {
@@ -31,25 +32,28 @@ public sealed partial class FileIndex
                 outstandingFault = TakeOutstandingFaultLocked(view);
                 if (AnyRequestLocked)
                 {
+                    view.WithdrawalDrain = null;
                     if (outstandingFault is not null)
                     {
                         ExceptionDispatchInfo.Capture(outstandingFault).Throw();
                     }
                     return;
                 }
+                AbandonConsumerStartLocked();
                 _refusedStartFault = null;
                 CancelRestartPendingWaiterLocked();
                 ClearRecoveryLocked();
                 previousDrain = _retiring?.Drained;
                 retired = RetireCurrentLocked();
+                drain = retired?.Drained is { } retiredDrain && previousDrain is not null
+                    ? Task.WhenAll(retiredDrain, previousDrain)
+                    : retired?.Drained ?? previousDrain;
+                view.WithdrawalDrain = drain;
                 NoteWatchStateLocked();
             }
 
             RaiseWatchStateChanged();
             retired?.RequestStop();
-            var drain = retired?.Drained is { } retiredDrain && previousDrain is not null
-                ? Task.WhenAll(retiredDrain, previousDrain)
-                : retired?.Drained ?? previousDrain;
             if (drain is not null)
             {
                 await AwaitQueuedAsync(drain, cancellationToken).ConfigureAwait(false);

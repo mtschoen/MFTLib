@@ -209,7 +209,9 @@ public sealed class FileIndexSharedDisposalTests
     }
 
     [TestMethod]
-    public async Task Reopen_RacingTheLastDetach_OwnsTheCanonicalSlot()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Reopen_RacingTheLastDetach_OwnsTheCanonicalSlot(bool cancelIntermediateReopen)
     {
         using var fixture = new SharedScanFixture();
         await using var cleanup = new IndexDisposalScope();
@@ -222,6 +224,15 @@ public sealed class FileIndexSharedDisposalTests
         };
         var disposal = DisposeOnWorkerAsync(index);
         await gate.Entered.WaitAsync(HangGuard);
+        if (cancelIntermediateReopen)
+        {
+            using var cancellation = new CancellationTokenSource();
+            var intermediate = fixture.OpenAsync(fixture.Volume, cancellation.Token);
+            Assert.IsFalse(intermediate.IsCompleted);
+            await cancellation.CancelAsync();
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => intermediate).WaitAsync(HangGuard);
+        }
+
         var reopening = fixture.OpenAsync(fixture.Volume);
         try
         {

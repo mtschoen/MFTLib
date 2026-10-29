@@ -62,10 +62,10 @@ public sealed partial class FileIndex
                 {
                     if (view.Block is { } bound)
                     {
-                        bound.View.RefreshAfterBatch(bound, entries, ClosingToken);
+                        bound.View.RefreshAfterBatch(bound, entries);
                     }
                 }
-                return RouteLocked(changes, cancellationToken);
+                return RouteLocked(changes);
             }
             finally
             {
