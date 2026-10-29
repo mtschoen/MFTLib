@@ -3,10 +3,11 @@ using System.Diagnostics.CodeAnalysis;
 namespace MFTLib.Index;
 
 /// <summary>
-///     Resolves matching name identifiers once, then scans row columns in parallel and
-///     materializes the whole match set. Callers page by slicing.
+///     Resolves matching name identifiers once, then either reads the candidate rows the posting regions name (an exact
+///     name, see <c>SearchEngine.Exact.cs</c>) or scans row columns in parallel, and materializes the whole match set.
+///     Callers page by slicing.
 /// </summary>
-static class SearchEngine
+static partial class SearchEngine
 {
     internal static List<FileEntry> Search(RootBlock? rootBlock, SearchQuery query,
         uint? admittedViewRow = null, CancellationToken cancellationToken = default)
@@ -66,7 +67,7 @@ static class SearchEngine
 
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping.")]
-    static bool RowColumnsMatch(in FileRow row, SearchQuery query)
+    internal static bool RowColumnsMatch(in FileRow row, SearchQuery query)
     {
         if (!row.IsInUse || (row.IsDeleted && !query.IncludeDeleted))
         {
@@ -125,6 +126,12 @@ static class SearchEngine
     static void SearchOneRoot(RootScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
         using var names = new NameQueryMatches(scan.RootBlock.Block, scan.Query, cancellationToken);
+        if (names.IsExactCandidates)
+        {
+            SearchExactRoot(scan, names, results, cancellationToken);
+            return;
+        }
+
         var rowCount = scan.RootBlock.Block.Header.RowCount;
         var partitions = ScanPartitioning.Partition(rowCount, ScanPartitioning.DefaultPartitionCount(rowCount));
         if (partitions.Count == 0)
@@ -218,6 +225,16 @@ static class SearchEngine
         var (rootBlock, query, membership) = scan;
         var block = rootBlock.Block;
         using var names = new NameQueryMatches(block, query, cancellationToken);
+        if (names.IsExactCandidates)
+        {
+            foreach (var entry in EnumerateExactRoot(scan, names, cancellationToken))
+            {
+                yield return entry;
+            }
+
+            yield break;
+        }
+
         var rowCount = block.Header.RowCount;
         var rowsUntilCancellationCheck = 1u;
 

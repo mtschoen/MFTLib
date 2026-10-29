@@ -547,13 +547,33 @@ or delta chain. An interrupted writer can leave a stale association, never a mis
 
 ## Name query passes
 
-A query resolves the matching name entries once and then tests each row's atomically read identifier. An exact,
-case-sensitive query walks the chain for the pattern and takes the single ordinal match. An exact, ignore-case query
-walks that one chain and collects every entry the fold matches (an inline set of four identifiers, then a rented
-array); `Find` under ignore case prefers the child spelled exactly as the segment, else the lowest row. Substring and
-glob queries first scan the published name entries into a rented `ulong[]` bitset, then scan rows by testing the bit
-for each row's identifier. The same setup serves materialized search and both enumeration APIs. A query without a name
-predicate skips name matching.
+A query resolves the matching name entries once. An exact, case-sensitive query walks the chain for the pattern and
+takes the single ordinal match. An exact, ignore-case query walks that one chain and collects every entry the fold
+matches (an inline set of four identifiers, then a rented array); `Find` under ignore case prefers the child spelled
+exactly as the segment, else the lowest row.
+
+An exact query then reads no row table pass: it gathers candidate rows from the [posting regions](#posting-regions) and
+verifies them. The gather captures the delta count, the posting base counts and the row count once, under the query's
+borrow, before it reads anything else. For each matching identifier `n` it appends the base list when `n` is within
+the captured base name count, and walks the delta chain from the head `n & (bucket count - 1)`, keeping entries whose
+name is `n`, whose index is within the captured delta count and whose row is within the captured row count. More than
+one identifier, or any delta row, sorts and de-duplicates the candidates in a rented `uint[]`; one identifier with no
+delta row is already ascending. Each candidate row, in ascending order, is then read once: it is kept only if its
+descriptor still holds one of the identifiers (the verified-postings rule) and it passes the column predicates, the
+subtree test and, for `Find`, the parent test. A stale association is skipped, and a row that stayed unchanged during the
+query is never missed, because its association was published before the query began and the base never changes. A row
+renamed or created during the query may or may not appear, as for any query. Results are in ascending row order. There
+is no row-scan fallback for an exact query. The one exception is the empty name, identifier zero: the build skips
+unnamed rows, so an exact query for `""` reads the descriptors of the captured rows once to collect the in-use rows
+that hold it (in practice the volume root).
+
+The internal multi-name search (`SearchEngine.SearchExactNames`, `FileIndex.SearchExactNames`) resolves each requested
+name, gathers the union of their identifiers once and verifies each candidate row once. Result `i` is for `names[i]`,
+equal to the single-name search, in the same row order; identifiers two requests share answer both.
+
+Substring and glob queries first scan the published name entries into a rented `ulong[]` bitset, then scan rows by
+testing the bit for each row's identifier. The same setup serves materialized search and both enumeration APIs. A query
+without a name predicate skips name matching.
 
 Ignore-case matching is defined once: a name matches a pattern exactly when the ordinal match of the fold of the name
 against the fold of the pattern succeeds. The pattern is folded and encoded once per query. An ASCII entry uses
@@ -566,7 +586,11 @@ own fold because .NET leaves it alone under invariant casing; `ſ` (U+017F) fold
 The entry pass captures its count once, so identifiers appended afterwards do not match that pass. Contents are not
 frozen: an existing row can change between matching and consumption. Borrow ownership spans both passes.
 Cancellation is checked before setup, at least every 4096 name entries, before the first row and at least every 4096
-scanned rows, including rejected rows. Bitsets are returned on completion, disposal and failed setup. See
+examined rows, including rejected rows: table rows for a substring or glob query, and for an exact query posting
+entries (each 4096-entry slice of a base list, and each delta entry visited) and candidate rows verified, the first of
+each being a checkpoint. A materialized exact search above 65,536 candidates verifies partitions of the sorted candidate
+array on several threads, in the same cadence, and concatenates them to keep ascending order. Bitsets and candidate
+buffers are returned on completion, disposal and failed setup. See
 [query lifetime](query-lifetime.md).
 
 ## Measuring name storage

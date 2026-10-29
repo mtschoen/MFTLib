@@ -70,6 +70,9 @@ public sealed class NameSpellingOracleTests
             Root = new RootBlock(new VolumeKey('T'), Block, rootDirectoryPath: TestRootDirectory.For('T'));
         }
 
+        /// <summary>Completes a block whose rows were restored rather than added, which builds its posting base.</summary>
+        internal void Complete() => _builder.Complete(Moment);
+
         internal List<(uint Row, string Name)> Files { get; } = [];
 
         internal BlockFile Block { get; }
@@ -288,6 +291,7 @@ public sealed class NameSpellingOracleTests
         var snapshot = BlockRowSnapshot.Capture(source.Block);
         using var grown = new Fixture(populate: false, slotCapacity: 4096, namePoolCapacity: 1 << 20);
         snapshot.RestoreInto(grown.Block);
+        grown.Complete();
         grown.Files.AddRange(source.Files);
         foreach (var mode in Enum.GetValues<NameMatchMode>())
         {
