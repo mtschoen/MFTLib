@@ -165,7 +165,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | Name byte pool | after buckets | `name pool capacity`, rounded up to a page |
 
 Entry zero is reserved. The header stores the entry capacity `E`, the number of allocatable
-entries excluding that reserved entry. The volume plan sets `E` to the slot capacity `S`, and a rescan
+entries excluding that reserved entry. The volume plan sets `E` from the slot capacity `S` (see Capacity), and a rescan
 or growing walk can create a block with a larger independent `E`. Every region offset and size is computed
 from the stored `S`, `E` and pool capacity `P`. The bucket count is the smallest power of two at least
 `max(1024, ceil(E / 4))`. New bucket heads are zero.
@@ -197,7 +197,7 @@ from the stored `S`, `E` and pool capacity `P`. The bucket count is the smallest
 | 112 | scan shape | u64 | Library identity of the row-shaping options; see [Scan shape](#scan-shape) |
 | 120 | access-denied subtree count | u32 | Subtrees the enumeration producer could not enter; zero for MFT blocks |
 | 124 | name entry count | u32 | Published entries, excluding entry zero |
-| 128 | name entry capacity | u32 | Allocatable entries `E`, excluding entry zero; equal to `S` in the volume plan, or larger after independent growth |
+| 128 | name entry capacity | u32 | Allocatable entries `E`, excluding entry zero; from `S` in the volume plan (at most `S`), or larger after independent growth |
 | 132 | bucket count | u32 | `max(1024, ceil(E / 4))` rounded up to a power of two |
 | 136 | name entry region offset | u64 | |
 | 144 | bucket region offset | u64 | |
@@ -405,7 +405,8 @@ other block regions.
 ## Capacity
 
 The volume plan clamps the row estimate to 1,717,986,917 rows, then sets slot capacity `S` to the estimate plus
-25 percent or 65536 rows, whichever is larger. Entry capacity `E` starts equal to `S`. The name byte pool reserves
+25 percent or 65536 rows, whichever is larger. Entry capacity `E` starts at `S` for `S` up to 2,000,000 and adds one entry per five slots beyond that,
+because interning leaves distinct names at 9 to 61 percent of rows (the large volumes sit at the low end). The name byte pool reserves
 `P = pageAlign(max(1 MiB, 24 * S))`, with no second headroom, clamped to 2147479552 bytes (`0x7FFFF000`) so every
 pool span length fits an `int`. One planner serves the MFT and enumeration producers. The reservation is generous:
 measured use is 2.7 to 15.2 bytes per slot.

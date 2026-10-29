@@ -168,6 +168,45 @@ public class BlockLayoutTests
     }
 
     [TestMethod]
+    [DataRow(65536u, 65536u)]
+    [DataRow(2000000u, 2000000u)]
+    [DataRow(2000005u, 2000001u)]
+    [DataRow(18912320u, 5382464u)]
+    [DataRow(4268800u, 2453760u)]
+    public void ComputeNameEntryCapacity_IsFullForSmallSlotCapacitiesAndAFifthBeyond(uint slots, uint entries)
+    {
+        Assert.AreEqual(entries, BlockLayout.ComputeNameEntryCapacity(slots));
+    }
+
+    [TestMethod]
+    public void PlanCapacities_ALargeVolumeReservesAFractionOfTheEntryRegionPerSlot()
+    {
+        var capacities = BlockLayout.PlanCapacities(15129856, default);
+
+        Assert.AreEqual(18912320u, capacities.SlotCapacity);
+        Assert.AreEqual(5382464u, capacities.NameEntryCapacity);
+        Assert.AreEqual(64589824L, BlockLayout.NameEntryRegionBytes(capacities.NameEntryCapacity));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_AnExhaustedRightSizedEntryRegionDoublesOnlyEntries()
+    {
+        var plan = BlockLayout.PlanCapacities(15129856, default);
+        var header = new BlockHeader
+        {
+            RowCount = 1000,
+            SlotCapacity = plan.SlotCapacity,
+            NameEntryCapacity = plan.NameEntryCapacity,
+            NameEntryCount = plan.NameEntryCapacity,
+            NamePoolCapacity = plan.NamePoolCapacity,
+            NamePoolUsed = 1000,
+            Flags = BlockFlags.CapacityExhausted
+        };
+
+        Assert.AreEqual(new BlockCapacities(0, plan.NameEntryCapacity * 2, 0), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
     public void PlanCapacities_AHugeEstimateClampsToACreatableSlotCapacity()
     {
         var capacities = BlockLayout.PlanCapacities(uint.MaxValue, default);
