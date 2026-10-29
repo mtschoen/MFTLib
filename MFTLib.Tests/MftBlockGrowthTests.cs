@@ -51,7 +51,7 @@ public sealed class MftBlockGrowthTests : IDisposable
         }).Block;
 
         Assert.HasCount(2, requests);
-        Assert.AreEqual(new BlockCapacities(0, 64, 0), requests[1].MinimumCapacities);
+        Assert.AreEqual(new BlockCapacities(0, 64, 0, 0), requests[1].MinimumCapacities);
         Assert.IsFalse(block.Header.IsCapacityExhausted);
         Assert.AreEqual(64u, block.Header.NameEntryCapacity);
     }
