@@ -137,6 +137,53 @@ public sealed class FileIndexSharedRescanTests
     }
 
     [TestMethod]
+    public async Task Rescan_SoleCallerDisposedBehindABlockedDisposalCallback_PreservesTheSiblingsSnapshot()
+    {
+        var watches = new ScriptedWatchSource { CatchUpOnStart = true };
+        using var fixture = new SharedScanFixture(watches);
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
+        Assert.AreEqual(RootOperationOutcome.Succeeded, (await source.StartWatchingAsync(CancellationToken.None)).Outcome);
+        var original = source.CurrentBlock;
+        var callback = new TestGate();
+        // Both orders of callback execution reach a blocked callback before the rescan's own registration.
+        using var before = volume.DisposalToken.Register(Block);
+        CancellationTokenRegistration after = default;
+        Task? disposal = null;
+        fixture.BeforeProduction = () =>
+        {
+            after = volume.DisposalToken.Register(Block);
+            disposal = volume.DisposeAsync().AsTask();
+            callback.Entered.Wait(HangGuard);
+        };
+        RootOperationResult result;
+        try
+        {
+            result = await volume.RescanAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
+        finally
+        {
+            callback.Release();
+        }
+
+        await disposal!.WaitAsync(HangGuard);
+        after.Dispose();
+        Assert.AreEqual(RootOperationOutcome.Failed, result.Outcome);
+        Assert.IsInstanceOfType<OperationCanceledException>(result.Failure);
+        Assert.AreSame(original, source.CurrentBlock, "a rescan whose only caller was disposed never publishes");
+        Assert.HasCount(1, watches.Starts);
+        Assert.AreEqual(0, watches.Watches.Single().DisposeCount);
+        return;
+
+        void Block()
+        {
+            callback.MarkEntered();
+            callback.WaitForRelease();
+        }
+    }
+
+    [TestMethod]
     public async Task Rescan_FailedProduction_EveryCallerGetsTheSameFailure()
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };

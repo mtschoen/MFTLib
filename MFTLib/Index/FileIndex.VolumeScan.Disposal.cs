@@ -6,13 +6,22 @@ public sealed partial class FileIndex
     {
         readonly List<RootBlockRelease> _retiredBlocks = [];
 
-        internal Task WithdrawViewForDisposalAsync(IndexView view)
+        /// <summary>
+        ///     Withdraws <paramref name="view" />'s watch request. A cancelled start passes the
+        ///     <paramref name="request" /> it admitted and withdraws only that one: a newer request on
+        ///     the view, and its outstanding fault, are left alone. Disposal passes none.
+        /// </summary>
+        internal Task WithdrawViewForDisposalAsync(IndexView view, WatchRequest? request = null)
         {
             WatchHandoff handoff;
             lock (StateLock)
             {
+                if (request is not null && view.Request is not null && !ReferenceEquals(view.Request, request))
+                {
+                    return Task.CompletedTask;
+                }
                 var removed = _requesters.Remove(view);
-                view.WatchRequested = false;
+                view.Request = null;
                 _ = TakeOutstandingFaultLocked(view);
                 if (!removed)
                 {

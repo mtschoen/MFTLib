@@ -5,6 +5,12 @@ public sealed partial class FileIndex
     internal sealed record VolumeScanCreation(ResolvedRoot Resolved, FileIndexOptions Options,
         string CacheDirectoryPath, IndexHooks Hooks);
 
+    /// <summary>
+    ///     Compared by reference only: a start's cancellation cleanup withdraws the view's request
+    ///     only while it is still the one that start admitted.
+    /// </summary>
+    internal sealed class WatchRequest;
+
     internal sealed partial class IndexView(FileIndex index, ResolvedRoot resolved)
     {
         FileIndex Index { get; } = index;
@@ -30,7 +36,13 @@ public sealed partial class FileIndex
         // open can later read a sibling's settle, so its retry mappings must retain handle lifetime.
         internal bool OpenCompleted { get; private set; }
         internal void CompleteOpenLocked() => OpenCompleted = true;
-        internal bool WatchRequested { get; set; }
+        /// <summary>
+        ///     The view's admitted watch request, or none. Each admission after a withdrawal is a new
+        ///     object, so a call's cleanup acts only on the request it admitted. Read and written
+        ///     under the scan's state lock.
+        /// </summary>
+        internal WatchRequest? Request { get; set; }
+        internal bool WatchRequested => Request is not null;
         internal Task? WithdrawalDrain { get; set; }
         internal Exception? OutstandingFault { get; set; }
         internal long? OutstandingFaultGeneration { get; set; }

@@ -19,6 +19,18 @@ public sealed partial class FileIndex
             internal int CleanupWaiters { get; set; }
             internal bool IsAbandoned { get; set; }
             internal bool ProductionFinished { get; set; }
+            readonly List<(CancellationToken Token, IndexView View)> _callers = [];
+
+            /// <summary>Records an admitted caller. The caller holds the scan's state lock.</summary>
+            internal void AddCallerLocked(IndexView view, CancellationToken token) => _callers.Add((token, view));
+
+            /// <summary>
+            ///     Whether no caller still wants the result, read from each caller's own token and its
+            ///     view's disposed flag rather than from cancellation callbacks, which can run late. The
+            ///     caller holds the scan's state lock, under which views are marked disposed.
+            /// </summary>
+            internal bool IsAbandonedByEveryCallerLocked() => IsAbandoned ||
+                _callers.TrueForAll(caller => caller.Token.IsCancellationRequested || caller.View.IsDisposed);
 
             public void Dispose() => Abandoned.Dispose();
         }
@@ -79,6 +91,7 @@ public sealed partial class FileIndex
                 request = _pendingRescan;
                 request.Waiters++;
                 request.CleanupWaiters++;
+                request.AddCallerLocked(view, cancellationToken);
             }
 
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, view.DisposalToken);

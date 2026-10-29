@@ -41,9 +41,12 @@ public sealed partial class FileIndex
             ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
             cancellationToken.ThrowIfCancellationRequested();
             ConsumerStart start;
+            WatchRequest request;
             lock (StateLock)
             {
-                view.WatchRequested = true;
+                // A start on a view that already requests joins that request; one after a withdrawal
+                // admits a new request, which no older call's cleanup can remove.
+                request = view.Request ??= new WatchRequest();
                 view.WithdrawalDrain = null;
                 _requesters.Add(view);
                 if (Current is { State: WatchInstanceState.Running })
@@ -61,7 +64,7 @@ public sealed partial class FileIndex
                     start = _consumerStart;
                 }
             }
-            return AwaitConsumerStartAsync(view, start, cancellationToken);
+            return AwaitConsumerStartAsync(view, request, start, cancellationToken);
         }
 
         async Task CompleteConsumerStartAsync(ConsumerStart start)
@@ -78,7 +81,8 @@ public sealed partial class FileIndex
             }
         }
 
-        async Task AwaitConsumerStartAsync(IndexView view, ConsumerStart start, CancellationToken cancellationToken)
+        async Task AwaitConsumerStartAsync(IndexView view, WatchRequest request, ConsumerStart start,
+            CancellationToken cancellationToken)
         {
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, view.DisposalToken);
             try
@@ -88,8 +92,17 @@ public sealed partial class FileIndex
             }
             catch (OperationCanceledException) when (wait.IsCancellationRequested && !IsClosing)
             {
-                await WithdrawViewForDisposalAsync(view).ConfigureAwait(false);
+                await WithdrawViewForDisposalAsync(view, request).ConfigureAwait(false);
                 throw;
+            }
+
+            lock (StateLock)
+            {
+                // A sibling's request can carry the shared start to readiness after this one was stopped.
+                if (!ReferenceEquals(view.Request, request))
+                {
+                    throw new OperationCanceledException("The watch request was withdrawn while it was starting.");
+                }
             }
         }
 

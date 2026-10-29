@@ -7,6 +7,11 @@ own private scans. See [volume scan sharing](api-decisions.md#volume-scan-sharin
 Manual RescanAsync calls join the pending request until it takes the lifecycle gate. A call after that point queues
 the next production: at most one runs and one is pending. Caller cancellation or view disposal ends only that wait;
 the last departing waiter cancels and drains production, preserving canonical restoration and post-commit restart.
+Publication reads each waiter's own token and its view's disposed flag under the state lock, not cancellation
+callbacks: when every waiter is cancelled or disposed, the rescan cancels and keeps the snapshot and watch.
+Each view's watch request is an object admitted by its first start after a withdrawal. A start's cancellation
+cleanup withdraws only the request it admitted, and a start whose request was stopped meanwhile fails with
+`OperationCanceledException` even when a sibling carries the shared start to readiness.
 Automatic recovery is one ticket per scan and does not join manual requests.
 
 - Index contracts:

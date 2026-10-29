@@ -76,8 +76,9 @@ public sealed partial class FileIndex
                 lock (StateLock)
                 {
                     ThrowIfClosing(cancellationToken);
-                    // Abandonment is decided under this lock, before its token cancellation lands.
-                    if (recovery is null && _runningRescan is { IsAbandoned: true })
+                    // Abandonment is decided under this lock from the callers' own state, before any
+                    // cancellation callback lands, so a caller cancelled or disposed now never publishes.
+                    if (recovery is null && _runningRescan is { } running && running.IsAbandonedByEveryCallerLocked())
                     {
                         throw new OperationCanceledException("Every caller of the rescan cancelled.");
                     }

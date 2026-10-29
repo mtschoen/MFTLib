@@ -27,7 +27,7 @@ public sealed partial class FileIndex
                         $"Root {Root} is not watching, so there is no watch to stop.");
                 }
 
-                view.WatchRequested = false;
+                view.Request = null;
                 _requesters.Remove(view);
                 outstandingFault = TakeOutstandingFaultLocked(view);
                 if (AnyRequestLocked)
@@ -61,7 +61,11 @@ public sealed partial class FileIndex
 
             lock (StateLock)
             {
-                outstandingFault ??= TakeOutstandingFaultLocked(view);
+                // A fault recorded for a request admitted during the drain belongs to that request.
+                if (view.Request is null)
+                {
+                    outstandingFault ??= TakeOutstandingFaultLocked(view);
+                }
             }
 
             if (outstandingFault is not null)
@@ -82,7 +86,7 @@ public sealed partial class FileIndex
         {
             foreach (var view in _requesters)
             {
-                view.WatchRequested = false;
+                view.Request = null;
             }
             _requesters.Clear();
         }

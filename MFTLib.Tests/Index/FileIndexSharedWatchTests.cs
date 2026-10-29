@@ -180,6 +180,94 @@ public sealed class FileIndexSharedWatchTests
     }
 
     [TestMethod]
+    [DataRow("alone")]
+    [DataRow("sibling-after-stop")]
+    [DataRow("sibling-before-stop")]
+    public async Task SecondStart_AfterRestartingTheSameView_SurvivesTheOlderCallsCancellation(string mode)
+    {
+        var watches = new ScriptedWatchSource { CatchUpOnStart = true };
+        using var fixture = new SharedScanFixture(watches);
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
+        var gate = new TestGate();
+        watches.HoldStart(gate, observeToken: false);
+        using var cancellation = new CancellationTokenSource();
+        var first = volume.StartWatchingAsync(cancellation.Token);
+        Task<RootOperationResult>? sibling = null;
+        Task<RootOperationResult> stop;
+        Task<RootOperationResult> second;
+        try
+        {
+            await gate.Entered.WaitAsync(HangGuard);
+            if (mode == "sibling-before-stop")
+            {
+                sibling = source.StartWatchingAsync(CancellationToken.None);
+            }
+
+            stop = volume.StopWatchingAsync(CancellationToken.None);
+            if (mode == "sibling-after-stop")
+            {
+                sibling = source.StartWatchingAsync(CancellationToken.None);
+            }
+
+            second = volume.StartWatchingAsync(CancellationToken.None);
+            await cancellation.CancelAsync();
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => first.WaitAsync(HangGuard));
+        Assert.AreEqual(RootOperationOutcome.Succeeded, (await stop.WaitAsync(HangGuard)).Outcome);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, (await second.WaitAsync(HangGuard)).Outcome);
+        Assert.IsTrue(volume.Status.Watch.IsRequested, "the replacement request survives the older call's cleanup");
+        if (sibling is not null)
+        {
+            Assert.AreEqual(RootOperationOutcome.Succeeded, (await sibling.WaitAsync(HangGuard)).Outcome);
+            Assert.AreEqual(RootOperationOutcome.Succeeded, (await source.StopWatchingAsync(CancellationToken.None)).Outcome);
+        }
+
+        Assert.AreEqual(mode == "sibling-before-stop" ? 1 : 2, watches.Starts.Count);
+        var live = watches.Watches.Single(watch => watch.DisposeCount == 0);
+        Assert.AreNotEqual(WatchState.NotStarted, volume.Status.Watch.State);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, (await volume.StopWatchingAsync(CancellationToken.None)).Outcome);
+        Assert.AreEqual(1, live.DisposeCount);
+    }
+
+    [TestMethod]
+    public async Task Start_StoppedWhileASiblingKeepsTheStart_ReportsItsWithdrawal()
+    {
+        var watches = new ScriptedWatchSource { CatchUpOnStart = true };
+        using var fixture = new SharedScanFixture(watches);
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
+        var gate = new TestGate();
+        watches.HoldStart(gate, observeToken: false);
+        var first = volume.StartWatchingAsync(CancellationToken.None);
+        Task<RootOperationResult> sibling;
+        try
+        {
+            await gate.Entered.WaitAsync(HangGuard);
+            sibling = source.StartWatchingAsync(CancellationToken.None);
+            Assert.AreEqual(RootOperationOutcome.Succeeded, (await volume.StopWatchingAsync(CancellationToken.None)).Outcome);
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        var withdrawn = await first.WaitAsync(HangGuard);
+        Assert.AreEqual(RootOperationOutcome.Failed, withdrawn.Outcome);
+        Assert.IsInstanceOfType<OperationCanceledException>(withdrawn.Failure);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, (await sibling.WaitAsync(HangGuard)).Outcome);
+        Assert.IsFalse(volume.Status.Watch.IsRequested);
+        Assert.IsTrue(source.Status.Watch.IsRequested);
+    }
+
+    [TestMethod]
     public async Task NonRequestingView_ReportsTheScansStateWithIsRequestedFalse()
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };
