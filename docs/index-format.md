@@ -536,6 +536,16 @@ writer keeps an in-memory `PostingsBuilt` bit, set by `Complete`, by opening a c
 broker-completed section; a journal name change appends a delta entry only while it is set. The base is never rewritten
 after completion. A rescan or enumeration growth builds a new base in the replacement block.
 
+The journal appends in exactly two writer members, `BlockWriter.TryWriteRow` and `BlockWriter.TryRenameRow`, and only
+when a row's name identifier changes to a nonzero value: a create on a reused slot with the same name, a rewrite, a
+parent-only move, a tombstone and a detach append nothing, and a rename back to an earlier spelling appends a second
+association that readers de-duplicate. `TryAppendDelta` writes the whole entry with `Next` set to the current head,
+publishes the entry count, then publishes the head with a volatile store, and only then does the writer store the row's
+descriptor word. A crash between those steps leaves unreachable entry storage or a stale association, never a descriptor
+without an association. When `DeltaEntryCount >= D` the write is refused and the capacity-exhausted flag is set, exactly
+like a name that does not fit: `JournalMutator` keeps applying the rest of the batch and the rescan that follows doubles
+`D` and rebuilds the base.
+
 Invariant: every row whose descriptor holds name `n` other than zero has an association `(r, n)` in name `n`'s base list
 or delta chain. An interrupted writer can leave a stale association, never a missing one.
 

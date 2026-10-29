@@ -217,6 +217,8 @@ sealed class JournalMutator
     FileChange? ApplyCreate(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
     {
         var columns = BuildColumns(entry);
+        // A refused write (the name, the row slot or the posting delta no longer fits) has set the capacity-exhausted
+        // flag and written no column: the row keeps its prior shape and the rescan that follows rebuilds the postings.
         if (!Writer.TryWriteRow(rowIndex, entry.FileName, in columns))
         {
             return null;
@@ -232,6 +234,7 @@ sealed class JournalMutator
         UsnReason classification, ref bool rowMutated)
     {
         var previousPath = IndexNavigation.BuildPath(rootBlock, rowIndex);
+        // A false result means the new name or its posting delta entry did not fit; the row keeps its old name.
         if (!Writer.TryRenameRow(rowIndex, entry.FileName, (uint)entry.ParentRecordNumber))
         {
             // The name did not fit, but the cycle now counts every reason of this record as reported, so a
