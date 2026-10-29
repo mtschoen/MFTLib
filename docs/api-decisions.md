@@ -8,6 +8,22 @@ with evidence that its stated reason no longer holds (for example, the consumers
 Record every new ruling here in the same change that implements or files it: the decision, the reason, and
 what would justify revisiting it.
 
+## Releasing resident pages is an explicit consumer call
+
+**Decision (owner ruling 2026-10-28, issue 861):** `FileIndex.ReleaseResidentPages()` drops the index's mapped block
+pages from the process working set, and only a consumer calls it. MFTLib never trims on its own: no query, watch or
+rescan releases pages. The call is advisory and safe beside concurrent readers (pages refault). Windows uses
+`VirtualUnlock` on the unlocked view and Linux `madvise(MADV_DONTNEED)`.
+
+**Reason:** the consumer knows its index's lifecycle and when it is acceptable to clear the cache. A trim inside
+`Search` (per partition) was implemented and measured on a 10M-row synthetic index (`Benchmark.exe index --synthetic
+10000000 --iterations 5`, median of 5): exact search went from 14.3 and 20.6 ms to 52.8 and 55.8 ms, and substring search
+from 205 and 229 ms to 226 and 277 ms, because a repeated query refaults every page the previous one trimmed. That breaks
+the 5 percent query-time bound, and only the caller can tell a repeat query from an idle index.
+
+**Revisit only if:** a policy exists that trims without slowing repeated queries (for example a trim on a measured cold
+first touch) and the owner approves MFTLib deciding when to clear its own cache.
+
 ## Release benchmark baselines are committed reports
 
 **Decision (owner ruling 2026-10-26, B13):** Keep one small, hand-captured

@@ -26,7 +26,7 @@
       releasing canonical ownership; a same-key reopen waits for that closing owner. See [volume scan sharing](api-decisions.md#volume-scan-sharing).
     - **Public queries and FileIndexSet**: `FileIndex.Search` materializes `FileEntry` values, `Enumerate` streams them for LINQ,
       and `EnumerateRows` provides ref-struct `IndexRow` views with span names, sizes and flags for whole-root
-      passes that retain few rows. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index.
+      passes that retain few rows. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index. `FileIndex.ReleaseResidentPages()` is the consumer's explicit, advisory call that drops the index's mapped pages from the working set; MFTLib never trims on its own ([contract](query-lifetime.md)).
       `FileIndexSet` coordinates read-only queries (`Find`, `Search`, `SearchExactNames`, `Enumerate`, `EnumerateRows`) across a fixed ordered list of
       distinct-root `FileIndex` instances exposed through `Indices`, borrowing one member's block at a time and owning no lifecycle or disposal of its members.
       `FileIndexSet.SearchExactNames(names, filter)` answers several exact names in one call: result `i` belongs to `names[i]` and equals `Search` with that name and `NameMatchMode.Exact`, borrowing each member once for all names; a filter carrying a name pattern is rejected. It exists on the set only ([ruling](api-decisions.md#one-exact-multi-name-search-returns-per-name-lists-aligned-with-the-request)).

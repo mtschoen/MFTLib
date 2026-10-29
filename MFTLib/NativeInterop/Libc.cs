@@ -26,4 +26,10 @@ static partial class Libc
 
     [LibraryImport("libc", EntryPoint = "msync", SetLastError = true)]
     internal static unsafe partial int MemorySync(byte* address, nuint length, int flags);
+
+    /// <summary>The <c>MADV_DONTNEED</c> advice value, 4 on Linux and macOS alike.</summary>
+    internal const int AdviseDontNeed = 4;
+
+    [LibraryImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    internal static unsafe partial int MemoryAdvise(byte* address, nuint length, int advice);
 }

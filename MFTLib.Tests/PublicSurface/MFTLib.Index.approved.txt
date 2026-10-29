@@ -149,6 +149,7 @@ MFTLib.Index.FileIndex :: method public Enumerate(MFTLib.Index.SearchQuery query
 MFTLib.Index.FileIndex :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable
 MFTLib.Index.FileIndex :: method public Find(string path, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
 MFTLib.Index.FileIndex :: method public QueryUsnJournalSettings() : MFTLib.UsnJournalSettings
+MFTLib.Index.FileIndex :: method public ReleaseResidentPages() : bool
 MFTLib.Index.FileIndex :: method public RescanAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.RootOperationResult>
 MFTLib.Index.FileIndex :: method public Root(System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry
 MFTLib.Index.FileIndex :: method public Search(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
