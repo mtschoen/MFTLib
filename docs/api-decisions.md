@@ -1333,3 +1333,19 @@ copy's name.
 
 **Revisit only if:** a consumer needs two independent cursors over one enumerator, which `GetEnumerator` already gives
 with a separate borrow.
+
+## One exact multi-name search returns per-name lists aligned with the request
+
+**Decision:** `FileIndexSet.SearchExactNames(IReadOnlyList<string> names, SearchQuery? filter = null, CancellationToken cancellationToken = default)`
+returns one list per requested name, tagged by position: result `i` belongs to `names[i]` and, absent concurrent
+mutation, equals `Search` with the filter plus `NamePattern = names[i]` and `NameMatchMode.Exact`. The filter carries
+every predicate except the name; a filter with a `NamePattern` throws `ArgumentException`, its `MatchMode` is ignored,
+and `null` means no other predicate. Duplicate names are answered independently. The member exists on the set only;
+`FileIndex.SearchExactNames` stays internal. It returns materialized lists, with no streaming form.
+
+**Reason:** one borrow and one posting gather per member serve all of git-wizard discovery's names, instead of one full
+pass per name. Positional tagging needs no comparer, matches the library's name fold exactly and allows duplicate
+requests, where a comparer-keyed dictionary would not reproduce the fold. git-wizard calls `FileIndexSet.Search` only,
+so a single-index form has no consumer production caller. The three single-pattern forms stay as recorded in F26.
+
+**Revisit only if:** a consumer needs the multi-name search on a single `FileIndex`, or needs it streamed.
