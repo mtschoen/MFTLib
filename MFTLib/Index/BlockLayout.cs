@@ -161,6 +161,18 @@ static class BlockLayout
             poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
     }
 
+    /// <summary>
+    ///     Whether a producer that can re-run its scan has a larger name region to retry with, so the running scan is
+    ///     already doomed to be discarded and may stop; false at the clamps, where the flagged block is published.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    internal static bool RetryGrowsCapacity(in BlockHeader header)
+    {
+        var retry = RetryMinimum(in header);
+        return retry.NameEntryCapacity > header.NameEntryCapacity || retry.NamePoolCapacity > header.NamePoolCapacity;
+    }
+
     /// <summary>Doubles a capacity while leaving room for reserved name entry zero in an int-indexed span.</summary>
     /// <param name="capacity">The capacity to double.</param>
     /// <returns>Twice <paramref name="capacity" />, or the clamp when that is larger.</returns>

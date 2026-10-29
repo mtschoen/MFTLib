@@ -46,13 +46,13 @@ static class MftBlockGrowth
     static bool TryGrow(MftBlockProduceRequest request, MftBlockProduceResult result, out MftBlockProduceRequest next)
     {
         var header = result.Block.Header;
-        var retry = BlockLayout.RetryMinimum(in header);
-        if (retry.NameEntryCapacity <= header.NameEntryCapacity && retry.NamePoolCapacity <= header.NamePoolCapacity)
+        if (!BlockLayout.RetryGrowsCapacity(in header))
         {
             next = request;
             return false;
         }
 
+        var retry = BlockLayout.RetryMinimum(in header);
         result.Block.Dispose();
         if (!request.DeleteOnClose)
         {

@@ -50,6 +50,16 @@ sealed partial class BlockWriter
         }
     }
 
+    /// <summary>Whether name entries or the name pool ran out (rows did not) and a larger block could hold them, so a re-runnable scan can stop and retry.</summary>
+    public bool NameRegionsNeedGrowth
+    {
+        get
+        {
+            using var access = Block.TakeAccess();
+            return BlockLayout.RetryGrowsCapacity(in Block.Header);
+        }
+    }
+
     /// <summary>Fills one slot, or sets the capacity-exhausted flag and returns false without writing a row when the slot or name cannot fit.</summary>
     /// <param name="rowIndex">Zero-based row slot to populate.</param>
     /// <param name="name">File or directory name to intern in the block's name pool.</param>
