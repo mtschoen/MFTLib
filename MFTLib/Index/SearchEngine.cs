@@ -120,7 +120,7 @@ static class SearchEngine
     ///     scan shares between its partitions (an explicit anchor resolved by <see cref="SubtreeAnchor" />, or the
     ///     directory a view is rooted at). It is null when the query excludes no row.
     /// </summary>
-    internal readonly record struct RootScan(RootBlock RootBlock, SearchQuery Query, SubtreeMembership? Membership);
+    readonly record struct RootScan(RootBlock RootBlock, SearchQuery Query, SubtreeMembership? Membership);
 
     static void SearchOneRoot(RootScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
@@ -166,25 +166,18 @@ static class SearchEngine
         return perPartition;
     }
 
-    internal static void CollectPartition(RootScan scan, NameQueryMatches names, (uint StartRow, uint EndRowExclusive) partition,
+    static void CollectPartition(RootScan scan, NameQueryMatches names, (uint StartRow, uint EndRowExclusive) partition,
         List<FileEntry> destination, CancellationToken cancellationToken)
     {
         var (rootBlock, query, membership) = scan;
         var candidates = new List<uint>();
-        try
+        var scanner = new RowScanner(rootBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
+        while (scanner.MoveNext())
         {
-            var scanner = new RowScanner(rootBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
-            while (scanner.MoveNext())
+            if (RowMatches(in scanner.Current, names, query))
             {
-                if (RowMatches(in scanner.Current, names, query))
-                {
-                    candidates.Add(scanner.CurrentRowIndex);
-                }
+                candidates.Add(scanner.CurrentRowIndex);
             }
-        }
-        finally
-        {
-            ReleaseScannedPages(rootBlock, partition);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -210,22 +203,6 @@ static class SearchEngine
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-    }
-
-    /// <summary>
-    ///     Drops the partition's row pages from the working set once its scan ends, by completion, fault or
-    ///     cancellation, so a full-table scan holds at most its in-flight pages rather than the whole row
-    ///     table. Skipped when the block's release has begun. The trim is advisory (pages fault back on any
-    ///     later read), so a refusal by the operating system is not an error for the query.
-    /// </summary>
-    internal static void ReleaseScannedPages(RootBlock rootBlock, (uint StartRow, uint EndRowExclusive) partition)
-    {
-        if (rootBlock.IsReleased)
-        {
-            return;
-        }
-
-        _ = rootBlock.Block.TryReleaseRowPages(partition.StartRow, partition.EndRowExclusive);
     }
 
     /// <summary>
