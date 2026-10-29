@@ -36,7 +36,10 @@ sealed class BrokerMftBlockProducer
 
     // A result carrying a proven catch-up loss still transfers its block: the scan is complete,
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
-    async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
+    Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken) =>
+        MftBlockGrowth.ProduceUntilFitAsync(request, grown => ScanAsync(grown, cancellationToken));
+
+    async Task<MftBlockProduceResult> ScanAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         var options = _scanOptions ?? new MftScanOptions();
         var progress = MftBlockProgressAdapter.Create(request);

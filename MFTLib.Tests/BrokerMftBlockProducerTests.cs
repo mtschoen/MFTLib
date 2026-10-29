@@ -252,6 +252,46 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.IsTrue(result.Block.Header.IsCapacityExhausted);
     }
 
+    // 100000 records plan about 3 MB of name pool; 30000 distinct 255-character names need more.
+    [TestMethod]
+    public async Task Produce_WhenTheNamePoolRunsOut_ScansAgainIntoAGrownSectionAndPublishesAWholeBlock()
+    {
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanVolume = (_, _, _, _, _, _) => DistinctNameBatches()
+        }));
+        var request = Request(Target());
+
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
+        using var block = result.Block;
+
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
+        Assert.AreEqual(30006u, block.Header.RowCount, "rows are indexed by record number, so the count is the last record number plus one");
+        Assert.AreEqual(0, result.SkippedRecordCount);
+        Assert.HasCount(2, broker.Sections.All(), "the exhausted section is replaced by a second scan's section");
+        Assert.IsTrue(broker.Sections.All().Any(section => ReferenceEquals(section.Block, block)));
+        Assert.IsGreaterThan(MftBlockCapacity.Plan(VolumeInformation, default).NamePoolCapacity,
+            block.Header.NamePoolCapacity);
+    }
+
+    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNameBatches()
+    {
+        yield return [BrokerHostFactory.Record(5, ".", 3)];
+        for (ulong start = 0; start < 30000; start += 1000)
+        {
+            var batch = new List<MftRecord>();
+            for (var offset = start; offset < start + 1000; offset++)
+            {
+                batch.Add(BrokerHostFactory.Record(6 + offset,
+                    new string('n', 247) + offset.ToString("D8", System.Globalization.CultureInfo.InvariantCulture)));
+            }
+
+            yield return batch;
+        }
+    }
+
     [TestMethod]
     public async Task Produce_PreservesRequestedCacheTagThroughHostCompletion()
     {

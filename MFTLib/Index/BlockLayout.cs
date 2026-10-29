@@ -137,6 +137,30 @@ static class BlockLayout
             poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
     }
 
+    /// <summary>
+    ///     The regions a producer that can re-run its scan must enlarge before it may publish a block whose name
+    ///     entries or name pool ran out, or no minimum when the block is not capacity-exhausted or ran out of rows.
+    ///     Entries jump to the slot capacity, which no scan can exceed because every row interns at most one name;
+    ///     the pool doubles. Row exhaustion keeps its flag-and-rescan semantics and is never retried.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    internal static BlockCapacities RetryMinimum(in BlockHeader header)
+    {
+        if (!header.IsCapacityExhausted || header.RowCount >= header.SlotCapacity)
+        {
+            return default;
+        }
+
+        var entriesExhausted = header.NameEntryCount >= header.NameEntryCapacity;
+        var poolExhausted = header.NamePoolCapacity - header.NamePoolUsed <= NamePoolExhaustionMarginBytes;
+        return new BlockCapacities(0,
+            entriesExhausted
+                ? header.NameEntryCapacity < header.SlotCapacity ? header.SlotCapacity : DoubleCapacity(header.NameEntryCapacity)
+                : 0,
+            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
+    }
+
     /// <summary>Doubles a capacity while leaving room for reserved name entry zero in an int-indexed span.</summary>
     /// <param name="capacity">The capacity to double.</param>
     /// <returns>Twice <paramref name="capacity" />, or the clamp when that is larger.</returns>
