@@ -172,9 +172,10 @@ static class BlockLayout
         var poolExhausted = header.NamePoolCapacity - header.NamePoolUsed <= NamePoolExhaustionMarginBytes;
         return new BlockCapacities(0,
             entriesExhausted
-                ? header.NameEntryCapacity < header.SlotCapacity ? header.SlotCapacity : DoubleCapacity(header.NameEntryCapacity)
+                ? header.NameEntryCapacity < header.SlotCapacity ? header.SlotCapacity : DoubleNameEntryCapacity(header.NameEntryCapacity)
                 : 0,
-            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
+            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0,
+            0);
     }
 
     /// <summary>
