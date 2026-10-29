@@ -3,10 +3,11 @@ namespace MFTLib.Index;
 /// <summary>
 ///     Byte geometry of a packed index block: one 4 KB header page, a dense region of
 ///     32-byte rows indexed by record number, a per-row NTFS sequence-number region,
-///     12-byte interned name entries, a hash bucket directory and an append-only ASCII and
-///     UTF-16LE byte pool. Every region boundary is 4 KB aligned so a mapped view can be
-///     paged independently. Entry-dependent regions are sized by the entry capacity E, which
-///     the header stores separately from the slot capacity S.
+///     12-byte interned name entries, a hash bucket directory, the per-name posting regions
+///     (offsets, rows, delta heads and delta entries) and an append-only ASCII and UTF-16LE byte
+///     pool. Every region boundary is 4 KB aligned so a mapped view can be paged independently.
+///     Entry-dependent regions are sized by the entry capacity E, which the header stores
+///     separately from the slot capacity S; the delta entries are sized by the delta capacity D.
 /// </summary>
 static class BlockLayout
 {
@@ -14,13 +15,13 @@ static class BlockLayout
     public const uint Magic = 0x58494C4D;
 
     /// <summary>A mismatch means discard the block and rescan. There is no migration path.</summary>
-    public const uint FormatVersion = 8;
+    public const uint FormatVersion = 9;
 
     /// <summary>Alignment, in bytes, of each on-disk block region.</summary>
     public const int PageSize = 4096;
 
     /// <summary>Bytes actually occupied by header fields. The header region is padded to a page.</summary>
-    public const int HeaderFieldBytes = 160;
+    public const int HeaderFieldBytes = 168;
 
     /// <summary>Total header-region size in bytes, including padding.</summary>
     public const int HeaderRegionBytes = PageSize;
@@ -58,6 +59,15 @@ static class BlockLayout
     /// <summary>Target chain length: one head per this many entries before rounding up to a power of two.</summary>
     const uint EntriesPerBucket = 4;
 
+    /// <summary>Floor of the delta entry capacity, so a small block can still absorb journal name changes.</summary>
+    const uint MinimumDeltaCapacity = 65536;
+
+    /// <summary>Delta entries are planned as one per this many slots, rounded up.</summary>
+    const uint SlotsPerDeltaEntry = 8;
+
+    /// <summary>Largest name entry capacity: the posting offsets region holds one word per entry plus two, int-indexed.</summary>
+    internal const uint MaximumNameEntryCapacity = int.MaxValue - 2;
+
     /// <summary>Mirrors the native resolver's cap so a corrupt parent column cannot loop forever.</summary>
     public const int MaximumPathDepth = 128;
 
@@ -70,6 +80,9 @@ static class BlockLayout
 
     /// <summary>Size, in bytes, of one stored NTFS sequence number.</summary>
     const int SequenceBytes = 2;
+
+    /// <summary>Size, in bytes, of one posting offset and one posting row index.</summary>
+    const int PostingWordBytes = sizeof(uint);
 
     /// <summary>
     ///     Fixed, not computed: the header region is exactly one page, so this can never be
@@ -101,23 +114,23 @@ static class BlockLayout
     }
 
     /// <summary>
-    ///     Clamps the estimate, computes the volume plan (`S`, `E` from `S`, and `P` from `S`), then raises
+    ///     Clamps the estimate, computes the volume plan (`S`, then `E`, `P` and `D` from `S`), then raises
     ///     each region independently to its required minimum.
     /// </summary>
     /// <param name="estimatedRowCount">Rows the producer estimates, clamped to the largest creatable plan.</param>
     /// <param name="minimum">Regional minima from the block being replaced; <see langword="default" /> asks for the volume plan.</param>
-    /// <returns>The three capacities of the replacement block.</returns>
+    /// <returns>The four capacities of the replacement block.</returns>
     internal static BlockCapacities PlanCapacities(uint estimatedRowCount, BlockCapacities minimum)
     {
         var slotCapacity = ComputeSlotCapacity(Math.Min(estimatedRowCount, MaximumEstimatedRowCount));
         var plan = new BlockCapacities(slotCapacity, ComputeNameEntryCapacity(slotCapacity),
-            ComputeNamePoolCapacity(slotCapacity));
+            ComputeNamePoolCapacity(slotCapacity), ComputeDeltaCapacity(slotCapacity));
         return plan.AtLeast(minimum);
     }
 
     /// <summary>
     ///     Returns no minimum when the capacity flag is clear; otherwise doubles each exhausted region,
-    ///     using rows as the fallback when neither the entry nor pool count reached its exhaustion test.
+    ///     using rows as the fallback when none of the entry, pool and delta regions reached its exhaustion test.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
@@ -130,11 +143,14 @@ static class BlockLayout
 
         var entriesExhausted = header.NameEntryCount >= header.NameEntryCapacity;
         var poolExhausted = header.NamePoolCapacity - header.NamePoolUsed <= NamePoolExhaustionMarginBytes;
-        var rowsExhausted = header.RowCount >= header.SlotCapacity || (!entriesExhausted && !poolExhausted);
+        var deltaExhausted = header.DeltaEntryCount >= header.DeltaCapacity;
+        var rowsExhausted = header.RowCount >= header.SlotCapacity ||
+                            (!entriesExhausted && !poolExhausted && !deltaExhausted);
         return new BlockCapacities(
             rowsExhausted ? DoubleCapacity(header.SlotCapacity) : 0,
-            entriesExhausted ? DoubleCapacity(header.NameEntryCapacity) : 0,
-            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
+            entriesExhausted ? DoubleNameEntryCapacity(header.NameEntryCapacity) : 0,
+            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0,
+            deltaExhausted ? DoubleCapacity(header.DeltaCapacity) : 0);
     }
 
     /// <summary>
@@ -169,6 +185,12 @@ static class BlockLayout
         return (uint)Math.Min(capacity * 2UL, int.MaxValue - 1UL);
     }
 
+    /// <summary>Doubles a name entry capacity, clamped to <see cref="MaximumNameEntryCapacity" />.</summary>
+    internal static uint DoubleNameEntryCapacity(uint capacity)
+    {
+        return (uint)Math.Min(capacity * 2UL, MaximumNameEntryCapacity);
+    }
+
     /// <summary>Doubles a name pool capacity, clamped to <see cref="MaximumNamePoolCapacity" />.</summary>
     internal static uint DoubleNamePoolCapacity(uint capacity)
     {
@@ -187,6 +209,19 @@ static class BlockLayout
         return slotCapacity <= FullNameEntrySlots
             ? slotCapacity
             : FullNameEntrySlots + (slotCapacity - FullNameEntrySlots) / SlotsPerTailNameEntry;
+    }
+
+    /// <summary>
+    ///     Plans delta entries for a slot capacity: one per <see cref="SlotsPerDeltaEntry" /> slots, at least
+    ///     <see cref="MinimumDeltaCapacity" />. Every journal name change consumes one; an exceeded plan sets the
+    ///     capacity-exhausted flag and the growth path doubles the delta region.
+    /// </summary>
+    /// <param name="slotCapacity">Row slot capacity, headroom included.</param>
+    /// <returns>The allocatable delta entry count, excluding reserved entry zero.</returns>
+    internal static uint ComputeDeltaCapacity(uint slotCapacity)
+    {
+        var proportional = (uint)(((ulong)slotCapacity + SlotsPerDeltaEntry - 1) / SlotsPerDeltaEntry);
+        return Math.Max(MinimumDeltaCapacity, proportional);
     }
 
     /// <summary>Reserves name pool bytes for a slot capacity: 24 bytes per slot, at least 1 MiB, page aligned.</summary>
@@ -256,22 +291,72 @@ static class BlockLayout
         return System.Numerics.BitOperations.RoundUpToPowerOf2(requested);
     }
 
+    /// <summary>Gets the byte offset of the posting offsets, which follow the bucket heads.</summary>
+    internal static long PostingOffsetRegionOffset(uint slotCapacity, uint entryCapacity)
+    {
+        return BucketRegionOffset(slotCapacity, entryCapacity) + BucketRegionBytes(entryCapacity);
+    }
+
+    /// <summary>Gets the page-aligned length of the posting offsets: one word per name plus the reserved zero and the end.</summary>
+    internal static long PostingOffsetRegionBytes(uint entryCapacity)
+    {
+        return AlignUp(((long)entryCapacity + 2) * PostingWordBytes, PageSize);
+    }
+
+    /// <summary>Gets the byte offset of the posting rows, which follow the posting offsets.</summary>
+    internal static long PostingRowRegionOffset(uint slotCapacity, uint entryCapacity)
+    {
+        return PostingOffsetRegionOffset(slotCapacity, entryCapacity) + PostingOffsetRegionBytes(entryCapacity);
+    }
+
+    /// <summary>Gets the page-aligned length of the posting rows: at most one row index per slot.</summary>
+    internal static long PostingRowRegionBytes(uint slotCapacity)
+    {
+        return AlignUp((long)slotCapacity * PostingWordBytes, PageSize);
+    }
+
+    /// <summary>Gets the byte offset of the delta heads, which follow the posting rows.</summary>
+    internal static long DeltaHeadRegionOffset(uint slotCapacity, uint entryCapacity)
+    {
+        return PostingRowRegionOffset(slotCapacity, entryCapacity) + PostingRowRegionBytes(slotCapacity);
+    }
+
+    /// <summary>Gets the page-aligned length of the delta heads, one per name bucket.</summary>
+    internal static long DeltaHeadRegionBytes(uint entryCapacity)
+    {
+        return AlignUp((long)ComputeBucketCount(entryCapacity) * sizeof(uint), PageSize);
+    }
+
+    /// <summary>Gets the byte offset of the delta entries, which follow the delta heads.</summary>
+    internal static long DeltaEntryRegionOffset(uint slotCapacity, uint entryCapacity)
+    {
+        return DeltaHeadRegionOffset(slotCapacity, entryCapacity) + DeltaHeadRegionBytes(entryCapacity);
+    }
+
+    /// <summary>Gets the page-aligned length of the delta entries, including reserved entry zero.</summary>
+    internal static long DeltaEntryRegionBytes(uint deltaCapacity)
+    {
+        return AlignUp(((long)deltaCapacity + 1) * DeltaEntry.Bytes, PageSize);
+    }
+
     /// <summary>Gets the byte offset at which the ASCII and UTF-16LE byte pool begins.</summary>
     /// <param name="slotCapacity">Number of rows allocated in the block.</param>
     /// <param name="entryCapacity">Number of allocatable name entries.</param>
+    /// <param name="deltaCapacity">Number of allocatable delta entries.</param>
     /// <returns>Byte offset from the beginning of the file.</returns>
-    public static long NamePoolOffset(uint slotCapacity, uint entryCapacity)
+    public static long NamePoolOffset(uint slotCapacity, uint entryCapacity, uint deltaCapacity)
     {
-        return BucketRegionOffset(slotCapacity, entryCapacity) + BucketRegionBytes(entryCapacity);
+        return DeltaEntryRegionOffset(slotCapacity, entryCapacity) + DeltaEntryRegionBytes(deltaCapacity);
     }
 
     /// <summary>Gets the total page-aligned block-file length required for the supplied capacities.</summary>
     /// <param name="slotCapacity">Number of rows allocated in the block.</param>
     /// <param name="entryCapacity">Number of allocatable name entries.</param>
+    /// <param name="deltaCapacity">Number of allocatable delta entries.</param>
     /// <param name="namePoolCapacity">Name byte-pool capacity in bytes.</param>
     /// <returns>Total required block-file length in bytes.</returns>
-    public static long TotalBlockBytes(uint slotCapacity, uint entryCapacity, uint namePoolCapacity)
+    public static long TotalBlockBytes(uint slotCapacity, uint entryCapacity, uint deltaCapacity, uint namePoolCapacity)
     {
-        return NamePoolOffset(slotCapacity, entryCapacity) + AlignUp(namePoolCapacity, PageSize);
+        return NamePoolOffset(slotCapacity, entryCapacity, deltaCapacity) + AlignUp(namePoolCapacity, PageSize);
     }
 }

@@ -25,7 +25,7 @@ public sealed class FileIndexMftRescanGrowthTests : IndexTreeTestBase
         await index.RescanAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(2, producer.Requests.Count);
-        Assert.AreEqual(new BlockCapacities(slots, entries, pool), producer.Requests[1].MinimumCapacities);
+        Assert.AreEqual(new BlockCapacities(slots, entries, pool, 0), producer.Requests[1].MinimumCapacities);
         Assert.IsFalse(index.Status.Block!.IsCapacityExhausted);
     }
 
@@ -38,7 +38,7 @@ public sealed class FileIndexMftRescanGrowthTests : IndexTreeTestBase
         Assert.IsLessThan(index.CurrentBlock!.Block.SlotCapacity, index.CurrentBlock.Block.RowCount);
         await index.RescanAsync(TestContext.CancellationToken);
 
-        Assert.AreEqual(new BlockCapacities(128, 0, 0), producer.Requests[1].MinimumCapacities);
+        Assert.AreEqual(new BlockCapacities(128, 0, 0, 0), producer.Requests[1].MinimumCapacities);
     }
 
     [TestMethod]
@@ -72,7 +72,7 @@ public sealed class FileIndexMftRescanGrowthTests : IndexTreeTestBase
         await warm.RescanAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(2, producer.Requests.Count);
-        Assert.AreEqual(new BlockCapacities(0, 128, 0), producer.Requests[1].MinimumCapacities);
+        Assert.AreEqual(new BlockCapacities(0, 128, 0, 0), producer.Requests[1].MinimumCapacities);
     }
 
     FileIndexOptions Options(RecordingMftProducer producer) =>

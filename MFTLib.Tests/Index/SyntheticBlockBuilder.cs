@@ -35,6 +35,7 @@ sealed class SyntheticBlockBuilder : IDisposable
                 SlotCapacity = slotCapacity,
                 NameEntryCapacity = nameEntryCapacity ?? slotCapacity,
                 NamePoolCapacity = namePoolCapacity,
+                DeltaCapacity = BlockLayout.ComputeDeltaCapacity(slotCapacity),
                 ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
             });
         }
@@ -162,6 +163,7 @@ sealed class SyntheticBlockBuilder : IDisposable
         }
 
         header.LiveRowCount = liveRowCount;
+        PostingBuilder.Build(_block, null, CancellationToken.None);
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         _block.PublishGeneration(1);
         header.Flags |= BlockFlags.Complete;

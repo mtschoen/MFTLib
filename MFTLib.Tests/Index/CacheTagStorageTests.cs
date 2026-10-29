@@ -45,7 +45,7 @@ public sealed class CacheTagStorageTests : IDisposable
         WriteBlock(tag);
         var bytes = File.ReadAllBytes(BlockPath);
         Assert.AreEqual(BlockLayout.FormatVersion, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)));
-        Assert.AreEqual(160, Marshal.SizeOf<BlockHeader>());
+        Assert.AreEqual(168, Marshal.SizeOf<BlockHeader>());
         Assert.AreEqual(104, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagFourCc)));
         Assert.AreEqual(108, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagVersion)));
         Assert.AreEqual(unspecified ? 0u : 0x57544947u,

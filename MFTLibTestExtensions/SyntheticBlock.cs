@@ -46,7 +46,7 @@ public static class SyntheticBlock
         return path;
     }
 
-    /// <summary>Opens an existing block, runs <paramref name="edit" />, flushes and closes it.</summary>
+    /// <summary>Opens an existing block, runs <paramref name="edit" />, rebuilds its posting base, flushes and closes it.</summary>
     /// <param name="blockPath">The block file, as returned by <see cref="WriteCached" /> or <see cref="CachedPath" />.</param>
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <param name="edit">The edit; the editor is valid only until it returns.</param>
@@ -65,6 +65,12 @@ public static class SyntheticBlock
         finally
         {
             editor.Close();
+        }
+
+        // An edit can rewrite names, so the posting base is rebuilt to cover the rows as they now stand.
+        using (block.TakeAccess())
+        {
+            PostingBuilder.Build(block, null, CancellationToken.None);
         }
 
         block.Flush(null);
@@ -130,6 +136,7 @@ public static class SyntheticBlock
             SlotCapacity = slotCapacity,
             NameEntryCapacity = slotCapacity,
             NamePoolCapacity = namePoolCapacity,
+            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(slotCapacity),
             DeleteOnClose = deleteOnClose,
             CacheTag = options.CacheTag,
             ScanShape = options.ResolveScanShape()

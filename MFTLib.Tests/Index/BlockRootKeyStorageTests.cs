@@ -40,11 +40,11 @@ public sealed class BlockRootKeyStorageTests : IDisposable
     }
 
     [TestMethod]
-    public void WrittenBlock_CarriesFormatVersionEight()
+    public void WrittenBlock_CarriesFormatVersionNine()
     {
         var bytes = File.ReadAllBytes(Seed(new VolumeKey('T')));
 
-        Assert.AreEqual(8u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)));
+        Assert.AreEqual(9u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)));
     }
 
     [TestMethod]
@@ -106,7 +106,8 @@ public sealed class BlockRootKeyStorageTests : IDisposable
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = 16,
             NameEntryCapacity = 16,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(16)
         }));
 
         Assert.IsFalse(File.Exists(path));
