@@ -109,6 +109,32 @@ sealed unsafe partial class BlockFile
     }
 
     /// <summary>
+    ///     Appends the association of a row with a name to the delta chain of the name's head. The whole entry is written
+    ///     first, then the entry count and last the head, so a reader that follows a published head finds a complete
+    ///     entry and an interrupted append leaves only unreachable storage. The caller holds the root's write gate and
+    ///     stores the row's descriptor afterwards.
+    /// </summary>
+    /// <param name="rowIndex">The row that is about to hold the name.</param>
+    /// <param name="nameId">The nonzero name identifier the row is about to hold.</param>
+    /// <returns>false, writing nothing, when every delta entry is used.</returns>
+    internal bool TryAppendDelta(uint rowIndex, uint nameId)
+    {
+        var count = DeltaEntryCount;
+        if (count >= DeltaCapacity)
+        {
+            return false;
+        }
+
+        var heads = DeltaHeads;
+        ref var head = ref heads[(int)(nameId & (BucketCount - 1))];
+        var index = count + 1;
+        DeltaEntries[(int)index] = new DeltaEntry { Row = rowIndex, NameId = nameId, Next = Volatile.Read(ref head) };
+        PublishDeltaEntryCount(index);
+        Volatile.Write(ref head, index);
+        return true;
+    }
+
+    /// <summary>
     ///     Checks the cursors another writer published for the posting regions: the delta capacity is the block's own and
     ///     every count stays within the cursor that bounds it.
     /// </summary>
