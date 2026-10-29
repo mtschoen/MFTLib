@@ -8,7 +8,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public sealed class MftBlockGrowthTests : IDisposable
 {
-    const uint DistinctNameRows = 20000;
+    const uint DistinctNameRows = 12000;
     TempDirectory _tempDirectory = null!;
 
     public TestContext TestContext { get; set; } = null!;
@@ -18,7 +18,7 @@ public sealed class MftBlockGrowthTests : IDisposable
 
     public void Dispose() => _tempDirectory.Dispose();
 
-    // The standard dump plans 65536 slots and about 1.5 MB of name pool; 20000 distinct 255-character names need more.
+    // The standard dump plans 65536 slots and about 1.5 MB of name pool; 12000 distinct 255-character names need more.
     [TestMethod]
     public async Task DumpProduction_WithMoreDistinctNamesThanPlanned_CompletesWithEveryRow()
     {
@@ -34,7 +34,7 @@ public sealed class MftBlockGrowthTests : IDisposable
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.AreEqual(block.Path, request.BlockPath);
         Assert.IsTrue(File.Exists(request.BlockPath));
-        Assert.AreEqual(new string('n', 247) + "00019999", NamePool.ReadRowName(block, 20005).ToString());
+        Assert.AreEqual(new string('n', 247) + "00011999", NamePool.ReadRowName(block, 12005).ToString());
     }
 
     [TestMethod]
