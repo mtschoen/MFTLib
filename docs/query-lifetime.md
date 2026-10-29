@@ -81,17 +81,16 @@
       `GetEnumerator` checks cancellation and index disposal; `MoveNext` checks cancellation during
       scanning and can reject an unresolved parent chain while applying a subtree restriction.
 
-    - **Row page trim**: a `Search` partition ends by dropping its row pages from the process working set, in a
-      `finally`, so completion, a fault and cancellation all trim. `BlockFile.TryReleaseRowPages(startRow, endRowExclusive)`
-      aligns the byte range inward to whole pages (a partition never reaches a neighbour's boundary page, at the cost of
-      at most two resident pages per call) and calls `VirtualUnlock` on Windows, whose FALSE with `ERROR_NOT_LOCKED`
-      (158) is the success signal for a never-locked range, or `madvise(MADV_DONTNEED)` elsewhere. Never
-      `DiscardVirtualMemory` or `OfferVirtualMemory` (they corrupt writable file views) and never `MADV_PAGEOUT` (it evicts
-      the page cache). The mapping stays valid and trimmed pages fault back from the page cache, so a trim changes no
-      result and is safe beside concurrent readers and writers: dirty pages are written back by the operating system, not
-      discarded. The call takes a `BlockAccessScope` so disposal waits for it, and a block whose release has begun or that is
-      disposed is skipped. The trim is advisory: the call returns false on a native failure and the scan ignores it. A repeat
-      query pays the soft faults again. `Find`, `Children`, `Enumerate` and `EnumerateRows` do not trim.
+    - **Resident page release**: `FileIndex.ReleaseResidentPages()` is the consumer's explicit, advisory way to drop the
+      block's mapped pages (the whole view) from the process working set; MFTLib never calls it itself and no query,
+      watch or rescan trims. It takes a normal query borrow, then `BlockFile.TryReleaseResidentPages` takes a
+      `BlockAccessScope` (so disposal waits for it) and skips a block whose release has begun or that is disposed. It uses
+      `VirtualUnlock` on Windows, whose FALSE with `ERROR_NOT_LOCKED` (158) is the success signal for a never-locked range,
+      or `madvise(MADV_DONTNEED)` elsewhere. Never `DiscardVirtualMemory` or `OfferVirtualMemory` (they corrupt writable
+      file views) and never `MADV_PAGEOUT` (it evicts the page cache). The mapping stays valid and trimmed pages fault
+      back from the page cache, so the call changes no result and is safe beside concurrent readers and writers: dirty
+      pages are written back by the operating system, not discarded. It returns false when there is no available block, the
+      block is released or the operating system refuses. Pages come back by soft fault, so the next query pays for them.
       The per-block test seam is `BlockFile.Hooks._trimViewRange`.
 
     - **Handle incarnation**: a `FileEntry` captures the sequence number its row held when it was minted

@@ -9,32 +9,23 @@ sealed unsafe partial class BlockFile
     const int ErrorNotLocked = 158;
 
     /// <summary>
-    ///     Drops the resident pages of rows <paramref name="startRow" /> up to <paramref name="endRowExclusive" /> from the
-    ///     process working set, so a long scan does not leave the whole row table resident. Only whole pages
-    ///     inside the row range are trimmed (the range is aligned inward): neighbouring partitions scan
-    ///     concurrently and share their boundary pages, and a trim never reaches a page outside the range
-    ///     asked for, at the cost of at most two untrimmed pages per call. The mapping stays valid and
-    ///     every page faults back from the page cache on its next read, so the call never changes what a
-    ///     reader sees. Pages a writer dirtied are written back by the operating system, not discarded:
-    ///     <c>VirtualUnlock</c> moves them to the modified list and <c>madvise(MADV_DONTNEED)</c> on a
-    ///     shared file mapping transfers the dirty bit to the page cache. Taking an access scope makes disposal wait
-    ///     for the call, and a disposed or disposing block is skipped.
+    ///     Drops the resident pages of the whole mapped view (header, rows, sequence numbers, name entries,
+    ///     buckets and name pool) from the process working set. Only whole pages are trimmed. The mapping stays
+    ///     valid and every page faults back from the page cache on its next read, so the call never changes what a
+    ///     reader sees and is safe beside concurrent readers and writers. Pages a writer dirtied are written back
+    ///     by the operating system, not discarded: <c>VirtualUnlock</c> moves them to the modified list and
+    ///     <c>madvise(MADV_DONTNEED)</c> on a shared file mapping transfers the dirty bit to the page cache.
+    ///     Taking an access scope makes disposal wait for the call, and a disposed or disposing block is skipped.
     /// </summary>
     /// <returns>
-    ///     True when the operating system accepted the trim or the range holds no whole page; false when the block
-    ///     is being disposed, the range is invalid, or the native call failed. The trim is advisory, so a false
-    ///     result never affects a scan.
+    ///     True when the operating system accepted the trim or the view holds no whole page; false when the block
+    ///     is being disposed or the native call failed. The trim is advisory.
     /// </returns>
-    internal bool TryReleaseRowPages(uint startRow, uint endRowExclusive)
+    internal bool TryReleaseResidentPages()
     {
-        if (startRow > endRowExclusive || endRowExclusive > SlotCapacity)
-        {
-            return false;
-        }
-
         var pageBytes = (long)Environment.SystemPageSize;
-        var start = AlignUp(BlockLayout.RowRegionOffset + (long)startRow * BlockLayout.RowBytes, pageBytes);
-        var end = AlignDown(BlockLayout.RowRegionOffset + (long)endRowExclusive * BlockLayout.RowBytes, pageBytes);
+        var start = 0L;
+        var end = AlignDown(Length, pageBytes);
         if (end <= start)
         {
             return true;
@@ -54,8 +45,6 @@ sealed unsafe partial class BlockFile
             ReturnAccess();
         }
     }
-
-    static long AlignUp(long value, long alignment) => (value + alignment - 1) / alignment * alignment;
 
     static long AlignDown(long value, long alignment) => value / alignment * alignment;
 

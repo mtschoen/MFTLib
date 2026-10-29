@@ -39,6 +39,13 @@ partial class SampleHost
         operations.AddRange(Report("start", await Task.WhenAll(ready.Select(index => index.StartWatchingAsync(cancellationToken))).ConfigureAwait(false)));
         operations.AddRange(Report("catch-up", await Task.WhenAll(ready.Select(index => index.WaitForCatchUpAsync(cancellationToken))).ConfigureAwait(false)));
 
+        // The initial scan and the catch-up have settled and nothing queries the indexes until the watch ends, so the
+        // sample hands the scanned pages back; the first query afterwards refaults what it reads.
+        foreach (var index in ready)
+        {
+            _ = index.ReleaseResidentPages();
+        }
+
         var run = new WatchRun(ownedIndices, ready, counter, operations, openRoot);
         var waited = await WaitWhileWatchingAsync(parsed, run, cancellationToken).ConfigureAwait(false);
         operations.AddRange(Report("stop", await Task.WhenAll(ready.Select(index => index.StopWatchingAsync(cancellationToken))).ConfigureAwait(false)));

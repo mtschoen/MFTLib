@@ -121,7 +121,7 @@ static partial class Kernel32
     /// <summary>
     ///     Called on a range that was never locked, removes its pages from the working set and reports
     ///     <c>ERROR_NOT_LOCKED</c> (158) with a FALSE return. That failure is the expected success signal of
-    ///     <c>BlockFile.TryReleaseRowPages</c>.
+    ///     <c>BlockFile.TryReleaseResidentPages</c>.
     /// </summary>
     [LibraryImport("kernel32.dll", EntryPoint = "VirtualUnlock", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
