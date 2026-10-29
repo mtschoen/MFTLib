@@ -63,6 +63,18 @@ sealed class NameQueryMatches : IDisposable
         }
     }
 
+    /// <summary>Whether the pass resolved a set of exact-match identifiers, which postings can enumerate, rather than a bitset or every name.</summary>
+    internal bool IsExactCandidates => !_allNames && !_usesBitset;
+
+    /// <summary>The published entry count this pass captured; identifiers above it are outside the pass.</summary>
+    internal uint EntryCount => _entryCount;
+
+    /// <summary>How many identifiers the exact pass matched.</summary>
+    internal int CandidateCount => _candidates.Count;
+
+    /// <summary>The <paramref name="index" />th matched identifier of an exact pass.</summary>
+    internal uint CandidateAt(int index) => _candidates[index];
+
     /// <summary>Whether some candidate spells the pattern exactly, ignoring the case setting.</summary>
     internal bool HasOrdinalMatch { get; private set; }
 

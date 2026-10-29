@@ -63,6 +63,24 @@ struct NameIdCandidates : IDisposable
         _sealed = true;
     }
 
+    /// <summary>The identifier at <paramref name="index" />, in insertion order for the inline slots.</summary>
+    public readonly uint this[int index]
+    {
+        get
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(index);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count);
+            return index switch
+            {
+                0 => _first,
+                1 => _second,
+                2 => _third,
+                3 => _fourth,
+                _ => _overflow![index - InlineSlots]
+            };
+        }
+    }
+
     public readonly bool Contains(uint nameId)
     {
         var inline = Math.Min(Count, InlineSlots);

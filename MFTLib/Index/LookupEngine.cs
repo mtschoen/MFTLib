@@ -183,30 +183,40 @@ static class LookupEngine
     static bool TryFindChild(in PathDescent descent, uint parentRow, ReadOnlySpan<char> segment,
         out uint childRow)
     {
+        var block = descent.RootBlock.Block;
         var query = new SearchQuery(segment.ToString(), NameMatchMode.Exact, descent.CaseSensitive);
-        using var names = new NameQueryMatches(descent.RootBlock.Block, query, descent.CancellationToken);
+        using var names = new NameQueryMatches(block, query, descent.CancellationToken);
+        using var candidates = PostingCandidates.Gather(block, PostingCandidates.IdentifiersOf(names),
+            descent.CancellationToken);
         var found = false;
         childRow = 0;
-        var scanner = new RowScanner(descent.RootBlock, descent.CancellationToken);
-        while (scanner.MoveNext())
+        var rows = block.Rows;
+        var checkpoint = candidates.BeginVerification();
+        foreach (var rowIndex in candidates.Rows)
         {
-            ref readonly var row = ref scanner.Current;
+            checkpoint.Step();
+            if (rowIndex >= candidates.RowCount)
+            {
+                continue;
+            }
+
+            ref readonly var row = ref rows[(int)rowIndex];
             if (!row.IsInUse || row.IsDeleted || row.ParentRow != parentRow ||
-                scanner.CurrentRowIndex == parentRow || !names.Matches(in row))
+                rowIndex == parentRow || !names.Matches(in row))
             {
                 continue;
             }
 
             if (names.IsOrdinalMatch(in row))
             {
-                childRow = scanner.CurrentRowIndex;
+                childRow = rowIndex;
                 return true;
             }
 
             if (!found)
             {
                 found = true;
-                childRow = scanner.CurrentRowIndex;
+                childRow = rowIndex;
             }
 
             if (!names.HasOrdinalMatch)
