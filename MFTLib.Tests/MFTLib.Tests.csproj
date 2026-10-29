@@ -3,6 +3,10 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Coverlet records each hit with a locked increment on a process-wide counter by default; parallel test classes
+         running the same instrumented loops then contend for those counters and run several times slower. The
+         coverage gates read only whether a line or branch was hit, so recording the first hit loses nothing. -->
+    <SingleHit>true</SingleHit>
   </PropertyGroup>
 
   <Target Name="RemoveMSTestImplicitUsing" BeforeTargets="GenerateGlobalUsings">
