@@ -47,7 +47,7 @@ sealed class MftDumpBlockProducer
     internal Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,
         CancellationToken cancellationToken) =>
         MftBlockProducerPipeline.RunAsync(request, MftBlockProducerPipeline.SharedAllocator,
-            (allowance, token) => Produce(request, allowance, token), cancellationToken);
+            (grown, allowance, token) => Produce(grown, allowance, token), cancellationToken);
 
     MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
         CancellationToken cancellationToken)

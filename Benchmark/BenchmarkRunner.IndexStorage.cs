@@ -25,21 +25,40 @@ public partial class BenchmarkRunner
             var identity = new BlockContentIdentity(default, ScanShape.ForMft(includeFreed: false));
             var location = new MftBlockCapacity.FileLocation(new VolumeKey('T'),
                 Path.Combine(directory.FullName, "T-00000000.mlix"), 0, DeleteOnClose: true);
-            using var block = BlockFile.Create(MftBlockCapacity.CreateOptions(geometry, location, identity, default));
-            var writer = new BlockWriter(block);
-            var started = _timeProvider.GetTimestamp();
-            var result = MftBlockRowWriter.WriteBatches(writer, StorageBatches(records), new MftScanOptions(), null,
-                CancellationToken.None);
-            var elapsed = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
-            writer.Complete(DateTime.UtcNow, null);
-            if (result.SkippedRecordCount != 0 || block.Header.IsCapacityExhausted)
+            var request = new MftBlockProduceRequest
+            {
+                Volume = location.Volume,
+                VolumeSerial = location.VolumeSerial,
+                BlockPath = location.Path,
+                DeleteOnClose = true,
+                CacheTag = identity.CacheTag,
+                ScanShape = identity.ScanShape
+            };
+            var elapsed = 0.0;
+            var skippedRecordCount = 0;
+            // The scan reruns into a larger block when the planned name entries run out, as every producer does.
+            using var block = MftBlockGrowth.ProduceUntilFit(request, attempt =>
+            {
+                // aislop-ignore-next-line dotnet/IDISP001 -- the produce result owns the block and ProduceUntilFit returns or disposes it
+                var attemptBlock = BlockFile.Create(MftBlockCapacity.CreateOptions(geometry, location, identity,
+                    attempt.MinimumCapacities));
+                var writer = new BlockWriter(attemptBlock);
+                var started = _timeProvider.GetTimestamp();
+                var attemptResult = MftBlockRowWriter.WriteBatches(writer, StorageBatches(records), new MftScanOptions(),
+                    null, CancellationToken.None);
+                elapsed = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
+                writer.Complete(DateTime.UtcNow, null);
+                skippedRecordCount = (int)attemptResult.SkippedRecordCount;
+                return new MftBlockProduceResult(attemptBlock, skippedRecordCount);
+            }).Block;
+            if (skippedRecordCount != 0 || block.Header.IsCapacityExhausted)
             {
                 throw new InvalidOperationException("The synthetic input did not fit its planned block.");
             }
 
             _output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Scan write time: {elapsed:F3} ms"));
             _output.WriteLine($"Live rows: {block.Header.LiveRowCount}");
-            _output.WriteLine($"Skipped records: {result.SkippedRecordCount}");
+            _output.WriteLine($"Skipped records: {skippedRecordCount}");
             _output.WriteLine($"Slot capacity: {block.SlotCapacity}");
             _output.WriteLine($"Name entry capacity: {block.NameEntryCapacity}");
             _output.WriteLine($"Name entries: {block.NameEntryCount}");

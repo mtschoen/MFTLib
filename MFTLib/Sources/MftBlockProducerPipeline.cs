@@ -11,7 +11,7 @@ static class MftBlockProducerPipeline
 
     internal static async Task<MftBlockProduceResult> RunAsync(MftBlockProduceRequest request,
         ParseThreadAllocator allocator,
-        Func<ParseThreadAllowance, CancellationToken, MftBlockProduceResult> produce,
+        Func<MftBlockProduceRequest, ParseThreadAllowance, CancellationToken, MftBlockProduceResult> produce,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -21,7 +21,9 @@ static class MftBlockProducerPipeline
         }
         using var registration = await allocator.AdmitAsync(cancellationToken).ConfigureAwait(false);
         var allowance = registration.Allowance;
-        return await Task.Run(() => produce(allowance, cancellationToken), cancellationToken)
+        return await Task.Run(
+                () => MftBlockGrowth.ProduceUntilFit(request, grown => produce(grown, allowance, cancellationToken)),
+                cancellationToken)
             .ConfigureAwait(false);
     }
 

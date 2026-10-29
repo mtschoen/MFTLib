@@ -430,7 +430,17 @@ the exhausted regions doubled. Row indices and name identifiers are unchanged; b
 replacement `E`, and the walk continues from its frontier without reading a directory twice. Growth is geometric,
 so copies are bounded. Only a tree that still cannot fit at the clamps publishes an exhausted block.
 
-An MFT producer or mutator keeps what fits and the volume remains Ready and queryable. Read
+A cold or rescan MFT production grows by running the scan again, because its records stream from the volume or dump
+and cannot be copied out of a half-written block. When the finished block is flagged with entries or pool exhausted
+and rows not exhausted (`RowCount < S`), the producer disposes the block, deletes its file (a delete-on-close block deletes
+itself), and scans again with minima of `E = S` (or `E` doubled when `E >= S`) for exhausted entries and `P` doubled for an
+exhausted pool; one retry always fits the entries, because every row interns at most one name. This covers the local, dump and
+broker producers; for a broker the client creates a new section and sends a new ArmAndScan, so the retry arms a fresh journal
+cursor. A scan therefore publishes an incomplete block only for row exhaustion or at the clamps. A custom `MftBlockProducer`
+that returns a flagged block is not retried: its flag stays and a rescan grows it as above. USN journal exhaustion keeps
+the flag-and-rescan remedy.
+
+An MFT mutator keeps what fits and the volume remains Ready and queryable. Read
 `RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a
 replacement without it; failed or cancelled rescans retain the old block and its flag.
 
