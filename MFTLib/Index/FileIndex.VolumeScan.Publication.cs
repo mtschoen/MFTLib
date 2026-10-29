@@ -76,6 +76,12 @@ public sealed partial class FileIndex
                 lock (StateLock)
                 {
                     ThrowIfClosing(cancellationToken);
+                    // Abandonment is decided under this lock, before its token cancellation lands.
+                    if (recovery is null && _runningRescan is { IsAbandoned: true })
+                    {
+                        throw new OperationCanceledException("Every caller of the rescan cancelled.");
+                    }
+
                     var replaced = Block;
 
                     if (replaced is not null)

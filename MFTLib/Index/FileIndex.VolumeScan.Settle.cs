@@ -33,7 +33,7 @@ public sealed partial class FileIndex
                     {
                         return null;
                     }
-                    if (Block is null && _manualRescanRunning && view.Options.CacheMode == CacheMode.ExistingOnly)
+                    if (Block is null && _runningRescan is not null && view.Options.CacheMode == CacheMode.ExistingOnly)
                     {
                         RecordViewDeclineLocked(view, RootFailureKind.CacheDeclined);
                         return null;
