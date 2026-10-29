@@ -20,6 +20,7 @@ sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSectio
         SlotCapacity = 256,
         NameEntryCapacity = 256,
         NamePoolCapacity = 4096,
+        DeltaCapacity = BlockLayout.ComputeDeltaCapacity(256),
         DeleteOnClose = true
     });
 

@@ -28,9 +28,10 @@ public class BlockHeaderTests
             Generation = 1,
             RowRegionOffset = BlockLayout.RowRegionOffset,
             SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(100),
-            NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 100),
+            NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 100, BlockLayout.ComputeDeltaCapacity(100)),
             NameEntryCount = 2,
             NameEntryCapacity = 100,
+            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(100),
             BucketCount = BlockLayout.ComputeBucketCount(100),
             NameEntryRegionOffset = (ulong)BlockLayout.NameEntryRegionOffset(100),
             BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(100, 100),
@@ -40,7 +41,7 @@ public class BlockHeaderTests
 
     static long ValidFileLength()
     {
-        return BlockLayout.TotalBlockBytes(100, 100, 1000);
+        return BlockLayout.TotalBlockBytes(100, 100, BlockLayout.ComputeDeltaCapacity(100), 1000);
     }
 
     [TestMethod]
@@ -62,9 +63,9 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void Header_DeclaresOneHundredSixtyBytesIncludingNameRegions()
+    public void Header_DeclaresOneHundredSixtyEightBytesIncludingNameAndPostingRegions()
     {
-        Assert.AreEqual(160, Marshal.SizeOf<BlockHeader>());
+        Assert.AreEqual(168, Marshal.SizeOf<BlockHeader>());
         Assert.AreEqual(112, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ScanShape)));
         Assert.AreEqual(120, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.AccessDeniedSubtreeCount)));
         Assert.AreEqual(124, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NameEntryCount)));
@@ -72,7 +73,10 @@ public class BlockHeaderTests
         Assert.AreEqual(132, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.BucketCount)));
         Assert.AreEqual(136, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NameEntryRegionOffset)));
         Assert.AreEqual(144, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.BucketRegionOffset)));
-        Assert.AreEqual(152, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Reserved)));
+        Assert.AreEqual(152, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.PostingBaseNameCount)));
+        Assert.AreEqual(156, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.PostingBaseRowCount)));
+        Assert.AreEqual(160, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.DeltaEntryCount)));
+        Assert.AreEqual(164, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.DeltaCapacity)));
     }
 
     [TestMethod]
@@ -202,7 +206,7 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsEight()
+    public void FormatVersion_IsNine()
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
@@ -210,7 +214,7 @@ public class BlockHeaderTests
         using var block = builder.OpenForReading(out var validation);
         Assert.IsNull(validation);
         Assert.IsNotNull(block);
-        Assert.AreEqual(8u, block.Header.FormatVersion);
+        Assert.AreEqual(9u, block.Header.FormatVersion);
     }
 
     [TestMethod]
@@ -229,8 +233,66 @@ public class BlockHeaderTests
         header.NameEntryCapacity = 2000;
         header.BucketCount = BlockLayout.ComputeBucketCount(2000);
         header.BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(100, 2000);
-        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 2000);
-        Assert.IsNull(BlockHeader.Validate(in header, 0xDEADBEEF, BlockLayout.TotalBlockBytes(100, 2000, 1000)));
+        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 2000, BlockLayout.ComputeDeltaCapacity(100));
+        Assert.IsNull(BlockHeader.Validate(in header, 0xDEADBEEF, BlockLayout.TotalBlockBytes(100, 2000, BlockLayout.ComputeDeltaCapacity(100), 1000)));
+    }
+
+    [TestMethod]
+    public void Validate_FormatVersionEight_IsRejected()
+    {
+        var header = ValidHeader();
+        header.FormatVersion = 8;
+        Assert.AreEqual(BlockValidationResult.WrongFormatVersion,
+            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+    }
+
+    [TestMethod]
+    [DataRow("BaseNamesPastPublishedNames")]
+    [DataRow("BaseRowsPastRowCount")]
+    [DataRow("DeltaCountPastCapacity")]
+    [DataRow("ZeroDeltaCapacity")]
+    [DataRow("DeltaCapacityAtIntegerLimit")]
+    [DataRow("EntryCapacityBeyondPostingOffsets")]
+    public void Validate_AnInconsistentPostingField_IsRejectedByBothValidators(string corruption)
+    {
+        var header = ValidHeader();
+        switch (corruption)
+        {
+            case "BaseNamesPastPublishedNames": header.PostingBaseNameCount = header.NameEntryCount + 1; break;
+            case "BaseRowsPastRowCount": header.PostingBaseRowCount = header.RowCount + 1; break;
+            case "DeltaCountPastCapacity": header.DeltaEntryCount = header.DeltaCapacity + 1; break;
+            case "ZeroDeltaCapacity": header.DeltaCapacity = 0; break;
+            case "DeltaCapacityAtIntegerLimit": header.DeltaCapacity = int.MaxValue; break;
+            default: header.NameEntryCapacity = int.MaxValue - 1; break;
+        }
+
+        Assert.AreEqual(BlockValidationResult.InconsistentRegions,
+            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()), corruption);
+        Assert.AreEqual(BlockValidationResult.InconsistentRegions,
+            BlockHeader.ValidateSection(in header, ValidFileLength()), corruption);
+    }
+
+    [TestMethod]
+    public void Validate_ADeltaCapacityThatDisagreesWithTheFileLength_IsRejected()
+    {
+        var header = ValidHeader();
+        header.DeltaCapacity *= 2;
+        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100, 100, header.DeltaCapacity);
+        Assert.AreEqual(BlockValidationResult.InconsistentRegions,
+            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+        Assert.AreEqual(BlockValidationResult.InconsistentRegions,
+            BlockHeader.ValidateSection(in header, ValidFileLength()));
+    }
+
+    [TestMethod]
+    public void Validate_ConsistentPostingCursors_AreAccepted()
+    {
+        var header = ValidHeader();
+        header.PostingBaseNameCount = header.NameEntryCount;
+        header.PostingBaseRowCount = header.RowCount;
+        header.DeltaEntryCount = header.DeltaCapacity;
+        Assert.IsNull(BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+        Assert.IsNull(BlockHeader.ValidateSection(in header, ValidFileLength()));
     }
 
     [TestMethod]

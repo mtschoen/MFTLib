@@ -312,17 +312,24 @@ sealed partial class BlockWriter
     }
 
     /// <summary>
-    ///     Stamps the scan timestamp and sets the complete flag last, then flushes, reporting cumulative
-    ///     bytes flushed to <paramref name="rangeFlushed" /> after each range when it is not null. A producer
-    ///     that dies before this call leaves a block that validation rejects.
+    ///     Builds the posting base from every row, stamps the scan timestamp and sets the complete flag last, then
+    ///     flushes, reporting cumulative bytes flushed to <paramref name="rangeFlushed" /> after each range when it is
+    ///     not null. A producer that dies, or a build that is cancelled, before the flag is set leaves a block that
+    ///     validation rejects.
     /// </summary>
     /// <param name="scanTimestampUtc">UTC time at which production completed.</param>
     /// <param name="rangeFlushed">Optional callback receiving cumulative bytes flushed so far after each range.</param>
-    public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed)
+    /// <param name="postingBuildProgress">Optional callback invoked as the posting build advances, so a host can report progress.</param>
+    /// <param name="cancellationToken">Observed every 4096 rows while the postings are built; cancelling leaves the block incomplete.</param>
+    public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed,
+        Action? postingBuildProgress = null, CancellationToken cancellationToken = default)
     {
         using var access = Block.TakeAccess();
         Hooks._completeAccessTaken?.Invoke();
         ref var header = ref Block.Header;
+        // A block completed before is incomplete again while its postings are rebuilt.
+        header.Flags &= ~BlockFlags.Complete;
+        PostingBuilder.Build(Block, postingBuildProgress, cancellationToken);
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         if (Block.Generation == 0)
         {

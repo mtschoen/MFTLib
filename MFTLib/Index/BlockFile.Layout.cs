@@ -82,7 +82,8 @@ sealed partial class BlockFile
     ///     Takes the cursors another process published after writing this block through its own
     ///     mapping of the same section, as the client does once the broker reports the scan ready.
     ///     The copy must describe this block's own capacities and stay within them, so a header
-    ///     claiming more than the block holds is refused instead of adopted.
+    ///     claiming more than the block holds is refused instead of adopted. A completed header also means the other
+    ///     writer built the posting base, so the posting cursors are adopted with it.
     /// </summary>
     /// <param name="published">A private copy of the header the other writer published.</param>
     /// <returns>true when the cursors were adopted; otherwise, false and the cursors are unchanged.</returns>
@@ -90,7 +91,8 @@ sealed partial class BlockFile
     {
         if (published.SlotCapacity != SlotCapacity || published.NamePoolCapacity != NamePoolCapacity ||
             published.NameEntryCapacity != NameEntryCapacity || published.BucketCount != BucketCount ||
-            published.NameEntryCount > NameEntryCapacity || published.RowCount > SlotCapacity || published.NamePoolUsed > NamePoolCapacity)
+            published.NameEntryCount > NameEntryCapacity || published.RowCount > SlotCapacity || published.NamePoolUsed > NamePoolCapacity ||
+            !IsWithinPostingBounds(published))
         {
             return false;
         }
@@ -99,6 +101,7 @@ sealed partial class BlockFile
         _namePoolUsed = published.NamePoolUsed;
         Volatile.Write(ref _nameEntryCount, published.NameEntryCount);
         _generation = published.Generation;
+        AdoptPostingCursors(published);
         return true;
     }
 }

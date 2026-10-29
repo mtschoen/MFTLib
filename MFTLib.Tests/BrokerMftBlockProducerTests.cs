@@ -125,7 +125,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             ref var header = ref block.Header;
             header.SlotCapacity = header.RowCount;
             header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity);
-            header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity);
+            header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity, header.NameEntryCapacity, header.DeltaCapacity);
         });
         var request = Request(Target());
 

@@ -157,17 +157,22 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 | Region | Offset | Size |
 | --- | --- | --- |
-| Header | 0 | 4096 (160-byte declared header, including alignment padding) |
+| Header | 0 | 4096 (168-byte declared header, including alignment padding) |
 | Rows | 4096 | `slot capacity * 32`, rounded up to a page |
 | Sequence region | after rows | `slot capacity * 2`, rounded up to a page |
 | Name entry table | after sequence region | `(entry capacity + 1) * 12`, rounded up to a page |
 | Bucket directory | after name entries | `bucket count * 4`, rounded up to a page |
-| Name byte pool | after buckets | `name pool capacity`, rounded up to a page |
+| Posting offsets | after buckets | `(entry capacity + 2) * 4`, rounded up to a page |
+| Posting rows | after posting offsets | `slot capacity * 4`, rounded up to a page |
+| Delta heads | after posting rows | `bucket count * 4`, rounded up to a page |
+| Delta entries | after delta heads | `(delta capacity + 1) * 12`, rounded up to a page |
+| Name byte pool | after delta entries | `name pool capacity`, rounded up to a page |
 
 Entry zero is reserved. The header stores the entry capacity `E`, the number of allocatable
 entries excluding that reserved entry. The volume plan sets `E` from the slot capacity `S` (see Capacity), and a rescan
 or growing walk can create a block with a larger independent `E`. Every region offset and size is computed
-from the stored `S`, `E` and pool capacity `P`. The bucket count is the smallest power of two at least
+from the stored `S`, `E`, delta capacity `D` and pool capacity `P`. The posting and delta regions are described in
+[Posting regions](#posting-regions). The bucket count is the smallest power of two at least
 `max(1024, ceil(E / 4))`. New bucket heads are zero.
 
 ## Header
@@ -201,9 +206,12 @@ from the stored `S`, `E` and pool capacity `P`. The bucket count is the smallest
 | 132 | bucket count | u32 | `max(1024, ceil(E / 4))` rounded up to a power of two |
 | 136 | name entry region offset | u64 | |
 | 144 | bucket region offset | u64 | |
-| 152 | reserved | u64 | Written as zero |
+| 152 | posting base name count | u32 | `B`, the names that existed when the posting base was built; at most the name entry count |
+| 156 | posting base row count | u32 | `offsets[B + 1]`, the row indices the base holds; at most the row count |
+| 160 | delta entry count | u32 | Published delta entries, excluding entry zero; at most `D` |
+| 164 | delta capacity | u32 | `D`, the allocatable delta entries, excluding entry zero; at least 1 |
 
-The format version is 8. The declared header ends at byte 160 within a
+The format version is 9. The declared header ends at byte 168 within a
 4096-byte header page; the root key text follows it. A version mismatch rejects the block: normal opens
 rebuild it, and cache-only opens decline the root and leave the block in place.
 
@@ -213,17 +221,17 @@ Page 0 holds the block's root key after the declared header, for every block:
 
 | Offset | Field | Type | Notes |
 | --- | --- | --- | --- |
-| 160 | key text length | u16 | UTF-16 code units, 1 to 1967 |
-| 162 | key text | UTF-16 code units | The volume letter (`C`) or the normalized directory path, without a trailing separator |
+| 168 | key text length | u16 | UTF-16 code units, 1 to 1963 |
+| 170 | key text | UTF-16 code units | The volume letter (`C`) or the normalized directory path, without a trailing separator |
 
-A reader accepts the key only when the count fits the page (`162 + 2 * count <= 4096`), the text
+A reader accepts the key only when the count fits the page (`170 + 2 * count <= 4096`), the text
 parses to a root key whose own text is exactly the stored text, and the file name equals the name derived from that key
 and the header's volume serial. Malformed text reports `InconsistentRegions`; a name that is not the derived one reports
 `WrongRootDirectory`. Either discards the block and cold-scans. The text is written once when the block is created and
 never changes.
 
 The path length limit follows from the page: `RootKey.FromDirectory` throws `ArgumentException` for a normalized
-directory path longer than 1967 UTF-16 code units, so no walked root can produce a block whose key does not fit.
+directory path longer than 1963 UTF-16 code units, so no walked root can produce a block whose key does not fit.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
@@ -411,23 +419,30 @@ because interning leaves distinct names at 9 to 61 percent of rows (the large vo
 pool span length fits an `int`. One planner serves the MFT and enumeration producers. The reservation is generous:
 measured use is 2.7 to 15.2 bytes per slot.
 
-Exhausting rows, name entries or name bytes sets the capacity-exhausted flag. A clear flag asks for no growth, even
+Delta capacity is `D = max(65536, ceil(S / 8))`: every journal name change consumes one delta entry, so the
+reservation follows the slots, and the figure is calibrated by measuring appends per day on a watched volume.
+
+Exhausting rows, name entries, delta entries or name bytes sets the capacity-exhausted flag. A clear flag asks for no growth, even
 when a region is full. With the flag set, the header identifies the exhausted regions: entries are exhausted when
-`NameEntryCount >= E`; the pool is exhausted when at most 510 bytes remain; and rows are exhausted when
-`RowCount >= S`, or when neither entries nor pool is exhausted. The row fallback covers a write at a record index
+`NameEntryCount >= E`; the pool is exhausted when at most 510 bytes remain; the delta is exhausted when
+`DeltaEntryCount >= D`; and rows are exhausted when `RowCount >= S`, or when none of entries, pool and delta is
+exhausted. The posting rows region cannot exhaust (the base holds at most one entry per slot) and neither can the
+posting offsets (`B <= E`). The row fallback covers a write at a record index
 past `S`, which leaves `RowCount` below `S`. A name of at most 255 UTF-16 units needs at most 510 bytes plus one
 alignment byte, so a pool refusal always leaves at most 510 bytes. When a row refusal coincides with entry or pool
 exhaustion, rows keep the volume plan: fresh MFT geometry already covers every current record.
 
 A rescan computes the volume plan, then doubles only the exhausted regions and applies those values as independent
-minima. Slot and entry capacities clamp at 2147483646, leaving room for reserved name entry zero in the int-indexed
-entry span; the pool clamps at `0x7FFFF000`. Every other region keeps its volume-plan value. For MFT, the index sends
+minima. Slot and delta capacities clamp at 2147483646, leaving room for reserved entry zero in the int-indexed entry
+span; the entry capacity clamps at 2147483645, leaving room for the reserved zero and the end word of the posting
+offsets; the pool clamps at `0x7FFFF000`. Every other region keeps its volume-plan value. For MFT, the index sends
 these minima to the producer, which combines them with fresh volume geometry where that geometry is known.
 
 An enumeration walk grows the same way without starting again: FileIndex copies the used rows, sequence numbers,
 name entries and name bytes out, disposes and deletes the exhausted block, and restores them into a block with only
 the exhausted regions doubled. Row indices and name identifiers are unchanged; bucket chains are rebuilt for the
-replacement `E`, and the walk continues from its frontier without reading a directory twice. Growth is geometric,
+replacement `E`, the replacement's posting base is built when the walk completes (the copy carries no posting data),
+and the walk continues from its frontier without reading a directory twice. Growth is geometric,
 so copies are bounded. Only a tree that still cannot fit at the clamps publishes an exhausted block.
 
 A cold or rescan MFT production grows by running the scan again, because its records stream from the volume or dump
@@ -484,13 +499,45 @@ unwritten bytes. Entries and bytes remain valid after rename or deletion.
 
 | Stage | Checks |
 | --- | --- |
-| Eager at open, constant cost | Magic and version, every region offset equal to the layout for the stored `S`, `E` and `P`, total size, `RowCount <= S`, `NameEntryCount <= E`, `NamePoolUsed <= P`, `NamePoolUsed >= NameEntryCount`, the bucket count the formula gives for `E`, root key, file name, producer, cache tag and scan shape. Section validation in the broker runs the same set on a private header copy. The four name-region facts report `BlockValidationResult.InvalidNameDescriptor`; the other geometry checks report `InconsistentRegions` |
+| Eager at open, constant cost | Magic and version, every region offset equal to the layout for the stored `S`, `E`, `D` and `P`, total size, `RowCount <= S`, `NameEntryCount <= E`, `NamePoolUsed <= P`, `NamePoolUsed >= NameEntryCount`, the bucket count the formula gives for `E`, `D >= 1`, `DeltaEntryCount <= D`, the posting base name count `<= NameEntryCount`, the posting base row count `<= RowCount`, root key, file name, producer, cache tag and scan shape. Section validation in the broker runs the same set on a private header copy. The four name-region facts report `BlockValidationResult.InvalidNameDescriptor`; the other geometry and posting checks report `InconsistentRegions` |
 | Lazy at each read | `NamePool.Read`: the identifier is within the published entry count, the length is nonzero, the offset plus bytes lie within the used pool, and a UTF-16 offset is even. A failure writes a `Diagnostics` line naming the block, the identifier and the failed check, then throws `InvalidDataException` to the query. A chain walk requires each identifier within the published count and each `Next` strictly smaller; a failed step ends the walk as not found |
-| Not run in production | Tag correctness, bucket membership, reachability, ASCII validity and per-name rehash. A corrupt chain can only cause a missed exact match or a duplicate entry, never an out-of-bounds read. Tests run the full pass through an internal integrity checker |
+| Lazy at each posting read | Posting offsets satisfy `offsets[n] <= offsets[n + 1] <= posting base row count` and each posting row is below `S`; a violation writes a `Diagnostics` line and throws `InvalidDataException`, as `NamePool.Read` does. A delta walk requires each index within the published delta count and each `Next` strictly smaller; a failed step ends the walk as not found |
+| Not run in production | Tag correctness, bucket membership, reachability, ASCII validity and per-name rehash, and the posting invariants: ascending base lists, `offsets[B + 1]` equal to the base row count, every delta entry in the head `nameId & (bucket count - 1)`, and every row with a nonzero name listed by its name's base list or delta chain. A corrupt chain can only cause a missed exact match or a duplicate entry, never an out-of-bounds read. Tests run the full passes through the internal integrity checkers `NamePoolIntegrity` and `PostingIntegrity` |
 
 Nothing is rebuilt or rehashed at open: an open of a block touches no name entry, bucket or pool page. The writer
 trusts the chains it finds; a block written by MFTLib under the owner-only cache directory is the only input, and the
 next rescan rewrites it.
+
+## Posting regions
+
+Four regions answer "which rows hold this name" without reading the row table: an immutable **base** in
+compressed-sparse-row form and an append-only **delta** chain. A posting is a hint. A reader accepts row `r` for name
+`n` only when one `FileRow.ReadDescriptorWord` of `r` still holds `n`, so renames away, slot reuse and deletes write
+nothing to the posting regions.
+
+| Region | Contents |
+| --- | --- |
+| Posting offsets | u32 `offsets[0 .. B + 1]`. Name `n` (1 to `B`) owns base slots `[offsets[n], offsets[n + 1])`; `offsets[0] = offsets[1] = 0`. Names interned after the base was built (`n > B`) have no base list |
+| Posting rows | u32 row indices grouped by name identifier, ascending within each name. Rows holding name zero, gap rows and rows never written are not listed; freed and tombstoned rows are |
+| Delta heads | u32 newest delta entry for each head, one head per name bucket. Zero is an empty chain. The head of name `n` is `n & (bucket count - 1)`, the identifier rather than the hash, so the writer needs no hash |
+| Delta entries | 12-byte `{ row u32, name identifier u32, next u32 }`; entry zero is reserved. `next` is strictly smaller than the entry's own index, or zero |
+
+`BlockWriter.Complete` builds the base before it sets the complete flag, by a two-pass counting sort over the descriptor
+of every row: count the rows per name, turn the counts into list starts, then place each row at its name's next slot.
+Rows are visited in ascending order, so every list is ascending with no sort, and no array proportional to the block is
+allocated on the managed heap. `Complete` takes a `CancellationToken` that is observed every 4096 rows in both passes;
+a cancelled build leaves the complete flag clear, so the block is rejected like a producer that died. The broker publishes
+the processing step `posting build` at the start of each pass and every 1,048,576 rows, so the 30-second
+processing-progress rule holds on a huge volume. A `Complete` on a block completed before clears the flag, rebuilds the
+base from the rows and restarts the delta chain empty.
+
+The base needs no stored "built" flag: an incomplete block is rejected, and a complete block always has its base. The
+writer keeps an in-memory `PostingsBuilt` bit, set by `Complete`, by opening a complete block and by adopting a
+broker-completed section; a journal name change appends a delta entry only while it is set. The base is never rewritten
+after completion. A rescan or enumeration growth builds a new base in the replacement block.
+
+Invariant: every row whose descriptor holds name `n` other than zero has an association `(r, n)` in name `n`'s base list
+or delta chain. An interrupted writer can leave a stale association, never a missing one.
 
 ## Name query passes
 
@@ -636,6 +683,7 @@ faults still reach `WatchFaulted`, `RootWatchStatus.FailureMessage`, and
 
 ## Sidecars
 
-A follow-up children table or name index is a separate file next to the block.
-It is never a format change. A sidecar is bound to the block file it was built from,
+A follow-up children table is a separate file next to the block. It is never a format change. The per-name
+posting index is not a sidecar: it lives in the block (see [Posting regions](#posting-regions)), so one owner lock
+covers one crash state. A sidecar is bound to the block file it was built from,
 not to `generation`, which restarts when a cache is deleted or a process starts anew.

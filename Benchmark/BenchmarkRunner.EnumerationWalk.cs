@@ -160,6 +160,7 @@ public partial class BenchmarkRunner
             SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
             NameEntryCapacity = BlockLayout.ComputeSlotCapacity(rows),
             NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(BlockLayout.ComputeSlotCapacity(rows)),
+            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(BlockLayout.ComputeSlotCapacity(rows)),
             ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), root)
         });
         var writer = new BlockWriter(block);

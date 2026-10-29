@@ -97,7 +97,7 @@ public class MftIndexSourcesDumpTests
 
         using var first = (await ProduceAsync(producer, directory.Path, default, TestContext.CancellationToken)).Block;
         using var second = (await ProduceAsync(producer, directory.Path,
-            new BlockCapacities(0, 2 * first.NameEntryCapacity, 0), TestContext.CancellationToken)).Block;
+            new BlockCapacities(0, 2 * first.NameEntryCapacity, 0, 0), TestContext.CancellationToken)).Block;
 
         Assert.AreEqual(first.SlotCapacity, second.SlotCapacity);
         Assert.AreEqual(2 * first.NameEntryCapacity, second.NameEntryCapacity);

@@ -67,7 +67,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
                 ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory,
                 Attributes: 0, Size: 0, ModifiedTicks: 0, SequenceNumber: 0)));
             writer.SetJournalCursor(7, 1_000);
-            writer.Complete(DateTime.UtcNow, null);
+            writer.Complete(DateTime.UtcNow, null, cancellationToken: TestContext.CancellationToken);
         }
 
         return Task.FromResult(new MftBlockProduceResult(

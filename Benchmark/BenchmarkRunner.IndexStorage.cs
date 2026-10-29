@@ -20,7 +20,7 @@ public partial class BenchmarkRunner
             LogSystemInfo(_output.WriteLine);
             _output.WriteLine($"Input records: {records}");
             _output.WriteLine("Names: seed 42; random 20-character ASCII; 10% directories; .git and HEAD once per 100 records; root at 5");
-            _output.WriteLine("Timing: managed input generation and production row writes; excludes block allocation and completion flush");
+            _output.WriteLine("Timing: managed input generation and production row writes; excludes block allocation and completion");
             var geometry = new NtfsVolumeInformation(records * 1024L, 1024);
             var identity = new BlockContentIdentity(default, ScanShape.ForMft(includeFreed: false));
             var location = new MftBlockCapacity.FileLocation(new VolumeKey('T'),
@@ -36,6 +36,7 @@ public partial class BenchmarkRunner
             };
             var elapsed = 0.0;
             var skippedRecordCount = 0;
+            var completeMilliseconds = 0.0;
             // The scan reruns into a larger block when the planned name entries run out, as every producer does.
             using var block = MftBlockGrowth.ProduceUntilFit(request, attempt =>
             {
@@ -47,10 +48,15 @@ public partial class BenchmarkRunner
                 var attemptResult = MftBlockRowWriter.WriteBatches(writer, StorageBatches(records), new MftScanOptions(),
                     null, CancellationToken.None);
                 elapsed = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
+                var completeStarted = _timeProvider.GetTimestamp();
                 writer.Complete(DateTime.UtcNow, null);
+                completeMilliseconds = _timeProvider.GetElapsedTime(completeStarted).TotalMilliseconds;
                 skippedRecordCount = (int)attemptResult.SkippedRecordCount;
                 return new MftBlockProduceResult(attemptBlock, skippedRecordCount);
             }).Block;
+            var buildStarted = _timeProvider.GetTimestamp();
+            PostingBuilder.Build(block, null, CancellationToken.None);
+            var buildMilliseconds = _timeProvider.GetElapsedTime(buildStarted).TotalMilliseconds;
             if (skippedRecordCount != 0 || block.Header.IsCapacityExhausted)
             {
                 throw new InvalidOperationException("The synthetic input did not fit its planned block.");
@@ -67,6 +73,17 @@ public partial class BenchmarkRunner
             _output.WriteLine($"Name-entry used bytes: {(long)block.NameEntryCount * NameEntry.Bytes}");
             _output.WriteLine($"Name-entry reserved bytes: {BlockLayout.NameEntryRegionBytes(block.NameEntryCapacity)}");
             _output.WriteLine($"Bucket bytes: {BlockLayout.BucketRegionBytes(block.NameEntryCapacity)}");
+            _output.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"Complete time (posting build, flag and flush): {completeMilliseconds:F3} ms"));
+            _output.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"Posting build time (rebuild over the resident block): {buildMilliseconds:F3} ms"));
+            _output.WriteLine($"Posting base names: {block.PostingBaseNameCount}");
+            _output.WriteLine($"Posting base rows: {block.PostingBaseRowCount}");
+            _output.WriteLine($"Posting offset bytes: {BlockLayout.PostingOffsetRegionBytes(block.NameEntryCapacity)}");
+            _output.WriteLine($"Posting row bytes: {BlockLayout.PostingRowRegionBytes(block.SlotCapacity)}");
+            _output.WriteLine($"Delta capacity: {block.DeltaCapacity}");
+            _output.WriteLine($"Delta head bytes: {BlockLayout.DeltaHeadRegionBytes(block.NameEntryCapacity)}");
+            _output.WriteLine($"Delta entry bytes: {BlockLayout.DeltaEntryRegionBytes(block.DeltaCapacity)}");
             _output.WriteLine($"File bytes: {block.Length}");
             return 0;
         }

@@ -28,6 +28,7 @@ static class TestBlocks
             SlotCapacity = slotCapacity,
             NameEntryCapacity = nameEntryCapacity ?? slotCapacity,
             NamePoolCapacity = namePoolCapacity,
+            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(slotCapacity),
             RootRow = rootRow,
             DeleteOnClose = deleteOnClose ?? (path is null),
             CacheTag = cacheTag,
