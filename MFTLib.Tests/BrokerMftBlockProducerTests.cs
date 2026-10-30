@@ -252,7 +252,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.IsTrue(result.Block.Header.IsCapacityExhausted);
     }
 
-    // A small volume plans the minimum slot floor and about 2 MB of name pool; 16000 distinct 255-character names need more.
+    // A small volume plans the minimum slot floor and 3 MB of name pool; 7000 distinct 255-unit names stored as UTF-16 need more.
     [TestMethod]
     public async Task Produce_WhenTheNamePoolRunsOut_ScansAgainIntoAGrownSectionAndPublishesAWholeBlock()
     {
@@ -269,7 +269,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         using var block = result.Block;
 
         Assert.IsFalse(block.Header.IsCapacityExhausted);
-        Assert.AreEqual(16006u, block.Header.RowCount, "rows are indexed by record number, so the count is the last record number plus one");
+        Assert.AreEqual(DistinctNameRows + 6, block.Header.RowCount, "rows are indexed by record number, so the count is the last record number plus one");
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.HasCount(2, broker.Sections.All(), "the exhausted section is replaced by a second scan's section");
         Assert.IsTrue(broker.Sections.All().Any(section => ReferenceEquals(section.Block, block)));
@@ -277,13 +277,15 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             block.Header.NamePoolCapacity);
     }
 
-    // Two scans of 16000 long names plus their postings: measured in the hundreds of milliseconds, but a loaded Linux coverage runner exceeded the shared guard.
+    // Two scans hash about 13000 names of 255 units: 0.8 s alone under coverlet, but up to 10 s on a loaded Linux coverage
+    // runner, all of it CPU in the scans, so the shared guard would fail a scan that is still progressing.
     static readonly TimeSpan GrowthHangGuard = TimeSpan.FromSeconds(60);
 
-    const ulong DistinctNameRows = 16000;
+    const ulong DistinctNameRows = 7000;
     static readonly NtfsVolumeInformation SmallVolume = new(1024L * 1000, 1024);
 
-    // Built once: records are immutable, and regenerating 16000 long names per scan made the test time-bound by its data.
+    // Built once: records are immutable, and regenerating the long names per scan made the test time-bound by its data.
+    // A non-ASCII name is stored as UTF-16, two bytes per unit, so the pool runs out after half the hashed characters an ASCII name needs.
     static readonly Lazy<IReadOnlyList<IReadOnlyList<MftRecord>>> DistinctNameBatchCache = new(() =>
     {
         var batches = new List<IReadOnlyList<MftRecord>> { new[] { BrokerHostFactory.Record(5, ".", 3) } };
@@ -293,7 +295,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             for (var offset = start; offset < start + 1000; offset++)
             {
                 batch.Add(BrokerHostFactory.Record(6 + offset,
-                    new string('n', 247) + offset.ToString("D8", System.Globalization.CultureInfo.InvariantCulture)));
+                    new string('\u03BB', 247) + offset.ToString("D8", System.Globalization.CultureInfo.InvariantCulture)));
             }
 
             batches.Add(batch);
