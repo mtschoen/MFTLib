@@ -115,7 +115,7 @@ static class SubtreeAnchor
         ObjectDisposedException.ThrowIf(anchorBlock.IsReleased, typeof(FileEntry));
         return new ArgumentException(
             "SearchQuery.Subtree does not belong to the queried index's current block for root " +
-            $"{anchorBlock.Root}: it came from another index or from a block a rescan replaced. " +
+            $"{anchorBlock.Root}: it came from another index, another view of the same volume, or a block a rescan replaced. " +
             "Take a new anchor from the index being queried.", parameterName);
     }
 }

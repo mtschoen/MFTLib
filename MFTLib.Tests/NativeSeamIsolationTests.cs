@@ -58,6 +58,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(JournalHooksReferenceFixture), "JournalCheckpointCheck.Hooks")]
     [DataRow(typeof(DiagnosticsOwnerReferenceFixture), "BrokerDiagnostics.Dependencies")]
     [DataRow(typeof(DiagnosticsMemberReferenceFixture), "DiagnosticsDependencies.InstallWriter")]
+    [DataRow(typeof(ProcessRegistryReferenceFixture), "VolumeScanRegistry.get_Process")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
         var violations = FindViolations([fixture]);
@@ -77,6 +78,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(IsolatedLaunchReferenceFixture))]
     [DataRow(typeof(PerProcessHooksReferenceFixture))]
     [DataRow(typeof(IsolatedDiagnosticsReferenceFixture))]
+    [DataRow(typeof(PrivateRegistryReferenceFixture))]
     public void Detector_AcceptsIsolatedAndUnrelatedTypes(Type fixture)
     {
         Assert.IsEmpty(FindViolations([fixture]));
@@ -185,7 +187,8 @@ public class NativeSeamIsolationTests
         }
 
         if (IsProcessGlobalHooksType(declaringType) ||
-            (member is FieldInfo hooksField && IsProcessGlobalHooksType(hooksField.FieldType)))
+            (member is FieldInfo hooksField && IsProcessGlobalHooksType(hooksField.FieldType)) ||
+            (declaringType == typeof(VolumeScanRegistry) && member.Name == "get_Process"))
         {
             return true;
         }

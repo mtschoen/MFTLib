@@ -27,8 +27,10 @@ public partial class FileIndexPerRootWatchTests
             () => index.StopWatchingAsync(stopToken)).WaitAsync(HangGuard, TestContext.CancellationToken);
         var producedBefore = harness.ProductionCount('T');
 
+        var publication = IndexPublication.ObserveNextAsync(index);
         var rescan = index.RescanAsync(Token);
 
+        await publication;
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring instance");
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'), "production precedes the drain");
         applying.Release();

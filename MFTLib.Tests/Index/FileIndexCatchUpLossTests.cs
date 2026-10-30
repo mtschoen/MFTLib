@@ -121,6 +121,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task Rescan_SuccessResetsTheCount()
     {
         using var harness = new WatchHarness('T');
+        await harness.Index.StartWatchingAsync(Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Held);
         await harness.IndexFor('T').RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, harness.RootFor('T').Watch.ConsecutiveLostCatchUps);
@@ -191,6 +192,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task CatchUpLost_JournalRecreated_ReportHasNoSuggestion()
     {
         using var harness = new WatchHarness('T');
+        await harness.Index.StartWatchingAsync(Token);
         var recreated = StandardCatchUpLoss('T') with
         {
             Cause = JournalCheckpointLossCause.JournalRecreated,
@@ -235,6 +237,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task CatchUpLost_ProducerFailure_IsNotCounted()
     {
         using var harness = new WatchHarness('T');
+        await harness.Index.StartWatchingAsync(Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
         await RootResultAssertions.FailureAsync<JournalCatchUpLostException>(() => harness.IndexFor('T').RescanAsync(Token));
 

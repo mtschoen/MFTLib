@@ -53,9 +53,9 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     One watch instance's catch-up. Every member is read and written under
-    ///     <see cref="FileIndex._stateLock" />.
+    ///     <see cref="FileIndex.StateLock" />.
     /// </summary>
-    sealed class WatchCatchUpSlot
+    internal sealed class WatchCatchUpSlot
     {
         /// <summary>The fault <see cref="MarkFaulted" /> recorded, which a cancellation reports instead.</summary>
         Exception? _fault;
@@ -126,7 +126,7 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     Faults a waiter <see cref="MarkFaulted" /> returned. Safe with or without
-        ///     <see cref="FileIndex._stateLock" /> held, since its continuations run asynchronously.
+        ///     <see cref="FileIndex.StateLock" /> held, since its continuations run asynchronously.
         /// </summary>
         public static void ReleaseFault(TaskCompletionSource waiter, Exception exception)
         {

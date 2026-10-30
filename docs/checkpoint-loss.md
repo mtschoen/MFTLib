@@ -1,5 +1,9 @@
 # Checkpoint loss
 
+Checkpoint classification, consecutive-loss count and recovery-stopped state belong to the VolumeScan and are
+reported identically by every attached view. Detection labels retain their meaning. One fault queues one recovery
+for the scan; CatchUpLost notifications reach only views with a watch request at settlement.
+
 - Index contracts:
     - **Checkpoint loss**: opening a volume reads the live journal through the unelevated
       volume-root handle (`UsnJournalVolumeInterop`) before adopting a cached block. A block
@@ -42,7 +46,7 @@
       At exhaustion, public `RescanAsync` returns `RootOperationOutcome.Failed` for that root
       with the last `JournalCatchUpLostException` in `RootOperationResult.Failure`. Its
       complete block stays queryable, but a watch start fails and retains the watch request
-      until a successful rescan. Each proven attempt raises `WatchFaultKind.CatchUpLost`.
+      until a successful rescan. Each proven attempt raises `WatchFaultKind.CatchUpLost` to requesting views.
       A catch-up failure the journal cannot prove is an ordinary failed scan and carries no report.
       `JournalCheckpointLoss` keeps the checkpoint, first and next USN positions internal: the broker
       protocol carries them, report equality covers them, and `BytesBehind` and

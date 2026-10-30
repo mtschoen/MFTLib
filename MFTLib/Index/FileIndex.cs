@@ -31,11 +31,11 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     that publishes a block: a commit of the root's block and the
     ///     retirement of the replaced block happen under it, so a reader (<see cref="Status" />,
     ///     <see cref="CurrentBlock" />) never observes a partial swap. It is innermost in the
-    ///     lock order (see <see cref="RootRuntime" />) and never held across an <c>await</c>.
+    ///     lock order (see <see cref="VolumeScan" />) and never held across an <c>await</c>.
     /// </summary>
-    readonly Lock _stateLock = new();
+    Lock StateLock => _view.Scan.StateLock;
 
-    bool _disposed;
+    bool IsDisposed => _view.IsDisposed;
 
     /// <summary>
     ///     How many scans of the root in a row may lose their journal catch-up before a scan
@@ -48,23 +48,35 @@ public sealed partial class FileIndex : IAsyncDisposable
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         Hooks = hooks;
-        _runtime = new RootRuntime(this, resolved);
+        _view = new IndexView(this, resolved);
+        var key = Directory.Exists(resolved.RootDirectory)
+            ? VolumeScanKey.For(resolved, options, cacheDirectoryPath)
+            : null;
+        var scanRoot = key is null ? resolved : resolved with
+        {
+            Root = resolved.BlockRoot,
+            RootDirectory = resolved.RenderRootDirectory
+        };
+        var creation = new VolumeScanCreation(scanRoot, options, cacheDirectoryPath, hooks);
+        _view.Scan = key is { } shareKey
+            ? _view.Registry.Attach(shareKey, previous => new VolumeScan(creation, shareKey, previous))
+            : new VolumeScan(creation);
     }
 
-    internal RootKey RootKey => _runtime.Root;
+    internal RootKey RootKey => _view.Root;
 
-    internal RootKind Kind => _runtime.Kind;
+    internal RootKind Kind => _view.Kind;
 
     /// <summary>The normalized host path of the root: the volume root, the directory, or a dump's virtual root.</summary>
-    internal string RootDirectory => _runtime.RootDirectory;
+    internal string RootDirectory => _view.RootDirectory;
 
-    internal string? MatchableRootDirectoryPath => _runtime.MatchableRootDirectoryPath;
+    internal string? MatchableRootDirectoryPath => _view.MatchableRootDirectoryPath;
 
     internal void ThrowIfDisposed()
     {
-        lock (_stateLock)
+        lock (StateLock)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
         }
     }
 
@@ -81,12 +93,12 @@ public sealed partial class FileIndex : IAsyncDisposable
         get
         {
             Hooks.RootsReadBeforeLock?.Invoke();
-            lock (_stateLock)
+            lock (StateLock)
             {
                 // Checked under the lock: disposal sets the flag under it before it unpublishes
                 // the block, so a read that sees the flag clear sees the block still published.
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                return _runtime.DescribeLocked();
+                ObjectDisposedException.ThrowIf(IsDisposed, this);
+                return _view.Scan.DescribeLocked(_view);
             }
         }
     }
@@ -95,10 +107,10 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         get
         {
-            lock (_stateLock)
+            lock (StateLock)
             {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                return _runtime.Block;
+                ObjectDisposedException.ThrowIf(IsDisposed, this);
+                return _view.OpenFailure is null ? _view.Block : null;
             }
         }
     }
@@ -151,7 +163,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                     nameof(options));
             }
 
-            cacheDirectoryPath = suppliedCacheDirectory;
+            cacheDirectoryPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(suppliedCacheDirectory));
             CacheDirectory.EnsureCreated(cacheDirectoryPath);
         }
 
@@ -162,10 +174,22 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
         catch
         {
-            index.ReleaseUnpublishedBlocks();
+            try
+            {
+                await index.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception failure) when (cancellationToken.IsCancellationRequested)
+            {
+                DiagnosticsReport.Send(options.Diagnostics, $"Root {resolved.Root}: cleanup of the cancelled open failed: {failure.Message}");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
             throw;
         }
 
+        lock (index.StateLock)
+        {
+            index._view.CompleteOpenLocked();
+        }
         return index;
     }
 }

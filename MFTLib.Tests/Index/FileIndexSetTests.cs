@@ -7,6 +7,51 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class FileIndexSetTests
 {
+    [TestMethod]
+    public async Task NestedSharedMembers_ReturnEachFileOnceUnderTheOuter()
+    {
+        using var fixture = new SharedScanFixture();
+        await using var volume = await fixture.OpenAsync(fixture.Volume);
+        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        var set = new FileIndexSet([source, volume]);
+
+        var matches = set.Search(new SearchQuery("*.txt", NameMatchMode.Glob));
+
+        Assert.HasCount(3, matches);
+        Assert.IsTrue(matches.All(entry => entry.Root == volume.Status.Root));
+        Assert.AreEqual(volume.Status.Root, set.Find(Path.Combine(fixture.SourcePath, "a.txt"))!.Value.Root);
+    }
+
+    [TestMethod]
+    public async Task NestedSharedMembers_OuterDisposed_InnerCovers()
+    {
+        using var fixture = new SharedScanFixture();
+        await using var cleanup = new IndexDisposalScope();
+        var volume = cleanup.Add(await fixture.OpenAsync(fixture.Volume));
+        var source = cleanup.Add(await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath)));
+        await volume.DisposeAsync();
+        var set = new FileIndexSet([source]);
+
+        Assert.HasCount(2, set.Search(new SearchQuery("*.txt", NameMatchMode.Glob)));
+        Assert.AreEqual(source.Status.Root, set.Find(Path.Combine(fixture.SourcePath, "a.txt"))!.Value.Root);
+    }
+
+    [TestMethod]
+    public async Task SharedMembers_SubtreeQuery_GoesToTheAnchorsMember()
+    {
+        using var fixture = new SharedScanFixture();
+        await using var volume = await fixture.OpenAsync(fixture.Volume);
+        await using var source = await fixture.OpenAsync(RootKey.FromDirectory(fixture.SourcePath));
+        var set = new FileIndexSet([volume, source]);
+        var anchor = source.Find(Path.Combine(fixture.SourcePath, "deeper"))!.Value;
+
+        var matches = set.Search(new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: anchor));
+
+        Assert.HasCount(1, matches);
+        Assert.AreEqual(source.Status.Root, matches[0].Root);
+        Assert.AreEqual("c.txt", matches[0].Name);
+    }
+
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationToken;

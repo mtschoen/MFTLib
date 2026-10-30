@@ -5,10 +5,10 @@ public sealed partial class FileIndex
     /// <summary>
     ///     One start of one root's watch, with its own identity: the object reference, plus
     ///     <see cref="Generation" /> for diagnostics. Every effect its pump has is conditioned on
-    ///     the instance still being its root's <see cref="RootRuntime.Current" />, so a retiring
+    ///     the instance still being its root's <see cref="VolumeScan.Current" />, so a retiring
     ///     pump never touches its successor's block or state.
     /// </summary>
-    sealed class WatchInstance
+    internal sealed class WatchInstance
     {
         readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;
@@ -44,10 +44,9 @@ public sealed partial class FileIndex
 
         public WatchInstanceState State = WatchInstanceState.Starting;
 
-        public bool SubscriberFaultAnnounced;
+        public HashSet<IndexView> SubscriberFaultAnnounced { get; } = [];
 
         /// <summary>Rethrown once by the stop that retires this instance.</summary>
-        public Exception? OutstandingFault;
 
         public WatchCatchUpSlot CatchUp { get; }
 

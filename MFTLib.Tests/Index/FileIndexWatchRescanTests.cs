@@ -142,7 +142,9 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
         await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
+        var publication = IndexPublication.ObserveNextAsync(harness.IndexFor('T'));
         var rescan = harness.IndexFor('T').RescanAsync(Token);
+        await publication;
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring pump to drain");
         applying.Release();
         await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);

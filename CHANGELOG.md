@@ -11,6 +11,8 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Added
 
+- Same-key MFT views share one volume scan, mapped block, cache owner lock, journal watch and recovery. Each view keeps its own root, query borrows, disposal, anchors and watch request. Concurrent rescans coalesce into one running and at most one pending production.
+- The Watch sample accepts `add-root <path>` while watching; Enter or end of input stops the attended command loop.
 - `FileIndex` in `MFTLib.Index` holds one root: `OpenAsync`, `Status` for that root, and the queries `Search`, `Enumerate`, `EnumerateRows`, `Find` and `Root`.
 - `FileIndexSet` answers `Search`, `Enumerate`, `EnumerateRows` and `Find` across several indexes, so an application that holds a volume, a walked folder and a dump together queries them as one.
 - `FileEntry` handles with `Name`, `Path`, `Size`, `LastWriteTime`, `Attributes`, `Parent`, `Children()` and `Open`, with `IsSizeKnown` and `IsLastWriteTimeKnown` for values a scan could not observe.
@@ -25,7 +27,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `Changed` raises a `FileChange` with kind, path, previous path and journal timestamp. `WatchFaulted` raises a `WatchFault` with its kind and `IsRecovering`. `WatchStateChanged` reports every watch state change with a per-volume version.
 - Root and apply faults recover automatically by rescanning the affected root.
 - Cache blocks store their root key in page 0 (block format 8); a walked directory root is cached under a hashed file name (`D` plus 16 hexadecimal digits, then the serial), an MFT block is named for its volume (`<letter>-<serial>`) whatever the directory view that owns it, and a block whose name is not the one its stored key derives is discarded and rescanned.
-- Persistent block cache: `FileIndexOptions.CacheMode`, `CacheDirectory` and `CacheTag`, plus `CacheDirectory.EnsureCreated`, `InspectCached` and `DeleteCached`. A per-block owner lock keeps two live indexes from sharing a cache block.
+- Persistent block cache: `FileIndexOptions.CacheMode`, `CacheDirectory` and `CacheTag`, plus `CacheDirectory.EnsureCreated`, `InspectCached` and `DeleteCached`. One owner lock protects each scan; different share keys or processes contend for the canonical slot.
 - `FileIndex.Status` reports the root's `RootState`, `RootFailure`, `RootBlockStatus` and `RootWatchStatus`. An MFT-only root the MFT cannot serve reports `RootFailureKind.MftUnavailable` with `RootStatus.MftUnavailable` giving the reason and a volume-specific library message; applications choose their own contextual wording.
 - `RootWatchStatus.CheckpointLoss` explains a rescan forced by the journal moving past a volume's position, with the journal size that would have retained it. `JournalCheckpointLoss.TryGetGrowthTarget`, `FileIndex.QueryUsnJournalSettings()` (the journal of the index's own root volume) and `BrokerSession.GrowUsnJournalAsync` support an explicit journal growth.
 - `FileIndexOptions.ScanProgress` and `Diagnostics` report scan progress and block-file deletions.
@@ -40,6 +42,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Changed
 
+- Directory-view Changed events are scoped by current or previous path, with view-bound entries; cross-view moves remain Renamed. Generation, row counts, exhaustion and checkpoint facts describe the shared volume block.
 - Targets .NET 10; 0.2 targeted .NET 8.
 - The MFT record size is detected at runtime instead of assumed to be 1024 bytes. A live volume accepts power-of-two sizes from 512 through 65536 bytes, and a saved dump accepts 1024 or 4096.
 - Elevation runs through `IElevationProvider`, reached by `ElevationUtilities.DefaultProvider`. `TryRunElevated` takes an argument list and a `TimeSpan`, and passes each argument separately.

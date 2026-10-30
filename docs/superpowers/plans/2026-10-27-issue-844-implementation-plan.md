@@ -109,84 +109,187 @@ Inputs the spec implies that are most likely to bite a user; each line names the
 
 ---
 
-# Slice 3: Capacity growth for MFT rescans and independent entry capacity
+# Slice 5: Volume scan sharing
 
-**Branch:** `feature/844-capacity-growth` from main after slice 1 merged (main at `b96f7daf` or later). One PR.
-Runs in parallel with slice 4. **First commit:** replace this plan file's "# Slice 3" section with this text and
-delete the completed "# Slice 1" and "# Slice 2" sections (slice 4 edits only its own section).
+**Branch:** `feature/844-volume-scan-sharing` from main after slice 4 (PR 849) merged. One PR, one implementer, its own
+worktree. **First commit (Task 5.1):** delete the completed "# Slice 3" and "# Slice 4" sections of this plan file and
+replace this "# Slice 5" section with this text.
 
-**Blockers for the orchestrator:** none.
+## Blockers for the orchestrator
 
-**Goal:** one capacity planner serves both producers. A rescan of a capacity-exhausted block doubles each region
-whose use reached its capacity (rows at `S`, entries at `E`, pool within 510 bytes of `P`) and keeps the volume plan
-for the rest; the MFT plan is computed where the volume geometry is known (client side), so the index sends the
-grown regions as a minimum. Entry capacity becomes a creation option, so an entry-only exhaustion (a rename-heavy
-watch) grows `E` alone. Enumeration's mid-walk growth doubles only the exhausted regions.
+1. **The pre-merge A/B gate needs a git-wizard build against slice 5's API.** The verification bar says the slice-6 A/B
+   second run must report warm client peak working set at or below 1,359 MB before this slice merges (spec section 8,
+   "A/B re-measurement"). The harness (`scripts/measure-retention-ab.ps1`) runs git-wizard discovery, and git-wizard
+   main does not compile against MFTLib after slices 2 and 4 (`RetainedFileNames` and `IndexedRoot` are deleted); the
+   migration is slice 6's pin-bump work. Decide one: (a) before this PR merges, a git-wizard measurement branch migrated
+   to slice 5's API (spec section 6 list) is built against this branch and the run is made; or (b) the owner agrees to
+   move the gate to slice 6. No task below depends on the answer; Task 5.12 Step 5 carries whichever you choose.
 
-**Public change:** none. Every added member is internal; no `*.approved.txt` file changes. The capacity-exhausted
-flag stays bit 2 and the block format stays version 8 (ruling "Capacity exhaustion names the state; rescan is the
-remedy" holds unchanged). No `api-decisions.md` ruling is added or superseded.
+No other blocker: the spec, rulings 1 to 16 and the slice 4 code agree on every point a task needs. The decisions below
+fill the places where the spec is silent.
 
-## Decisions this slice makes (spec silent or literal reading fails)
+## Goal
 
-1. **Which region is exhausted is derived from the header, not recorded.** Entries are exhausted when
-   `NameEntryCount >= NameEntryCapacity`. The pool is exhausted when `NamePoolCapacity - NamePoolUsed <= 510`:
-   an interning refusal of a name of at most 255 UTF-16 units (the NTFS and Linux limit) needs at most 510 bytes
-   plus one byte of UTF-16 alignment, so a refusal always leaves at most 510 bytes (Task 3.2 pins this). Rows are
-   exhausted when `RowCount >= SlotCapacity`, **or** when the flag is set and neither entries nor pool reached
-   capacity: a row refusal is the only refusal that leaves no count at capacity, because an MFT write at a record
-   index past `S` leaves `RowCount` below `S`. When a row refusal coincides with an entry or pool exhaustion the
-   rows keep the volume plan, which for MFT already covers every current record (the fresh volume query sizes `S`
-   from today's MFT record count).
-2. **Growth is gated by the flag**, as today: a block whose flag is clear asks for no minimum even when a region is
-   full, because nothing was refused.
-3. **The volume plan sets `E = S` and `P = pageAlign(max(1 MiB, 24 * S))` from the planned `S` before any minimum
-   applies.** A row-only minimum therefore raises `S` and leaves `E` and `P` at the volume plan ("the rest keep the
-   volume plan").
-4. **Estimate clamp:** both estimates clamp at `BlockLayout.MaximumEstimatedRowCount = 1717986917`, the largest
-   estimate whose `ComputeSlotCapacity` is `int.MaxValue - 1` (the `DoubleCapacity` clamp), so every planned block
-   is creatable. This replaces `MftBlockCapacity`'s `uint.MaxValue / 2` clamp (slice 1 lane report, open question 2)
-   and fixes the enumeration estimate's unchecked `topLevel + directories * topLevel`.
+All MFT views of one share key in one process attach to one `VolumeScan`: one block, one owner lock, one production
+(cold scan, warm adoption, rescan, recovery), one journal watch and pump, one set of catch-up and checkpoint-loss
+facts, one write gate. Each `FileIndex` is an `IndexView` with its own root row, borrows, disposal, watch request,
+events and anchors. A second index on the same volume no longer takes the private fallback; directory views receive
+only the changes inside them.
 
-## Shared files with slice 4 (parallel)
+## Public surface changes
 
-| File | Slice 3 change | Slice 4 change |
-| --- | --- | --- |
-| `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md` | replaces "# Slice 3", deletes slices 1 and 2 | replaces "# Slice 4" |
-| `MFTLib/Index/FileIndex.RootRuntime.Production.cs` | `PlanCapacities`, `RunMftProducerAsync` (request minimum), `CreateAndPopulateBlock`, `CreateEnumerationBlock` (entry capacity); `EnumerationBlockGrowth` moves out | `ProduceRootBlockCoreAsync` (selection, `MftUnavailable`), `Configuration.*` reads become the resolved root |
-| `MFTLib/Broker/Client/BrokerMftBlockProducer.cs` | copies `MinimumCapacities` onto the target | maps broker launch failures to `MftUnavailableException` |
-| `Benchmark/BenchmarkRunner.Index.cs` | `NameEntryCapacity` at the `BlockFileCreateOptions` site (line 129) | `IndexedRoot` construction (line 191) |
-| `MFTLib.Tests/Index/FileIndexMftRescanGrowthTests.cs` (new here) | opens MFT indexes through `IndexTreeFixture.Options(producer: ProducerKind.Mft)` | migrates every MFT open to `SyntheticVolumeFacts.Apply` |
-| `docs/index-format.md`, `CHANGELOG.md` | Capacity section; changelog line | file-name and cache sections; changelog lines |
+**None.** No `*.approved.txt` file changes, no `PublicMemberCallerTests` exemption is added or removed, and no
+test-package member is added (decision 9). Behavior changes on existing members, all already listed in spec section 1
+"Changed": `FileEntry` equality compares view, root block, row and sequence; `RootBlockStatus.Generation`,
+`LiveRowCount`, `IsCapacityExhausted` and `SkippedRecordCount` are facts of the shared block; `FileIndex.Changed`
+on a directory view reports only changes inside the view.
 
-**Merge order:** slice 3 merges first (smaller). Slice 4 rebases and migrates `FileIndexMftRescanGrowthTests` with the
-rest of its fixtures. If slice 4 lands first instead, this slice rebases and opens its MFT indexes with
-`SyntheticVolumeFacts.Apply(options with { Root = new VolumeKey('T'), Producer = ProducerSelection.MftOnly }, serial)`.
+**Rulings superseded** (Task 5.11, each rewritten in place with reason and revisit condition):
+"Block Generation is a per-root change version" (per volume block); "A subtree anchor belongs to the queried index's
+current root block" (per view); "A directory root on an NTFS volume is an MFT view of the volume block" (its `Changed`
+sentence and its revisit condition, which this slice meets); "Every MFT block is named for its volume" (its "until
+slice 5" reason sentence); "A retained FileEntry keeps only its own root block mapped" (the handle holds its view's
+`RootBlock`, which holds the shared `MappedBlock`); "A root watch's pump owns fault attribution" (its revisit
+condition, "one watch stream can represent several independently owned root runtimes", is now met); "FileEntry
+handles are bound to the row's sequence number" (the equality sentence); "One root per FileIndex, and FileIndexSet
+for multi-index queries" (its reentrancy paragraph's "indices share no state" and its reason's "every per-root
+runtime... was already independent"). **Added:** "Volume scan sharing".
+
+## Decisions this slice makes (spec silent)
+
+1. **What attaches.** A view attaches to a registered scan exactly when its resolved root is
+   `{ Producer: Mft, IsDump: false, MftUnavailable: null }` and its directory exists at open. Everything else gets a
+   private, unregistered `VolumeScan` with one view: walks (spec: never shared), dumps (no cache and no journal, so
+   sharing saves one parse; a dump requires null `Root`), an MftOnly root found ineligible at selection, and a root
+   Offline at open. A null `MftSource` is a key value like any other (file-wizard's cache-only host shares cached
+   blocks through it; orchestrator ruling 2 of slice 4 holds per scan).
+2. **Share key equality.** `MftIndexSource` by reference; `VolumeKey`; serial; cache directory as
+   `Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory))` compared `OrdinalIgnoreCase` on Windows and
+   `Ordinal` elsewhere, or null for `CacheMode.Disabled`; `CacheTag` exactly. `ExistingOnly` and `Persistent` opens of
+   one directory share a key.
+3. **Settle modes.** A settle (warm adoption, then cold scan when needed) runs on the scan under its lifecycle gate,
+   shared by every view awaiting it. It runs `Persistent` when any view joined to it writes (`CacheMode` other than
+   `ExistingOnly`), else `ExistingOnly`, and that mode drives today's mode-dependent rules (owner-lock `InUse`, leaving
+   rejected files in place, cache-only adoption of an unresumable checkpoint). An `ExistingOnly` view waits for the warm
+   verdict, never for a cold scan: when the settle proceeds to a cold scan, the view settles at once with a view-level
+   `CacheDeclined` (or `CacheIdentityMismatch` for a tag or shape rejection, or `InUse`), stays attached, and reads
+   `Failed` with no block until its own `RescanAsync` succeeds. A writing view that joins a non-writing settle waits for
+   it and, when it ended without a block, starts one writing settle (coalesced among writers).
+4. **A blockless scan re-settles for a new opener.** A view that attaches to a scan whose last settle ended `Failed`
+   runs (or joins) a new settle, as a fresh open retries today; already attached views report its outcome, since state
+   is the scan's.
+5. **Automatic fallback is per view.** When a settle ends with `RootFailureKind.MftUnavailable`, each Automatic view
+   detaches and settles a private walk (one retry, as slice 4); MftOnly views stay attached and read the scan's failure.
+6. **Fan-out of per-view options.** `Diagnostics` lines and `ScanProgress` samples of the scan go to every attached
+   view's sink (a delegate attached twice receives a line once); each progress sample is copied with the receiving
+   view's `Root`. The scan reads `TimeProvider`, `DirectoryWalk` and the internal `IndexHooks` of the view that created
+   it. Scan-level messages (production failures, journal errors) name the scan's block root (the volume key for a
+   registered scan); view-level messages (`Root()` refusal, MftOnly ineligibility, view-level declines) name the view's key.
+7. **Changed routing is by path containment.** A change reaches a view when its `Path` or its `PreviousPath` lies under
+   the view's matchable path, by `LookupEngine.TryMatchRootPrefix` with the view's `RootKind` (equal paths included);
+   a block-root view receives every change. This is "the row before or after the change" (spec section 2) computed from
+   the paths the mutator already built, and it is the matcher `Find` and `FileIndexSet` containment use (ruling 15).
+   Each routed change is re-minted onto the receiving view's `RootBlock` with the sequence number captured at apply
+   time. `Changed` reaches every attached view in scope, requested or not; `WatchStateChanged` reaches every attached
+   view (its `Status` changed); `WatchFaulted` for `Volume`, `Apply`, `Channel`, `Recovery`, `RescanRestart` and
+   `CatchUpLost` reaches every view holding a watch request at settlement (spec); `Subscriber` reaches only the view
+   whose handler threw, once per watch instance per view.
+8. **Outstanding faults are per view.** At a scan fault's settlement every requesting view records it as its own
+   outstanding fault; that view's stop returns it once as `Failed`. A consumer start that supersedes the faulted
+   instance clears every view's copy of that instance's fault. A stop that withdraws a request while other requests
+   remain returns at once without retiring the watch: `Failed` with its own outstanding fault when it holds one, else
+   `Succeeded`; "stop wins" applies to the stop that withdraws the last request.
+9. **Test isolation by an injectable registry.** `VolumeScanRegistry.Process` is the process registry;
+   `FileIndexOptions.ScanRegistry` (internal init, null means `Process`) lets a test class use its own instance, so
+   sharing tests run in parallel and count deterministically. A reference to `VolumeScanRegistry.Process` is a process
+   seam (`NativeSeamIsolationTests` enforces `[DoNotParallelize]`), and those classes check in cleanup that their keys
+   left no live scan. Ordinary tests stay isolated through their own source instances, unique serials
+   (`TestVolumeSerial.GetNext()`) and temporary cache directories. This replaces the spec's "reset it in cleanup" with
+   a cleanup check, because a reset of live scans would unmap blocks other code still reads; Task 5.11 writes the rule
+   into `docs/test-isolation.md`.
+10. **Coalesced rescans.** At most one rescan of a scan runs and at most one is pending. A `RescanAsync` call joins the
+    pending rescan, or creates it; the pending rescan stops accepting joiners when it takes the lifecycle gate, so a
+    caller never receives a result produced from a scan that started before its call. A caller's cancellation or its
+    view's disposal ends only its own wait; the production is cancelled when its last joined caller has gone or the scan
+    closes. Automatic recovery stays one ticketed recovery per scan and does not join manual rescans; a manual commit
+    clears the recovery ticket as today.
+11. **Offline at open stays terminal; mid-life Offline follows the resolved path.** A directory missing at open
+    settles `Offline` on a private scan and never attaches (spec "as today"; ruling "an Offline root is never
+    rescanned"). A view whose directory leaves the block later reads `Offline` and returns to `Ready` when the journal
+    brings a directory back at its resolved final path; the link is not re-resolved (ruling 16: "the result is read once
+    per open: a re-targeted link needs a reopen").
+12. **Reopen during the last detach owns the canonical slot.** The registry keeps a closing scan's `Closed` task until
+    it completes, and a new scan for the same key awaits it before taking the owner lock, so a reopen that races the
+    last disposal never takes the private fallback.
+
+## Shared-state invariants (each is stated in a comment where its state lives)
+
+- **I1 Registry** (`VolumeScanRegistry`): a key maps to a live scan exactly while at least one view is attached; the
+  view count and the key's removal change in one registry-lock section. The registry lock is never held across an
+  `await` or while acquiring a gate. Lock order: registry lock, then a scan's state lock; never the reverse.
+- **I2 Closing** (`VolumeScanRegistry`, `VolumeScan.Closed`): a scan for a key starts its settle only after the
+  previous scan of that key has released its owner lock.
+- **I3 Views list** (`VolumeScan._views`): changes only under the scan's state lock; an attach to a published block
+  also holds the write gate, so every batch is either applied before the new view's binding is refreshed or routed to
+  that view.
+- **I4 Publication** (`PublishRescannedBlockAsync`, `AdoptOpenedRoot`): one `RootBlock` per attached view is built and
+  its binding refreshed under the write gate, outside the state lock; the scan block and every view's block are then
+  swapped in one state-lock section, so no reader sees two views on different blocks of one scan.
+- **I5 Borrows** (`RootBlock.TryTakeBorrow`): a borrow takes the view's `ViewBorrows` first and the `MappedBlock`'s
+  release state second, and returns them in reverse. Closing a view refuses new borrows on every `RootBlock` of that
+  view and waits for its own outstanding borrows only.
+- **I6 Mapping** (`MappedBlock`): a mapped block is released by scan teardown (current block), by retirement draining
+  or by its finalizer once no `RootBlock` reaches it; never by a view's disposal.
+- **I7 Watch requests** (`VolumeScan._requesters`, `IndexView.WatchRequested`): the scan's watch is wanted exactly
+  while `_requesters` is non-empty; a view's flag and its membership change together under the state lock.
+- **I8 Faults** (`RecordPumpFault`, `AnnounceSubscriberFault`, rescan and recovery fault sites): a scan fault is copied
+  to each requesting view under the state lock at settlement and delivered after the lock is released; a subscriber
+  fault stays on its view.
+- **I9 Delivery** (`IndexView.Deliveries`): a view's handlers never start after its `DisposeAsync` has closed its
+  delivery gate, and `DisposeAsync` waits for a delivery already inside it.
+- **I10 Rescans** (`VolumeScan._pendingRescan`): at most one running and one pending; joiners are counted under the
+  state lock; the pending request is detached from `_pendingRescan` in the same state-lock section that marks it started.
+- **I11 Settles** (`VolumeScan._settle`): at most one settle runs; its mode is fixed when it takes the lifecycle gate
+  (decision 3).
+- **I12 Teardown** (`VolumeScan.CloseAsync`): cancel the scan's closing token, stop and drain the watch and every
+  recovery, take the lifecycle gate then the write gate, drain and release retired then current mapped blocks, release
+  the owner lock, then complete `Closed`.
 
 ## Review Focus
 
-1. **A rename-heavy watch reaches `E` with rows and pool to spare:** the rescan doubles `E` only and keeps `S` and
-   `P` at the volume plan. Task 3.1 (`GrowthMinimum`), Task 3.4 (`Rescan_AfterOneRegionIsExhausted_...` "Entries").
-2. **A journal create for a record number past `S`:** flag set, `RowCount < S`; the rescan doubles rows. Task 3.1
-   (`GrowthMinimum_FlagWithNoRegionAtCapacity_DoublesRows`), Task 3.4 (`Rescan_AfterARecordIndexBeyondTheSlots_...`).
-3. **A pool refusal leaves just over the margin:** a refused name never leaves more than 510 bytes, so the pool is
-   always recognised as the exhausted region. Task 3.2 (`PoolRefusal_...`).
-4. **A huge MFT record count or a huge enumeration estimate:** planning never throws and never plans an
-   uncreatable block. Task 3.1.
-5. **The process restarted between exhaustion and rescan:** a warm-started exhausted block still grows on rescan,
-   because the counts and flag are in the header. Task 3.4 (`Rescan_OfAWarmStartedExhaustedBlock_...`).
+1. **git-wizard adds a search root while the volume is Live** (spec section 2 "Open, block current and watch Live"):
+   the new view is `Ready` at once, sees every row a concurrent batch wrote, and receives every later change under it
+   exactly once. Task 5.4 (`AttachDuringLive_...`), Task 5.6 (`Route_ABatchConcurrentWithAttach_...`).
+2. **A consumer disposes one of two indexes while a long query of the other runs:** the disposal returns without
+   waiting for the other view's borrow, and the other view keeps answering. Task 5.5
+   (`Dispose_NotLast_DoesNotWaitForAnotherViewsBorrow`).
+3. **A move between two watched roots on one drive (`D:\src\a.txt` to `D:\work\a.txt`):** both views receive one
+   `Renamed`, and a `FileIndexSet` over both lists the file once, under its new root. Task 5.6
+   (`Route_AMoveAcrossViews_ReachesBothAsRenamed`), Task 5.8.
+4. **Repeated `RescanAsync` calls (a UI button pressed several times):** at most two productions run, and every call
+   gets a result. Task 5.7 (`Rescan_ThreeCallsDuringOneProduction_RunAtMostOneMore`).
+5. **Dispose then reopen at once, or a reopen racing the last disposal:** the reopen owns the canonical cache slot,
+   never `PrivateFallback`. Task 5.5 (`Reopen_RacingTheLastDetach_OwnsTheCanonicalSlot`).
 
 ## File map
 
 | File | Responsibility |
 | --- | --- |
-| Create `MFTLib/Index/BlockCapacities.cs` | The three capacities as one value; elementwise `AtLeast` |
-| Modify `MFTLib/Index/BlockLayout.cs` | `PlanCapacities`, `GrowthMinimum`, the estimate clamp and the pool margin constant |
-| Modify `MFTLib/Index/BlockFileCreateOptions.cs`, `BlockFile.cs` (`Create`, `InitialHeader`), `NamedBlockSection.cs:33` | Entry capacity is a creation option |
-| Modify `MFTLib/Sources/MftBlockCapacity.cs`, `MFTLib/Sources/MftBlockProducerPipeline.cs`, `MFTLib/Index/MftBlockProducer.cs`, `MFTLib/Broker/Client/BlockScanTarget.cs`, `BrokerMftBlockProducer.cs`, `BrokerProcess.Scan.cs` | The minimum travels to client-side planning |
-| Modify `MFTLib/Index/EnumerationProducer.cs` | Overflow-free, clamped estimate |
-| Modify `MFTLib/Index/FileIndex.RootRuntime.Production.cs`; create `MFTLib/Index/FileIndex.RootRuntime.EnumerationGrowth.cs` | Root runtime plans both producers; mid-walk growth per region |
-| Modify `MFTLibTestExtensions/SyntheticBlock.cs`, `RecordingBlockSectionWriter.cs`, `MFTLib.Tests/TestSupport/TestBlocks.cs`, `MFTLib.Tests/Index/SyntheticBlockBuilder.cs`, `MFTLib.Tests/Index/BlockRootKeyStorageTests.cs`, `Benchmark/BenchmarkRunner.Index.cs`, `Benchmark/BenchmarkRunner.EnumerationWalk.cs` | Set the new required option |
+| Create `MFTLib/Index/MappedBlock.cs` | One mapped block file, its release state, reported cycles and finalizer, shared by every view |
+| Create `MFTLib/Index/ViewBorrows.cs` | One view's borrow counter, closed by its disposal |
+| Modify `MFTLib/Index/RootBlock.cs`, `SnapshotBorrow.cs`, `FileEntry.cs`, `FileEntry.Navigation.cs`, `SubtreeAnchor.cs` | `RootBlock` is one view's handle on a `MappedBlock` |
+| Rename `MFTLib/Index/FileIndex.RootRuntime*.cs` to `FileIndex.VolumeScan*.cs` (`git mv`, 27 files) | The shared owner |
+| Create `MFTLib/Index/FileIndex.IndexView.cs`, `FileIndex.IndexView.Delivery.cs`, `FileIndex.IndexView.Lifecycle.cs` | The per-index view |
+| Create `MFTLib/Index/FileIndex.VolumeScan.Views.cs`, `FileIndex.VolumeScan.Settle.cs`, `FileIndex.VolumeScan.Routing.cs`, `FileIndex.VolumeScan.RescanCoalescing.cs`, `FileIndex.VolumeScan.Teardown.cs` | Attach and detach, shared settle, change routing, coalescing, last-detach teardown |
+| Create `MFTLib/Index/VolumeScanKey.cs`, `VolumeScanRegistry.cs` | The share key and the process registry |
+| Modify `MFTLib/Index/FileIndex.cs`, `FileIndex.Disposal.cs`, `FileIndex.Queries.cs`, `FileIndex.Watch.cs`, `FileIndex.Roots.cs`, `FileIndex.Scanning.cs`, `FileIndex.Hooks.cs`, `FileIndex.CatchUpWait.cs`, `FileIndexOptions.cs` | `FileIndex` forwards to its view |
+| Modify `MFTLib.Tests/NativeSeamIsolationTests.cs` | `VolumeScanRegistry.Process` is a process seam |
+| Create `MFTLib.Tests/Index/MappedBlockTests.cs`, `FileIndexSharedOpenTests.cs`, `FileIndexSharedDisposalTests.cs`, `FileIndexSharedWatchTests.cs`, `FileIndexSharedRoutingTests.cs`, `FileIndexSharedRescanTests.cs`, `FileIndexSharedViewTests.cs`, `MFTLib.Tests/TestSupport/SharedScanFixture.cs` | Sharing tests |
+| Modify `SampleProgram.Watch/SampleHost.WatchDrives.cs`; create `SampleProgram.Watch/SampleHost.AddRoot.cs` | `add-root <path>` |
+| Modify docs (Task 5.11) | Contracts and rulings |
+
+Files over 500 lines: none planned. `FileIndex.VolumeScan.WatchStart.cs` (275 lines) and `.WatchPump.cs` (255) grow
+by the per-view loops; split a file that crosses 500 rather than adding a note.
 
 **Commands used below:**
 
@@ -196,863 +299,596 @@ dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64
 dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "<filter>"
 ```
 
-### Task 3.1: The capacity planner
+**`SharedScanFixture`** (Task 5.4, used by Tasks 5.4 to 5.8): an `IndexTreeFixture` subclass whose tree holds real
+directories `src`, `src\deeper` and `work`; a private `VolumeScanRegistry` instance; one shared
+`SyntheticIndexSource.Create(producer, watches)` whose `SyntheticMftProducer` counts its calls (`ProductionCount`)
+and can be gated on a `TestGate` (`HoldProduction()`); rows 5 (root), 30 `src`, 31 `src\a.txt`, 34 `src\deeper`,
+35 `src\deeper\c.txt`, 32 `work`, 33 `work\b.txt`; volume T mapped to the tree root through
+`SyntheticVolumeFacts.Apply(..., volume: 'T', volumeRootDirectory: TreeRoot)` with a unique serial;
+`Options(RootKey root, CacheMode? mode = null, CacheTag tag = default)`; `OpenAsync(root, ...)`; `Volume`, `Source`,
+`Work` paths. Every option set carries `ScanRegistry = Registry`.
+
+---
+
+### Task 5.1: Plan bookkeeping
+
+**Files:** modify `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md`.
+
+- [x] **Step 1:** delete the "# Slice 3" and "# Slice 4" sections (both merged) and replace "# Slice 5" with this text.
+  Leave the header sections, "# Slice 6" and "Execution notes" unchanged.
+- [x] **Step 2:** `git diff --check`; `LC_ALL=C.UTF-8 grep -cP '\x{2014}' docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md`
+  prints 0; `aislop scan --staged` 100.
+- [x] **Step 3: Commit** `docs: expand slice 5 of the issue 844 plan`.
+
+### Task 5.2: A mapped block shared by per-view root blocks
+
+Behavior-preserving: every index still has one view, so nothing outside the new tests observes the split.
 
 **Files:**
-- Create: `MFTLib/Index/BlockCapacities.cs`
-- Modify: `MFTLib/Index/BlockLayout.cs`, `MFTLib/Sources/MftBlockCapacity.cs` (delete the local
-  `MaximumEstimatedRowCount`; clamp with the layout's), `MFTLib/Index/EnumerationProducer.cs:54-77`
-- Test: `MFTLib.Tests/Index/BlockLayoutTests.cs`, `MFTLib.Tests/MftBlockCapacityTests.cs`,
-  `MFTLib.Tests/Index/EnumerationProducerTests.cs`
+- Create: `MFTLib/Index/MappedBlock.cs`, `MFTLib/Index/ViewBorrows.cs`
+- Modify: `MFTLib/Index/RootBlock.cs` (finalizer moves out), `SnapshotBorrow.cs:16,43`, `FileEntry.cs` (rebinding
+  factory, equality XML), `FileEntry.Navigation.cs:64-75` (`Children` borrows through the root block),
+  `SubtreeAnchor.cs` (`ForeignOrDisposed` message), `FileIndex.RootRuntime.Disposal.cs` (`_retiredBlocks` holds
+  `MappedBlock.ReleaseState`, unchanged type)
+- Test: create `MFTLib.Tests/Index/MappedBlockTests.cs`; extend `MFTLib.Tests/Index/FileEntryDisposalTests.cs`
 
 **Interfaces:**
-- Produces: `readonly record struct BlockCapacities(uint SlotCapacity, uint NameEntryCapacity, uint NamePoolCapacity)`
-  with `BlockCapacities AtLeast(BlockCapacities minimum)` (elementwise `Math.Max`). `default` means no minimum.
-- Produces in `BlockLayout`: `internal const uint MaximumEstimatedRowCount = 1717986917;`
-  `internal const uint NamePoolExhaustionMarginBytes = 510;`
-  `internal static BlockCapacities PlanCapacities(uint estimatedRowCount, BlockCapacities minimum)`: the volume plan
-  `S = ComputeSlotCapacity(Math.Min(estimatedRowCount, MaximumEstimatedRowCount))`, `E = S`,
-  `P = ComputeNamePoolCapacity(S)`, then `.AtLeast(minimum)`.
-  `internal static BlockCapacities GrowthMinimum(in BlockHeader header)`: `default` unless
-  `header.IsCapacityExhausted`; otherwise each exhausted region (decision 1) is `DoubleCapacity(S)`,
-  `DoubleCapacity(E)` or `DoubleNamePoolCapacity(P)` and every other region is 0.
-- Produces in `EnumerationProducer`: `internal static uint EstimateFromCounts(uint topLevel, uint directories)`
-  (`ulong` arithmetic, at least `MinimumEstimatedRowCount`, at most `BlockLayout.MaximumEstimatedRowCount`);
-  `EstimateRowCount(string)` counts and calls it.
+- `internal sealed class MappedBlock(BlockFile block)`: `BlockFile Block`, `RootBlockRelease ReleaseState`,
+  `ProducerKind ProducerKind`, `ReportedReasonCycles ReportedCycles`, `bool IsReleased => ReleaseState.IsReleaseStarted`;
+  the finalizer and its `RCS1075` suppression move here verbatim from `RootBlock`. Invariant I6 in its class comment.
+- `internal sealed class ViewBorrows`: `bool TryTake()` (false once closed; counted under a `Lock`), `void Return()`,
+  `bool IsClosed` (volatile), `Task CloseAndDrainAsync()` (closes, completes when the count reaches zero,
+  continuations asynchronous), `int OutstandingCount` (read under the lock, for tests).
+- `RootBlock`: keep `RootBlock(RootKey root, BlockFile block, string? rootDirectoryPath = null, MftIndexSource?
+  mftSource = null, ViewRoot? view = null)` (a block-root handle owning a fresh `MappedBlock` and no `ViewBorrows`; the
+  59 test call sites and the scan's own handle use it) and add `RootBlock(RootKey root, MappedBlock mapped, ViewBorrows
+  viewBorrows, string? rootDirectoryPath, MftIndexSource? mftSource, ViewRoot? view)`. `MappedBlock Mapped`;
+  `Block`, `ReleaseState`, `ProducerKind`, `ReportedCycles` forward to `Mapped`; `IsReleased => Mapped.IsReleased ||
+  _viewBorrows is { IsClosed: true }`; `bool TryTakeBorrow()` and `void ReturnBorrow()` per invariant I5.
+- `SnapshotBorrow` calls `RootBlock.TryTakeBorrow`/`ReturnBorrow`; `FileEntry.Children` borrows through
+  `SnapshotBorrow`, which it already does.
+- `internal FileEntry FileEntry.WithRootBlock(RootBlock rootBlock)`: same row index and sequence number, another
+  handle; used by routing (Task 5.6).
+- `SubtreeAnchor.ForeignOrDisposed` text: "...it came from another index, another view of the same volume, or a block
+  a rescan replaced."
 
-- [x] **Step 1: Write the failing tests** (`BlockLayoutTests`; build headers as `default(BlockHeader)` with the fields set)
+- [x] **Step 1: Write the failing tests** (`MappedBlockTests`; two view handles over one `MappedBlock` built from
+  `TestBlocks`, each with its own `ViewBorrows`)
 
 ```csharp
-public void PlanCapacities_WithoutAMinimum_IsTheVolumePlan()
-// PlanCapacities(1000000, default) == new BlockCapacities(1250000, 1250000, 30003200)
-[DataRow(4000000u, 0u, 0u, 4000000u, 1250000u, 30003200u)]
-[DataRow(0u, 2500000u, 0u, 1250000u, 2500000u, 30003200u)]
-[DataRow(0u, 0u, 60006400u, 1250000u, 1250000u, 60006400u)]
-[DataRow(1000u, 1000u, 4096u, 1250000u, 1250000u, 30003200u)]   // a minimum below the plan changes nothing
-public void PlanCapacities_AMinimumRaisesOnlyItsRegion(uint minimumSlots, uint minimumEntries, uint minimumPool,
-    uint slots, uint entries, uint pool)                            // estimate 1000000 in every row
-public void PlanCapacities_AHugeEstimateClampsToACreatableSlotCapacity()
-// PlanCapacities(uint.MaxValue, default).SlotCapacity == int.MaxValue - 1; NamePoolCapacity == 0x7FFFF000
-public void GrowthMinimum_WithoutTheFlag_IsNone()                   // RowCount == S, flag clear -> default
-[DataRow("Rows")] [DataRow("Entries")] [DataRow("Pool")]
-public void GrowthMinimum_DoublesOnlyTheRegionAtCapacity(string region)
-// S = E = 64, P = 4096, flag set; Rows: RowCount 64 -> (128, 0, 0); Entries: NameEntryCount 64 -> (0, 128, 0);
-// Pool: NamePoolUsed 3586 (510 left) -> (0, 0, 8192)
-public void GrowthMinimum_PoolWithMoreThanTheMarginLeft_IsNotExhausted()   // 511 left, entries full -> (0, 128, 0)
-public void GrowthMinimum_FlagWithNoRegionAtCapacity_DoublesRows()         // RowCount 6 of 64 -> (128, 0, 0)
-public void GrowthMinimum_EntriesAndPoolTogether_DoublesBoth()             // -> (0, 128, 8192)
-public void GrowthMinimum_AtTheClamp_ReturnsTheClampedValue()              // S = int.MaxValue - 1 full -> SlotCapacity int.MaxValue - 1
+public void TwoViewHandles_ShareOneMapping()             // AreSame(first.Block, second.Block); first.Equals is reference
+public void ClosingOneView_RefusesItsBorrowsOnly()      // CloseAndDrainAsync on A: A.TryTakeBorrow false, B true
+public async Task CloseAndDrain_WaitsForItsOwnBorrowsOnly()
+// A borrow on A and one on B; A's drain task incomplete until A's borrow returns; B's borrow still out afterwards
+public void ClosedView_EntryThrowsObjectDisposed_WhileTheOtherViewReads()
+// FileEntry.Create(A, 31).Name throws ObjectDisposedException after closing A; FileEntry.Create(B, 31).Name reads
+public void EntriesOfTwoViews_OfOneRow_AreNotEqual()     // same row and sequence, different handles: not Equal
+public void WithRootBlock_KeepsTheCapturedSequence()      // a row reused after minting: the rebound entry reads IsDeleted
+public void Anchor_FromAnotherViewOfTheBlock_IsRejected() // SubtreeAnchor.Resolve(B, query anchored on A) throws ArgumentException
+public void ReleasingTheMapping_ReleasesEveryView()       // Mapped.ReleaseState.ReleaseUnborrowed: A and B IsReleased
 ```
 
-  In `MftBlockCapacityTests`, change `EstimateRowCount_RecordCountBeyondThirtyTwoBits_ClampsBelowTheSlotHeadroom` to
-  expect `1717986917` and `Plan_RecordCountBeyondThirtyTwoBits_SurvivesTheSlotCapacityHeadroom` to expect slot capacity
-  `int.MaxValue - 1`. In `EnumerationProducerTests` add
-  `EstimateFromCounts_ProductBeyondThirtyTwoBits_ClampsToTheLayoutMaximum` (`EstimateFromCounts(100000, 100000)` ==
-  `1717986917`) and `EstimateFromCounts_SmallTree_IsTheMinimum`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MappedBlockTests"` (compile errors).
+- [x] **Step 3: Implement** the Interfaces.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileEntry|FullyQualifiedName~SubtreeAnchor|FullyQualifiedName~Disposal|FullyQualifiedName~RootBlock`, then Smoke (`--filter TestCategory=Smoke`).
+- [x] **Step 5: Commit** `refactor: share one mapped block between per-view root blocks`.
 
-- [x] **Step 2: Run, expect FAIL** (members missing):
-  `--filter "FullyQualifiedName~BlockLayoutTests|FullyQualifiedName~MftBlockCapacityTests|FullyQualifiedName~EnumerationProducerTests"`
-- [x] **Step 3: Implement** the Interfaces. `MftBlockCapacity.Plan` and the root runtime keep their current
-  signatures in this task (Tasks 3.3 and 3.4 switch them to `PlanCapacities`).
-- [x] **Step 4: Run, expect PASS** with the same filter.
-- [x] **Step 5: Commit** `feat: plan block capacities per region with a growth minimum` (with this plan file edit).
+### Task 5.3: `RootRuntime` splits into `VolumeScan` and `IndexView`
 
-### Task 3.2: Entry capacity is a creation option
+Use the `effective-refactor` skill: move by compiler errors, no behavior change. Every scan still has exactly one view
+and no registry exists yet, so the full suite is the test. All later tasks build on the names fixed here.
 
 **Files:**
-- Modify: `MFTLib/Index/BlockFileCreateOptions.cs`, `MFTLib/Index/BlockFile.cs:199,392-413`,
-  `MFTLib/Index/NamedBlockSection.cs:33`, and every creation site the compiler lists once the option is `required`:
-  `MftBlockCapacity.CreateOptions`, `FileIndex.RootRuntime.Production.cs` (`CreateEnumerationBlock`),
-  `Benchmark/BenchmarkRunner.Index.cs:129`, `Benchmark/BenchmarkRunner.EnumerationWalk.cs:160`,
-  `MFTLibTestExtensions/SyntheticBlock.cs:126`, `MFTLibTestExtensions/RecordingBlockSectionWriter.cs`,
-  `MFTLib.Tests/TestSupport/TestBlocks.cs` (add `uint? nameEntryCapacity = null` to `Create` and `Options`, null
-  meaning `slotCapacity`), `MFTLib.Tests/Index/SyntheticBlockBuilder.cs`, `MFTLib.Tests/Index/BlockRootKeyStorageTests.cs`
-- Test: `MFTLib.Tests/Index/BlockFileTests.cs`, `MFTLib.Tests/Index/NamedBlockSectionLayoutTests.cs`,
-  `MFTLib.Tests/Index/NamePoolTests.cs`
+- Rename: `git mv MFTLib/Index/FileIndex.RootRuntime.cs MFTLib/Index/FileIndex.VolumeScan.cs`, and the same for
+  every `FileIndex.RootRuntime.*.cs`
+- Create: `MFTLib/Index/FileIndex.IndexView.cs`, `FileIndex.IndexView.Delivery.cs` (from
+  `FileIndex.RootRuntime.Notifications.cs`'s raise methods), `FileIndex.VolumeScan.Views.cs`
+- Modify: `MFTLib/Index/FileIndex.cs`, `FileIndex.Disposal.cs`, `FileIndex.Queries.cs`, `FileIndex.Watch.cs`,
+  `FileIndex.Roots.cs`, `FileIndex.Scanning.cs`, `FileIndex.Hooks.cs`, `FileIndex.CatchUpWait.cs`, `FileIndex.Events.cs`;
+  `docs/architecture.md:18` and `docs/watch-lifetime.md:75,120,155` only where the type name appears (full doc pass in
+  Task 5.11)
 
 **Interfaces:**
-- Produces: `BlockFileCreateOptions.NameEntryCapacity : required uint` (XML: "Allocatable name entries, independent of
-  `SlotCapacity`; use `BlockLayout.PlanCapacities`"); the class summary's "Capacities are final: a block never grows"
-  stays true and gains "a rescan or a walk replaces it with a larger block".
-- `InitialHeader` sets `NameEntryCapacity = options.NameEntryCapacity`,
-  `BucketCount = ComputeBucketCount(options.NameEntryCapacity)`, and the bucket and pool offsets with `E`.
-  `BlockFile.Create` and `NamedBlockSection.Create` size the file with
-  `TotalBlockBytes(options.SlotCapacity, options.NameEntryCapacity, options.NamePoolCapacity)`.
-- Every production creation site passes `E = S` until Tasks 3.3 and 3.4 pass the planner's value.
+- `internal sealed partial class FileIndex.VolumeScan(VolumeScanCreation creation)`, nested in `FileIndex` as
+  `RootRuntime` is today. `internal sealed record VolumeScanCreation(ResolvedRoot Resolved, FileIndexOptions Options,
+  string CacheDirectoryPath, IndexHooks Hooks)`, taken from the creating view (decision 6).
+  - `Lock StateLock { get; } = new()`: the scan's state lock, innermost, never held across an `await`. It replaces
+    `FileIndex._stateLock`; `FileIndex` reads it as `StateLock => _view.Scan.StateLock`.
+  - `CancellationTokenSource _closing`, `CancellationToken ClosingToken`, `bool IsClosing`, and
+    `void ThrowIfClosing(CancellationToken)` replace `Index.DisposalToken`, `Index._disposed` and
+    `Index.ThrowIfCancelledByDisposal` inside scan code. Production, pumps, recoveries and restarts observe the closing
+    token; a caller-facing wait links the caller's token with its view's disposal token (Task 5.4 and Task 5.7 rely on
+    this split).
+  - `RootBlock? Block` is the scan's own block-root handle (block-root `RootBlock` ctor over the current
+    `MappedBlock`, key `Resolved.BlockRoot`); the mutator, `BuildPath` for changes and warm-start checks use it.
+  - `readonly List<IndexView> _views` (invariant I3) with `void AttachFirstView(IndexView view)` (this task: called once,
+    from the open) and `IReadOnlyList<IndexView> ViewsLocked()`.
+  - Everything else `RootRuntime` owns stays here unchanged in this task, including `_watchRequested`, the watch
+    instances, faults and checkpoint facts.
+- `internal sealed partial class FileIndex.IndexView(FileIndex index, ResolvedRoot resolved)`:
+  `ResolvedRoot Resolved` (moved from the runtime, with `Root`, `Kind`, `RootDirectory`, `MatchableRootDirectoryPath`
+  and the open-time `AsWalk` swap); `VolumeScan Scan` (assigned only during `OpenAsync`, before the index is returned;
+  say so in its comment); `RootBlock? Block` (this view's handle on the scan's current `MappedBlock`, built through the
+  view ctor of Task 5.2 with `Borrows` and this view's `ViewRoot`); `ViewBorrows Borrows`; `bool IsDisposed`
+  (written under `Scan.StateLock`); `CancellationToken DisposalToken` (the index's); the delivery state moved from
+  `Notifications.cs`: `DeliveryLock`, `FaultDeliveryLock`, `_pendingWatchStates`, `ContendedWatchStateDeliveries`.
+- `IndexView.Delivery`: `void QueueWatchStateLocked(WatchStateChange change)`, `void RaiseWatchStateChanged()`,
+  `void RaiseWatchFaulted(WatchFault fault)`, `void RaiseChanged(IReadOnlyList<FileChange> changes)` (bodies moved; they
+  read `Index.ChangedSubscribers` and the other two events). The scan's `NoteWatchStateLocked` queues one change on
+  every view in `_views` built with `DescribeWatchLocked(view)`; the scan's raise sites call a `ForEachView` helper that
+  snapshots `_views` under the state lock and raises outside it.
+- `BuildRootBlock` returns the scan handle and, per view, `IndexView.BindBlock(MappedBlock mapped)` builds and
+  refreshes the view's handle (invariant I4: under the write gate, outside the state lock); `AdoptOpenedRoot` and
+  `PublishRescannedBlockAsync` set `Block` on the scan and every view in one state-lock section.
+- `DescribeLocked(IndexView view)` reads the view's handle for presence (`View.IsPresent`) and the view's `Resolved`
+  for `Producer` and `MftUnavailable`; scan facts unchanged.
+- `FileIndex`: `readonly IndexView _view`; every member that read `_runtime` reads `_view` or `_view.Scan`;
+  `BorrowBlock` lends `_view.Block`; `DisposeAsync` runs today's sequence against the view and its (only) scan.
+- `IndexHooks` stays one class: `RootsReadBeforeLock`, `ReaderAdmitted` and `DisposedFlagSet` are read through the
+  view's index; every other hook through `VolumeScan.Hooks` (the creating view's).
+
+- [x] **Step 1: Rename and move** by compiler errors. `grep -rn "RootRuntime" --include=*.cs MFTLib MFTLib.Tests MFTLibTestExtensions`
+  returns nothing (test helpers that named it in strings or comments follow).
+- [x] **Step 2: Build and run the full suite**: `.\scripts\build-windows.ps1 -NoRestore`, then the full suite.
+  Expected: 0 failed, the same pass count as main.
+- [x] **Step 3: Commit** `refactor: split the root runtime into a volume scan and an index view`.
+
+### Task 5.4: The registry and shared opens
+
+**Files:**
+- Create: `MFTLib/Index/VolumeScanKey.cs`, `MFTLib/Index/VolumeScanRegistry.cs`, `MFTLib/Index/FileIndex.VolumeScan.Settle.cs`,
+  `MFTLib.Tests/TestSupport/SharedScanFixture.cs`
+- Modify: `MFTLib/Index/FileIndexOptions.cs` (internal `ScanRegistry`), `FileIndex.cs` (`OpenWithHooksAsync`),
+  `FileIndex.Scanning.cs`, `FileIndex.VolumeScan.Open.cs` (`AddRootAsync`, `SettleResolvedRootAsync`,
+  `TakeFallbackRequest`, `RecordFailedRoot`), `FileIndex.VolumeScan.CacheOwnership.cs:14-30` (mode from the settle),
+  `FileIndex.VolumeScan.WarmStart.cs:122,158` (mode from the settle), `FileIndex.VolumeScan.Views.cs` (attach, detach),
+  `FileIndex.VolumeScan.ScanProgress.cs` and every `DiagnosticsReport.Send(Options.Diagnostics, ...)` site in scan code
+  (fan-out), `FileIndex.VolumeScan.Status.cs` (view-level failure), `FileIndex.Disposal.cs` (detach; teardown only when last)
+- Test: create `MFTLib.Tests/Index/FileIndexSharedOpenTests.cs`; triage the suite (Step 5)
+
+**Interfaces:**
+- `internal readonly record struct VolumeScanKey(MftIndexSource? Source, VolumeKey Volume, uint VolumeSerial,
+  string? CacheDirectory, CacheTag CacheTag)` with `Equals`/`GetHashCode` per decision 2 (`RuntimeHelpers.GetHashCode`
+  for the source). `static VolumeScanKey? For(ResolvedRoot resolved, FileIndexOptions options, string cacheDirectoryPath)`:
+  null when decision 1 gives a private scan (the directory-exists check stays in the open, before this call).
+- `internal sealed class VolumeScanRegistry` (invariants I1 and I2 in its class comment):
+  - `internal static VolumeScanRegistry Process { get; } = new();`
+  - `internal FileIndex.VolumeScan Attach(VolumeScanKey key, Func<Task, FileIndex.VolumeScan> create)`: under the
+    registry lock, returns the live scan and increments its view count, or calls `create(previousClosed)` (the closing
+    scan's `Closed`, or a completed task) and registers it with count 1.
+  - `internal bool Detach(VolumeScanKey key, FileIndex.VolumeScan scan)`: decrements; at zero removes the key, records
+    `scan.Closed` as the key's closing task (removed by a continuation when it completes, only if still the same task)
+    and returns true.
+  - `internal int LiveScanCount`, `internal bool IsLive(VolumeScanKey key)` (tests).
+- `FileIndexOptions`: `internal VolumeScanRegistry? ScanRegistry { get; init; }`.
+- `VolumeScan` gains `VolumeScanKey? Key` (null for a private scan), `Task Closed`, `Task PreviousClosed` (awaited at
+  the top of the first settle, before `ResolveCanonicalOwnership`).
+- Settle (`FileIndex.VolumeScan.Settle.cs`), invariant I11:
+  - `internal Task<ViewSettleOutcome> SettleViewAsync(IndexView view, CancellationToken cancellationToken)`;
+    `internal enum ViewSettleOutcome { Settled, FallBackToWalk }`.
+  - Under the state lock: a scan with a block attaches the view at once (`AttachToCurrentBlockAsync`, below); else the
+    view joins `_settle` (a `SettleRun` with `Task Completion`, `bool Writes`, `TaskCompletionSource<bool> WarmVerdict`
+    completed with true when warm adoption published a block and false when the settle moves on to a cold scan), or
+    creates one and runs it on the thread pool under the lifecycle gate with the closing token. The view awaits
+    `Completion.WaitAsync` linked with its own token; an `ExistingOnly` view awaits `WarmVerdict` instead and on false
+    records its view-level decline (decision 3).
+  - The run's body is today's `SettleResolvedRootAsync` with `Options.CacheMode == ExistingOnly` replaced by
+    `!run.Writes` in `ResolveCanonicalOwnership`, `RejectUnresumableCheckpoint`, `DiscardRejectedBlock` and the
+    cold-scan decision. A run that ends blockless leaves `_settle` null, so the next opener runs a new one (decision 4);
+    a writing joiner of a non-writing run that ended blockless starts one writing run.
+  - `internal Task AttachToCurrentBlockAsync(IndexView view, CancellationToken cancellationToken)`: takes the write
+    gate, binds the view's handle and refreshes its `ViewRoot`, then adds the view to `_views` and sets its block in
+    one state-lock section (invariant I3); releases the gate.
+  - Fallback: `SettleViewAsync` returns `FallBackToWalk` for an Automatic view when the run ended blockless with
+    `RootFailureKind.MftUnavailable` (`TakeFallbackRequest` reads the scan's recorded reason); the open then detaches,
+    swaps `Resolved` to `AsWalk(reason)`, attaches a private scan and settles it.
+- View-level failure: `IndexView.OpenFailure : (RootFailure Failure, PendingRootResult Result)?`; `DescribeLocked`
+  reports it as `Failed` with no block before reading scan facts; a successful rescan through the view clears it
+  (Task 5.7 coalesces that rescan).
+- `OpenWithHooksAsync`: prepare, resolve, build the index and its view; `key = VolumeScanKey.For(...)`; the scan is
+  `registry.Attach(key, previousClosed => new VolumeScan(creation with the view's values, key, previousClosed))` or a
+  private `new VolumeScan(...)`; then `SettleViewAsync`. On any exception: detach (`IndexView.DetachAsync`, the last
+  detach awaiting teardown, Task 5.5 completes it) and rethrow; a cancelled open still throws
+  `OperationCanceledException` with the caller's token.
+- Fan-out (decision 6): `VolumeScan.Diagnostics` (`Action<string>`) and `VolumeScan.Progress`
+  (`IProgress<IndexScanProgress>`) iterate a `_views` snapshot; `BlockFile.Diagnostics` is set to `Diagnostics`.
+- `FileIndex.DisposeAsync` in this task: when other views remain, marks the view disposed, cancels its token, drains
+  its `Borrows`, clears its watch request if it holds one without retiring a watch other views need, removes it from
+  `_views` and detaches; the last view runs today's full sequence as `VolumeScan.CloseAsync` (Task 5.5 owns the tests).
+
+- [x] **Step 1: Write the failing tests** (`FileIndexSharedOpenTests` on `SharedScanFixture`; parallel-safe: private
+  registry, own source, unique serial, temporary cache directory)
+
+```csharp
+public async Task TwoViews_OneProduction()
+// open T and T\src: ProductionCount 1; both Ready, Producer Mft; AreSame(a.CurrentBlock.Mapped, b.CurrentBlock.Mapped);
+// equal Generation and LiveRowCount; Registry.LiveScanCount 1; one *.mlix and one owner lock in the cache directory
+public async Task ConcurrentOpens_ShareOneProduction()
+// HoldProduction; start src, work and T; release; ProductionCount 1; all three Ready
+public async Task SecondOpen_DuringProduction_WaitsForIt()   // second open incomplete while held; Ready after release
+public async Task CancelOneOfTwoOpens_ProductionContinues()
+// both waiting on a held production; cancel the second: it throws OperationCanceledException; the producer's token is
+// not cancelled at release; the first is Ready; IsLive(key) true until the first is disposed, false after
+public async Task CancelTheOnlyOpen_CancelsProduction()
+// producer observes its token cancelled; IsLive false; a reopen reads CacheLocation OwnedCanonical
+public async Task AttachDuringLive_IsReadyAtOnceAndSeesTheBatch()
+// view on T watching and CaughtUp; ApplyJournalEntriesInsideWriteGate holds a batch that creates work\new.txt; open a
+// work view: incomplete while the batch is held; after release Ready, Find(work\new.txt) not null, ProductionCount 1
+public async Task ExistingOnlyView_OnAColdScan_DeclinesWithoutWaiting()
+// writing open of T held in production; ExistingOnly open of src completes while held: Failed, CacheDeclined,
+// Status.Block null; release: T Ready, src still Failed; src RescanAsync Succeeded, then src Ready
+public async Task ExistingOnlyView_JoiningAWarmAdoption_IsReady()   // cached block present: both Ready, ProductionCount 0
+public async Task WritingView_JoiningADeclinedCacheOnlySettle_ScansOnce()
+// ExistingOnly open first (no cache) and a Persistent open racing it: ExistingOnly Failed CacheDeclined, Persistent
+// Ready, ProductionCount 1
+public async Task BlocklessScan_ResettlesForANewOpener()
+// producer fails once: first open Failed ProducerFailed; second open of src while the first is attached: Ready, and
+// the first now reads Ready (ProductionCount 2)
+[DataRow("Tag")] [DataRow("CacheDirectory")] [DataRow("Source")] [DataRow("Serial")]
+public async Task DifferentKeys_DoNotShare(string difference)
+// ProductionCount 2 across both producers; LiveScanCount 2; for Tag and Source the second reads PrivateFallback
+public async Task WalkAndDump_NeverRegister()               // WalkOnly root and a dump: LiveScanCount 0
+public async Task AutomaticFallback_EachViewWalks_MftOnlySiblingFails()
+// source null, no cache: Automatic T and Automatic src walk (Producer Enumeration, NoMftSource); MftOnly work Failed
+// MftUnavailable NoMftSource; LiveScanCount 1 while work is open, 0 after
+public async Task Diagnostics_AndProgress_ReachEveryAttachedView()
+// two views with distinct sinks: each receives the cache-validation line once; each progress sample carries its own Root
+public async Task Junction_ToAnotherVolume_AttachesToThatVolumesScan()
+// FinalPath seam maps T\link to U\data; a U view and the T\link view share one scan (ruling 16); ProductionCount 1
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedOpenTests"`.
+- [x] **Step 3: Implement** the Interfaces, with invariants I1 to I3 and I11 in comments at their state.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileIndexProducerSelectionTests|FullyQualifiedName~FileIndexMftFallbackTests|FullyQualifiedName~FileIndexDirectoryViewTests|FullyQualifiedName~FileIndexRootResolutionTests`.
+- [x] **Step 5: Triage the full suite.** Run it; every new failure is one of: (a) a test that opens two MFT indexes with
+  one source instance, volume, serial, cache directory and tag and now shares by design: assert the sharing instead
+  (expected in `FileIndexOwnerLockTests`, `CacheDirectoryDeletionLiveOwnerTests`, `FileIndexCacheTagTests` for its
+  equal-tag cases); (b) a test about cross-key contention: give its second open a distinct source
+  (`SyntheticIndexSource.Create(...)` again) so it keeps testing contention; (c) a message that now names the scan's
+  block root (decision 6): update the expectation. List each changed test with its letter in the commit body. Expected
+  afterwards: 0 failed.
+- [x] **Step 6: Commit** `feat: share one volume scan between the MFT indexes of a share key`.
+
+### Task 5.5: View disposal and the last detach
+
+**Files:**
+- Create: `MFTLib/Index/FileIndex.VolumeScan.Teardown.cs` (from `FileIndex.Disposal.cs`'s gate and release section),
+  `MFTLib/Index/FileIndex.IndexView.Lifecycle.cs`
+- Modify: `MFTLib/Index/FileIndex.Disposal.cs`, `FileIndex.IndexView.Delivery.cs` (delivery gate),
+  `FileIndex.VolumeScan.Disposal.cs`, `VolumeScanRegistry.cs`
+- Test: create `MFTLib.Tests/Index/FileIndexSharedDisposalTests.cs`
+
+**Interfaces:**
+- `IndexView.Deliveries` (invariant I9): `bool TryEnterDelivery()`, `void ExitDelivery()`, `Task CloseDeliveriesAsync()`;
+  every raise on a view (`Changed`, `WatchFaulted`, `WatchStateChanged`) runs inside it; a closed gate drops the raise.
+- `IndexView.DisposeAsync()` (the spec's order): under the state lock set `IsDisposed` (later `Status` throws
+  `ObjectDisposedException`); cancel the view's disposal token (its queries, catch-up waits, rescan waits and open
+  wait); `Borrows.CloseAndDrainAsync()`; withdraw its watch request (Task 5.6 gives the full per-view rule; here: when
+  it is the last requester, today's `PrepareDisposalLocked` and drain); `CloseDeliveriesAsync()`; under the state lock
+  remove it from `_views`; `registry.Detach` (private scans count as last); when last, `await Scan.CloseAsync()`.
+- `VolumeScan.CloseAsync()` (invariant I12): today's `StopWatchForDisposalAsync` plus `ReleaseBlocksForDisposalAsync`
+  plus `ReleaseCanonicalOwnershipLocked`, cancelling `_closing` first, then completing `Closed`; idempotent; a release
+  failure still completes `Closed` (in a `finally`) and propagates from the disposing view only.
+- `IndexHooks.LifecycleGatesTakenForDisposal` fires only in `CloseAsync`; `DisposedFlagSet` fires per view.
+- The final `WatchStateChanged` before `DisposeAsync` returns is delivered only by a disposal that stopped the watch
+  (watch-lifetime "Disposal delivers the final change").
+
+- [x] **Step 1: Write the failing tests** (`FileIndexSharedDisposalTests` on `SharedScanFixture`)
+
+```csharp
+[DataRow(true)] [DataRow(false)]
+public async Task DisposeOrder_EitherWay_KeepsTheOtherViewServing(bool volumeViewFirst)
+// T and src: after the first dispose the other is Ready, Find and Search work, its Watch still CaughtUp when requested,
+// the mapping is not released and the owner lock file is held; after the second the mapping is released
+// (ReleaseState.IsReleaseComplete), IsLive false, and a new open reads OwnedCanonical
+public async Task Dispose_NotLast_DoesNotWaitForAnotherViewsBorrow()
+// src holds a suspended Enumerate enumerator; T.DisposeAsync completes; src's enumerator then advances
+public async Task Dispose_Last_UnmapsAfterItsBorrowsDrain()
+// T disposed; src holds a suspended enumerator; src.DisposeAsync incomplete and mapping not released until the
+// enumerator is disposed, then complete and released
+public async Task Dispose_HandlesOfTheDisposedView_ThrowWhileTheOtherViewsRead()
+// entry from T: Name throws ObjectDisposedException, IsDisposed true; the same row through src reads its Name
+public async Task Dispose_CancelsOnlyItsOwnQueries()
+// ReaderAdmitted hook parks a Search on each view; disposing T cancels T's search (OperationCanceledException) and
+// leaves src's running to completion
+public async Task Dispose_WaitsForADeliveryInsideItsHandler_AndNoHandlerRunsAfter()
+// a TestGate blocks T's Changed handler mid-delivery; T.DisposeAsync incomplete until released; a later batch reaches
+// src only (T's handler count unchanged)
+public async Task Reopen_RacingTheLastDetach_OwnsTheCanonicalSlot()
+// ReleaseState hook parks the last disposal before unmapping; a reopen started then completes after it with
+// CacheLocation OwnedCanonical and ProductionCount unchanged (warm adoption)
+public async Task Dispose_TwiceAndConcurrently_IsIdempotent()   // two concurrent DisposeAsync calls on one view, one teardown
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedDisposalTests"`.
+- [x] **Step 3: Implement**; invariants I5, I6, I9 and I12 in comments.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Disposal|FullyQualifiedName~FileIndexDisposeCancelsQueryTests|FullyQualifiedName~FileEntryDisposalTests`.
+- [x] **Step 5: Commit** `feat: dispose one view of a shared scan without disturbing the others`.
+
+### Task 5.6: Watch requests per view, fault fan-out and event routing
+
+**Files:**
+- Create: `MFTLib/Index/FileIndex.VolumeScan.Routing.cs`
+- Modify: `MFTLib/Index/FileIndex.VolumeScan.cs` (`_watchRequested` becomes `_requesters`),
+  `FileIndex.VolumeScan.WatchStart.cs`, `.WatchStop.cs`, `.WatchPump.cs` (`ApplyWatchBatchAsync`,
+  `AnnounceSubscriberFault`, `RecordPumpFault`), `.WatchCatchUp.cs` (`GetCatchUpWaitLocked`), `.RescanRestart.cs`,
+  `.Recovery.cs`, `.CheckpointLoss.cs` (fault sites), `.Status.cs` (`DescribeWatchLocked(view)`, `IsWatchingLocked(view)`),
+  `.JournalMutation.cs` (refresh every view's binding under the write gate), `FileIndex.Watch.cs`
+  (`ApplyJournalEntriesAsync` returns the caller's routed changes), `FileIndex.IndexView.cs`,
+  `MFTLibTestExtensions/FileIndexTestAccess.cs` (XML only: returns the changes routed to `index`)
+- Test: create `MFTLib.Tests/Index/FileIndexSharedWatchTests.cs`, `MFTLib.Tests/Index/FileIndexSharedRoutingTests.cs`
+
+**Interfaces:**
+- `HashSet<IndexView> _requesters` and `IndexView.WatchRequested` (invariant I7). `bool AnyRequestLocked` replaces
+  every read of `_watchRequested` (rescan restart decision, restart-pending waiter, recovery restart, state derivation).
+- Start: sets the view's request before invoking the source, as today; when the scan's watch already holds readiness
+  the call returns `Succeeded` without touching the source; a refusal over an unresumable block keeps this view's request
+  and throws to this caller. A start its own caller cancelled clears only its own request (and the instance when it was
+  the only requester).
+- Stop (decision 8): `IsWatchingLocked(view) => view.WatchRequested || (_requesters.Count == 0 && (Current is not null
+  || _retiring is not null))`. Withdrawing a request while others remain returns at once with the view's outstanding
+  fault; withdrawing the last runs today's stop (stop wins, drain, outstanding fault once).
+- Faults (invariant I8): `IndexView.OutstandingFault`; scan fault sites copy the fault to each view in `_requesters`
+  under the state lock and raise `WatchFaulted` on that same set after releasing it; a superseding consumer start
+  clears every view's copy of the superseded instance's fault. `AnnounceSubscriberFault(instance, view, exception)`
+  keeps `WatchInstance.SubscriberFaultAnnounced` per view (`HashSet<IndexView>`).
+- `DescribeWatchLocked(IndexView view)`: the scan's watch facts with `IsRequested = view.WatchRequested`.
+  `WaitForCatchUpAsync` follows the scan's current or pending instance for any view; the restart-pending waiter exists
+  while `AnyRequestLocked`.
+- Routing (decision 7), in `Routing.cs`: `IReadOnlyList<(IndexView View, IReadOnlyList<FileChange> Changes)>
+  RouteLocked(IReadOnlyList<FileChange> changes)`, computed at the end of the apply under the write gate (the views in
+  `_views` then are exactly those whose bindings saw the batch); `static bool Contains(IndexView view, FileChange change)`
+  (`view.Block.View.IsDirectoryView` false means true; otherwise `TryMatchRootPrefix` of `Path`, then of
+  `PreviousPath`, with one reused fold buffer per batch); each routed change is `change with { Entry =
+  change.Entry.WithRootBlock(view.Block) }`. The pump raises each view's list on that view, in `_views` order, with no
+  gate held; a subscriber exception is attributed to that view.
+- `JournalMutation`: after the apply, `ViewRoot.Refresh` for every directory view's handle, still under the write gate
+  (cost per batch: path depth per directory view).
+
+- [x] **Step 1: Write the failing tests** (`SharedScanFixture` with a `ScriptedWatchSource` that counts
+  `StartAsync` calls and handle disposals)
+
+```csharp
+// FileIndexSharedWatchTests
+public async Task SecondStart_WhileReady_ReturnsWithoutASecondWatch()   // starts counted 1; both IsRequested true
+public async Task NonRequestingView_ReportsTheScansStateWithIsRequestedFalse()
+public async Task Stop_WithAnotherRequest_KeepsTheWatch()
+// T and src start; T stops: Succeeded, handle not disposed, src still CaughtUp; src stops: handle disposed, NotStarted
+public async Task Stop_OfANonRequestingView_IsNotApplicableWhileAnotherWatches()
+public async Task Stop_OfTheLastRequesterDuringARescan_PreventsTheRestart()   // stop wins: starts counted 1 after commit
+public async Task VolumeFault_ReachesEveryRequestingView_AndOneRecoveryRuns()
+// scripted Volume fault: WatchFaulted(Volume) once on T and on src, none on work (not requesting); ProductionCount +1
+public async Task OutstandingFault_IsReturnedOncePerRequestingView()
+// Channel fault: T.Stop Failed with it, src.Stop Failed with it, a second stop of either NotApplicable
+public async Task SubscriberFault_StaysOnTheThrowingView()
+// src's handler throws: WatchFaulted(Subscriber) on src only, once; T keeps receiving; src's stop returns it once
+public async Task RescanRestartFault_ReachesEveryRequestingView()
+public async Task WatchStateChanged_ReachesEveryAttachedView_InVersionOrder()   // WatchStateRecorder on both views
+public async Task WaitForCatchUp_OnANonRequestingView_FollowsTheScansInstance()
+// FileIndexSharedRoutingTests (direct apply through FileIndexTestAccess and through the pump)
+public async Task Route_AChangeInsideAView_ReachesItAndTheVolumeView()     // src\a.txt modified: src and T, not work
+public async Task Route_AChangeOutsideEveryDirectoryView_ReachesOnlyTheVolumeView()
+public async Task Route_AMoveAcrossViews_ReachesBothAsRenamed()
+// src\a.txt to work\a.txt: one Renamed on src, one on work, one on T; Path and PreviousPath identical on all three
+public async Task Route_TheViewRootRenamedAway_ReachesTheViewThenItGoesOffline()
+public async Task Route_NestedViews_BothReceive()                         // src and src\deeper: c.txt reaches both
+public async Task Route_EntriesAreMintedOnTheReceivingView()
+// change.Entry.Root is the view's key; usable as that view's Subtree anchor; rejected as the other view's
+public async Task Route_ABatchConcurrentWithAttach_IsSeenExactlyOnce()
+// Review Focus 1: a held batch and a pending attach of work; after both, work's Find sees the batch's file and work's
+// Changed received no change of that batch; the next batch's change under work reaches it once
+public async Task ApplyJournalEntries_ReturnsTheCallersRoutedChanges()   // through src: only src's share of the batch
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedWatchTests|FullyQualifiedName~FileIndexSharedRoutingTests"`.
+- [x] **Step 3: Implement**; invariants I7 and I8 in comments.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~FileIndexWatch|FullyQualifiedName~FileIndexPerRootWatchTests|FullyQualifiedName~FileIndexDirectoryViewTests`.
+  Update `FileIndexDirectoryViewTests`' volume-wide `Changed` expectation (slice 4 decision 6) to the routed one.
+- [x] **Step 5: Commit** `feat: per-view watch requests, fault fan-out and change routing`.
+
+### Task 5.7: Coalesced rescans, one recovery per scan, checkpoint loss on every view
+
+**Files:**
+- Create: `MFTLib/Index/FileIndex.VolumeScan.RescanCoalescing.cs`
+- Modify: `MFTLib/Index/FileIndex.VolumeScan.Rescan.cs` (`RescanRootAsync` becomes the coalescing entry),
+  `.Recovery.cs` (ticket stays per scan), `.CatchUp.cs` and `.CheckpointLoss.cs` (facts reported per view through
+  `DescribeLocked`), `FileIndex.Watch.cs` (`RescanAsync` passes the view)
+- Test: create `MFTLib.Tests/Index/FileIndexSharedRescanTests.cs`
+
+**Interfaces:**
+- `sealed class RescanRequest`: `TaskCompletionSource Completion` (asynchronous continuations), `int Waiters`,
+  `bool Started`, `CancellationTokenSource Abandoned` (cancelled when `Waiters` reaches zero before completion).
+- `internal async Task RescanAsync(IndexView view, CancellationToken cancellationToken)` (invariant I10): under the state
+  lock join `_pendingRescan` or create it (`Waiters++`); the creator starts `RunRescanAsync(request)` on the thread
+  pool: take the lifecycle gate with `request.Abandoned` linked to the closing token; under the state lock set
+  `Started` and clear `_pendingRescan`; run today's `RescanWithGateHeldAsync` with that linked token; complete
+  `Completion` with its outcome. The caller awaits `Completion.Task` through `AwaitQueuedAsync` with its token linked to
+  its view's disposal token; on its cancellation it decrements `Waiters` under the state lock and cancels `Abandoned` at
+  zero. Every waiter of one request observes the same outcome (`RootOperationResult` per view, same failure instance).
+- A successful rescan clears the `OpenFailure` (Task 5.4) of every view that joined it; every other view fact derives
+  from the scan and needs no clearing.
+- Recovery: unchanged ticketing; `QueueRecovery` runs once per scan fault; the restart restores the watch when
+  `AnyRequestLocked`.
+- `RootStatus.Watch.CheckpointLoss`, `ConsecutiveLostCatchUps`, `IsRecoveryStopped` and `JournalCheckpointLoss.DetectedDuring`
+  are scan facts, identical on every view; `CatchUpLost` faults follow Task 5.6's requesting-view fan-out.
+
+- [x] **Step 1: Write the failing tests** (`FileIndexSharedRescanTests`; production gated through the fixture)
+
+```csharp
+public async Task Rescan_TwoConcurrentCallsWhileIdle_ProduceOnce()          // T and src call together: ProductionCount +1, both Succeeded
+public async Task Rescan_ThreeCallsDuringOneProduction_RunAtMostOneMore()
+// first rescan held; three more calls from T, src, work: ProductionCount +2 in total, all four Succeeded (Review Focus 4)
+public async Task Rescan_LateCaller_GetsAProductionStartedAfterItsCall()
+// a call made after the pending request took the gate joins a new request: its result comes from a later production
+public async Task Rescan_OneOfTwoCallersCancels_ProductionContinues()       // canceller OperationCanceledException; other Succeeded
+public async Task Rescan_EveryCallerCancels_CancelsTheProduction()           // producer token cancelled; block unchanged
+public async Task Rescan_ViewDisposedWhileWaiting_EndsOnlyItsWait()
+public async Task Rescan_FailedProduction_EveryCallerGetsTheSameFailure()   // AreSame on both results' Failure
+public async Task CheckpointLoss_IsReportedOnBothViews()
+// CheckpointLossFixture: lost catch-up during a rescan; both views' Watch.CheckpointLoss equal, DetectedDuring equal;
+// CatchUpLost raised once on each requesting view
+public async Task ThreeConsecutiveLosses_StopRecoveryOnEveryView()          // IsRecoveryStopped true on both
+public async Task Recovery_AfterAVolumeFault_RunsOncePerScan()             // two requesting views: ProductionCount +1
+public async Task Generation_IsOneValuePerBlock()
+// a batch through src bumps Generation seen by T; a rescan through T gives both the same new value
+```
+
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedRescanTests"`.
+- [x] **Step 3: Implement**; invariant I10 in comments.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Rescan|FullyQualifiedName~Recovery|FullyQualifiedName~CheckpointLoss|FullyQualifiedName~FileIndexConcurrentRescanTests`.
+- [x] **Step 5: Commit** `feat: coalesce rescans of a shared scan`.
+
+### Task 5.8: Views, anchors and sets over a shared block
+
+Most behavior here already follows from Tasks 5.2 to 5.6; this task proves it and fixes what the proofs find.
+
+**Files:**
+- Modify (as the tests require): `MFTLib/Index/SubtreeAnchor.cs`, `FileIndexSet.cs` (`ResolveSubtreeOwner` matches the
+  anchor's `RootBlock` by reference against each member's handle), `FileIndex.Queries.cs`
+- Test: create `MFTLib.Tests/Index/FileIndexSharedViewTests.cs`; add to `MFTLib.Tests/Index/FileIndexSetTests.cs`
+
+**Interfaces:** none new. `FileIndexSet` keeps ruling 15 (outermost available member, containment by
+`TryMatchRootPrefix`) unchanged; with shared members each member still borrows its own view's handle.
 
 - [x] **Step 1: Write the failing tests**
 
 ```csharp
-// BlockFileTests
-public void Create_WithAnEntryCapacityOtherThanTheSlotCapacity_LaysOutAndReopens()
-// S = 4096, E = 10000, P = 1048576: header NameEntryCapacity 10000, BucketCount 4096, Length ==
-// TotalBlockBytes(4096, 10000, 1048576); after Complete, BlockFile.Open (the reopen helper BlockFileTests already uses)
-// validates with no result; 10000 distinct names intern, the 10001st is refused and sets the flag.
-// NamedBlockSectionLayoutTests (Windows, as the class already is)
-public void Create_SizesTheSectionWithTheEntryCapacity()   // E = 3 * S: OpenExisting accepts the section; length as above
-// NamePoolTests (Review Focus 3)
-[DataRow(509u)] [DataRow(510u)] [DataRow(511u)] [DataRow(512u)]
-public void PoolRefusal_OfANtfsLengthName_LeavesAtMostTheExhaustionMargin(uint remaining)
-// P = 4096, S = E = 64: intern one ASCII filler of (P - remaining) bytes, then try "é" + 254 'a' (UTF-16) and,
-// in a fresh block, 255 ASCII 'b'. For each: refused implies remaining <= BlockLayout.NamePoolExhaustionMarginBytes;
-// remaining >= 511 implies both fit.
-```
-
-- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~BlockFileTests|FullyQualifiedName~NamedBlockSection|FullyQualifiedName~NamePoolTests"`
-- [x] **Step 3: Implement**; fix every site the compiler lists.
-- [x] **Step 4: Run, expect PASS**, then `--filter TestCategory=Smoke`.
-- [x] **Step 5: Commit** `feat: make the name entry capacity a block creation option`.
-
-### Task 3.3: The minimum reaches client-side MFT planning
-
-**Files:**
-- Modify: `MFTLib/Index/MftBlockProducer.cs` (request), `MFTLib/Sources/MftBlockCapacity.cs`,
-  `MFTLib/Sources/MftBlockProducerPipeline.cs:35-37`, `MFTLib/Broker/Client/BlockScanTarget.cs`,
-  `MFTLib/Broker/Client/BrokerMftBlockProducer.cs:43-47`, `MFTLib/Broker/Client/BrokerProcess.Scan.cs:39-41`,
-  `Benchmark/BenchmarkRunner.IndexStorage.cs:26` (passes `default`)
-- Test: `MFTLib.Tests/MftBlockCapacityTests.cs`, `MFTLib.Tests/MftIndexSourcesDumpTests.cs`,
-  `MFTLib.Tests/BrokerProcessTests.Scan.cs`
-
-**Interfaces:**
-- Produces: `MftBlockProduceRequest.MinimumCapacities : BlockCapacities { get; init; }` (XML: "Regions the index needs
-  larger than the volume plan, from the block a rescan replaces; `default` asks for the plan. A custom producer that
-  plans its own block must honor it.").
-- Produces: `BlockScanTarget.MinimumCapacities : BlockCapacities { get; init; }`, copied from the request by
-  `BrokerMftBlockProducer`.
-- `MftBlockCapacity.Plan(NtfsVolumeInformation volumeInformation, BlockCapacities minimum) : BlockCapacities` returns
-  `BlockLayout.PlanCapacities(EstimateRowCount(volumeInformation), minimum)`.
-  `MftBlockCapacity.CreateOptions(..., BlockContentIdentity identity, BlockCapacities minimum)` sets all three
-  capacities from it. `MftBlockProducerPipeline.Write` passes `request.MinimumCapacities`; `ScanVolumeAsync` passes
-  `target.MinimumCapacities`. The broker host needs no change: it validates the section from its header, which now
-  carries `E`.
-
-- [x] **Step 1: Write the failing tests**
-
-```csharp
-// MftBlockCapacityTests
-public void Plan_AMinimumRaisesOnlyItsRegion()
-// geometry of 1,000,000 records: Plan(geometry, new(0, 2500000, 0)) == new(1250000, 2500000, 30003200)
-// MftIndexSourcesDumpTests (cross-platform, through the real pipeline)
-public async Task DumpProducer_ARequestMinimumRaisesOnlyThatRegion()
-// produce once with default; then with MinimumCapacities = new(0, 2 * first.NameEntryCapacity, 0):
-// second block SlotCapacity == first, NameEntryCapacity == 2 * first, NamePoolCapacity == first.
-// BrokerProcessTests.Scan
-public async Task ScanVolume_TheTargetMinimumSizesTheSection()
-// Target() with { MinimumCapacities = new(0, 0, 2 * baselinePool) }: the section's block has NamePoolCapacity
-// 2 * baselinePool and the baseline slot and entry capacities (baseline from a scan with the default target).
-```
-
-- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MftBlockCapacityTests|FullyQualifiedName~MftIndexSourcesDumpTests|FullyQualifiedName~BrokerProcessTests"`
-- [x] **Step 3: Implement** the Interfaces; fix the remaining callers.
-- [x] **Step 4: Run, expect PASS** with the same filter.
-- [x] **Step 5: Commit** `feat: pass the rescan growth minimum to MFT block planning`.
-
-### Task 3.4: The root runtime plans both producers; walks grow only exhausted regions
-
-**Files:**
-- Modify: `MFTLib/Index/FileIndex.RootRuntime.Production.cs` (`PlanCapacities` at 93-107, `RunMftProducerAsync`
-  at 67-85, `CreateAndPopulateBlock`, `CreateEnumerationBlock`)
-- Create: `MFTLib/Index/FileIndex.RootRuntime.EnumerationGrowth.cs` (move `EnumerationBlockGrowth` here, out of the
-  file slice 4 also edits)
-- Test: create `MFTLib.Tests/Index/FileIndexMftRescanGrowthTests.cs`; modify
-  `MFTLib.Tests/Index/FileIndexEnumerationGrowthTests.cs`, `MFTLib.Tests/Index/NamePoolTests.cs`
-
-**Interfaces:**
-- Consumes: `BlockLayout.PlanCapacities`, `BlockLayout.GrowthMinimum`, `BlockCapacities` (Task 3.1);
-  `BlockFileCreateOptions.NameEntryCapacity` (Task 3.2); `MftBlockProduceRequest.MinimumCapacities` (Task 3.3).
-- `RootRuntime.GrowthMinimumLocked() : BlockCapacities`: `GrowthMinimum` of the current block's header, or `default`
-  with no block; read under `StateLock`. Replaces the private `PlanCapacities(uint)`.
-- `RunMftProducerAsync` sets `MinimumCapacities` from it. `CreateAndPopulateBlock` plans
-  `BlockLayout.PlanCapacities(EnumerationProducer.EstimateRowCount(rootDirectory), minimum)`.
-- `CreateEnumerationBlock(string blockPath, bool deleteOnClose, BlockCapacities capacities)`.
-- `EnumerationBlockGrowth(RootRuntime runtime, string blockPath, bool deleteOnClose, BlockCapacities capacities)`;
-  `Grow(BlockWriter exhausted)` computes `next = current.AtLeast(BlockLayout.GrowthMinimum(in exhausted.Block.Header))`,
-  returns null when `next == current` (every exhausted region is at its clamp), else snapshots, recreates with
-  `next`, restores. The diagnostics line reads
-  `Grew block file '{path}': enumeration capacity exhausted at {rows} rows; the walk continues with {S} slots, {E} name entries and {P} name-pool bytes.`
-
-- [x] **Step 1: Write the failing tests**
-
-```csharp
-// FileIndexMftRescanGrowthTests ([DoNotParallelize] only if it touches a process-global hook; it should not)
-// A recording MftBlockProducer stores each request. Production 1 creates its block from
-// TestBlocks.Options(request.BlockPath, ProducerKind.Mft, slotCapacity: 64, namePoolCapacity: 4096,
-// nameEntryCapacity: 64) with Root = request.Volume, RootRow = 5, VolumeSerial, CacheTag, ScanShape and DeleteOnClose
-// from the request; writes root row 5; exhausts the named region through BlockWriter; completes. Later productions
-// write a healthy block from MftBlockCapacity-sized options the same way.
-[DataRow("Rows", 128u, 0u, 0u)]        // rows 6..63 written, a write at row 64 refused
-[DataRow("Entries", 0u, 128u, 0u)]     // renames intern names until NameEntryCount == 64
-[DataRow("Pool", 0u, 0u, 8192u)]       // one ASCII name to 3996 bytes used, then a 255-unit UTF-16 name refused
-public async Task Rescan_AfterOneRegionIsExhausted_RequestsOnlyThatRegionDoubled(string region,
-    uint slots, uint entries, uint pool)
-// Requests[0].MinimumCapacities == default; after RescanAsync, Requests[1].MinimumCapacities == new(slots, entries, pool).
-public async Task Rescan_AfterARecordIndexBeyondTheSlots_RequestsTheRowsDoubled()   // only a write at row 1000 refused
-public async Task Rescan_OfAHealthyBlock_RequestsNoMinimum()                         // third request after a healthy rescan is default
-public async Task Rescan_OfAWarmStartedExhaustedBlock_RequestsTheGrowth()
-// Persistent cache: open, exhaust entries, dispose; reopen (warm start), RescanAsync: the request carries (0, 128, 0).
-// FileIndexEnumerationGrowthTests: extend Open_ATreeBeyondTheFirstCapacityPlan... (its pool is what runs out)
-// block = index.CurrentBlock!.Block: SlotCapacity and NameEntryCapacity equal the first plan's
-// (PlanCapacities(EnumerationProducer.EstimateRowCount(TreeRoot), default)); NamePoolCapacity is at least twice the
-// first plan's; NamePoolIntegrity.Check(block) is null; the diagnostics line names all three capacities.
-// NamePoolTests
-public void Restore_IntoABlockWithOnlyTheEntryCapacityDoubled_PreservesIdsAndIntegrity()
-// S = E = 64 filled to 64 entries; BlockRowSnapshot.Capture; restore into S = 64, E = 128: every row's NameId and Name
-// unchanged, BucketCount == ComputeBucketCount(128), NamePoolIntegrity.Check is null, a 65th name interns.
-```
-
-- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexMftRescanGrowthTests|FullyQualifiedName~FileIndexEnumerationGrowthTests|FullyQualifiedName~NamePoolTests"`
-- [x] **Step 3: Implement** the Interfaces. Delete `BlockLayout.DoubleCapacity` and `DoubleNamePoolCapacity` callers
-  outside `GrowthMinimum` (the functions stay, used by it).
-- [x] **Step 4: Run, expect PASS** with the same filter, then
-  `--filter "TestCategory=Smoke|FullyQualifiedName~CapacityExhaustionTests|FullyQualifiedName~FileIndexProducerSelectionTests|FullyQualifiedName~EnumerationProducerTests"`.
-- [x] **Step 5: Commit** `feat: grow only the exhausted regions on rescan and mid-walk`.
-
-### Task 3.5: Documentation
-
-**Files:** `docs/index-format.md` ("Capacity" section, lines 403-420), XML comments on `BlockFileCreateOptions`,
-`MftBlockProduceRequest.MinimumCapacities`, `BlockLayout.PlanCapacities`, `GrowthMinimum`,
-`RootBlockStatus.IsCapacityExhausted` (says a rescan grows the exhausted region), `CHANGELOG.md` (0.3.0 section).
-
-- [x] **Step 1: Run the docs-update check.** Rewrite the Capacity section: the volume plan (`S`, `E = S`, `P`), the
-  estimate clamp at 1,717,986,917 rows, the three exhaustion tests of decision 1 with the 510-byte margin and why
-  rows are the fallback, rescan growth for both producers (doubling only exhausted regions, the minimum the index
-  sends to the MFT producer), and mid-walk growth doubling only exhausted regions with ids preserved and buckets
-  rebuilt for the new `E`. Delete "the entry capacity follows the slot capacity". `grep -n "follows the slot capacity\|both capacities doubled" docs/*.md MFTLib/**/*.cs`
-  returns nothing.
-- [x] **Step 2: CHANGELOG:** "A rescan of a capacity-exhausted block doubles only the exhausted region (rows, name
-  entries or name bytes), for MFT volumes and directory walks alike."
-- [x] **Step 3: Commit** `docs: describe per-region capacity growth`.
-
-### Task 3.6: Slice verification and PR
-
-- [x] Full build `.\scripts\build-windows.ps1 -NoRestore`; full suite
-  `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build`: 0 failed. Linux through CI
-  (`test / linux`); `./scripts/coverage-linux.sh` under WSL when available.
-- [x] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests"` passes with no
-  approved-file change.
-- [x] `.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`.
-- [x] `aislop scan .` is 100 with zero unsuppressed findings; `git diff --check` clean; `AGENTS.md` untouched.
-- [x] PR body starts `## Problem` (an MFT rescan after exhaustion recreates a block of the same size, so a watch
-  that exhausted entries or rows exhausts again; and a rename-heavy watch can only grow every region together),
-  cites MFTLib issue 844, states "no public member added; no approved file changed", and lists the shared files above.
-
-# Slice 4: Producer selection and directory MFT views without sharing
-
-**Branch:** `feature/844-producer-selection` from main after slice 1 merged (main at `b96f7daf` or later). One PR.
-Runs in parallel with slice 3. **First commit:** replace this plan file's "# Slice 4" section with this text (slice 3
-deletes slices 1 and 2 and replaces its own section; the second to merge resolves the plan file).
-
-## Orchestrator rulings for this slice
-
-1. **B1 accepted.** `SyntheticVolumeFacts.Apply(FileIndexOptions options, uint volumeSerial, bool isNtfs = true,
-   bool isLocal = true, VolumeKey? volume = null, string? volumeRootDirectory = null)`: with both optional parameters
-   set, synthetic volume `volume` is rooted at host directory `volumeRootDirectory` (a volume key for it resolves there,
-   and a directory key under that host path belongs to it); unset, the facts describe the real volume of
-   `options.Root`. The PR amends the spec's section 1 "Added (test package)" row with this signature.
-2. **Decision 3 below is overruled for the null-source case.** A null `MftSource` is not a volume fact: it is checked
-   last, and only when the open must produce. An eligible volume (every other check passes) with a cached MFT block that
-   the cache mode admits adopts it with `Producer = Mft` and no source; a later rescan or catch-up that needs the
-   source fails with `RootFailureKind.MftUnavailable` and `Status.MftUnavailable = NoMftSource`, keeps the retained
-   block, and never walks (the producer is fixed). Only when there is no adoptable block does a null source make
-   Automatic walk with `NoMftSource` (and MftOnly fail with it). Reason: file-wizard's cache-only host
-   (`FileWizard/FileIndexHost.cs`) opens with `CacheMode.ExistingOnly` and a null source to read cached MFT blocks;
-   it must keep doing so, and its `MftSourceMissing` display maps to `MftUnavailable` with `NoMftSource`. Record this
-   as part of the new "producer selection" ruling in `api-decisions.md`, with tests for: cached block plus null source
-   adopts as Mft; its rescan fails `NoMftSource` without walking; no block plus null source walks under Automatic;
-   `ExistingOnly` plus null source plus no block declines without walking.
-
-## Goal
-
-A consumer names a `RootKey` and a `ProducerSelection`. The library reads the volume facts once at open, before
-cache lookup, and picks the producer: Automatic takes the MFT when eligible and otherwise walks with the reason on
-`Status`; MftOnly fails with `RootFailureKind.MftUnavailable`; WalkOnly never touches the MFT source. A directory root
-on an eligible volume is an MFT view of the whole-volume block, rooted at its resolved row. `IndexedRoot` is deleted.
-A second index on the same volume still contends for the block's owner lock (private fallback) until slice 5.
-
-## Public surface changes (approved files updated in the commit that makes them)
-
-`MFTLib.Tests/PublicSurface/MFTLib.Index.approved.txt`:
-
-| Change | Approved lines | Consumer production caller of the added member (spec section 1, third column) |
-| --- | --- | --- |
-| Add `ProducerSelection` | `MFTLib.Index.ProducerSelection :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable` and fields `Automatic = 1`, `MftOnly = 2`, `WalkOnly = 3` | git-wizard `EnumerationDiscovery.cs` and `MftIndexSession.cs` (`--no-mft` is WalkOnly, otherwise Automatic); file-wizard `ScannerState.CreateRoot`; Watch sample `--producer` |
-| Add `FileIndexOptions.Producer` | `MFTLib.Index.FileIndexOptions :: property public Producer { get; init; } : MFTLib.Index.ProducerSelection` | same callers |
-| Add `RootStatus.Producer` | `MFTLib.Index.RootStatus :: property public Producer { get; init; } : MFTLib.Index.ProducerKind?` | git-wizard `MftIndexCacheStatusFormatter.cs` and discovery output; file-wizard `FileIndexHost.cs` drive card |
-| Add `RootStatus.MftUnavailable` | `MFTLib.Index.RootStatus :: property public MftUnavailable { get; init; } : MFTLib.Index.MftUnavailableReason?` | file-wizard `DriveDiscovery.SkipReason` text; git-wizard discovery diagnostics |
-| Add `MftUnavailableReason` | type line as for `ProducerSelection`; fields `PlatformWithoutMft = 1`, `VolumeNotReady = 2`, `NotLocalVolume = 3`, `NotNtfs = 4`, `NoMftSource = 5`, `BrokerUnavailable = 6`, `ElevationDeclined = 7` | same callers |
-| Replace `RootFailureKind.MftSourceMissing = 4` | `MFTLib.Index.RootFailureKind :: field public const MftUnavailable : MFTLib.Index.RootFailureKind = 4` | git-wizard and file-wizard failure display (switch on `RootFailureKind`) |
-| Add `WindowsVolume.EnumerateAll` | `MFTLib.Index.WindowsVolume :: method public static EnumerateAll() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>` | file-wizard `DriveDiscovery.cs:61`; Watch `SampleHost.Drives.cs:14` |
-| Change `FileIndexOptions.Root` | `... property public Root { get; init; } : MFTLib.Index.RootKey?` | |
-| Delete `IndexedRoot` | every `MFTLib.Index.IndexedRoot ::` line (15 lines, including `EnumerateWindowsVolumes`, `FromDirectory`, `FromWindowsDrive`) | |
-
-`MFTLib.Tests/PublicSurface/MFTLibTestExtensions.approved.txt`: delete both `MFTLibTestExtensions.SyntheticIndexedRoot ::`
-lines; add `MFTLibTestExtensions.SyntheticVolumeFacts :: type public static class` and
-`MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Apply(MFTLib.Index.FileIndexOptions options, uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default) : MFTLib.Index.FileIndexOptions`
-(per B1; callers MFTLib.Tests, and git-wizard and file-wizard tests replacing `SyntheticIndexedRoot.Create`).
-
-`MFTLib.Tests/PublicMemberCallerTests.cs`: delete the `IndexedRoot.FromDirectory` exemption. Every added member has a
-sample caller (Task 4.7), so no exemption is added.
-
-## Decisions this slice makes (spec silent)
-
-1. **Order of eligibility checks** (first failure wins): `PlatformWithoutMft`; no drive letter for the root's volume
-   (UNC, unlettered mount point) is `NotLocalVolume`; `VolumeNotReady`; drive type other than fixed or removable is
-   `NotLocalVolume`; format not `NTFS` by `OrdinalIgnoreCase` is `NotNtfs`; null `MftSource` is `NoMftSource`.
-   `WindowsVolume.IsIndexable` is the same function with a source assumed present.
-2. **Existence before selection.** A root directory missing at open settles `Offline` with `Producer` null, exactly
-   as today; selection runs only for an existing root. `Producer` is null only in that state. Unreadable volume facts
-   (an `IOException`, `UnauthorizedAccessException` or `SecurityException` from the facts reader) are
-   `VolumeNotReady` with serial 0, never an exception from `OpenAsync`.
-3. **MftOnly reports `Producer = Mft` even when ineligible**, because the producer is fixed for the index lifetime.
-   Its open fails before cache lookup; its rescan returns the same `MftUnavailable` failure without touching the
-   source (eligibility is decided once). The null-source case follows orchestrator ruling 2 above.
-4. **A broker launch or elevation failure during a rescan** (producer already fixed to MFT) settles as
-   `RootFailureKind.MftUnavailable` with `Status.MftUnavailable` set to `BrokerUnavailable` or `ElevationDeclined`,
-   keeping any retained block; it never walks. `RootStatus.MftUnavailable` therefore means "the MFT could not be
-   used at the last selection or scan attempt"; a successful MFT publication clears it. `ProducerFailed` stays "the
-   producer ran and failed".
-5. **Cache file names:** an MFT block is named for its volume (`<letter>-<serial>.mlix`) whatever the view's root; a
-   walk block keeps today's name for its root key (`<letter>-<serial>` for a walked volume root, `D<hash>-<serial>`
-   for a directory). Warm start still discards a block whose stored producer differs. The Automatic fallback of a
-   volume root therefore keeps its cache slot; a directory root's fallback releases the volume slot and takes its
-   directory slot.
-6. **Events on a directory view are volume-wide in this slice.** `Changed` delivers every change the watch applies;
-   routing to view scopes is slice 5 ("event routing" is in its file list). The ruling text says so until slice 5
-   rewrites it.
-7. **The anchor ruling is unchanged here.** With one index per block, "the anchor's block is the borrowed block"
-   already rejects every foreign anchor; slice 5 rewrites it per view when two views share a block.
-8. **The verdict cache is shared by a query's parallel partitions**: a row's `inside` bit is published with
-   `Interlocked.Or` before its `known` bit, and readers read `known` with `Volatile.Read` before `inside`; verdicts
-   are deterministic, so concurrent writers agree. The same membership test serves an explicit `Subtree` anchor,
-   replacing `IndexNavigation.IsUnder` in the query engines.
-
-## Shared files with slice 3 (parallel)
-
-| File | Slice 4 change | Slice 3 change |
-| --- | --- | --- |
-| `docs/superpowers/plans/2026-10-27-issue-844-implementation-plan.md` | "# Slice 4" section | slices 1 to 3 |
-| `MFTLib/Index/FileIndex.RootRuntime.Production.cs` | `ProduceRootBlockCoreAsync`, `Configuration.*` reads | capacity planning; `EnumerationBlockGrowth` moves to `FileIndex.RootRuntime.EnumerationGrowth.cs` |
-| `MFTLib/Broker/Client/BrokerMftBlockProducer.cs` | connect-failure mapping | `MinimumCapacities` onto the target |
-| `Benchmark/BenchmarkRunner.Index.cs` | line 191 root construction | line 129 `NameEntryCapacity` |
-| `MFTLib.Tests/Index/FileIndexMftRescanGrowthTests.cs` (slice 3, new) | migrate its MFT opens to `SyntheticVolumeFacts.Apply` | creates it |
-| `docs/index-format.md`, `CHANGELOG.md` | file name, cache, root key text; changelog lines | Capacity section; one changelog line |
-
-**Merge order:** slice 3 merges first; this slice rebases onto it and migrates `FileIndexMftRescanGrowthTests`
-with Task 4.3's recipe. If this slice lands first, slice 3 rebases instead (its plan says how).
-
-## Review Focus
-
-1. **A removable NTFS drive (USB disk):** Automatic scans its MFT, and `WindowsVolume.IsIndexable` is true for it.
-   Task 4.1 (`ReadVolumeVerdicts_RemovableNtfsIsIndexable`), Task 4.2 (`Automatic_EligibleRemovableVolumeScansTheMft`).
-2. **The user declines the UAC prompt under Automatic:** the index walks, reports `Producer = Enumeration` and
-   `MftUnavailable = ElevationDeclined`, and concurrent opens see one prompt. Task 4.4.
-3. **The directory a view is rooted at is renamed away during a watch, then back:** the view reads `Offline` with no
-   block and empty queries, then `Ready` again, with no exception from any query. Task 4.5.
-4. **An unscoped search of a directory view on a large volume:** cost stays linear in rows, because each
-   directory's ancestry is climbed once per query. Task 4.6 (`Contains_ClimbsEachDirectoryOncePerQuery`).
-5. **A root path typed with other separators or casing** (`t:/SRC/` against the stored `T:\src`): it names the
-   same view on Windows, and `Find` accepts either spelling under the view. Task 4.5.
-
-## File map
-
-| File | Responsibility |
-| --- | --- |
-| Create `MFTLib/Index/ProducerSelection.cs`, `MftUnavailableReason.cs` | Public enums |
-| Create `MFTLib/Index/VolumeFacts.cs` | `VolumeFacts`, `VolumeFactsReader` and the platform reader |
-| Create `MFTLib/Index/MftEligibility.cs` | The one eligibility predicate |
-| Create `MFTLib/Index/WindowsVolume.Discovery.cs` (from `IndexedRoot.Discovery.cs`); modify `WindowsVolume.cs` | `EnumerateAll`, verdicts through the predicate |
-| Create `MFTLib/Index/ResolvedRoot.cs`, `RootResolution.cs` | What an open resolved: key, directories, volume, serial, producer, reason |
-| Create `MFTLib/Index/MftUnavailableException.cs`, `MFTLib/Broker/Client/BrokerLaunchDeclinedException.cs`, `BrokerEndedException.cs` | Typed launch failures |
-| Create `MFTLib/Index/ViewRoot.cs`, `SubtreeMembership.cs` | View root binding; two-bitset verdict cache |
-| Delete `MFTLib/Index/IndexedRoot.cs`, `IndexedRoot.Directory.cs`, `IndexedRoot.Windows.cs`, `IndexedRoot.Discovery.cs`, `MFTLibTestExtensions/SyntheticIndexedRoot.cs` | |
-| Create `MFTLibTestExtensions/SyntheticVolumeFacts.cs` | Test-package forwarding to the facts seam |
-| Modify `FileIndexOptions.cs`, `RootKind.cs`, `RootStatus.cs`, `RootFailureKind.cs`, `RootFailure.cs`, `ScanShape.cs`, `MftDumpSourceIdentity.cs`, `RootBlock.cs`, `FileIndex.cs`, `FileIndex.Queries.cs`, `FileIndex.PendingRootResult.cs`, `FileIndex.RootRuntime*.cs`, `LookupEngine.cs`, `SearchEngine.cs`, `IndexRowEnumerable.cs`, `IndexNavigation.cs`, `FileEntry.Navigation.cs`, `FileIndexSet.cs`, `FileIndex.JournalSettings.cs` | Selection, views, implicit subtree |
-| Modify `MFTLib/Broker/Client/BrokerProcess.Launch.cs`, `BrokerSession.cs`, `BrokerMftBlockProducer.cs` | Launch failures become eligibility reasons |
-| Modify samples, `Benchmark/BenchmarkRunner.Index.cs`, `BenchmarkRunner.Memory.cs` | Roots as `RootKey`, `--producer` |
-
-**Commands:** as slice 3 (`.\scripts\build-windows.ps1 -NoRestore`, `dotnet build` of the test project, `dotnet test
-... --no-build --filter`).
-
-### Task 4.1: Volume facts, the eligibility predicate and `WindowsVolume.EnumerateAll`
-
-**Files:**
-- Create: `MFTLib/Index/MftUnavailableReason.cs`, `MFTLib/Index/VolumeFacts.cs`, `MFTLib/Index/MftEligibility.cs`,
-  `MFTLib/Index/WindowsVolume.Discovery.cs`
-- Modify: `MFTLib/Index/WindowsVolume.cs` (partial; XML for `IsIndexable`, `IsReady`, `Format`), delete
-  `MFTLib/Index/IndexedRoot.Discovery.cs`, `SampleProgram.Watch/SampleHost.Drives.cs:14`, both approved files' rows
-  for `EnumerateAll`, `EnumerateWindowsVolumes` and `MftUnavailableReason`
-- Test: create `MFTLib.Tests/Index/MftEligibilityTests.cs`, `MFTLib.Tests/Index/WindowsVolumeDiscoveryTests.cs` (move
-  `ReadVolumeVerdicts_*` out of `IndexedRootTests.cs`)
-
-**Interfaces:**
-- `public enum MftUnavailableReason : uint` with the seven values above, each with an XML line.
-- `internal readonly record struct VolumeFacts(bool PlatformHasMft, VolumeKey? Volume, string? VolumeRootDirectory,
-  uint VolumeSerial, bool IsReady, DriveType DriveType, string? Format)`.
-- `internal delegate VolumeFacts VolumeFactsReader(RootKey root, string rootDirectory);`
-- `static class PlatformVolumeFacts { internal static VolumeFacts Read(RootKey root, string rootDirectory) }`:
-  Windows reads the volume path (`HandleBoundFile.VolumePathOf`), its letter, `DriveInfo` type, readiness and format,
-  and the serial (`GetVolumeInformationW`, moved from `IndexedRoot.Windows.cs`); the three exception kinds of
-  decision 2 give `IsReady = false`. Elsewhere `PlatformHasMft = false`, serial 0. Reads no `MftSource`, opens no
-  volume handle.
-- `static class MftEligibility { internal static MftUnavailableReason? Evaluate(in VolumeFacts facts, bool hasMftSource) }`
-  in decision 1's order.
-- `public static IReadOnlyList<WindowsVolume> WindowsVolume.EnumerateAll()` (`[SupportedOSPlatform("windows")]`) and
-  `internal static IReadOnlyList<WindowsVolume> ReadVolumeVerdicts<T>(...)` (moved). Readiness and format are read for
-  fixed and removable roots; `IsIndexable = MftEligibility.Evaluate(facts, hasMftSource: true) is null`; the
-  `removable` reason is deleted.
-
-- [ ] **Step 1: Write the failing tests**
-
-```csharp
-// MftEligibilityTests: one eligible baseline (Windows, T, ready, Fixed, "NTFS", source) and each departure
-[DataRow("Platform", MftUnavailableReason.PlatformWithoutMft)]
-[DataRow("NoLetter", MftUnavailableReason.NotLocalVolume)]
-[DataRow("NotReady", MftUnavailableReason.VolumeNotReady)]
-[DataRow("Network", MftUnavailableReason.NotLocalVolume)]
-[DataRow("Optical", MftUnavailableReason.NotLocalVolume)]
-[DataRow("ExFat", MftUnavailableReason.NotNtfs)]
-[DataRow("NoSource", MftUnavailableReason.NoMftSource)]
-public void Evaluate_ReportsTheFirstFailedFact(string departure, MftUnavailableReason expected)
-public void Evaluate_EligibleFixedAndRemovableNtfs_IsNull()        // "ntfs" lower case included
-public void Evaluate_PlatformBeatsEveryOtherReason()                 // every fact bad -> PlatformWithoutMft
-// WindowsVolumeDiscoveryTests (moved cases keep their expectations except removable)
-public void ReadVolumeVerdicts_RemovableNtfsIsIndexable()            // Review Focus 1: IsReady true, Format "NTFS", Reason null
-public void ReadVolumeVerdicts_RemovableNotReadyReportsNotReady()
-[TestCategory("Windows")] public void EnumerateAll_ReportsTheSystemVolumeIndexable()   // Windows-only, Inconclusive elsewhere
-```
-
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~MftEligibilityTests|FullyQualifiedName~WindowsVolumeDiscoveryTests"`
-- [ ] **Step 3: Implement**; the Watch sample calls `WindowsVolume.EnumerateAll()`.
-- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicSurfaceTests`.
-  `PublicMemberCallerTests` reports `MftUnavailableReason` unreferenced until Task 4.2's sample edit; run it from
-  Task 4.2 on.
-- [ ] **Step 5: Commit** `feat: read volume facts and decide MFT eligibility in one predicate` (with this plan edit).
-
-### Task 4.2: Producer selection replaces `IndexedRoot` (production code)
-
-One compile unit with Task 4.3: do both, build, then commit once.
-
-**Files:**
-- Create: `MFTLib/Index/ProducerSelection.cs`, `MFTLib/Index/ResolvedRoot.cs`, `MFTLib/Index/RootResolution.cs`,
-  `MFTLibTestExtensions/SyntheticVolumeFacts.cs`
-- Delete: `MFTLib/Index/IndexedRoot.cs`, `IndexedRoot.Directory.cs`, `IndexedRoot.Windows.cs`,
-  `MFTLibTestExtensions/SyntheticIndexedRoot.cs`
-- Modify: `MFTLib/Index/FileIndexOptions.cs`, `RootKind.cs:89-106`, `RootStatus.cs`, `RootFailureKind.cs`,
-  `RootFailure.cs:18`, `ScanShape.cs:23`, `MftDumpSourceIdentity.cs:27`, `FileIndex.cs:46-55,105-125`,
-  `FileIndex.PendingRootResult.cs`, `FileIndex.RootRuntime.cs:70-85`, `FileIndex.RootRuntime.Open.cs:13-20`,
-  `FileIndex.RootRuntime.Production.cs:14-58,73,125,131,151`, `FileIndex.RootRuntime.CacheOwnership.cs:33,80`,
-  `FileIndex.RootRuntime.ScanFiles.cs:24,36,75`, `FileIndex.RootRuntime.Publication.cs:15`,
-  `FileIndex.RootRuntime.Status.cs` (`DescribeLocked`, `QueryUsnJournalSettings`),
-  `FileIndex.RootRuntime.WarmStart.cs:25-61`, `Benchmark/BenchmarkRunner.Index.cs:191`,
-  `Benchmark/BenchmarkRunner.Memory.cs:90`, `SampleProgram.Shared/SampleHost.Drive.cs`,
-  `SampleProgram.Direct/SampleHost.Run.cs:94-111`, `SampleProgram.Direct/SampleHost.Verbs.cs:16`,
-  `SampleProgram.Watch/SampleHost.Broker.cs:24,56-60,124,153`, `SampleProgram.Watch/SampleHost.Run.cs`, both approved
-  files (rows in the table above except `EnumerateAll`), `MFTLib.Tests/PublicMemberCallerTests.cs:49`
-- Test: rewrite `MFTLib.Tests/Index/FileIndexProducerSelectionTests.cs` (keep its rescan and invalid-block cases,
-  migrated); create `MFTLib.Tests/Index/FileIndexOptionsValidationTests.cs` (absorbs `IndexedRootTests` admission cases)
-
-**Interfaces:**
-- `public enum ProducerSelection : uint { Automatic = 1, MftOnly = 2, WalkOnly = 3 }`; XML says the default value is
-  invalid.
-- `FileIndexOptions`: `public RootKey? Root { get; init; }`; `public ProducerSelection Producer { get; init; } =
-  ProducerSelection.Automatic;` `internal VolumeFactsReader? VolumeFacts { get; init; }` (null reads
-  `PlatformVolumeFacts.Read`). `MftSource` XML: a null source is checked last, only when the open must produce (orchestrator ruling 2).
-  `ValidateRoot` returns `RootKey`.
-- `RootKind.PrepareOpenOptions`, all before any side effect: `!Enum.IsDefined(options.Producer)` throws
-  `ArgumentOutOfRangeException` (0 included); a dump source runs `MftDumpSourceIdentity.ValidateOptions`, then
-  `Producer == WalkOnly` throws `ArgumentException("A dump source is an MFT inventory, so FileIndexOptions.Producer cannot be WalkOnly.")`;
-  otherwise a null `Root` throws (today's message) and a default `RootKey` throws `ArgumentException` through
-  `RootKey.Validated()`.
-- `internal sealed record ResolvedRoot`: `RootKey Root`, `string RootDirectory` (normalized host path of the root;
-  dump: its virtual root), `VolumeKey? Volume`, `string? VolumeRootDirectory`, `uint VolumeSerial`,
-  `ProducerKind Producer`, `MftUnavailableReason? MftUnavailable`, `MftIndexSource? MftSource` (non-null exactly when
-  `Producer == Mft` and `MftUnavailable` is null), `bool IsDump`; `RootKey BlockRoot` (MFT: `Volume`; walk: `Root`);
-  `string RenderRootDirectory` (MFT: `VolumeRootDirectory`; walk and dump: `RootDirectory`).
-- `static class RootResolution { internal static ResolvedRoot Resolve(FileIndexOptions prepared) }`: dump from its
-  identity (serial 0, MFT); otherwise `rootDirectory` is the facts' `VolumeRootDirectory` for a volume key and the
-  key text for a directory key, then WalkOnly selects Enumeration with `MftUnavailable` null, Automatic selects MFT or
-  Enumeration with the reason, MftOnly selects MFT with the reason (or null). The facts reader is called once.
-- `RootRuntime(FileIndex index, ResolvedRoot resolved)`; property `ResolvedRoot Resolved` replaces `Configuration`;
-  `Volume => Resolved.Volume ?? throw`; `Kind` and `MatchableRootDirectoryPath` move from `FileIndex`'s constructor
-  to the runtime (Task 4.4 can swap the resolved root during open), and `FileIndex.Kind` and
-  `FileIndex.MatchableRootDirectoryPath` forward to them.
-- `AddRootAsync`: the existence check uses `Resolved.RootDirectory` (dumps skip it, as today); then
-  `Resolved is { Producer: Mft, MftUnavailable: { } reason }` records `Failed` with `RootFailureKind.MftUnavailable`,
-  message `Root {root}: the MFT cannot serve this root ({reason}) and FileIndexOptions.Producer is MftOnly.`, before
-  any cache work. `ProduceRootBlockCoreAsync` returns that same failure for a rescan, picks the walk for Enumeration,
-  and otherwise reads `Resolved.MftSource`; the `MftSourceMissing` branch is deleted.
-- Block naming and creation use `Resolved.BlockRoot` and `Resolved.VolumeSerial`; the MFT request's `Volume` is
-  `Resolved.Volume`; `RootBlock`'s `rootDirectoryPath` is `Resolved.RenderRootDirectory`; `ScanShape.For(ResolvedRoot
-  root, FileIndexOptions options)`; warm start compares with `Resolved.Producer` and `Resolved.RootDirectory`.
-- `RootStatus`: `public ProducerKind? Producer { get; init; }`, `public MftUnavailableReason? MftUnavailable { get; init; }`;
-  `DescribeLocked` sets both (Producer null only for the open-time Offline of decision 2; MftUnavailable per decision 4).
-  `PendingRootResult.MftUnavailable : MftUnavailableReason?`. Class XML lists `Failed` with `MftUnavailable` and a
-  retained block with `ProducerFailed` or `MftUnavailable`.
-- `RootFailureKind.MftUnavailable` (4): "the MFT could not serve this root: MftOnly found it ineligible, or a broker
-  launch or elevation failed; `RootStatus.MftUnavailable` says why".
-- `QueryUsnJournalSettings`: `Resolved is { Producer: Mft, IsDump: false, Volume: { } volume }` queries that volume;
-  a walked root throws `InvalidOperationException` naming the root as walked; a dump keeps today's reason.
-- `SyntheticVolumeFacts.Apply(...)` per B1: returns `options with { VolumeFacts = reader }` (an internal init the test
-  package reaches through `InternalsVisibleTo`, as other forwarders do); `reader` reports `PlatformHasMft` true,
-  ready, `DriveType.Fixed` or `DriveType.Network` from `isLocal`, `"NTFS"` or `"exFAT"` from `isNtfs`, the serial,
-  and the mapping. Throws `ArgumentNullException` for null options and `ArgumentException` when only one of
-  `volume` and `volumeRootDirectory` is set.
-- Samples compile against the new options: Direct opens `Root = new VolumeKey(letter)` with
-  `Producer = ProducerSelection.MftOnly` (it demonstrates MFT scans and never walks) and prints
-  `Producer {status.Producer}`; Watch opens `Root = new VolumeKey(letter)` with Automatic and prints
-  `producer {status.Producer?.ToString() ?? "none"}` plus `MFT unavailable: {reason}` when set. The `resolveRoot`
-  seams (`Func<string, IndexedRoot>`) become `Func<FileIndexOptions, FileIndexOptions> prepareOptions`; production
-  passes `options => options`.
-
-- [ ] **Step 1: Write the failing tests** (`FileIndexProducerSelectionTests`, `FileIndexOptionsValidationTests`; a
-  recording `MftIndexSource` counts producer and watch-source calls; facts through `SyntheticVolumeFacts.Apply` or,
-  for platform and readiness, an internal `VolumeFacts` reader)
-
-```csharp
-[DataRow(MftUnavailableReason.PlatformWithoutMft)] [DataRow(MftUnavailableReason.VolumeNotReady)]
-[DataRow(MftUnavailableReason.NotLocalVolume)] [DataRow(MftUnavailableReason.NotNtfs)]
-[DataRow(MftUnavailableReason.NoMftSource)]
-public async Task Automatic_AnIneligibleVolumeWalksAndReportsTheReason(MftUnavailableReason reason)
-// Ready; Producer Enumeration; MftUnavailable == reason; CurrentBlock header ProducerKind Enumeration; zero source calls
-// (same rows)
-public async Task MftOnly_AnIneligibleVolumeFailsBeforeCacheWork(MftUnavailableReason reason)
-// Failed; Failure.Kind MftUnavailable; MftUnavailable == reason; Producer Mft; no *.mlix in the cache directory; zero calls
-public async Task WalkOnly_TouchesNoMftSource()            // eligible facts, source present: Producer Enumeration, zero calls
-public async Task Automatic_EligibleVolumeScansTheMft()    // Producer Mft, MftUnavailable null, one producer call
-public async Task Automatic_EligibleRemovableVolumeScansTheMft()   // Review Focus 1 (facts DriveType.Removable)
-public async Task Automatic_MidScanFailureFailsAndNeverWalks()
-// producer throws IOException: Failed, ProducerFailed, Producer Mft, MftUnavailable null, no walk block written
-public async Task Rescan_KeepsTheWalkOfAnAutomaticIndex()  // NotNtfs walk; RescanAsync; still Enumeration; zero calls
-public async Task Rescan_OfAnIneligibleMftOnlyIndex_ReturnsTheSameFailureWithoutTheSource()
-public async Task Offline_AtOpen_HasNoProducer()           // missing directory: Offline, Producer null, MftUnavailable null
-public async Task Mft_CacheFileIsNamedForTheVolume()       // "T-<serial>.mlix" for a volume root
-// FileIndexOptionsValidationTests: each throws before the cache directory exists
-[DataRow(0u)] [DataRow(4u)] public async Task UndefinedProducerSelection_IsRejected(uint value)   // ArgumentOutOfRangeException
-public async Task NullRoot_IsRejected()  public async Task DefaultRootKey_IsRejected()
-public async Task Dump_WithWalkOnly_IsRejected()           // ArgumentException naming Producer
-[DataRow(ProducerSelection.Automatic)] [DataRow(ProducerSelection.MftOnly)]
-public async Task Dump_WithAnMftSelection_Opens(ProducerSelection selection)   // Producer Mft
-public void Apply_RejectsAVolumeWithoutItsRootDirectory()  // SyntheticVolumeFacts guard
-```
-
-- [ ] **Step 2: Continue into Task 4.3** (the suite does not compile until the tests migrate).
-
-### Task 4.3: Migrate the suite off `IndexedRoot`
-
-**Files:** every test file the compiler lists (a grep finds about 74 that reference `IndexedRoot`,
-`SyntheticIndexedRoot`, `MftSourceMissing` or a `ProducerKind` producer argument; the largest are `IndexedRootTests` 32,
-`FileIndexScanFinishedTests` 13, `FileIndexProducerSelectionTests` 9, `FileIndexPerRootProducerKindTests` 8,
-`DirectHostTests` 8, `WatchHostModeTests` 8), plus `MFTLib.Tests/TestSupport/IndexTreeFixture.cs`,
-`CheckpointLossFixture.cs`, `TestMftSources.cs`, `TwoRootQueryFixture.cs`, and slice 3's
-`FileIndexMftRescanGrowthTests.cs` when it is on main. Delete `MFTLib.Tests/Index/IndexedRootTests.cs` (its cases live
-in Tasks 4.1 and 4.2).
-
-**Recipe** (keep every behavior assertion unless the row says otherwise):
-
-| Old | New |
-| --- | --- |
-| `SyntheticIndexedRoot.Create(volume, directory, serial, ProducerKind.Mft)` | `Root = volume, Producer = ProducerSelection.MftOnly`, then `SyntheticVolumeFacts.Apply(options, serial, volume: volume, volumeRootDirectory: directory)` |
-| the same with `ProducerKind.Enumeration` | `Producer = ProducerSelection.WalkOnly`, same `Apply` |
-| `SyntheticIndexedRoot.Create(RootKey.FromDirectory(d), d, serial, Enumeration)` | `Root = RootKey.FromDirectory(d), Producer = WalkOnly`, `Apply(options, serial)` |
-| `IndexedRoot.FromDirectory(d)` | `Root = RootKey.FromDirectory(d), Producer = WalkOnly` |
-| `IndexTreeFixture.Root(...)`, `Options(char, uint, ProducerKind, CacheMode?)` | `Root(...)` deleted; `Options(char drive = 'T', uint volumeSerial = 0x0BADF00D, ProducerSelection producer = ProducerSelection.WalkOnly, CacheMode? cacheMode = null)` applies the mapping to `TreeRoot` |
-| `RootFailureKind.MftSourceMissing` | `RootFailureKind.MftUnavailable` with `Status.MftUnavailable == NoMftSource` |
-| a null `MftSource` warm-adopting a cached MFT block (`FileIndexPerRootProducerKindTests.WarmMftRoot_NullSourceNeedsNeitherScanNorWatchUntilStartIsRequested`, `MixedOpen_NullMftSourceFailsOnlyTheRootNeedingAScan`) | keep their behavior under orchestrator ruling 2 (adopt as Mft; the root needing a scan fails `MftUnavailable` with `NoMftSource`, never walks); migrate only the option and failure-kind spelling |
-| `MixedOpen_MftFailureNeverWalksItsTreeAndEnumerationSiblingIsReady` | keep, under MftOnly and under Automatic (both never walk on a producer failure) |
-| `OpenAsync_DirectoryWithMftProducer_IsRejectedBeforeSideEffects` | delete; a directory MFT view is legal (Task 4.5) |
-
-- [ ] **Step 1: Migrate** with the recipe; `grep -rn "IndexedRoot\|MftSourceMissing" --include=*.cs MFTLib MFTLibTestExtensions MFTLib.Tests SampleProgram.* Benchmark`
-  returns nothing.
-- [ ] **Step 2: Build and run**: `.\scripts\build-windows.ps1 -NoRestore`, then the full suite. Expected: 0 failed;
-  `PublicSurfaceTests`, `PublicMemberCallerTests`, `NamespaceBoundaryTests` and `NativeSeamIsolationTests` pass.
-- [ ] **Step 3: Commit** `feat!: select the producer from RootKey and ProducerSelection; delete IndexedRoot`.
-
-### Task 4.4: Broker launch failures are eligibility reasons; Automatic falls back at open
-
-**Files:**
-- Create: `MFTLib/Index/MftUnavailableException.cs`, `MFTLib/Broker/Client/BrokerLaunchDeclinedException.cs`,
-  `MFTLib/Broker/Client/BrokerEndedException.cs`
-- Modify: `MFTLib/Broker/Client/BrokerProcess.Launch.cs:53-57`, `MFTLib/Broker/Client/BrokerSession.cs` (`ThrowIfEnded`),
-  `MFTLib/Broker/Client/BrokerMftBlockProducer.cs:38-53`, `MFTLib/Index/FileIndex.RootRuntime.Production.cs`
-  (`ProduceRootBlockCoreAsync`), `FileIndex.RootRuntime.Open.cs` (`AddRootAsync`), `ResolvedRoot.cs`
-- Test: create `MFTLib.Tests/Index/FileIndexMftFallbackTests.cs`; add to `MFTLib.Tests/BrokerMftBlockProducerTests.cs`
-
-**Interfaces:**
-- `internal sealed class MftUnavailableException(MftUnavailableReason reason, string message, Exception? innerException = null) : InvalidOperationException`
-  with `Reason`. Lives in `MFTLib.Index` so the index catches it without referencing the broker.
-- `internal sealed class BrokerLaunchDeclinedException(string message) : InvalidOperationException`, thrown by
-  `BrokerProcess.LaunchAsync` when the launcher returns false (today's message);
-  `internal sealed class BrokerEndedException(string message) : InvalidOperationException`, thrown by
-  `BrokerSession.ThrowIfEnded` (today's message). Public callers still see `InvalidOperationException`.
-- `BrokerMftBlockProducer.ProduceAsync` wraps only the `_connectAsync` call: `BrokerLaunchDeclinedException` becomes
-  `MftUnavailableException(ElevationDeclined, ...)`; `TimeoutException` and `BrokerEndedException` become
-  `BrokerUnavailable`; every other exception and everything after connect propagate unchanged (`ProducerFailed`).
-- `ProduceRootBlockCoreAsync` catches `MftUnavailableException` ahead of its general catch and returns
-  `ScanFailureKind = MftUnavailable`, `MftUnavailable = exception.Reason`, the exception's message.
-- `ResolvedRoot AsWalk(MftUnavailableReason reason)`: Enumeration, the reason, `MftSource` null.
-- `AddRootAsync`: when the open's scan settles with no block, `ScanFailureKind == MftUnavailable` and
-  `Options.Producer == Automatic`, release canonical ownership, replace `Resolved` with `AsWalk(reason)` (which also
-  resets `Kind` and the matchable path), clear the recorded failure, and run the open once more as a walk (one
-  retry, never a loop). A rescan never swaps (decision 4).
-
-- [ ] **Step 1: Write the failing tests** (`BrokerSession`'s internal launch-delegate constructor with
-  `CreateIndexSource()`; eligible facts through `SyntheticVolumeFacts.Apply`)
-
-```csharp
-// BrokerMftBlockProducerTests
-[DataRow("Declined", MftUnavailableReason.ElevationDeclined)]
-[DataRow("Timeout", MftUnavailableReason.BrokerUnavailable)]
-[DataRow("Ended", MftUnavailableReason.BrokerUnavailable)]
-public async Task Produce_AConnectFailureIsAnEligibilityReason(string failure, MftUnavailableReason expected)
-public async Task Produce_AnIOExceptionFromConnectPropagatesUnchanged()
-// FileIndexMftFallbackTests
-public async Task Automatic_ElevationDeclined_WalksAndReportsIt()
-// Ready, Producer Enumeration, MftUnavailable ElevationDeclined, Failure null, block header ProducerKind Enumeration
-public async Task Automatic_ConnectTimeout_WalksAsBrokerUnavailable()
-public async Task MftOnly_ElevationDeclined_Fails()        // Failed, MftUnavailable kind and reason, Producer Mft
-public async Task Automatic_ConcurrentOpensThatFallBack_ShareOneLaunch()
-// volumes T and U, launcher gated on a TaskCompletionSource then throwing BrokerLaunchDeclinedException:
-// launcher invoked once; both indexes walk with ElevationDeclined (Review Focus 2)
-public async Task Automatic_DirectoryRootFallback_TakesItsWalkSlotAndReleasesTheVolumeSlot()
-// root T\src: the cache directory holds D<hash>-<serial>.mlix and no T-<serial>.mlix; a second MftOnly open of T owns
-// the volume slot (no private fallback)
-public async Task Automatic_WarmMftBlock_LaunchesNoBroker()   // cached MFT block: Producer Mft, launcher never invoked
-public async Task Rescan_LaunchFailureOnAnMftIndex_KeepsTheBlockAndNeverWalks()
-// Ready, retained MFT block, Failure.Kind MftUnavailable, MftUnavailable ElevationDeclined; a later successful rescan
-// clears Failure and MftUnavailable
-```
-
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexMftFallbackTests|FullyQualifiedName~BrokerMftBlockProducerTests"`
-- [ ] **Step 3: Implement** the Interfaces.
-- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~BrokerSession|FullyQualifiedName~BrokerProcessTests`.
-- [ ] **Step 5: Commit** `feat: fall back to a walk when Automatic cannot launch the broker`.
-
-### Task 4.5: Directory roots are MFT views of the volume block
-
-**Files:**
-- Create: `MFTLib/Index/ViewRoot.cs`
-- Modify: `MFTLib/Index/RootBlock.cs`, `LookupEngine.cs` (`Root`, `SelectPathBlock`, `Find`), `FileEntry.Navigation.cs`
-  (`Parent`), `FileIndex.Queries.cs` (`BorrowBlock`, `AdmitQuery`), `FileIndex.RootRuntime.Publication.cs`
-  (`BuildRootBlock`), `FileIndex.RootRuntime.Status.cs` (`DescribeLocked`), `FileIndex.RootRuntime.JournalMutation.cs`
-  (after each applied batch), `FileIndexSet.cs` (constructor)
-- Test: create `MFTLib.Tests/Index/FileIndexDirectoryViewTests.cs`; add to `MFTLib.Tests/Index/FileIndexSetTests.cs`,
-  `MFTLib.Tests/Index/CacheDirectoryInspectionTests.cs`
-
-**Interfaces:**
-- `internal sealed class ViewRoot`: `static ViewRoot ForBlockRoot(uint rootRow)` (volume roots, walks, dumps; always
-  present); `static ViewRoot ForDirectory(string path, RootKind kind)`; `bool IsDirectoryView`; `string? MatchablePath`;
-  `bool IsPresent`, `uint Row`, `ushort Sequence` (volatile reads); `bool Refresh(RootBlock rootBlock,
-  CancellationToken cancellationToken)`: keeps the binding when the row is in use, not deleted, its sequence is
-  unchanged and `IndexNavigation.BuildPath(rootBlock, row)` equals the path under `kind.Comparison` (cost: path
-  depth); otherwise re-resolves by descending the path below the volume root from the header's `RootRow`, and
-  publishes row, sequence and presence. Returns presence.
-- `RootBlock(RootKey root, BlockFile block, ViewRoot view, string? rootDirectoryPath = null, MftIndexSource? mftSource = null)`;
-  `RootBlock.View`; `MatchableRootDirectoryPath` is the view's path (what `Find` accepts), `RootDirectoryPath` stays
-  the rendering root (the volume root for MFT, so paths are real full paths).
-- `BuildRootBlock` binds `ForDirectory(Resolved.RootDirectory, kind)` for an MFT root whose key is a directory and
-  `ForBlockRoot` otherwise, and refreshes it once at publication. The pump refreshes after each applied batch under
-  the write gate. `AdmitQuery` refreshes before borrowing (outside the state lock, holding a borrow).
-- `BorrowBlock` lends no block while `View.IsPresent` is false; `DescribeLocked` then reports `RootState.Offline` with
-  `Block` null, the producer facts and the watch status (the block stays mapped and watched).
-- `LookupEngine.Find` returns null for an absent view, matches `View.MatchablePath`, and descends from `View.Row`;
-  `LookupEngine.Root` returns `View.Row`; `FileEntry.Parent` is null when `RowIndex == RootBlock.View.Row`.
-- `FileIndexSet` rejects a member whose root directory lies under another member's (prefix test with the outer
-  member's `RootKind`, equal paths included): `ArgumentException("Root {inner} lies inside root {outer}; the indexes of a FileIndexSet must not nest.")`.
-  Dump members never nest with host paths.
-
-- [ ] **Step 1: Write the failing tests** (`FileIndexDirectoryViewTests`: volume `T` mapped to `TreeRoot`, which
-  holds real directories `src` and `other`; a `SyntheticMftProducer` writes rows 5 (root), 30 `src`, 31 `src\a.txt`,
-  32 `other`, 33 `other\b.txt`; the view is `RootKey.FromDirectory(Path.Combine(TreeRoot, "src"))` with Automatic)
-
-```csharp
-public async Task Open_ADirectoryOnAnEligibleVolume_IsAnMftViewOfTheVolumeBlock()
-// Producer Mft; Status.Root is the directory key; block header RootRow 5 and root key T; cache file T-<serial>.mlix
-public async Task Find_AcceptsOnlyPathsUnderTheViewRoot()
-// Find(TreeRoot/src/a.txt).Path == that path; Find(TreeRoot/other/b.txt) null; Find(TreeRoot) null
-public async Task Root_IsTheViewRootAndItsParentIsNull()
-public async Task Children_OfTheViewRootAreItsDirectChildren()
-public async Task Watch_RenamingTheViewRootAwayAndBack_GoesOfflineThenReady()
-// scripted journal batches rename row 30 to "src2", then back: Status Offline with Block null and empty queries, then
-// Ready and Find works; no query throws (Review Focus 3)
-public async Task Open_DirectoryAbsentFromTheBlock_IsOfflineUntilTheJournalCreatesIt()
-public async Task RootTextWithOtherSeparatorsAndCase_NamesTheSameView()   // Review Focus 5; casing on Windows only
-public async Task QueryUsnJournalSettings_ServesADirectoryViewAndRefusesAWalk()
-// through UsnJournalSettingsQuery.Dependencies._queryOverride: process-global, so this test lives in a class with
-// [DoNotParallelize] and a cleanup reset (docs/test-isolation.md)
+// FileIndexSharedViewTests
+public async Task Anchor_FromAnotherViewOfTheVolume_IsRejected()
+// src's entry for src\deeper as Subtree on T's Search: ArgumentException naming another view; on src's Search accepted
+public async Task Anchor_AfterAShareRescan_IsRejectedOnBothViews()          // a rescan through T replaces src's handle too
+public async Task ViewOfflineAndBack_WhileTheOtherStaysReady()
+// rename src away and back through the journal: src Offline (Block null, empty queries) then Ready; T Ready throughout
+public async Task ViewKeyedByAnAlias_ComesBackAtItsResolvedPath()
+// FinalPath seam maps T\alias to T\src: src renamed away and back, the alias view returns Ready (decision 11)
+public async Task OfflineAtOpen_NeverAttaches()                             // missing T\gone: Offline, LiveScanCount unchanged
+public async Task Root_AndParent_ArePerView()                               // src.Root().Parent null; T's src entry has a Parent
 // FileIndexSetTests
-public async Task Constructor_RejectsNestedRoots()   // T with T\src, and src with src\deeper: ArgumentException naming both
-public async Task Constructor_AcceptsSiblingViews()  // src and other
-// CacheDirectoryInspectionTests
-public async Task InspectCached_ListsADirectoryViewsMftBlockUnderItsVolumeOnly()
-// InspectCached under VolumeKey T lists the block; under the src directory key lists none
+public async Task NestedSharedMembers_ReturnEachFileOnceUnderTheOuter()
+// one source: set of T and src; Search "*.txt" lists a.txt once with Root T; Find(src\a.txt).Root T
+public async Task NestedSharedMembers_OuterDisposed_InnerCovers()          // after T disposes, a set of src alone answers
+public async Task SharedMembers_SubtreeQuery_GoesToTheAnchorsMember()
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexDirectoryViewTests|FullyQualifiedName~FileIndexSetTests|FullyQualifiedName~CacheDirectoryInspectionTests"`
-- [ ] **Step 3: Implement** the Interfaces. Unscoped queries are narrowed in Task 4.6, which owns those tests.
-- [ ] **Step 4: Run, expect PASS** with the same filter plus `FullyQualifiedName~FileIndexWatch`.
-- [ ] **Step 5: Commit** `feat: open a directory root on an NTFS volume as a view of the volume block`.
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~FileIndexSharedViewTests|FullyQualifiedName~FileIndexSetTests"`.
+- [x] **Step 3: Implement** what fails.
+- [x] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~Subtree|FullyQualifiedName~FileIndexDirectoryViewTests`.
+- [x] **Step 5: Commit** `test: anchors, views and sets over a shared volume block`.
 
-### Task 4.6: Implicit subtree with the two-bitset verdict cache
+### Task 5.9: The process registry is a guarded seam
 
 **Files:**
-- Create: `MFTLib/Index/SubtreeMembership.cs`
-- Modify: `MFTLib/Index/SearchEngine.cs` (`RootScan`, `SearchOneRoot`, the partition loop at 170-200, `EnumerateRoot`),
-  `MFTLib/Index/IndexRowEnumerable.cs:70-130,214` (membership and the unfiltered fast path), `MFTLib/Index/IndexNavigation.cs`
-  (delete `IsUnder` once unused)
-- Test: create `MFTLib.Tests/Index/SubtreeMembershipTests.cs`
+- Modify: `MFTLib.Tests/NativeSeamIsolationTests.cs` (`IsNativeSeam`: a reference to
+  `VolumeScanRegistry.get_Process`, matched by declaring type and name, is a seam; add one non-executed violation
+  control and one isolated control that uses `new VolumeScanRegistry()` and stays parallel)
+- Create: `MFTLib.Tests/Index/VolumeScanRegistryProcessTests.cs` (`[DoNotParallelize]`)
 
-**Interfaces:**
-- `internal sealed class SubtreeMembership(BlockFile block, uint anchorRow) : IDisposable`: captures `RowCount`, rents
-  two `ulong[]` of `(RowCount + 63) / 64` words (`known`, `inside`); `bool Contains(uint row)` climbs with
-  `IndexNavigation.TryGetParentRow` up to `BlockLayout.MaximumPathDepth` hops, stopping at the anchor (inside), a
-  known row (its verdict), no parent, or the depth limit (outside), then records the verdict for every row it visited
-  per decision 8; a row at or past the captured count is answered by climbing without caching;
-  `internal long ParentReads` (plain increment, exact single-threaded). `Dispose` returns the arrays.
-- The anchor row is `query.Subtree`'s resolved row when set, else `rootBlock.View.Row` for a directory view, else no
-  membership (every row qualifies). One membership per root scan, shared by its partitions. `IndexRowEnumerable`'s
-  fast path also requires `!View.IsDirectoryView`.
-
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
-public void Contains_AgreesWithTheParentChainOnEveryRow()
-// 2000 synthetic rows with a detached row, a two-row cycle and a 130-deep chain; oracle: a test-local climb
-public void Contains_ClimbsEachDirectoryOncePerQuery()
-// a 100-deep directory chain holding 1000 files at its deepest level; Contains over every row: ParentReads <= rows + 100
-// (Review Focus 4)
-public void Contains_ConcurrentPartitionsAgreeWithASequentialPass()   // Parallel.For over rows vs a fresh sequential pass
-public void Contains_RowPastTheCapturedCount_IsAnsweredWithoutCaching()
-// FileIndexDirectoryViewTests (Task 4.5's fixture)
-public async Task UnscopedQueries_SeeOnlyTheView()   // Search, Enumerate, EnumerateRows for "*.txt": only a.txt
-public async Task ExplicitSubtreeInsideTheView_Narrows()
+// NativeSeamIsolationTests
+public void ProcessRegistryReference_RequiresClassLevelDoNotParallelize()   // violation control is reported by name
+public void PrivateRegistry_StaysParallel()                                  // isolated control is not reported
+// VolumeScanRegistryProcessTests (no ScanRegistry option: the default path)
+public async Task DefaultOptions_ShareThroughTheProcessRegistry()           // two opens, one production, IsLive(key) on Process
+[TestCleanup] public void NoScanOfThisClassStaysLive()                       // Assert.IsFalse(Process.IsLive(key)) for each key used
 ```
 
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~SubtreeMembershipTests|FullyQualifiedName~FileIndexDirectoryViewTests"`
-- [ ] **Step 3: Implement**; every existing `Subtree` test keeps passing.
-- [ ] **Step 4: Run, expect PASS**: the filter plus `FullyQualifiedName~SearchEngine|FullyQualifiedName~Subtree|FullyQualifiedName~FileIndexEnumerateRowsTests|FullyQualifiedName~FileIndexSetTests`.
-- [ ] **Step 5: Commit** `feat: scope unscoped queries on a directory view with a verdict cache`.
+- [x] **Step 2: Run, expect FAIL**, then implement, then **PASS**: `--filter "FullyQualifiedName~NativeSeamIsolationTests|FullyQualifiedName~VolumeScanRegistryProcessTests"`.
+- [x] **Step 3: Stress** (docs/test-isolation.md): three consecutive full runs with
+  `-- MSTest.Parallelize.Workers=32 MSTest.Parallelize.Scope=ClassLevel` on Windows, and on Linux through
+  `./scripts/coverage-linux.sh`'s filter under WSL; no exclusion added. Record serial-before and parallel-after wall
+  clock and per-run results for the PR body (counts only, never logs).
+- [x] **Step 4: Commit** `test: guard the process volume scan registry as a process seam`.
 
-### Task 4.7: Samples select the producer and accept any root
+### Task 5.10: Watch sample `add-root <path>`
 
-**Files:** `SampleProgram.Watch/WatchArguments.cs`, `WatchArguments.Parse.cs`, `SampleHost.Broker.cs`,
-`SampleHost.Drives.cs`, `SampleHost.Verbs.cs`, `SampleHost.WatchDrives.cs`, `SampleHost.Run.cs`;
-`SampleProgram.Direct/SampleHost.Run.cs`; tests `MFTLib.Tests/WatchArgumentsTests.cs`, `WatchHostModeTests.cs`,
-`WatchFirstRunTests.cs`, `DirectHostTests.cs`.
+**Files:**
+- Create: `SampleProgram.Watch/SampleHost.AddRoot.cs`
+- Modify: `SampleProgram.Watch/SampleHost.WatchDrives.cs` (`WaitWhileWatchingAsync`, `WatchIndexAsync`),
+  `SampleProgram.Watch/SampleHost.Broker.cs` (`OptionsFor` reused), usage text in `WatchArguments.cs`
+- Test: add to `MFTLib.Tests/WatchHostModeTests.cs`
 
 **Interfaces:**
-- `WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Roots)` (`Drives` renamed; tokens parse with
-  `RootKey.TryParse`, duplicates removed, an unparsable token reports `Root 'X' is neither a drive nor a full path.`);
-  `internal ProducerSelection Producer { get; init; } = ProducerSelection.Automatic`; `--producer automatic|mft|walk`
-  is read by scan, watch, rescan and journal (`VerbFlags`); another value reports
-  `Option --producer must be automatic, mft or walk.`; usage shows `[root ...]` and the flag.
-- Each open sets `Root = root` and `Producer = parsed.Producer`; status lines print the producer and, when set,
-  `MFT unavailable: {reason}`. With no root named, the host picks `WindowsVolume.EnumerateAll()` volumes whose
-  `IsIndexable` is true and says "every ready local NTFS drive". `SMPW` stays 3.
+- Attended `watch` with no `--seconds` reads lines from `_input` instead of one key: prints
+  `Watching {roots}. Type add-root <path> to watch another root, or press Enter to stop.`; an empty line or end of input
+  stops; `add-root <path>` parses with `RootKey.TryParse`, opens with `OptionsFor(source, parsed, root, ...)` (same
+  source, so it attaches to the volume's scan), subscribes `ReportIndexChanges`, starts its watch, waits for catch-up and
+  prints `Added root {root}: producer {status.Producer}`; another line prints
+  `Unknown command '{line}'. Type add-root <path>, or press Enter to stop.` and keeps watching; an unparsable path prints
+  `Root '{text}' is neither a drive nor a full path.`. Unattended and `--seconds` runs read no input (unchanged).
+- Added indexes join the final stop, the change count and a new `FileIndexSet` over every watched index for
+  `ReportSetQueriesAsync` (nested members allowed, ruling 15), and are disposed with the others.
 
-- [ ] **Step 1: Write the failing tests**: `Parse_ProducerFlag_SelectsTheProducer` (three `DataRow`s),
-  `Parse_UnknownProducer_IsAUsageError`, `Parse_ADirectoryRoot_ParsesAsADirectoryKey` (a temp directory path),
-  `Parse_AnUnparsableRoot_IsAUsageError`, `Watch_PrintsTheProducerAndTheUnavailableReason` (WatchHostModeTests with a
-  NotNtfs facts reader through `prepareOptions`: output contains `producer Enumeration` and `MFT unavailable: NotNtfs`),
-  `Direct_PrintsTheProducer`.
-- [ ] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~WatchArguments|FullyQualifiedName~WatchHostModeTests|FullyQualifiedName~DirectHostTests|FullyQualifiedName~WatchFirstRunTests"`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicMemberCallerTests` (no unreferenced
-  member, no stale exemption).
-- [ ] **Step 5: Commit** `feat: the Watch sample takes any root and a --producer choice`.
+- [x] **Step 1: Write the failing tests** (`WatchHostModeTests`, interactive host, scripted broker, volume T mapped
+  through `prepareOptions`)
 
-### Task 4.8: Documentation and rulings
+```csharp
+public async Task Watch_AddRoot_AttachesAViewWithoutASecondScan()
+// input "add-root {T\src}\n\n": output contains "Added root" and "producer Mft"; the scripted broker saw one scan of T
+public async Task Watch_UnknownCommand_KeepsWatching()          // "frobnicate\n\n": the unknown-command line, then the stop summary
+public async Task Watch_AddRootWithAnUnparsablePath_ReportsIt()
+public async Task Watch_EndOfInput_Stops()
+```
 
-**Files:** `docs/api-decisions.md`, `docs/architecture.md` (lines 11, 12, 18, 151-164, 210),
-`docs/broker-integration.md` (80, 114, 129-156), `docs/broker-testing.md`, `docs/index-format.md` (11, 223, and the
-"File name" section: MFT blocks are named for their volume), `docs/test-isolation.md:326` (delete the
-`IndexedRoot.Dependencies` row; the facts seam is per options and needs no isolation), `docs/watch-lifetime.md:7`,
-`docs/query-lifetime.md` (implicit subtree; verdict cache), `README.md` (62, 76, 102, 170, 210, 211), `CHANGELOG.md`
-(0.3.0 lines naming `IndexedRoot`, `MftSourceMissing` and `EnumerateWindowsVolumes`), `AGENTS.md:111`
-(`` `IndexedRoot` `` to `` `RootKey` ``, net shorter), the spec's section 1 row for `SyntheticVolumeFacts` (B1).
+- [x] **Step 2: Run, expect FAIL**: `--filter "FullyQualifiedName~WatchHostModeTests|FullyQualifiedName~WatchArgumentsTests"`.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, expect PASS** with the filter plus `FullyQualifiedName~PublicMemberCallerTests`.
+- [x] **Step 5: Smoke**: run the built `SampleProgram.Watch.exe watch C: --seconds 5` attended once on Windows (it
+  self-elevates through the broker) and type nothing; then once without `--seconds`, `add-root C:\Windows`, Enter.
+  Expected: one scan, `Added root C:\Windows: producer Mft`, changes under both roots. Record the outcome in the PR body.
+- [x] **Step 6: Commit** `feat: the Watch sample attaches roots while watching`.
 
-- [ ] **Step 1: Run the docs-update check**; `grep -rn "IndexedRoot\|MftSourceMissing\|EnumerateWindowsVolumes\|FromWindowsDrive" --include=*.md --include=*.cs .`
+### Task 5.11: Documentation and rulings
+
+**Files:** `docs/api-decisions.md`, `docs/architecture.md` (line 18 and the runtime and lock-order sections),
+`docs/watch-lifetime.md` (watch request, watch state events, runtime state machine, lock order, callback reentrancy),
+`docs/query-lifetime.md` (borrows per view and per block; a view's disposal drains only its own; the last detach
+drains all), `docs/block-ownership.md:32,69,76` (one owner lock per scan, `RootRuntime` to `VolumeScan`),
+`docs/broker-lifetime.md` (one scan channel per production and one watch channel per instance, owned by the scan),
+`docs/checkpoint-loss.md` (facts per scan, reported on every view), `docs/test-isolation.md` (decision 9: the private
+registry seam, the process seam rule and the cleanup check), `README.md` (where it says one scan per index),
+`CHANGELOG.md` (0.3.0: volume scan sharing, routed `Changed`, Watch `add-root`), the spec's section 7 test-isolation
+row (decision 9).
+
+- [x] **Step 1: Run the docs-update check**; `grep -rn "RootRuntime\|private fallback until slice 5\|volume-wide\|until slice 5" --include=*.md --include=*.cs .`
   returns only `docs/superpowers/` lines.
-- [ ] **Step 2: Supersede in `api-decisions.md`** (each rewritten in place with the new decision, its reason from
-  MFTLib issue 844 rulings 2 and 3 and owner answers 1 to 3, and a revisit condition):
-  - "One producer enum, selection and observation" becomes **"ProducerSelection selects, ProducerKind observes"**:
-    the three selections, the default invalid, eligibility facts and order (decision 1), fallback only for
-    eligibility reasons including `BrokerUnavailable` and `ElevationDeclined` at an open's cold scan, a mid-scan
-    failure never walks, the producer fixed for the index lifetime, `RootStatus.Producer` (null only when Offline at
-    open) and `MftUnavailable` (decisions 3 and 4), and `IndexedRoot` deleted (owner answer 1). Its old revisit
-    condition ("a choice that cannot identify a block's producer") is the reason.
-  - "OpenAsync validates root keys and producer choices before filesystem side effects": default `RootKey`, undefined
-    `ProducerSelection`, dump with WalkOnly.
-  - "Cold production failures settle per root across both producers" and "Source absence is typed; applications own
-    their wording": `MftUnavailable` with `NoMftSource` replaces `MftSourceMissing`.
-  - "The enumeration producer is a product feature, chosen per root": its rule becomes the eligibility-only fallback.
-  - "Two key types: VolumeKey and RootKey, one method per lifecycle verb": `FileIndexOptions.Root` is a `RootKey?`.
-  - "Windows volume discovery reports every volume with an MFT verdict": `WindowsVolume.EnumerateAll()`;
-    `IsIndexable` is Automatic's predicate, removable NTFS included (owner answer 2); the `removable` reason goes.
-  - "Windows-only annotations sit on the member that reaches Windows": the `FromWindowsDrive` clause goes;
-    `EnumerateAll` carries the annotation.
-  - "Windows volume construction is named for its volume key": deleted (no factory remains; the open reads the serial).
-  - "WindowsVolume.Reason stays as display-only text": the reason list.
-  - "One root per FileIndex, and FileIndexSet for multi-index queries": `Root` is `RootKey?`; `SyntheticVolumeFacts`
-    replaces `SyntheticIndexedRoot`; nested members are rejected (owner answer 3).
-  - Leave "A subtree anchor belongs to the queried index's current root block" (decision 7) and "Block Generation is a
-    per-root change version" for slice 5.
-- [ ] **Step 3: Add rulings** "A directory root on an NTFS volume is an MFT view of the volume block" (view root row
-  and sequence rechecked at publication, after each batch and at query admission; `Offline` and back; `Find` under the
-  view; implicit subtree with the verdict cache; `Parent` null at the view root; real full paths; MFT blocks named for
-  their volume; `Changed` reports every change on the volume) and "Every MFT block is named for its volume"
-  (decision 5), each with reason and revisit condition.
-- [ ] **Step 4: Check budgets**: `wc -m AGENTS.md` below 15000, then
-  `--filter FullyQualifiedName~AgentInstructionsTests`.
-- [ ] **Step 5: Commit** `docs: record producer selection and directory MFT views`.
+- [x] **Step 2: Supersede** the rulings listed under "Public surface changes", each rewritten in place with its reason
+  (MFTLib issue 844 rulings 5 and 15, spec section 2) and a revisit condition. Generation: "identical on every view of a
+  scan; strictly increases on every applied batch and rescan of the scan; comparable while the consumer holds any index
+  of the scan; a new scan after the last detach adopts the cached value". Anchor: "an anchor is valid when its
+  `RootBlock` is the borrowed one, which names both the block and the querying view".
+- [x] **Step 3: Add the ruling "Volume scan sharing"**: the share key (decision 2), what attaches (decision 1), the
+  lifetime table of spec section 2 with decisions 3, 4, 5 and 12, routing and fault fan-out (decisions 7 and 8),
+  coalescing (decision 10), Offline rules (decision 11), per-view option fan-out (decision 6). Reason: one MFT pass and
+  one journal watch per volume however many roots a consumer registers (rulings 3 and 5); revisit only if sharing is
+  wanted across processes or across share keys.
+- [x] **Step 4: Check budgets**: `AGENTS.md` is not edited (its rules stay true); `wc -m AGENTS.md` below 15000 and
+  `--filter FullyQualifiedName~AgentInstructionsTests` pass.
+- [x] **Step 5: Commit** `docs: record volume scan sharing`.
 
-### Task 4.9: Slice verification and PR
+### Task 5.12: Slice verification and PR
 
-- [ ] Full build and full suite: 0 failed; `NativeSeamIsolationTests` on Windows; Linux through CI and
-  `./scripts/coverage-linux.sh` under WSL when available (on Linux, Automatic over a real directory reports
-  `PlatformWithoutMft` and walks; synthetic facts drive every MFT case).
-- [ ] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests|FullyQualifiedName~NamespaceBoundaryTests"`:
-  approved files differ from main by exactly the rows in "Public surface changes".
-- [ ] Coverage gate (`.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`).
-- [ ] `aislop scan .` 100 with zero unsuppressed findings; `git diff --check` clean; `wc -m AGENTS.md` below 15000.
-- [ ] PR body: starts `## Problem` (a consumer must classify each root and pick the producer itself, git-wizard's
-  `WindowsRootClassifier` already disagrees with MFTLib on removable NTFS, and a directory root can only be walked),
-  cites MFTLib issue 844; a **Public surface** section copying the table above, naming the consumer production caller
-  of every added member; the rulings superseded and added; and **Consumer migration** by file, from spec section 6:
-  git-wizard `WindowsRootClassifier.cs` (delete) and `RepositoryDiscoveryDependencies.cs:31`, `DiscoveryScope.cs`,
-  `MftIndexSession.cs`, `MftIndexSession.Windows.cs`, `EnumerationDiscovery.cs`, `RepositoryDiscoveryCoordinator.cs`,
-  `RepositoryDiscoveryCoordinator.Watch.cs:67`, `Watch/IndexVolumeChangeSource.*`, `GitWizardApi.IndexDiscovery.cs`,
-  `MftIndexCacheStatusFormatter.cs`, and every `SyntheticIndexedRoot.Create` test caller; file-wizard
-  `FileIndexHost.cs`, `IndexSession.cs:37`, `DriveDiscovery.cs`, `ScannerState.cs:28-46`, `DirectoryWalkRoot.cs`,
-  `FileIndexHostOptions.cs:11`, `ScanOperation.HostReplacement.cs:66`, `IndexHostOpening.cs:8`,
-  `RecentChangesBenchmarks.cs:39-43`. Note that a second index on one volume uses the private fallback until slice 5,
-  and that directory views report volume-wide `Changed` events until then.
+- [x] Full build and full suite: 0 failed; `NativeSeamIsolationTests` on Windows and Linux; Task 5.9's stress results.
+- [x] `--filter "FullyQualifiedName~PublicSurfaceTests|FullyQualifiedName~PublicMemberCallerTests|FullyQualifiedName~NamespaceBoundaryTests"`:
+  approved files identical to main.
+- [x] Coverage gate (`.\scripts\run-coverage.ps1 -NonInteractive`, then `pwsh -NoProfile -File scripts/test-coverage-status.ps1`);
+  every new file at or near its namespace's coverage, MFTLibTestExtensions 100%.
+- [x] `aislop scan .` 100 with zero unsuppressed findings; `git diff --check` clean; `LC_ALL=C.UTF-8 grep -rnP '\x{2014}'`
+  over changed files empty.
+- [x] A/B handoff: **A/B pending (orchestrator)**. The orchestrator measures the final head against today's filtered build in the same session (five iterations) and records counts plus the reproduction command in the PR body; the owner accepts a warm working set a few percent over that control.
+- [x] Whole-branch self-review, as directed by the lane brief, against invariants I1 to I12 and
+  the Review Focus list; publish/acquire order, cancellation cadence and per-call cost (routing is one prefix match per
+  change per view; publication one binding refresh per view) are the known risk classes.
+- [x] PR body drafted in the lane report (no PR opened): starts `## Problem` (two indexes on one volume take the private fallback and scan the volume twice, and
+  a directory view reports every change on its volume), cites MFTLib issue 844; **Public surface: none**, with the
+  behavior changes above; the rulings superseded and added; the stress and smoke results; and **Consumer migration**, by
+  file: git-wizard `MftIndexSession.cs` (one `FileIndex` per search root now shares one scan per volume; nothing to
+  change beyond slice 4's list), `GitWizardApi.IndexDiscovery.cs` (per-root clipping goes, spec section 6), and
+  `Watch/IndexVolumeChangeSource.*` (a directory view's `Changed` is already scoped; drop any filter by root);
+  file-wizard `FileIndexHost.cs` (a drive and a directory on it share a scan; no code change required).
 
-# Slice 5: Volume scan sharing
-
-Expand into tasks when slices 3 and 4 merge.
-
-- **Goal:** all MFT views of one share key in one process attach to one `VolumeScan` (block, owner lock, production,
-  watch, catch-up, checkpoint-loss facts, write gate); each `FileIndex` is an `IndexView` with its own root row,
-  borrows, disposal, watch request, events and anchors.
-- **Depends on:** slices 3 and 4.
-- **Files likely touched:** split `MFTLib/Index/FileIndex.RootRuntime*.cs` into `VolumeScan*.cs` and `IndexView*.cs`,
-  new `VolumeScanRegistry.cs`, `FileIndex.cs`, `FileIndex.Watch*.cs` (requests per view, one watch per scan),
-  event routing in the pump, `FileIndex.Rescan*.cs` (coalescing), `RootBlock.cs` and borrow counting,
-  `FileIndexSet.cs`, `FileEntry.cs` (carries its view; equality compares view, block, row, sequence),
-  `NativeSeamIsolationTests`, `MFTLibTestExtensions` registry reset helper, `SampleProgram.Watch` `add-root <path>` console command.
-- **Contract points:** spec section 2 entire (share key: source instance, `VolumeKey`, serial, cache directory full
-  path or `Disabled`, `CacheTag`; lifetime table; event routing including moves across a view boundary as `Renamed`
-  to both views; fault fan-out; coalesced rescans; one recovery per scan); `docs/watch-lifetime.md`,
-  `docs/query-lifetime.md` (borrows per view and per block), `docs/block-ownership.md` (one lock per scan),
-  `docs/broker-lifetime.md`, `docs/test-isolation.md` (the registry is process-global: classes that open shared scans
-  reset it in cleanup and carry `[DoNotParallelize]`); `api-decisions.md`: "Block Generation is a per-root change
-  version" becomes per volume block; new ruling "volume scan sharing".
-- **Verification bar:** spec section 8 "Sharing" list in full (two views one production counted, concurrent opens,
-  attach during Live, cancel one of two opens, dispose order both ways, last detach unmaps after borrows drain, event
-  routing in/out/across, fault fan-out, coalesced rescans, checkpoint loss on both views, view `Offline` and back,
-  foreign-view anchors rejected, `ExistingOnly` view on a cold scan); `NativeSeamIsolationTests` on Windows and Linux;
-  32-worker ClassLevel stress with the existing exclusions; Task 1.8 checklist. Before merge, the slice-6 A/B second
-  run reports warm client peak working set at or below 1,359 MB, or the owner receives the profile.
+---
 
 # Slice 6: A/B re-measurement and docs close-out
 

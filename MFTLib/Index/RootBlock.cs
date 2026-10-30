@@ -1,27 +1,28 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 /// <summary>
-///     One mapped block of one root. A <see cref="FileEntry" /> holds its root block, keeping a
-///     block retired by a rescan mapped while that handle remains reachable, and nothing else: a
-///     rescan of another root never waits on it. The finalizer releases a retired block once its
-///     handles become unreachable while the index lives; index disposal releases every block
-///     through <see cref="ReleaseState" />, which its root owner retains independently of this object.
+///     One view's handle on a mapped block. Entries retain this handle and therefore the shared mapping;
+///     the view's borrow owner refuses reads after that view closes without releasing other views.
 /// </summary>
 sealed class RootBlock
 {
+    readonly ViewBorrows? _viewBorrows;
+
     public RootBlock(RootKey root, BlockFile block,
         string? rootDirectoryPath = null, MftIndexSource? mftSource = null, ViewRoot? view = null)
+        : this(root, new MappedBlock(block), null, rootDirectoryPath, mftSource, view)
     {
-        ArgumentNullException.ThrowIfNull(block);
+    }
+
+    internal RootBlock(RootKey root, MappedBlock mapped, ViewBorrows? viewBorrows,
+        string? rootDirectoryPath, MftIndexSource? mftSource, ViewRoot? view)
+    {
         Root = root.Validated();
-        Block = block;
-        ReleaseState = new RootBlockRelease(block);
-        ProducerKind = block.Header.ProducerKind;
+        Mapped = mapped;
+        _viewBorrows = viewBorrows;
         Kind = RootKind.For(ProducerKind, mftSource);
         RootDirectoryPath = Kind.NormalizeRoot(rootDirectoryPath);
-        View = view ?? ViewRoot.ForBlockRoot(block.Header.RootRow);
+        View = view ?? ViewRoot.ForBlockRoot(Block.Header.RootRow);
         MatchableRootDirectoryPath = View.MatchablePath ?? Kind.ToMatchablePrefix(RootDirectoryPath);
     }
 
@@ -33,43 +34,41 @@ sealed class RootBlock
     /// </summary>
     internal ViewRoot View { get; }
 
-    /// <summary>
-    ///     Releases the block for a caller who simply dropped every handle. The catch is
-    ///     deliberately unconditional and local to this path: releasing unmaps a view and can
-    ///     delete a retired block file, so a file the operating system will not unlink surfaces as
-    ///     an exception, and an exception leaving a finalizer terminates the process with a stack
-    ///     no consumer can act on. The worst case swallowed here is a leaked mapping or a leftover
-    ///     file, which is what the caller already has. <see cref="RootBlockRelease.DrainAndReleaseAsync" />
-    ///     keeps propagating, because a deterministic teardown failure is worth surfacing.
-    /// </summary>
-    [SuppressMessage("Roslynator", "RCS1075",
-        Justification = "A finalizer is the one place where catching everything and doing nothing is the " +
-                        "correct behaviour: an exception that escapes it terminates the process. There is " +
-                        "nothing to log to and nothing to retry, and the swallowed worst case is a leaked " +
-                        "mapping, which is strictly better than the alternative. Scoped to this method only.")]
-    ~RootBlock()
+    // I5 Borrows: acquire the view before the mapping; return in reverse. A closed view refuses
+    // admission on every generation, while each mapped block independently drains its admitted readers.
+    internal bool TryTakeBorrow()
     {
-        try
+        if (_viewBorrows is not null && !_viewBorrows.TryTake())
         {
-            ReleaseState.ReleaseUnborrowed();
+            return false;
         }
-        catch (Exception)
+        if (ReleaseState.TryTakeBorrow())
         {
-            // See this finalizer's summary.
+            return true;
         }
+        _viewBorrows?.Return();
+        return false;
+    }
+
+    internal void ReturnBorrow()
+    {
+        ReleaseState.ReturnBorrow();
+        _viewBorrows?.Return();
     }
 
     public RootKey Root { get; }
 
-    public BlockFile Block { get; }
+    internal MappedBlock Mapped { get; }
+
+    public BlockFile Block => Mapped.Block;
 
     /// <summary>The block's mapping and borrows, retained by the root owner after it retires this block.</summary>
-    internal RootBlockRelease ReleaseState { get; }
+    internal RootBlockRelease ReleaseState => Mapped.ReleaseState;
 
     /// <summary>True from the moment a release begins, before the block is unmapped.</summary>
-    internal bool IsReleased => ReleaseState.IsReleaseStarted;
+    internal bool IsReleased => Mapped.IsReleased || _viewBorrows is { IsClosed: true };
 
-    public ProducerKind ProducerKind { get; }
+    public ProducerKind ProducerKind => Mapped.ProducerKind;
 
     /// <summary>
     ///     The root used to render this block's entry paths: a host directory for live volumes
@@ -96,5 +95,5 @@ sealed class RootBlock
     ///     rescan replacing the block starts with no reported cycles. See
     ///     <see cref="JournalMutator" /> for how it is used.
     /// </summary>
-    internal ReportedReasonCycles ReportedCycles { get; } = new();
+    internal ReportedReasonCycles ReportedCycles => Mapped.ReportedCycles;
 }

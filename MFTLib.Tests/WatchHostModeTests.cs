@@ -5,6 +5,7 @@ using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 using SampleProgram.Watch;
+using System.Runtime.CompilerServices;
 
 namespace MFTLib.Tests;
 
@@ -14,6 +15,57 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public sealed class WatchHostModeTests : IDisposable
 {
+    [TestMethod]
+    [DataRow("add-root {source}\n\n", "Added root {source}: producer Mft", 0)]
+    [DataRow("frobnicate\n\n", "Unknown command 'frobnicate'. Type add-root <path>, or press Enter to stop.", 0)]
+    [DataRow("add-root relative/path\n\n", "Root 'relative/path' is neither a drive nor a full path.", 0)]
+    [DataRow("", "Watching T. Type add-root <path> to watch another root, or press Enter to stop.", 0)]
+    [DataRow("add-root T\n\n", "Error adding root T:", 1)]
+    [DataRow("add-root {source}/missing\n\n", "Error adding root ", 1)]
+    public async Task Watch_InteractiveCommands_KeepOneScanAndStopCleanly(string inputTemplate, string expectedTemplate, int expectedExitCode)
+    {
+        using var attended = new UnattendedEnvironmentScope(null);
+        var source = Path.Combine(_directory, "src");
+        Directory.CreateDirectory(source);
+        var scans = 0;
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new BrokerHostOptions
+        {
+            ScanVolume = (_, _, _, _, _, _) =>
+            {
+                Interlocked.Increment(ref scans);
+                return [[BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(30, "src", 3),
+                    new MftRecord(31, 30, new MftRecordFields(1), "a.txt")]];
+            },
+            WatchVolume = (_, since, _, token) => QuietWatch(since, token)
+        }));
+        var lines = new List<string>();
+        using var input = new StringReader(inputTemplate.Replace("{source}", source, StringComparison.Ordinal));
+        var host = new SampleHost(new LineCollectingWriter(lines), input, interactive: true);
+        var sessionLaunch = Task.FromResult(broker.Handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var parsed = new WatchArguments(WatchVerb.Watch, [new VolumeKey('T')])
+        {
+            CacheDirectory = Path.Combine(_directory, "cache")
+        };
+
+        var result = await host.RunThroughBrokerAsync(parsed, session,
+            options => SyntheticVolumeFacts.Apply(options, 4242, volume: new VolumeKey('T'), volumeRootDirectory: _directory),
+            CancellationToken.None);
+
+        Assert.AreEqual(expectedExitCode, result, string.Join(Environment.NewLine, lines));
+        Assert.AreEqual(1, scans);
+        var expected = expectedTemplate.Replace("{source}", source, StringComparison.Ordinal);
+        Assert.Contains(line => line.StartsWith(expected, StringComparison.Ordinal), lines);
+        Assert.Contains(line => line.StartsWith("Saw 0 changes", StringComparison.Ordinal), lines);
+    }
+
+    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> QuietWatch(
+        UsnJournalCursor since, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return ([], since);
+        await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+    }
+
     TempDirectory _directoryOwner = null!;
     string _directory = null!;
 

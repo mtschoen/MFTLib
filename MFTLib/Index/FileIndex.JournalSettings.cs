@@ -27,6 +27,6 @@ public sealed partial class FileIndex
     internal UsnJournalSettings ReadUsnJournalSettings()
     {
         ThrowIfDisposed();
-        return _runtime.QueryUsnJournalSettings();
+        return _view.Scan.QueryUsnJournalSettings();
     }
 }
