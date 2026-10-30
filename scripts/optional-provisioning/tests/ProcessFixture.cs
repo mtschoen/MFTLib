@@ -96,6 +96,9 @@ internal sealed class ProcessFixture : IDisposable
             case "dotnet" when arguments.SequenceEqual(new[] { "--version" }):
                 Console.WriteLine("10.0.100"); return 0;
             case "dotnet" when arguments.FirstOrDefault() == "test": return 0;
+            case "dotnet" when arguments.FirstOrDefault() == "restore" &&
+                arguments.Any(argument => argument.EndsWith("OptionalProvisioning.csproj", StringComparison.Ordinal)):
+                return Forward(Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_DOTNET")!, arguments);
             case "dotnet" when arguments.FirstOrDefault() is "restore" or "build":
                 return Environment.GetEnvironmentVariable("MFTLIB_INIT_REQUIRED_FAILURE") == "1" ||
                     (arguments[0] == "build" && Environment.GetEnvironmentVariable("MFTLIB_INIT_BUILD_FAILURE") == "1") ? 17 : 0;
@@ -172,7 +175,7 @@ internal sealed class ProcessFixture : IDisposable
             InstallDouble(Path.Combine(Commands, name + ExecutableSuffix));
         foreach (var relative in new[] { "init.ps1", "init.sh", "init.bat", "scripts/build-windows.ps1", "scripts/windows-tools.ps1", "scripts/build-linux.sh" })
             CopyFile(sourceRoot, relative);
-        foreach (var relative in new[] { "Directory.Build.props", "NuGet.Config", "OptionalProvisioning.csproj", "Program.cs", "ProvisioningDispatcher.cs", "CommandLauncher.cs" })
+        foreach (var relative in new[] { "Directory.Build.props", "NuGet.Config", "OptionalProvisioning.csproj", "packages.lock.json", "Program.cs", "ProvisioningDispatcher.cs", "CommandLauncher.cs" })
             CopyFile(sourceRoot, "scripts/optional-provisioning/" + relative);
         if (OperatingSystem.IsWindows())
         {

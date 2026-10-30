@@ -268,13 +268,17 @@ done
 output="$(
     source "$root/tools/ci-preflight.sh"
     preflight_platform() { printf 'linux'; }
-    dotnet() { printf 'INVOKED %s\n' "$*"; return 23; }
+    dotnet() {
+        printf 'INVOKED %s\n' "$*"
+        [[ "$1" != run ]]
+    }
     preflight_main --only init
 )"
 status=$?
 assert_equal 1 "$status"
-assert_contains "$output" 'INVOKED run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj'
-assert_contains "$output" 'FAIL init-linux: exit 23'
+assert_contains "$output" 'INVOKED restore scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --locked-mode'
+assert_contains "$output" 'INVOKED run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 --no-restore'
+assert_contains "$output" 'FAIL init-linux: exit 1'
 
 scratch="$(mktemp -d)" || exit 1
 trap 'rm -rf -- "$scratch"' EXIT

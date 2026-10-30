@@ -83,9 +83,10 @@ fi
 # Restore the managed projects individually rather than MFTLib.sln: the solution
 # includes MFTLibNative.vcxproj, which the dotnet CLI cannot load on Linux.
 echo "Restoring NuGet packages..."
-dotnet restore "$ROOT/MFTLib/MFTLib.csproj"
-dotnet restore "$ROOT/MFTLibTestExtensions/MFTLibTestExtensions.csproj"
-dotnet restore "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj"
+dotnet restore "$ROOT/MFTLib/MFTLib.csproj" --locked-mode
+dotnet restore "$ROOT/MFTLibTestExtensions/MFTLibTestExtensions.csproj" --locked-mode
+dotnet restore "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" --locked-mode
+dotnet restore "$ROOT/scripts/optional-provisioning/OptionalProvisioning.csproj" --locked-mode
 completed+=("NuGet packages restored")
 
 if [ "$aislop_available" -eq 1 ]; then
@@ -104,7 +105,7 @@ fi
 # Only a successful helper result contributes a completed-step message.
 if provisioning_message="$(dotnet run --project \
     "$ROOT/scripts/optional-provisioning/OptionalProvisioning.csproj" \
-    -c Release -p:Platform=x64 --no-launch-profile --verbosity quiet)"; then
+    -c Release -p:Platform=x64 --no-restore --no-launch-profile --verbosity quiet)"; then
     if [ -n "$provisioning_message" ]; then completed+=("$provisioning_message"); fi
 else
     provisioning_status=$?
@@ -126,7 +127,7 @@ if [ "$BUILD" -eq 1 ]; then
 
     echo
     echo "Building managed projects..."
-    dotnet build "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:Platform=x64
+    dotnet build "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:Platform=x64 --no-restore
     completed+=("Native and managed output built")
 fi
 

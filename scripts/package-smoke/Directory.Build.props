@@ -1,3 +1,6 @@
 <Project>
   <!-- Stops the repository's props at this directory: the smoke project sees the package as a consumer does. -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
 </Project>

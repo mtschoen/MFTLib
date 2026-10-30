@@ -103,8 +103,10 @@ integration evidence for the package artifact.
 
 Otherwise it builds the Release library with `scripts/build-linux.sh` (which runs the managed Smoke tier of [SMOKE.md](../SMOKE.md) against it), runs `scripts/check-linux-native.sh`,
 and runs `scripts/smoke-package-linux.sh`. That script packs MFTLib on Linux with the library under
-the version `0.0.0-package-smoke` (never published), restores it from a local feed with an empty
-package cache into `scripts/package-smoke`, and runs that console project. The project links the
+the version `0.0.0-package-smoke` (never published), restores in locked mode only from a local feed
+with an empty package cache into a temporary copy of `scripts/package-smoke`, and runs that console
+project without an implicit restore. The script updates only the copied lock file's `MFTLib` content
+hash to match the package it just packed, leaving the checkout's lock file unchanged. The project links the
 test dump builder `MFTLib.Tests/TestSupport/MftDumpFixture.cs`, loads a dump through
 `MftIndexSources.FromMftDumpFile`, asserts `dump:/D/documents/Notes.txt` is indexed with 11 bytes,
 and asserts the library came from `runtimes/linux-x64/native` of the output and was not copied flat.

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "MFTLib": {
+        "type": "Direct",
+        "requested": "[0.0.0-package-smoke, )",
+        "resolved": "0.0.0-package-smoke",
+        "contentHash": "gIk/FFJkXlj7s5i4enyWX9nFSnG7D8iTA/NsTTIhmpgHtAsmxGYWrDzPuNa6tRNfF2vvRE7UdytRfJatxCtu9A=="
+      }
+    }
+  }
+}

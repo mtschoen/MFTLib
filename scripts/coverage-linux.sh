@@ -64,12 +64,19 @@ mkdir -p "$MANAGED_REPORT_DIR"
 FILTER='FullyQualifiedName!~UsnJournalSyntheticTests'
 
 echo
+echo "==> [managed] locked restore"
+dotnet restore "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
+    -p:MFTLibNativeLinuxFlavor=Coverage \
+    --locked-mode
+
+echo
 echo "==> [managed] dotnet test with coverlet"
 # vstest kills a testhost 100 ms after the run ends, which can cut coverlet's exit-time hit-file
 # flush short and drop modules from the report; extend the grace period.
 export VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=120000
 dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
     -p:MFTLibNativeLinuxFlavor=Coverage \
+    --no-restore \
     --filter "$FILTER" \
     --results-directory "$MANAGED_REPORT_DIR/test-results" \
     --logger 'trx;LogFileName=managed.trx' \

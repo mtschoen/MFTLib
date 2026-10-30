@@ -42,8 +42,9 @@ preflight_execute() {
                 pwsh -NoProfile -File scripts/ci-aislop.ps1
             ;;
         init-windows|init-linux)
-            dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj \
-                -c Release -p:Platform=x64 -- --adapters .
+            dotnet restore scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --locked-mode &&
+                dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj \
+                    -c Release -p:Platform=x64 --no-restore -- --adapters .
             ;;
         *) printf 'Unknown gate: %s\n' "$1" >&2; return 2 ;;
     esac

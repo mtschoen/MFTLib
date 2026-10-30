@@ -68,6 +68,58 @@ public partial class AgentInstructionsTests
         Assert.IsTrue(consumer.Contains("GITEA_TOKEN: ${{ secrets.MFTLIB_SYNC_TOKEN }}", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void LinuxCi_UsesFleetDefaultsAndLockedRestores()
+    {
+        var workflow = RepositoryFiles.Read(".gitea/workflows/test.yml");
+        Assert.IsFalse(workflow.Contains("MFTLIB_CI_IMAGE", StringComparison.Ordinal));
+        Assert.IsTrue(workflow.Contains("dotnet restore scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --locked-mode",
+            StringComparison.Ordinal));
+
+        foreach (var path in new[]
+        {
+            "Directory.Build.props", "scripts/optional-provisioning/Directory.Build.props",
+            "scripts/package-smoke/Directory.Build.props"
+        })
+        {
+            Assert.IsTrue(RepositoryFiles.Read(path).Contains("<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>",
+                StringComparison.Ordinal), $"{path} must generate a NuGet lock file.");
+        }
+
+        var projects = RepositoryFiles.Git("ls-files", "--", "*.csproj")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lockFiles = RepositoryFiles.Git("ls-files", "--", "packages.lock.json", "*/packages.lock.json")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var project in projects)
+        {
+            var lockPath = project[..(project.LastIndexOf('/') + 1)] + "packages.lock.json";
+            Assert.Contains(lockPath, lockFiles, $"{project} must have a committed packages.lock.json.");
+        }
+
+        foreach (var path in new[]
+        {
+            "init.sh", "scripts/build-linux.sh", "scripts/coverage-linux.sh",
+            "scripts/test-agent-instructions.sh", "scripts/smoke-package-linux.sh"
+        })
+        {
+            var script = RepositoryFiles.Read(path);
+            Assert.IsTrue(script.Contains("dotnet restore", StringComparison.Ordinal),
+                $"{path} must restore explicitly.");
+            Assert.IsTrue(script.Contains("--locked-mode", StringComparison.Ordinal),
+                $"{path} must restore in locked mode.");
+            Assert.IsTrue(script.Contains("--no-restore", StringComparison.Ordinal),
+                $"{path} must not implicitly restore after its explicit restore.");
+        }
+
+        var smoke = RepositoryFiles.Read("scripts/smoke-package-linux.sh");
+        Assert.IsTrue(smoke.Contains("dotnet restore \"$CONSUMER_PROJECT_DIRECTORY/PackageSmoke.csproj\"",
+            StringComparison.Ordinal));
+        Assert.IsTrue(smoke.Contains("\"-p:RestoreSources=$FEED\"", StringComparison.Ordinal),
+            "The consumer restore and run must use only the local feed.");
+        Assert.AreEqual(2, smoke.Split('\n').Count(line => line.Contains("-p:RestoreSources=", StringComparison.Ordinal)),
+            "The consumer restore and run must each declare exactly one local feed.");
+    }
+
     // Assemble detector signatures so the guard can scan its own source without exemptions.
     static string[] PrivateContentPatterns() =>
     [
@@ -138,7 +190,7 @@ public partial class AgentInstructionsTests
 
         foreach (var text in new[]
         {
-            "docs/quality-gates.md", "${{ vars.MFTLIB_CI_IMAGE }}",
+            "docs/quality-gates.md", "${{ vars.CACHE_EPOCH }}",
             "$env:MFTLIB_GITEA_REPOSITORY_URL", "https://forge.example.invalid/team/repo",
             @"C:\Data\test\file.txt", "https://github.com/mtschoen/MFTLib"
         })

@@ -13,5 +13,9 @@ SMOKE_WORK="$(mktemp -d)"
 trap 'rm -rf "$SMOKE_WORK"' EXIT
 
 echo
+echo "Restoring the managed Smoke tier against build/linux (MFTLibNativeLinuxFlavor=Release)..."
+dotnet restore "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -p:MFTLibNativeLinuxFlavor=Release "-p:MFTLibSmokeArtifactsDirectory=$SMOKE_WORK" --locked-mode
+
+echo
 echo "Running the managed Smoke tier against build/linux (MFTLibNativeLinuxFlavor=Release)..."
-dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:MFTLibNativeLinuxFlavor=Release "-p:MFTLibSmokeArtifactsDirectory=$SMOKE_WORK" --filter TestCategory=Smoke
+dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:MFTLibNativeLinuxFlavor=Release "-p:MFTLibSmokeArtifactsDirectory=$SMOKE_WORK" --no-restore --filter TestCategory=Smoke

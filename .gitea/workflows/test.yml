@@ -168,9 +168,6 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
-    container:
-      image: ${{ vars.MFTLIB_CI_IMAGE }}
-      options: --ulimit nofile=65536:65536
     timeout-minutes: 30
     outputs:
       skip_build: ${{ steps.changed-files.outputs.skip_build }}
@@ -208,7 +205,9 @@ jobs:
       - name: Test optional provisioning and Linux init
         if: steps.changed-files.outputs.skip_build != 'true'
         shell: bash
-        run: dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 -- --adapters .
+        run: |
+          dotnet restore scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --locked-mode
+          dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 --no-restore -- --adapters .
 
       # The hash is computed in the shell: hashFiles() can evaluate to an empty
       # string on act_runner, which freezes the cache at its first snapshot.
@@ -253,9 +252,6 @@ jobs:
   # the native C++ library or running the full test suite.
   docs:
     runs-on: ubuntu-latest
-    container:
-      image: ${{ vars.MFTLIB_CI_IMAGE }}
-      options: --ulimit nofile=65536:65536
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -280,9 +276,6 @@ jobs:
   # See [Linux package](../../docs/linux-package.md); the coverage build is never shipped.
   linux-package:
     runs-on: ubuntu-latest
-    container:
-      image: ${{ vars.MFTLIB_CI_IMAGE }}
-      options: --ulimit nofile=65536:65536
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
