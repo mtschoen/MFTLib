@@ -436,8 +436,12 @@ and rows not exhausted (`RowCount < S`), the producer disposes the block, delete
 itself), and scans again with minima of `E = S` (or `E` doubled when `E >= S`) for exhausted entries and `P` doubled for an
 exhausted pool; one retry always fits the entries, because every row interns at most one name. This covers the local, dump and
 broker producers; for a broker the client creates a new section and sends a new ArmAndScan, so the retry arms a fresh journal
-cursor. A scan therefore publishes an incomplete block only for row exhaustion or at the clamps. A custom `MftBlockProducer`
-that returns a flagged block is not retried: its flag stays and a rescan grows it as above. USN journal exhaustion keeps
+cursor. The attempt that exhausts entries or pool
+stops reading records at once (the row writer breaks out of the batch enumeration, which releases the record source), so the
+retry starts without a wasted pass over the rest of the volume; the stopped block is discarded, skips its freed-row trust
+pass, and a pool that still cannot hold the names takes further doubled retries. Row exhaustion alone never stops a scan early:
+the scan reads on, counts the skipped records and publishes the flagged block. A scan therefore publishes an incomplete
+block only for row exhaustion or at the clamps. A custom `MftBlockProducer` that returns a flagged block is not retried: its flag stays and a rescan grows it as above. USN journal exhaustion keeps
 the flag-and-rescan remedy.
 
 An MFT mutator keeps what fits and the volume remains Ready and queryable. Read

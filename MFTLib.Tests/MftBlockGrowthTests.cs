@@ -9,6 +9,8 @@ namespace MFTLib.Tests;
 public sealed class MftBlockGrowthTests : IDisposable
 {
     const uint DistinctNameRows = 12000;
+    // Enough 255-character names to outgrow the pool of the first attempt and of its first doubling.
+    const uint PoolDoublingNameRows = 30000;
     TempDirectory _tempDirectory = null!;
 
     public TestContext TestContext { get; set; } = null!;
@@ -23,7 +25,7 @@ public sealed class MftBlockGrowthTests : IDisposable
     public async Task DumpProduction_WithMoreDistinctNamesThanPlanned_CompletesWithEveryRow()
     {
         var path = MftDumpFixture.WriteFile(_tempDirectory.Path, MftDumpFixture.Standard(), "input.mft");
-        var producer = new MftDumpBlockProducer(path, TimeProvider.System, (_, _, _) => DistinctNames());
+        var producer = new MftDumpBlockProducer(path, TimeProvider.System, (_, _, _) => DistinctNames(DistinctNameRows));
         var request = Request(Path.Combine(_tempDirectory.Path, "block.mlix"), deleteOnClose: false);
 
         var result = await producer.ProduceAsync(request, TestContext.CancellationToken);
@@ -35,6 +37,63 @@ public sealed class MftBlockGrowthTests : IDisposable
         Assert.AreEqual(block.Path, request.BlockPath);
         Assert.IsTrue(File.Exists(request.BlockPath));
         Assert.AreEqual(new string('n', 247) + "00011999", NamePool.ReadRowName(block, 12005).ToString());
+    }
+
+    // The first attempt exhausts the name pool partway through; it stops reading records instead of finishing a pass
+    // whose block is discarded, and the retries still end on a whole block.
+    [TestMethod]
+    public async Task DumpProduction_WhenThePoolRunsOut_StopsTheDoomedAttemptEarly()
+    {
+        var path = MftDumpFixture.WriteFile(_tempDirectory.Path, MftDumpFixture.Standard(), "input.mft");
+        var batchesPerAttempt = new List<int>();
+        var producer = new MftDumpBlockProducer(path, TimeProvider.System,
+            (_, _, _) => CountBatches(DistinctNames(PoolDoublingNameRows), batchesPerAttempt));
+        var request = Request(Path.Combine(_tempDirectory.Path, "early.mlix"), deleteOnClose: false);
+
+        var result = await producer.ProduceAsync(request, TestContext.CancellationToken);
+        using var block = result.Block;
+
+        var wholeScan = batchesPerAttempt[^1];
+        Assert.IsGreaterThan(2, batchesPerAttempt.Count);
+        Assert.IsLessThan(wholeScan, batchesPerAttempt[0]);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
+        Assert.AreEqual(PoolDoublingNameRows + 6, block.Header.RowCount);
+    }
+
+    // The local producer drives the same row writer from a volume's record batches.
+    [TestMethod]
+    public async Task LocalProduction_WhenThePoolRunsOut_StopsTheDoomedAttemptEarly()
+    {
+        var batchesPerAttempt = new List<int>();
+        var access = new ScriptedVolumeAccess
+        {
+            VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
+            RecordBatches = (_, _, _, _, _, _) => CountBatches(DistinctNames(PoolDoublingNameRows), batchesPerAttempt),
+            CursorQuery = _ => default
+        };
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, access);
+        var request = Request(Path.Combine(_tempDirectory.Path, "local.mlix"), deleteOnClose: false);
+
+        var result = await producer.CreateIndexSource().Producer(request, TestContext.CancellationToken);
+        using var block = result.Block;
+
+        Assert.IsGreaterThan(2, batchesPerAttempt.Count);
+        Assert.IsLessThan(batchesPerAttempt[^1], batchesPerAttempt[0]);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
+        Assert.AreEqual(PoolDoublingNameRows + 6, block.Header.RowCount);
+    }
+
+    static IEnumerable<IReadOnlyList<MftRecord>> CountBatches(
+        IEnumerable<IReadOnlyList<MftRecord>> batches, List<int> batchesPerAttempt)
+    {
+        // Each enumeration is one scan attempt.
+        batchesPerAttempt.Add(0);
+        var attempt = batchesPerAttempt.Count - 1;
+        foreach (var batch in batches)
+        {
+            batchesPerAttempt[attempt]++;
+            yield return batch;
+        }
     }
 
     [TestMethod]
@@ -112,13 +171,13 @@ public sealed class MftBlockGrowthTests : IDisposable
         DeleteOnClose = deleteOnClose
     };
 
-    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNames()
+    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNames(uint rowCount)
     {
         yield return [MftRecordFactory.Create(new MftRecordTestValues
         {
             RecordNumber = 5, ParentRecordNumber = 5, IsDirectory = true, FileName = "."
         })];
-        for (uint start = 0; start < DistinctNameRows; start += 1000)
+        for (uint start = 0; start < rowCount; start += 1000)
         {
             var batch = new List<MftRecord>();
             for (var offset = start; offset < start + 1000; offset++)
