@@ -332,16 +332,21 @@ sealed partial class BlockWriter
     /// <param name="scanTimestampUtc">UTC time at which production completed.</param>
     /// <param name="rangeFlushed">Optional callback receiving cumulative bytes flushed so far after each range.</param>
     /// <param name="postingBuildProgress">Optional callback invoked as the posting build advances, so a host can report progress.</param>
+    /// <param name="buildPostings">False for a block a producer is about to discard and re-run, which skips the posting build it would never read.</param>
     /// <param name="cancellationToken">Observed every 4096 rows while the postings are built; cancelling leaves the block incomplete.</param>
     public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed,
-        Action? postingBuildProgress = null, CancellationToken cancellationToken = default)
+        Action? postingBuildProgress = null, bool buildPostings = true, CancellationToken cancellationToken = default)
     {
         using var access = Block.TakeAccess();
         Hooks._completeAccessTaken?.Invoke();
         ref var header = ref Block.Header;
         // A block completed before is incomplete again while its postings are rebuilt.
         header.Flags &= ~BlockFlags.Complete;
-        PostingBuilder.Build(Block, postingBuildProgress, cancellationToken);
+        if (buildPostings)
+        {
+            PostingBuilder.Build(Block, postingBuildProgress, cancellationToken);
+        }
+
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         if (Block.Generation == 0)
         {

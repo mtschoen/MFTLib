@@ -149,7 +149,7 @@ public sealed class PostingBuildTests : IDisposable
         using var canceller = new SecondReportCanceller();
 
         Assert.ThrowsExactly<OperationCanceledException>(() => writer.Complete(Moment, null, canceller.Report,
-            canceller.Token));
+            cancellationToken: canceller.Token));
 
         Assert.AreEqual(2, canceller.Reports, "the cancelling report is the start of the placing pass");
         Assert.IsFalse(block.Header.IsComplete);
@@ -324,6 +324,26 @@ public sealed class PostingBuildTests : IDisposable
         Assert.IsTrue(reporter.Steps.Count >= 2);
         Assert.AreEqual(MftBlockScan.PostingBuildStep, reporter.Steps[0]);
         Assert.AreEqual(MftBlockScan.FlushStep, reporter.Steps[^1]);
+    }
+
+    [TestMethod]
+    public void WriteToBlock_NameEntriesExhausted_SkipsThePostingBuildOfTheDoomedBlock()
+    {
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft, slotCapacity: 32, namePoolCapacity: 4096,
+            nameEntryCapacity: 2, rootRow: 5);
+        var reporter = new RecordingReporter();
+        MftRecord[] records =
+        [
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "a"),
+            new(6, 5, new MftRecordFields(1, FileAttributes.Archive), "b"),
+            new(7, 5, new MftRecordFields(1, FileAttributes.Archive), "c")
+        ];
+
+        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), [records],
+            new MftScanOptions(), new BlockWriteReporting(null, reporter), TestContext.CancellationToken);
+
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
+        CollectionAssert.DoesNotContain(reporter.Steps, MftBlockScan.PostingBuildStep);
     }
 
     [TestMethod]

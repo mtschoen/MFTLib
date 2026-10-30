@@ -37,7 +37,9 @@ static class MftBlockScan
         var operation = reporting.Operation;
         writer.Complete(stamp.TimeProvider.GetUtcNow().UtcDateTime,
             operation is null ? null : _ => operation.Processing(FlushStep),
-            operation is null ? null : () => operation.Processing(PostingBuildStep), cancellationToken);
+            operation is null ? null : () => operation.Processing(PostingBuildStep),
+            // A producer re-runs a scan whose name regions ran out, so the posting build would be discarded with it.
+            !writer.NameRegionsNeedGrowth, cancellationToken);
         return result;
     }
 }
