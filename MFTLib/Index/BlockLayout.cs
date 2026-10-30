@@ -46,6 +46,12 @@ static class BlockLayout
     /// <summary>Page-aligned ceiling under 2 GiB, so a pool span's length always fits an int.</summary>
     internal const uint MaximumNamePoolCapacity = 0x7FFFF000;
 
+    /// <summary>Slots up to this count get one name entry each: distinct names reach 61 percent of records on small volumes.</summary>
+    const uint FullNameEntrySlots = 2_000_000;
+
+    /// <summary>Beyond <see cref="FullNameEntrySlots" /> one name entry is planned per this many slots (measured 9 to 35 percent).</summary>
+    const uint SlotsPerTailNameEntry = 5;
+
     /// <summary>Floor of the bucket directory, so a tiny block still spreads its chains.</summary>
     const uint MinimumBucketCount = 1024;
 
@@ -87,7 +93,7 @@ static class BlockLayout
     /// <summary>Computes row capacity by adding the required headroom to an estimated row count.</summary>
     /// <param name="estimatedRowCount">Estimated number of rows required by the initial scan.</param>
     /// <returns>The estimate plus headroom of 25 percent of the estimate or <see cref="MinimumSlotHeadroomRows" /> rows, whichever is larger.</returns>
-    /// <exception cref="OverflowException">The estimate plus required headroom exceeds <see cref="UInt32.MaxValue" />.</exception>
+    /// <exception cref="OverflowException">The estimate plus required headroom exceeds <see cref="uint.MaxValue" />.</exception>
     public static uint ComputeSlotCapacity(uint estimatedRowCount)
     {
         var headroom = Math.Max(estimatedRowCount / 4, MinimumSlotHeadroomRows);
@@ -95,7 +101,7 @@ static class BlockLayout
     }
 
     /// <summary>
-    ///     Clamps the estimate, computes the volume plan (`S`, `E = S`, and `P` from `S`), then raises
+    ///     Clamps the estimate, computes the volume plan (`S`, `E` from `S`, and `P` from `S`), then raises
     ///     each region independently to its required minimum.
     /// </summary>
     /// <param name="estimatedRowCount">Rows the producer estimates, clamped to the largest creatable plan.</param>
@@ -104,7 +110,8 @@ static class BlockLayout
     internal static BlockCapacities PlanCapacities(uint estimatedRowCount, BlockCapacities minimum)
     {
         var slotCapacity = ComputeSlotCapacity(Math.Min(estimatedRowCount, MaximumEstimatedRowCount));
-        var plan = new BlockCapacities(slotCapacity, slotCapacity, ComputeNamePoolCapacity(slotCapacity));
+        var plan = new BlockCapacities(slotCapacity, ComputeNameEntryCapacity(slotCapacity),
+            ComputeNamePoolCapacity(slotCapacity));
         return plan.AtLeast(minimum);
     }
 
@@ -130,6 +137,42 @@ static class BlockLayout
             poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
     }
 
+    /// <summary>
+    ///     The regions a producer that can re-run its scan must enlarge before it may publish a block whose name
+    ///     entries or name pool ran out, or no minimum when the block is not capacity-exhausted or ran out of rows.
+    ///     Entries jump to the slot capacity, which no scan can exceed because every row interns at most one name;
+    ///     the pool doubles. Row exhaustion keeps its flag-and-rescan semantics and is never retried.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    internal static BlockCapacities RetryMinimum(in BlockHeader header)
+    {
+        if (!header.IsCapacityExhausted || header.RowCount >= header.SlotCapacity)
+        {
+            return default;
+        }
+
+        var entriesExhausted = header.NameEntryCount >= header.NameEntryCapacity;
+        var poolExhausted = header.NamePoolCapacity - header.NamePoolUsed <= NamePoolExhaustionMarginBytes;
+        return new BlockCapacities(0,
+            entriesExhausted
+                ? header.NameEntryCapacity < header.SlotCapacity ? header.SlotCapacity : DoubleCapacity(header.NameEntryCapacity)
+                : 0,
+            poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0);
+    }
+
+    /// <summary>
+    ///     Whether a producer that can re-run its scan has a larger name region to retry with, so the running scan is
+    ///     already doomed to be discarded and may stop; false at the clamps, where the flagged block is published.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    internal static bool RetryGrowsCapacity(in BlockHeader header)
+    {
+        var retry = RetryMinimum(in header);
+        return retry.NameEntryCapacity > header.NameEntryCapacity || retry.NamePoolCapacity > header.NamePoolCapacity;
+    }
+
     /// <summary>Doubles a capacity while leaving room for reserved name entry zero in an int-indexed span.</summary>
     /// <param name="capacity">The capacity to double.</param>
     /// <returns>Twice <paramref name="capacity" />, or the clamp when that is larger.</returns>
@@ -142,6 +185,20 @@ static class BlockLayout
     internal static uint DoubleNamePoolCapacity(uint capacity)
     {
         return (uint)Math.Min(capacity * 2UL, MaximumNamePoolCapacity);
+    }
+
+    /// <summary>
+    ///     Plans name entries for a slot capacity: one per slot up to <see cref="FullNameEntrySlots" />, then one per
+    ///     <see cref="SlotsPerTailNameEntry" /> further slots. Interning leaves far fewer distinct names than rows on large
+    ///     volumes; an exceeded plan sets the capacity-exhausted flag and the growth path doubles the entries.
+    /// </summary>
+    /// <param name="slotCapacity">Row slot capacity, headroom included.</param>
+    /// <returns>The allocatable name entry count, never above <paramref name="slotCapacity" />.</returns>
+    internal static uint ComputeNameEntryCapacity(uint slotCapacity)
+    {
+        return slotCapacity <= FullNameEntrySlots
+            ? slotCapacity
+            : FullNameEntrySlots + (slotCapacity - FullNameEntrySlots) / SlotsPerTailNameEntry;
     }
 
     /// <summary>Reserves name pool bytes for a slot capacity: 24 bytes per slot, at least 1 MiB, page aligned.</summary>

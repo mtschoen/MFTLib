@@ -76,8 +76,9 @@ public sealed class MftBlockRowWriterTests : IDisposable
     [TestMethod]
     public void WriteBatches_SlotCapacityOverflowIsCountedAndMarksCapacityExhaustion()
     {
+        // The pool is roomy, so only rows ran out and the scan keeps reading: a larger block is never retried for rows.
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
-            slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
+            slotCapacity: 32, namePoolCapacity: 4096, volumeSerial: 123, rootRow: 5);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Record(32, "overflow"), Record(31, "last")]], new MftScanOptions(), null, CancellationToken.None);
 
@@ -122,18 +123,51 @@ public sealed class MftBlockRowWriterTests : IDisposable
     }
 
     [TestMethod]
-    public void WriteBatches_NamePoolOverflowContinuesWithRecordsThatFit()
+    public void WriteBatches_NamePoolOverflowStopsReadingFurtherRecordsAndBatches()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 4, volumeSerial: 123, rootRow: 5);
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Record(5, "abc"), Record(6, "long"), Record(7, "z")]], new MftScanOptions(), null, CancellationToken.None);
+        var batchesRequested = 0;
 
+        IEnumerable<IReadOnlyList<MftRecord>> Batches()
+        {
+            batchesRequested++;
+            yield return [Record(5, "abc"), Record(6, "long"), Record(7, "z")];
+            batchesRequested++;
+            yield return [Record(8, "y")];
+        }
+
+        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
+            Batches(), new MftScanOptions(), null, CancellationToken.None);
+
+        Assert.AreEqual(1, batchesRequested);
         Assert.AreEqual(1L, result.SkippedRecordCount);
-        Assert.AreEqual(8L, result.RowCount);
-        Assert.AreEqual(4L, result.NamePoolUsedBytes);
+        Assert.AreEqual(6L, result.RowCount);
+        Assert.AreEqual(3L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
-        Assert.AreEqual("z", NamePool.ReadRowName(block, 7).ToString());
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
+    }
+
+    [TestMethod]
+    public void WriteBatches_NameEntryExhaustionStopsReadingFurtherRecords()
+    {
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 4096, nameEntryCapacity: 2, volumeSerial: 123, rootRow: 5);
+        var requested = 0;
+
+        IEnumerable<IReadOnlyList<MftRecord>> Batches()
+        {
+            requested++;
+            yield return [Record(5, "a"), Record(6, "b"), Record(7, "c")];
+            requested++;
+            yield return [Record(8, "d")];
+        }
+
+        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
+            Batches(), new MftScanOptions(), null, CancellationToken.None);
+
+        Assert.AreEqual(1, requested);
+        Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 

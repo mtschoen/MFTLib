@@ -252,6 +252,55 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.IsTrue(result.Block.Header.IsCapacityExhausted);
     }
 
+    // A small volume plans the minimum slot floor and about 2 MB of name pool; 16000 distinct 255-character names need more.
+    [TestMethod]
+    public async Task Produce_WhenTheNamePoolRunsOut_ScansAgainIntoAGrownSectionAndPublishesAWholeBlock()
+    {
+        _ = DistinctNameBatchCache.Value;
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => SmallVolume,
+            ScanVolume = (_, _, _, _, _, _) => DistinctNameBatches()
+        }));
+        var request = Request(Target());
+
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
+        using var block = result.Block;
+
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
+        Assert.AreEqual(16006u, block.Header.RowCount, "rows are indexed by record number, so the count is the last record number plus one");
+        Assert.AreEqual(0, result.SkippedRecordCount);
+        Assert.HasCount(2, broker.Sections.All(), "the exhausted section is replaced by a second scan's section");
+        Assert.IsTrue(broker.Sections.All().Any(section => ReferenceEquals(section.Block, block)));
+        Assert.IsGreaterThan(MftBlockCapacity.Plan(SmallVolume, default).NamePoolCapacity,
+            block.Header.NamePoolCapacity);
+    }
+
+    const ulong DistinctNameRows = 16000;
+    static readonly NtfsVolumeInformation SmallVolume = new(1024L * 1000, 1024);
+
+    // Built once: records are immutable, and regenerating 16000 long names per scan made the test time-bound by its data.
+    static readonly Lazy<IReadOnlyList<IReadOnlyList<MftRecord>>> DistinctNameBatchCache = new(() =>
+    {
+        var batches = new List<IReadOnlyList<MftRecord>> { new[] { BrokerHostFactory.Record(5, ".", 3) } };
+        for (ulong start = 0; start < DistinctNameRows; start += 1000)
+        {
+            var batch = new List<MftRecord>();
+            for (var offset = start; offset < start + 1000; offset++)
+            {
+                batch.Add(BrokerHostFactory.Record(6 + offset,
+                    new string('n', 247) + offset.ToString("D8", System.Globalization.CultureInfo.InvariantCulture)));
+            }
+
+            batches.Add(batch);
+        }
+
+        return batches;
+    });
+
+    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNameBatches() => DistinctNameBatchCache.Value;
+
     [TestMethod]
     public async Task Produce_PreservesRequestedCacheTagThroughHostCompletion()
     {

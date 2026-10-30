@@ -20,7 +20,7 @@ sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? sc
 
     Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken) =>
         MftBlockProducerPipeline.RunAsync(request, _allocator,
-            (allowance, token) => Produce(request, allowance, token), cancellationToken);
+            (grown, allowance, token) => Produce(grown, allowance, token), cancellationToken);
 
     MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
         CancellationToken cancellationToken)

@@ -53,6 +53,17 @@ wholly unrecorded (Benchmark 33.45%, SampleProgram.Watch 0%, every test green).
 `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT`, and `test-coverage-status.ps1` fails if either
 drops it. Setting that variable to `1` reproduces the signature locally.
 
+`MFTLib.Tests.csproj` sets coverlet's `SingleHit`, so every coverage run records a
+line or branch once instead of counting it. Coverlet's default recorder performs one
+locked increment on a process-wide counter array per sequence point; with the suite's
+class-level parallelism, threads running the same instrumented loops (name hashing
+and folding, per character) contend for those cache lines and run several times
+slower. The full Linux suite on a 16-core host took 66 to 83 seconds and a
+name-pool growth scan exceeded its 10 second hang guard after burning 5.4 seconds
+of CPU it needs 1.1 seconds for alone; with `SingleHit` the suite takes 42 seconds.
+Every gate reads hits only as zero or nonzero, so the measurement is unchanged.
+`test-coverage-status.ps1` fails if the project drops the setting.
+
 **Native (C++):** Microsoft.CodeCoverage.Console via `scripts/native-coverage.ps1`:
 ```powershell
 .\scripts\native-coverage.ps1           # cobertura XML output
