@@ -21,6 +21,7 @@ static class MftBlockRowWriter
         long recordsWritten = 0;
         long skippedRecordCount = 0;
 
+        var stoppedForGrowth = false;
         foreach (var batch in batches)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -41,7 +42,18 @@ static class MftBlockRowWriter
                 else
                 {
                     skippedRecordCount++;
+                    // A producer retries this scan into a larger block, so the rest of the volume is not read.
+                    if (writer.NameRegionsNeedGrowth)
+                    {
+                        stoppedForGrowth = true;
+                        break;
+                    }
                 }
+            }
+
+            if (stoppedForGrowth)
+            {
+                break;
             }
 
             progress?.Report(new BlockWriteProgress(recordsWritten, writer.Block.NamePoolUsed,
@@ -50,7 +62,11 @@ static class MftBlockRowWriter
         }
 
         // A freed record's parent can arrive after it, so trust is decided once every row is written.
-        freedRows?.DetachUntrusted(writer, cancellationToken);
+        if (!stoppedForGrowth)
+        {
+            freedRows?.DetachUntrusted(writer, cancellationToken);
+        }
+
         return new BlockWriteResult(writer.RowCount, writer.Block.NamePoolUsed,
             skippedRecordCount);
     }
