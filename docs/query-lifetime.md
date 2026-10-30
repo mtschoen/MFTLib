@@ -83,8 +83,9 @@
 
     - **Resident page release**: `FileIndex.ReleaseResidentPages()` is the consumer's explicit, advisory way to drop the
       block's mapped pages (the whole view) from the process working set; MFTLib never calls it itself and no query,
-      watch or rescan trims. It takes a normal query borrow, then `BlockFile.TryReleaseResidentPages` takes a
-      `BlockAccessScope` (so disposal waits for it) and skips a block whose release has begun or that is disposed. It uses
+      watch or rescan trims. It takes no query borrow: `BlockFile.TryReleaseResidentPages` pairs `TryTakeAccess` with
+      `ReturnAccess` directly, so `BlockFile.Dispose` drains the call before unmapping, and the call skips a block whose
+      release has begun or that is disposed. It uses
       `VirtualUnlock` on Windows, whose FALSE with `ERROR_NOT_LOCKED` (158) is the success signal for a never-locked range,
       or `madvise(MADV_DONTNEED)` elsewhere. Never `DiscardVirtualMemory` or `OfferVirtualMemory` (they corrupt writable
       file views) and never `MADV_PAGEOUT` (it evicts the page cache). The mapping stays valid and trimmed pages fault
