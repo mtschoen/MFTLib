@@ -171,13 +171,18 @@ public sealed class MftBlockGrowthTests : IDisposable
         DeleteOnClose = deleteOnClose
     };
 
-    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNames(uint rowCount)
+    // Built once for the largest request; a smaller request is a prefix because names depend only on the offset.
+    // Records are immutable, so every scan attempt can share them.
+    static readonly Lazy<IReadOnlyList<IReadOnlyList<MftRecord>>> DistinctNameBatchCache = new(() =>
     {
-        yield return [MftRecordFactory.Create(new MftRecordTestValues
+        var batches = new List<IReadOnlyList<MftRecord>>
         {
-            RecordNumber = 5, ParentRecordNumber = 5, IsDirectory = true, FileName = "."
-        })];
-        for (uint start = 0; start < rowCount; start += 1000)
+            new[] { MftRecordFactory.Create(new MftRecordTestValues
+            {
+                RecordNumber = 5, ParentRecordNumber = 5, IsDirectory = true, FileName = "."
+            }) }
+        };
+        for (uint start = 0; start < PoolDoublingNameRows; start += 1000)
         {
             var batch = new List<MftRecord>();
             for (var offset = start; offset < start + 1000; offset++)
@@ -190,7 +195,12 @@ public sealed class MftBlockGrowthTests : IDisposable
                 }));
             }
 
-            yield return batch;
+            batches.Add(batch);
         }
-    }
+
+        return batches;
+    });
+
+    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNames(uint rowCount) =>
+        DistinctNameBatchCache.Value.Take(1 + (int)(rowCount / 1000));
 }

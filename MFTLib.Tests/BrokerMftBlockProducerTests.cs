@@ -256,6 +256,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_WhenTheNamePoolRunsOut_ScansAgainIntoAGrownSectionAndPublishesAWholeBlock()
     {
+        _ = DistinctNameBatchCache.Value;
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
@@ -279,9 +280,10 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     const ulong DistinctNameRows = 16000;
     static readonly NtfsVolumeInformation SmallVolume = new(1024L * 1000, 1024);
 
-    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNameBatches()
+    // Built once: records are immutable, and regenerating 16000 long names per scan made the test time-bound by its data.
+    static readonly Lazy<IReadOnlyList<IReadOnlyList<MftRecord>>> DistinctNameBatchCache = new(() =>
     {
-        yield return [BrokerHostFactory.Record(5, ".", 3)];
+        var batches = new List<IReadOnlyList<MftRecord>> { new[] { BrokerHostFactory.Record(5, ".", 3) } };
         for (ulong start = 0; start < DistinctNameRows; start += 1000)
         {
             var batch = new List<MftRecord>();
@@ -291,9 +293,13 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
                     new string('n', 247) + offset.ToString("D8", System.Globalization.CultureInfo.InvariantCulture)));
             }
 
-            yield return batch;
+            batches.Add(batch);
         }
-    }
+
+        return batches;
+    });
+
+    static IEnumerable<IReadOnlyList<MftRecord>> DistinctNameBatches() => DistinctNameBatchCache.Value;
 
     [TestMethod]
     public async Task Produce_PreservesRequestedCacheTagThroughHostCompletion()
