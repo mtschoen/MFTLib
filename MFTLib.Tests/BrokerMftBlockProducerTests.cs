@@ -265,7 +265,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         }));
         var request = Request(Target());
 
-        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(GrowthHangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.IsFalse(block.Header.IsCapacityExhausted);
@@ -276,6 +276,9 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.IsGreaterThan(MftBlockCapacity.Plan(SmallVolume, default).NamePoolCapacity,
             block.Header.NamePoolCapacity);
     }
+
+    // Two scans of 16000 long names plus their postings: measured in the hundreds of milliseconds, but a loaded Linux coverage runner exceeded the shared guard.
+    static readonly TimeSpan GrowthHangGuard = TimeSpan.FromSeconds(60);
 
     const ulong DistinctNameRows = 16000;
     static readonly NtfsVolumeInformation SmallVolume = new(1024L * 1000, 1024);
