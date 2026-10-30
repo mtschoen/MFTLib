@@ -3,6 +3,27 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
+    ///     Asks the operating system to drop this index's mapped block pages from the process working set, for a
+    ///     consumer that knows its index is idle and wants the memory back (clearing the cache). MFTLib never does
+    ///     this on its own. The call is advisory: the mapping stays valid, every page faults back from the page
+    ///     cache on its next read, results never change, and queries, a running watch and rescans are unaffected,
+    ///     so it is safe beside concurrent readers. The next query over the trimmed pages pays soft faults again,
+    ///     so call it when the index will sit unused, not between queries. It trims the block of the current
+    ///     snapshot, which every view of the same scan shares.
+    ///     Windows uses <c>VirtualUnlock</c> and other platforms <c>madvise(MADV_DONTNEED)</c>.
+    /// </summary>
+    /// <returns>
+    ///     True when the operating system trimmed the block; false when the index has no available block, the
+    ///     block is being released, or the operating system refused.
+    /// </returns>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public bool ReleaseResidentPages()
+    {
+        // No query borrow: the block's own access scope makes a racing release wait for the call or skip it.
+        return CurrentBlock is { IsReleased: false } rootBlock && rootBlock.Block.TryReleaseResidentPages();
+    }
+
+    /// <summary>
     ///     Resolves a native filesystem path to its entry. When the indexed root directory is a
     ///     prefix of the path, the remaining segments are walked down from the block's root row,
     ///     one name per level. This is the inverse of <see cref="FileEntry.Path" /> for live entries:

@@ -12,6 +12,7 @@ sealed partial class BlockFile
         internal long _flushRangeBytes = FlushRangeBytes;
         internal Func<long, long, int> _flushViewRange = block.FlushViewRangeNatively;
         internal Func<long, long, int, int> _synchronizeViewRange = block.SynchronizeViewRangeNatively;
+        internal Func<long, long, int> _trimViewRange = block.TrimViewRangeNatively;
         internal Action<int> _pauseMilliseconds = Thread.Sleep;
         internal SpinStep _spinOnce = static (ref spinWait) => spinWait.SpinOnce();
     }
