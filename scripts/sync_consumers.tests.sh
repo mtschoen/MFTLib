@@ -30,6 +30,30 @@ CURRENT_TEST=""
 cleanup() { rm -rf "$FIXTURE_ROOT"; }
 trap cleanup EXIT
 
+# Fixture Git isolation. Every git command below must touch only the owned
+# local remotes and commit as the fixture identity, whatever the caller exported:
+# a parent GIT_CONFIG_COUNT block can set remote.origin.pushurl and turn the
+# "offline" seeding pushes into pushes to a real forge (issue 856). The identity
+# lives in an owned global config, not in GIT_AUTHOR_* variables, because the
+# script under test sets its bot identity with git config user.name.
+isolate_git_environment() {
+	local variable
+	for variable in $(compgen -v | grep -E '^(GIT_CONFIG_(KEY|VALUE)_[0-9]+|GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE))$'); do
+		unset "$variable"
+	done
+	unset GIT_CONFIG GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE \
+		GIT_SSH GIT_SSH_COMMAND GIT_ASKPASS
+	export HOME="$FIXTURE_ROOT/home"
+	export XDG_CONFIG_HOME="$HOME/.config"
+	mkdir -p "$XDG_CONFIG_HOME"
+	export GIT_CONFIG_GLOBAL="$HOME/gitconfig"
+	export GIT_CONFIG_NOSYSTEM=1
+	export GIT_TERMINAL_PROMPT=0
+	git config --file "$GIT_CONFIG_GLOBAL" user.name fixture
+	git config --file "$GIT_CONFIG_GLOBAL" user.email fixture@example.invalid
+}
+isolate_git_environment
+
 start_test() {
 	CURRENT_TEST="$1"
 	TESTS_RUN=$((TESTS_RUN + 1))
@@ -162,6 +186,14 @@ mkdir -p "$FIXTURE_GITEA/schoen" "$FIXTURE_WORK"
 seed_bare_repo MFTLib
 OLD_SHA="$(append_mftlib_commit first)"
 NEW_SHA="$(append_mftlib_commit second)"
+
+# Probe mode for the isolation regression test: report who authored the seeded
+# fixture history, then stop before any other test runs.
+if [ "${1:-}" = "--print-fixture-identity" ]; then
+	git --git-dir="$FIXTURE_GITEA/schoen/MFTLib.git" log -1 \
+		--format='%an <%ae> / %cn <%ce>' main
+	exit 0
+fi
 
 # shellcheck source=scripts/sync_consumers.sh
 source "$SCRIPT_PATH"
@@ -929,6 +961,32 @@ assert_equals "1" "$RUN_STATUS" "exits non-zero"
 assert_contains "$(cat "$RUN_STDOUT")" "consumer-broken" "reports the broken repo"
 assert_contains "$(cat "$RUN_STDOUT")" "is not a readable gitlink" "explains the failure"
 assert_equals "$NEW_SHA" "$(gitlink_of consumer-a2 "$BRANCH")" "still bumps the healthy consumer"
+
+start_test "fixture setup ignores inherited Git overrides and never pushes to a foreign remote"
+# Issue 856: a parent environment that points remote.origin.pushurl elsewhere
+# and exports author variables must not redirect the seeding pushes or rename
+# the fixture author. The foreign remote is an owned local bare repository, so
+# contact is observable as any ref appearing in it.
+FOREIGN_REMOTE="$FIXTURE_ROOT/foreign-remote.git"
+git init -q --bare --initial-branch=main "$FOREIGN_REMOTE"
+# GIT_CONFIG is the target file of git config, so it must not capture fixture writes.
+OWNED_CONFIG="$FIXTURE_ROOT/owned-config"
+printf '[user]
+	name = original-owner
+	email = owner@example.invalid
+' >"$OWNED_CONFIG"
+OWNED_CONFIG_BEFORE="$(cat "$OWNED_CONFIG")"
+PROBE_IDENTITY="$(
+	GIT_CONFIG="$OWNED_CONFIG" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.pushurl GIT_CONFIG_VALUE_0="$FOREIGN_REMOTE" \
+		GIT_AUTHOR_NAME=intruder GIT_AUTHOR_EMAIL=intruder@example.invalid \
+		GIT_COMMITTER_NAME=intruder GIT_COMMITTER_EMAIL=intruder@example.invalid \
+		bash "$SCRIPT_DIRECTORY/sync_consumers.tests.sh" --print-fixture-identity 2>/dev/null
+)"
+assert_equals "fixture <fixture@example.invalid> / fixture <fixture@example.invalid>" \
+	"$PROBE_IDENTITY" "seeded history is authored by the fixture identity"
+assert_equals "" "$(git --git-dir="$FOREIGN_REMOTE" for-each-ref)" \
+	"the foreign push destination was never contacted"
+assert_equals "$OWNED_CONFIG_BEFORE" "$(cat "$OWNED_CONFIG")" 	"the inherited GIT_CONFIG file was left unchanged"
 
 # --- report -----------------------------------------------------------------
 
