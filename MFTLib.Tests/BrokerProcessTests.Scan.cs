@@ -50,7 +50,7 @@ public partial class BrokerProcessTests
         using var baseline = baselineResult.Block.Block;
         var target = TestBlockSections.Target() with
         {
-            MinimumCapacities = new BlockCapacities(0, 0, 2 * baseline.NamePoolCapacity)
+            MinimumCapacities = new BlockCapacities(0, 0, 2 * baseline.NamePoolCapacity, 0)
         };
 
         var grownResult = await broker.Process.ScanVolumeAsync('C', target, new MftScanOptions(),

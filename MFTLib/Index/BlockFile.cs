@@ -62,9 +62,13 @@ sealed unsafe partial class BlockFile : IDisposable
     BlockFile(string path, long length, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view, BlockHeader layout, RootKey root)
     {
-        if (BlockLayout.TotalBlockBytes(layout.SlotCapacity, layout.NameEntryCapacity, layout.NamePoolCapacity) > length ||
-            layout.SlotCapacity >= int.MaxValue || layout.NameEntryCapacity >= int.MaxValue ||
+        if (BlockLayout.TotalBlockBytes(layout.SlotCapacity, layout.NameEntryCapacity, layout.DeltaCapacity,
+                layout.NamePoolCapacity) > length ||
+            layout.SlotCapacity >= int.MaxValue || layout.NameEntryCapacity > BlockLayout.MaximumNameEntryCapacity ||
+            layout.DeltaCapacity is 0 or >= int.MaxValue ||
             layout.NameEntryCount > layout.NameEntryCapacity ||
+            layout.PostingBaseNameCount > layout.NameEntryCount || layout.PostingBaseRowCount > layout.RowCount ||
+            layout.DeltaEntryCount > layout.DeltaCapacity ||
             layout.BucketCount != BlockLayout.ComputeBucketCount(layout.NameEntryCapacity) ||
             layout.RowCount > layout.SlotCapacity || layout.NamePoolUsed > layout.NamePoolCapacity)
         {
@@ -80,11 +84,20 @@ sealed unsafe partial class BlockFile : IDisposable
         NamePoolCapacity = layout.NamePoolCapacity;
         NameEntryCapacity = layout.NameEntryCapacity;
         BucketCount = layout.BucketCount;
+        DeltaCapacity = layout.DeltaCapacity;
         _nameEntryCount = layout.NameEntryCount;
+        _postingBaseNameCount = layout.PostingBaseNameCount;
+        _postingBaseRowCount = layout.PostingBaseRowCount;
+        _deltaEntryCount = layout.DeltaEntryCount;
+        _postingsBuilt = layout.IsComplete;
         _sequenceRegionOffset = BlockLayout.SequenceRegionOffset(layout.SlotCapacity);
         _nameEntryRegionOffset = BlockLayout.NameEntryRegionOffset(layout.SlotCapacity);
         _bucketRegionOffset = BlockLayout.BucketRegionOffset(layout.SlotCapacity, layout.NameEntryCapacity);
-        _namePoolOffset = BlockLayout.NamePoolOffset(layout.SlotCapacity, layout.NameEntryCapacity);
+        _postingOffsetRegionOffset = BlockLayout.PostingOffsetRegionOffset(layout.SlotCapacity, layout.NameEntryCapacity);
+        _postingRowRegionOffset = BlockLayout.PostingRowRegionOffset(layout.SlotCapacity, layout.NameEntryCapacity);
+        _deltaHeadRegionOffset = BlockLayout.DeltaHeadRegionOffset(layout.SlotCapacity, layout.NameEntryCapacity);
+        _deltaEntryRegionOffset = BlockLayout.DeltaEntryRegionOffset(layout.SlotCapacity, layout.NameEntryCapacity);
+        _namePoolOffset = BlockLayout.NamePoolOffset(layout.SlotCapacity, layout.NameEntryCapacity, layout.DeltaCapacity);
         _rowCount = layout.RowCount;
         _namePoolUsed = layout.NamePoolUsed;
         _generation = layout.Generation;
@@ -105,7 +118,7 @@ sealed unsafe partial class BlockFile : IDisposable
 
     /// <summary>
     ///     Gets the fixed mapped-file length in bytes, including the header, rows, sequence
-    ///     numbers, name entries, hash buckets and name byte pool.
+    ///     numbers, name entries, hash buckets, posting regions and name byte pool.
     /// </summary>
     public long Length { get; }
 
@@ -196,7 +209,8 @@ sealed unsafe partial class BlockFile : IDisposable
     public static BlockFile Create(BlockFileCreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NameEntryCapacity, options.NamePoolCapacity);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NameEntryCapacity, options.DeltaCapacity,
+            options.NamePoolCapacity);
         var (mappedFile, view) = OpenMapping(options.Path, FileMode.Create, length, length,
             options.DeleteOnClose ? FileOptions.DeleteOnClose : FileOptions.None);
         return BuildAndInitialize(options, length, mappedFile, view);
@@ -401,12 +415,14 @@ sealed unsafe partial class BlockFile : IDisposable
         header.SlotCapacity = options.SlotCapacity;
         header.NamePoolCapacity = options.NamePoolCapacity;
         header.NameEntryCapacity = options.NameEntryCapacity;
+        header.DeltaCapacity = options.DeltaCapacity;
         header.BucketCount = BlockLayout.ComputeBucketCount(options.NameEntryCapacity);
         header.RowRegionOffset = BlockLayout.RowRegionOffset;
         header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(options.SlotCapacity);
         header.NameEntryRegionOffset = (ulong)BlockLayout.NameEntryRegionOffset(options.SlotCapacity);
         header.BucketRegionOffset = (ulong)BlockLayout.BucketRegionOffset(options.SlotCapacity, options.NameEntryCapacity);
-        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity, options.NameEntryCapacity);
+        header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity, options.NameEntryCapacity,
+            options.DeltaCapacity);
         header.CacheTagFourCc = options.CacheTag.PackedFourCc;
         header.CacheTagVersion = options.CacheTag.Version;
         header.ScanShape = options.ScanShape;

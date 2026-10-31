@@ -129,6 +129,7 @@ public partial class BenchmarkRunner
                 SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
                 NameEntryCapacity = BlockLayout.ComputeSlotCapacity(rows),
                 NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(BlockLayout.ComputeSlotCapacity(rows)),
+                DeltaCapacity = BlockLayout.ComputeDeltaCapacity(BlockLayout.ComputeSlotCapacity(rows)),
                 ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), directory)
             }))
             {
@@ -274,6 +275,7 @@ public partial class BenchmarkRunner
         var substringQuery = new SearchQuery(IndexQueryName);
         index.Search(exactQuery);
         index.Search(substringQuery);
+        PrintMultiNameExactMedian(index, iterations, log);
         PrintIndexMedian("exact-search", () => index.Search(exactQuery), iterations, log);
         PrintIndexMedian("substring-search", () => index.Search(substringQuery), iterations, log);
     }

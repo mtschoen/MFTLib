@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace MFTLib.Index;
@@ -72,6 +71,8 @@ public ref struct IndexRowEnumerator
     readonly uint? _admittedViewRow;
     CancellationToken _cancellationToken;
     RowScanner _scanner;
+    CandidateCheckpoint _candidateCheckpoint;
+    int _candidateCursor;
     RootBlock? _rootBlock;
     readonly RowEnumerationResources _resources;
     int _advanceVersion;
@@ -170,7 +171,8 @@ public ref struct IndexRowEnumerator
         {
             if (_rootBlock is not null)
             {
-                if (_flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch())
+                if (_resources.Candidates is { } candidates ? MoveToNextCandidateMatch(candidates) :
+                    _flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch())
                 {
                     _currentName = _resources.Capture(_scanner.CurrentName);
                     return true;
@@ -226,6 +228,47 @@ public ref struct IndexRowEnumerator
         return false;
     }
 
+    /// <summary>
+    ///     The exact-name form of the match loop: the candidate rows the postings named, ascending, each verified by one
+    ///     read of the live row. The cadence counts every candidate, rejected ones included.
+    /// </summary>
+    bool MoveToNextCandidateMatch(PostingCandidates candidates)
+    {
+        var names = _resources.Names;
+        var rows = candidates.Rows;
+        while (_candidateCursor < rows.Count)
+        {
+            _candidateCheckpoint.Step();
+            var rowIndex = rows[_candidateCursor++];
+            if (rowIndex >= candidates.RowCount)
+            {
+                continue;
+            }
+
+            _scanner.MoveTo(rowIndex);
+            ref readonly var row = ref _scanner.Current;
+            if (!SearchEngine.RowMatches(in row, names, _query))
+            {
+                continue;
+            }
+
+            if (_resources.Membership is { } membership && !membership.Contains(rowIndex))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    void BeginCandidates()
+    {
+        _candidateCursor = 0;
+        _candidateCheckpoint = _resources.Candidates?.BeginVerification() ?? default;
+    }
+
     bool AdvanceRoot()
     {
         if (_segments is not null)
@@ -236,6 +279,7 @@ public ref struct IndexRowEnumerator
                 _scanner = new RowScanner(nextBlock, _cancellationToken);
                 _flagsOnly = _queryNeedsOnlyFlags && !nextBlock.View.IsDirectoryView;
                 _resources.BeginRoot(nextBlock, _query, null, segmentViewRow, _cancellationToken);
+                BeginCandidates();
                 return true;
             }
 
@@ -253,6 +297,7 @@ public ref struct IndexRowEnumerator
                 _scanner = new RowScanner(rootBlock, _cancellationToken);
                 _flagsOnly = _queryNeedsOnlyFlags && !rootBlock.View.IsDirectoryView;
                 _resources.BeginRoot(rootBlock, _query, _subtree, _admittedViewRow, _cancellationToken);
+                BeginCandidates();
                 return true;
             }
         }
@@ -302,111 +347,6 @@ public ref struct IndexRowEnumerator
         if (_scope.IsDisposed)
         {
             throw new ObjectDisposedException(nameof(IndexRowEnumerator));
-        }
-    }
-}
-
-/// <summary>
-///     Shared heap-allocated state for a multi-index <see cref="IndexRowEnumerator" /> over a
-///     <see cref="FileIndexSet" />. Borrows at most one member index's block at a time, releasing
-///     the current segment's borrow before borrowing the next.
-/// </summary>
-sealed class RowEnumerationSegments : IDisposable
-{
-    readonly IReadOnlyList<FileIndex> _indices;
-    readonly CancellationToken _callerCancellationToken;
-    FileIndex.QueryScope _activeScope;
-    bool _hasActiveScope;
-    bool _initialConsumed;
-    int _nextIndex;
-    int _activeSegment;
-    int _disposed;
-
-    internal RowEnumerationSegments(IReadOnlyList<FileIndex> indices, CancellationToken callerCancellationToken)
-    {
-        _indices = indices;
-        _callerCancellationToken = callerCancellationToken;
-        if (indices.Count > 0)
-        {
-            _activeScope = indices[0].BeginQuery(callerCancellationToken);
-            _hasActiveScope = true;
-            _nextIndex = 1;
-        }
-    }
-
-    internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
-
-    internal int ActiveSegment => Volatile.Read(ref _activeSegment);
-
-    internal bool TryMoveNextSegment([NotNullWhen(true)] out RootBlock? rootBlock, out uint? admittedViewRow,
-        out CancellationToken cancellationToken, ref int enumeratorSegment)
-    {
-        while (true)
-        {
-            if (!_initialConsumed)
-            {
-                _initialConsumed = true;
-                if (!_hasActiveScope)
-                {
-                    _callerCancellationToken.ThrowIfCancellationRequested();
-                    rootBlock = null;
-                    admittedViewRow = null;
-                    cancellationToken = default;
-                    return false;
-                }
-            }
-            else
-            {
-                var wasCancelled = _hasActiveScope && _activeScope.CancellationToken.IsCancellationRequested;
-                var cancelledToken = wasCancelled ? _activeScope.CancellationToken : default;
-                ReleaseActiveScope();
-                if (wasCancelled)
-                {
-                    throw new OperationCanceledException(cancelledToken);
-                }
-
-                if (_nextIndex >= _indices.Count)
-                {
-                    enumeratorSegment = _activeSegment;
-                    _callerCancellationToken.ThrowIfCancellationRequested();
-                    rootBlock = null;
-                    admittedViewRow = null;
-                    cancellationToken = default;
-                    return false;
-                }
-
-                _callerCancellationToken.ThrowIfCancellationRequested();
-                _activeScope = _indices[_nextIndex++].BeginQuery(_callerCancellationToken);
-                _hasActiveScope = true;
-                enumeratorSegment = _activeSegment;
-            }
-
-            _activeScope.CancellationToken.ThrowIfCancellationRequested();
-            if (_activeScope.RootBlock is { } block)
-            {
-                rootBlock = block;
-                admittedViewRow = _activeScope.ViewRow;
-                cancellationToken = _activeScope.CancellationToken;
-                return true;
-            }
-        }
-    }
-
-    void ReleaseActiveScope()
-    {
-        if (_hasActiveScope)
-        {
-            Interlocked.Increment(ref _activeSegment);
-            _hasActiveScope = false;
-            _activeScope.Dispose();
-        }
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-        {
-            ReleaseActiveScope();
         }
     }
 }

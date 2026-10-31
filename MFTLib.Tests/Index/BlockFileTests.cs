@@ -39,7 +39,7 @@ public class BlockFileTests
         Assert.AreEqual(2u, block.Header.RowCount);
         Assert.AreEqual(2u, block.Header.LiveRowCount);
         Assert.AreEqual((ulong)BlockLayout.RowRegionOffset, block.Header.RowRegionOffset);
-        Assert.AreEqual((ulong)BlockLayout.NamePoolOffset(block.Header.SlotCapacity, block.Header.NameEntryCapacity), block.Header.NamePoolOffset);
+        Assert.AreEqual((ulong)BlockLayout.NamePoolOffset(block.Header.SlotCapacity, block.Header.NameEntryCapacity, block.Header.DeltaCapacity), block.Header.NamePoolOffset);
         Assert.AreEqual(ScanMoment, block.Header.ScanTimestampUtc);
 
         var row = block.Rows[(int)childRow];
@@ -227,7 +227,7 @@ public class BlockFileTests
         builder.Complete(ScanMoment);
 
         using var block = builder.OpenForReading(out _);
-        var expectedLength = BlockLayout.TotalBlockBytes(64, 64, 512);
+        var expectedLength = BlockLayout.TotalBlockBytes(64, 64, BlockLayout.ComputeDeltaCapacity(64), 512);
         Assert.AreEqual(expectedLength, block!.Length);
     }
 
@@ -244,7 +244,7 @@ public class BlockFileTests
         {
             Assert.AreEqual(10000u, block.Header.NameEntryCapacity);
             Assert.AreEqual(4096u, block.Header.BucketCount);
-            Assert.AreEqual(BlockLayout.TotalBlockBytes(4096, 10000, 1048576), block.Length);
+            Assert.AreEqual(BlockLayout.TotalBlockBytes(4096, 10000, BlockLayout.ComputeDeltaCapacity(4096), 1048576), block.Length);
             var writer = new BlockWriter(block);
             Assert.IsTrue(writer.TryWriteRow(0, string.Empty, columns));
             writer.Complete(ScanMoment, null);
@@ -366,7 +366,7 @@ public class BlockFileTests
         var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "partial.mlix");
         var options = TestBlocks.Options(path, namePoolCapacity: 4096);
-        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.SlotCapacity, options.NamePoolCapacity);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.SlotCapacity, BlockLayout.ComputeDeltaCapacity(options.SlotCapacity), options.NamePoolCapacity);
         var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length, FileOptions.None);
 
         // Disposing the view before handing it over makes acquiring the base pointer in the

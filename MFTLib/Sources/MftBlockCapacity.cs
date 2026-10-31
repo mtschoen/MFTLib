@@ -58,6 +58,7 @@ static class MftBlockCapacity
             SlotCapacity = capacities.SlotCapacity,
             NameEntryCapacity = capacities.NameEntryCapacity,
             NamePoolCapacity = capacities.NamePoolCapacity,
+            DeltaCapacity = capacities.DeltaCapacity,
             CacheTag = identity.CacheTag,
             ScanShape = identity.ScanShape
         };
@@ -66,7 +67,7 @@ static class MftBlockCapacity
     /// <summary>Computes every region's capacity from the volume geometry and independent regional minima.</summary>
     /// <param name="volumeInformation">The NTFS volume information.</param>
     /// <param name="minimum">Regional minima the planned block must meet.</param>
-    /// <returns>The three planned capacities.</returns>
+    /// <returns>The four planned capacities.</returns>
     public static BlockCapacities Plan(NtfsVolumeInformation volumeInformation, BlockCapacities minimum)
     {
         return BlockLayout.PlanCapacities(EstimateRowCount(volumeInformation), minimum);

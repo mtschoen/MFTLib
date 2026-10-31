@@ -172,6 +172,84 @@ public sealed class FileIndexSet
     }
 
     /// <summary>
+    ///     Answers one exact-name search per requested name over the outermost available members in list order,
+    ///     borrowing each member once for all names. Result <c>i</c> belongs to <paramref name="names" />[i] and,
+    ///     absent concurrent mutation, equals <see cref="Search" /> for <paramref name="filter" /> with
+    ///     <see cref="SearchQuery.NamePattern" /> set to that name and <see cref="SearchQuery.MatchMode" /> set to
+    ///     <see cref="NameMatchMode.Exact" />: same members, same order, ascending row order within a member.
+    ///     Duplicate names are answered independently.
+    /// </summary>
+    /// <param name="names">The names to find. An empty list returns an empty list.</param>
+    /// <param name="filter">
+    ///     Every predicate except the name; null means no other predicate. Its <see cref="SearchQuery.MatchMode" />
+    ///     is ignored because the match is exact.
+    /// </param>
+    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="names" /> is null.</exception>
+    /// <exception cref="ArgumentException">
+    ///     An element of <paramref name="names" /> is null, <paramref name="filter" /> carries a
+    ///     <see cref="SearchQuery.NamePattern" />, or <see cref="SearchQuery.Subtree" /> is the default
+    ///     <see cref="FileEntry" />, belongs to an index outside this set or to a block a rescan replaced, or has
+    ///     been superseded by a newer file reusing its row slot.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">
+    ///     Any member index in <see cref="Indices" /> has been disposed, or the subtree anchor's block has been released.
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    public IReadOnlyList<IReadOnlyList<FileEntry>> SearchExactNames(IReadOnlyList<string> names,
+        SearchQuery? filter = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        var position = 0;
+        foreach (var name in names)
+        {
+            if (name is null)
+            {
+                throw new ArgumentException($"The name at index {position} is null.", nameof(names));
+            }
+
+            position++;
+        }
+
+        filter ??= new SearchQuery(null);
+        if (filter.NamePattern is not null)
+        {
+            throw new ArgumentException(
+                "The filter of an exact multi-name search carries no name pattern; the names are the pattern.",
+                nameof(filter));
+        }
+
+        SubtreeAnchor.ThrowIfDefault(filter);
+        ThrowIfAnyDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (names.Count == 0)
+        {
+            return [];
+        }
+
+        if (filter.Subtree is { NamedRootBlock: { } anchorBlock })
+        {
+            return ResolveSubtreeOwner(anchorBlock, cancellationToken)
+                .SearchExactNames(names, filter, cancellationToken);
+        }
+
+        var results = names.Select(static _ => new List<FileEntry>()).ToArray();
+
+        foreach (var index in SelectOutermostAvailable())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var perMember = index.SearchExactNames(names, filter, cancellationToken);
+            foreach (var (merged, member) in results.Zip(perMember))
+            {
+                merged.AddRange(member);
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return results;
+    }
+
+    /// <summary>
     ///     The streaming form of <see cref="Search" />: visits the outermost available members in list order,
     ///     borrowing one member index at a time and releasing its borrow before advancing to the next.
     ///     When <see cref="SearchQuery.Subtree" /> is set, only the member index owning that anchor is

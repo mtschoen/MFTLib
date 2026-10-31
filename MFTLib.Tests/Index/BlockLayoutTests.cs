@@ -77,7 +77,7 @@ public class BlockLayoutTests
     public void Layout_AtTheLargestSlotCapacity_DoesNotOverflow()
     {
         const uint slots = int.MaxValue - 2;
-        var total = BlockLayout.TotalBlockBytes(slots, slots, BlockLayout.ComputeNamePoolCapacity(slots));
+        var total = BlockLayout.TotalBlockBytes(slots, slots, BlockLayout.ComputeDeltaCapacity(slots), BlockLayout.ComputeNamePoolCapacity(slots));
         Assert.IsGreaterThan(0L, total);
         Assert.AreEqual(0L, total % BlockLayout.PageSize);
         Assert.IsGreaterThan(0u, BlockLayout.ComputeBucketCount(slots));
@@ -87,9 +87,10 @@ public class BlockLayoutTests
     public void NamePoolOffset_IsPageAlignedAfterRows()
     {
         // 100 rows * 32 bytes = 3200 -> 4096; 100 * 2-byte sequences -> 4096; 101 * 12-byte entries -> 4096;
-        // 1024 four-byte buckets -> 4096; plus the header page.
-        Assert.AreEqual(20480L, BlockLayout.NamePoolOffset(100, 100));
-        Assert.AreEqual(0L, BlockLayout.NamePoolOffset(100, 100) % BlockLayout.PageSize);
+        // 1024 four-byte buckets -> 4096; 102 posting offsets -> 4096; 100 posting rows -> 4096;
+        // 1024 delta heads -> 4096; 11 * 12-byte delta entries -> 4096; plus the header page.
+        Assert.AreEqual(36864L, BlockLayout.NamePoolOffset(100, 100, 10));
+        Assert.AreEqual(0L, BlockLayout.NamePoolOffset(100, 100, 10) % BlockLayout.PageSize);
     }
 
     [TestMethod]
@@ -104,14 +105,136 @@ public class BlockLayoutTests
         Assert.AreEqual(BlockLayout.NameEntryRegionOffset(slotCapacity) + BlockLayout.NameEntryRegionBytes(slotCapacity),
             BlockLayout.BucketRegionOffset(slotCapacity, slotCapacity));
         Assert.AreEqual(BlockLayout.BucketRegionOffset(slotCapacity, slotCapacity) + BlockLayout.BucketRegionBytes(slotCapacity),
-            BlockLayout.NamePoolOffset(slotCapacity, slotCapacity));
+            BlockLayout.PostingOffsetRegionOffset(slotCapacity, slotCapacity));
+        Assert.AreEqual(BlockLayout.PostingOffsetRegionOffset(slotCapacity, slotCapacity) +
+                        BlockLayout.PostingOffsetRegionBytes(slotCapacity),
+            BlockLayout.PostingRowRegionOffset(slotCapacity, slotCapacity));
+        Assert.AreEqual(BlockLayout.PostingRowRegionOffset(slotCapacity, slotCapacity) +
+                        BlockLayout.PostingRowRegionBytes(slotCapacity),
+            BlockLayout.DeltaHeadRegionOffset(slotCapacity, slotCapacity));
+        Assert.AreEqual(BlockLayout.DeltaHeadRegionOffset(slotCapacity, slotCapacity) +
+                        BlockLayout.DeltaHeadRegionBytes(slotCapacity),
+            BlockLayout.DeltaEntryRegionOffset(slotCapacity, slotCapacity));
+        Assert.AreEqual(BlockLayout.DeltaEntryRegionOffset(slotCapacity, slotCapacity) + BlockLayout.DeltaEntryRegionBytes(500),
+            BlockLayout.NamePoolOffset(slotCapacity, slotCapacity, 500));
+    }
+
+    [TestMethod]
+    [DataRow(1u, 4096L)]
+    [DataRow(1022u, 4096L)]
+    [DataRow(1023u, 8192L)]
+    public void PostingOffsetRegion_HoldsOneWordPerEntryPlusTheReservedZeroAndTheEnd(uint entries, long bytes)
+    {
+        Assert.AreEqual(bytes, BlockLayout.PostingOffsetRegionBytes(entries));
+    }
+
+    [TestMethod]
+    [DataRow(1u, 4096L)]
+    [DataRow(1024u, 4096L)]
+    [DataRow(1025u, 8192L)]
+    public void PostingRowRegion_HoldsOneWordPerSlot(uint slots, long bytes)
+    {
+        Assert.AreEqual(bytes, BlockLayout.PostingRowRegionBytes(slots));
+    }
+
+    [TestMethod]
+    [DataRow(1u, 4096L)]
+    [DataRow(340u, 4096L)]
+    [DataRow(341u, 8192L)]
+    public void DeltaEntryRegion_HoldsTwelveBytesPerEntryPlusTheReservedZero(uint capacity, long bytes)
+    {
+        Assert.AreEqual(bytes, BlockLayout.DeltaEntryRegionBytes(capacity));
+    }
+
+    [TestMethod]
+    public void DeltaHeadRegion_HasOneHeadPerNameBucket()
+    {
+        Assert.AreEqual(BlockLayout.BucketRegionBytes(5_000_000), BlockLayout.DeltaHeadRegionBytes(5_000_000));
+        Assert.AreEqual(8L * 1024 * 1024, BlockLayout.DeltaHeadRegionBytes(5_382_464));
+    }
+
+    [TestMethod]
+    [DataRow(0u, 65536u)]
+    [DataRow(1000u, 65536u)]
+    [DataRow(524288u, 65536u)]
+    [DataRow(524289u, 65537u)]
+    [DataRow(18912320u, 2364040u)]
+    [DataRow(4268800u, 533600u)]
+    public void ComputeDeltaCapacity_IsAnEighthOfTheSlotsWithAFloor(uint slots, uint delta)
+    {
+        Assert.AreEqual(delta, BlockLayout.ComputeDeltaCapacity(slots));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_ADeltaRegionAtCapacity_DoublesOnlyTheDelta()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            RowCount = 6,
+            SlotCapacity = 64,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 128,
+            DeltaEntryCount = 128
+        };
+        Assert.AreEqual(new BlockCapacities(0, 0, 0, 256), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_ADeltaRegionWithRoomLeft_DoesNotRequestRowsWhenRowsAreFull()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            RowCount = 64,
+            SlotCapacity = 64,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 128,
+            DeltaEntryCount = 3
+        };
+        Assert.AreEqual(new BlockCapacities(128, 0, 0, 0), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_AnExhaustedDeltaWithFullRows_DoublesBoth()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            RowCount = 64,
+            SlotCapacity = 64,
+            NameEntryCapacity = 64,
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 128,
+            DeltaEntryCount = 128
+        };
+        Assert.AreEqual(new BlockCapacities(128, 0, 0, 256), BlockLayout.GrowthMinimum(in header));
+    }
+
+    [TestMethod]
+    public void GrowthMinimum_NameEntriesDoubleToTheOffsetsLimit()
+    {
+        var header = new BlockHeader
+        {
+            Flags = BlockFlags.CapacityExhausted,
+            SlotCapacity = 64,
+            NameEntryCapacity = int.MaxValue - 3u,
+            NameEntryCount = int.MaxValue - 3u,
+            NamePoolCapacity = 4096,
+            NamePoolUsed = 10,
+            DeltaCapacity = 128
+        };
+        Assert.AreEqual(new BlockCapacities(0, BlockLayout.MaximumNameEntryCapacity, 0, 0),
+            BlockLayout.GrowthMinimum(in header));
     }
 
     [TestMethod]
     public void TotalBlockBytes_DependsOnTheEntryCapacityIndependently()
     {
-        Assert.IsGreaterThan(BlockLayout.TotalBlockBytes(1000, 1000, 4096),
-            BlockLayout.TotalBlockBytes(1000, 2000, 4096));
+        Assert.IsGreaterThan(BlockLayout.TotalBlockBytes(1000, 1000, BlockLayout.ComputeDeltaCapacity(1000), 4096),
+            BlockLayout.TotalBlockBytes(1000, 2000, BlockLayout.ComputeDeltaCapacity(1000), 4096));
     }
 
     [TestMethod]
@@ -124,9 +247,9 @@ public class BlockLayoutTests
     [TestMethod]
     public void TotalBlockBytes_IsPageAligned()
     {
-        var total = BlockLayout.TotalBlockBytes(100, 100, 1000);
+        var total = BlockLayout.TotalBlockBytes(100, 100, BlockLayout.ComputeDeltaCapacity(100), 1000);
         Assert.AreEqual(0L, total % BlockLayout.PageSize);
-        Assert.IsGreaterThanOrEqualTo(BlockLayout.NamePoolOffset(100, 100) + 1000, total);
+        Assert.IsGreaterThanOrEqualTo(BlockLayout.NamePoolOffset(100, 100, BlockLayout.ComputeDeltaCapacity(100)) + 1000, total);
     }
 
     [TestMethod]
@@ -150,7 +273,7 @@ public class BlockLayoutTests
     [TestMethod]
     public void PlanCapacities_WithoutAMinimum_IsTheVolumePlan()
     {
-        Assert.AreEqual(new BlockCapacities(1250000, 1250000, 30003200),
+        Assert.AreEqual(new BlockCapacities(1250000, 1250000, 30003200, 156250),
             BlockLayout.PlanCapacities(1000000, default));
     }
 
@@ -162,8 +285,8 @@ public class BlockLayoutTests
     public void PlanCapacities_AMinimumRaisesOnlyItsRegion(uint minimumSlots, uint minimumEntries, uint minimumPool,
         uint slots, uint entries, uint pool)
     {
-        var minimum = new BlockCapacities(minimumSlots, minimumEntries, minimumPool);
-        Assert.AreEqual(new BlockCapacities(slots, entries, pool),
+        var minimum = new BlockCapacities(minimumSlots, minimumEntries, minimumPool, 0);
+        Assert.AreEqual(new BlockCapacities(slots, entries, pool, 156250),
             BlockLayout.PlanCapacities(1000000, minimum));
     }
 
@@ -200,10 +323,11 @@ public class BlockLayoutTests
             NameEntryCount = plan.NameEntryCapacity,
             NamePoolCapacity = plan.NamePoolCapacity,
             NamePoolUsed = 1000,
+            DeltaCapacity = plan.DeltaCapacity,
             Flags = BlockFlags.CapacityExhausted
         };
 
-        Assert.AreEqual(new BlockCapacities(0, plan.NameEntryCapacity * 2, 0), BlockLayout.GrowthMinimum(in header));
+        Assert.AreEqual(new BlockCapacities(0, plan.NameEntryCapacity * 2, 0, 0), BlockLayout.GrowthMinimum(in header));
     }
 
     [TestMethod]
@@ -222,7 +346,8 @@ public class BlockLayoutTests
             RowCount = 64,
             SlotCapacity = 64,
             NameEntryCapacity = 64,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 65536
         };
         Assert.AreEqual(default(BlockCapacities), BlockLayout.GrowthMinimum(in header));
     }
@@ -239,13 +364,14 @@ public class BlockLayoutTests
             RowCount = 6,
             SlotCapacity = 64,
             NameEntryCapacity = 64,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 65536
         };
         var expected = region switch
         {
-            "Rows" => SetRowsAndExpect(ref header, new BlockCapacities(128, 0, 0)),
-            "Entries" => SetEntriesAndExpect(ref header, new BlockCapacities(0, 128, 0)),
-            "Pool" => SetPoolAndExpect(ref header, new BlockCapacities(0, 0, 8192)),
+            "Rows" => SetRowsAndExpect(ref header, new BlockCapacities(128, 0, 0, 0)),
+            "Entries" => SetEntriesAndExpect(ref header, new BlockCapacities(0, 128, 0, 0)),
+            "Pool" => SetPoolAndExpect(ref header, new BlockCapacities(0, 0, 8192, 0)),
             _ => throw new ArgumentOutOfRangeException(nameof(region))
         };
         Assert.AreEqual(expected, BlockLayout.GrowthMinimum(in header));
@@ -261,9 +387,10 @@ public class BlockLayoutTests
             NameEntryCount = 64,
             NameEntryCapacity = 64,
             NamePoolUsed = 3585,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 65536
         };
-        Assert.AreEqual(new BlockCapacities(0, 128, 0), BlockLayout.GrowthMinimum(in header));
+        Assert.AreEqual(new BlockCapacities(0, 128, 0, 0), BlockLayout.GrowthMinimum(in header));
     }
 
     [TestMethod]
@@ -275,9 +402,10 @@ public class BlockLayoutTests
             RowCount = 6,
             SlotCapacity = 64,
             NameEntryCapacity = 64,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 65536
         };
-        Assert.AreEqual(new BlockCapacities(128, 0, 0), BlockLayout.GrowthMinimum(in header));
+        Assert.AreEqual(new BlockCapacities(128, 0, 0, 0), BlockLayout.GrowthMinimum(in header));
     }
 
     [TestMethod]
@@ -290,9 +418,10 @@ public class BlockLayoutTests
             NameEntryCount = 64,
             NameEntryCapacity = 64,
             NamePoolUsed = 3586,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 65536
         };
-        Assert.AreEqual(new BlockCapacities(0, 128, 8192), BlockLayout.GrowthMinimum(in header));
+        Assert.AreEqual(new BlockCapacities(0, 128, 8192, 0), BlockLayout.GrowthMinimum(in header));
     }
 
     [TestMethod]
@@ -304,9 +433,10 @@ public class BlockLayoutTests
             RowCount = int.MaxValue - 1u,
             SlotCapacity = int.MaxValue - 1u,
             NameEntryCapacity = 64,
-            NamePoolCapacity = 4096
+            NamePoolCapacity = 4096,
+            DeltaCapacity = 65536
         };
-        Assert.AreEqual(new BlockCapacities(int.MaxValue - 1u, 0, 0), BlockLayout.GrowthMinimum(in header));
+        Assert.AreEqual(new BlockCapacities(int.MaxValue - 1u, 0, 0, 0), BlockLayout.GrowthMinimum(in header));
     }
 
     static BlockCapacities SetRowsAndExpect(ref BlockHeader header, BlockCapacities expected)

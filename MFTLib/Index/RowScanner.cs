@@ -92,6 +92,16 @@ ref struct RowScanner
         return CurrentRowIndex < _endRowExclusive;
     }
 
+    /// <summary>
+    ///     Positions the scanner on a row chosen by the caller, as a posting-driven pass does. The caller owns the
+    ///     cancellation cadence for rows it visits this way; <see cref="MoveNext" /> is not used on such a scanner.
+    /// </summary>
+    internal void MoveTo(uint rowIndex)
+    {
+        CurrentRowIndex = rowIndex;
+        _started = true;
+    }
+
     public readonly RowScanner GetEnumerator()
     {
         return this;

@@ -31,6 +31,9 @@ sealed record BlockFileCreateOptions
     /// <summary>Allocatable name entries, independent of <see cref="SlotCapacity" />; use <see cref="BlockLayout.PlanCapacities" />.</summary>
     public required uint NameEntryCapacity { get; init; }
 
+    /// <summary>Allocatable delta entries; use <see cref="BlockLayout.PlanCapacities" />.</summary>
+    public required uint DeltaCapacity { get; init; }
+
     /// <summary>Name byte-pool capacity. Use <see cref="BlockLayout.ComputeNamePoolCapacity" /> with the slot capacity.</summary>
     public required uint NamePoolCapacity { get; init; }
 

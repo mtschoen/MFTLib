@@ -42,7 +42,7 @@ static class MftBlockRowWriter
                 else
                 {
                     skippedRecordCount++;
-                    // A producer retries this scan into a larger block, so the remaining batches are not copied into this one.
+                    // A producer retries this scan into a larger block, so the remaining batches are not copied into this one and its postings are never built.
                     if (writer.NameRegionsNeedGrowth)
                     {
                         stoppedForGrowth = true;

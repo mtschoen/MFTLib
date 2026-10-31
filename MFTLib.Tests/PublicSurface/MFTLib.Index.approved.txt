@@ -182,6 +182,7 @@ MFTLib.Index.FileIndexSet :: method public Enumerate(MFTLib.Index.SearchQuery qu
 MFTLib.Index.FileIndexSet :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable
 MFTLib.Index.FileIndexSet :: method public Find(string path, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
 MFTLib.Index.FileIndexSet :: method public Search(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
+MFTLib.Index.FileIndexSet :: method public SearchExactNames(System.Collections.Generic.IReadOnlyList<string> names, MFTLib.Index.SearchQuery? filter = default, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>>
 MFTLib.Index.FileIndexSet :: property public Indices { get; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileIndex>
 MFTLib.Index.FileIndexSet :: type public sealed class
 MFTLib.Index.IndexRecordKey :: constructor public (MFTLib.Index.RootKey Root, ulong RecordNumber, MFTLib.Index.ProducerKind ProducerKind)

@@ -65,6 +65,8 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("File bytes:", output);
         Assert.Contains("Name-pool bytes:", output);
         Assert.Contains("Name-pool capacity bytes:", output);
+        Assert.Contains("Multi-name exact (5 names): median", output);
+        Assert.Contains("Differing rows vs per-name search: 0", output);
         Assert.Contains("--- exact-search ---", output);
         Assert.Contains("--- substring-search ---", output);
         Assert.Contains($"Matches: {(rows == 1 ? 0 : 1)}", output);

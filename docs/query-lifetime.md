@@ -11,9 +11,11 @@
       members in Indices order. Shared members still borrow through their own view. A directory view binds its row at
       admission and intersects its implicit subtree with any explicit anchor. Closing one view waits for its own
       borrows only; another view's query can keep their shared mapping alive until last-detach teardown.
-      Children borrows its handle's view and mapping. All six observe cancellation before the first row and row scans
-      check at least every 4096 rows, including rejected rows. Root resolves one row directly. RowScanner supplies the
-      cadence for Find, Search, EnumerateRows and Children; Enumerate supplies it in its streaming loop. Children uses
+      Children borrows its handle's view and mapping. All six observe cancellation before the first row and scans
+      check at least every 4096 examined rows, including rejected rows: rows of the table for substring and glob queries,
+      posting entries and candidate rows for exact queries. Root resolves one row directly. RowScanner supplies the
+      cadence for the row scans of Search, EnumerateRows and Children; Enumerate supplies it in its streaming loop; exact
+      queries (and each path segment of Find) take it from the posting gather and candidate verification. Children uses
       only its caller's token because a handle holds no index reference, so disposal waits for that listing.
       Row-backed `FileEntry` reads take no borrow and retain the per-access `IsReleased`
       check; `Root` and `RecordKey` are also release-checked. Equality, hashing,
@@ -42,8 +44,8 @@
       `IndexRow.Root` and retained handles' `FileEntry.Root` are `RootKey` values;
       `FileEntry.Root` equals `RecordKey.Root` and uses the same per-access release check.
       `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index.
-      The token is observed before the first row and at least every 4096 scanned rows, including rows
-      rejected by the query. The result (`IndexRowEnumerable`), its enumerator (`IndexRowEnumerator`) and
+      The token is observed before the first row and at least every 4096 examined rows (table rows, or
+      for an exact name query posting entries and candidate rows), including rows rejected by the query. The result (`IndexRowEnumerable`), its enumerator (`IndexRowEnumerator`) and
       each `IndexRow` are ref structs: holding one across an `await`, capturing it in a lambda or storing
       it in a class or ordinary struct field does not compile. A row and its `Name` span are valid only
       until any copy of the enumerator advances or is disposed; use `ToEntry()` to retain a `FileEntry` handle.
@@ -72,10 +74,15 @@
       when it enters a root. Several passes can see different contents and different mappings.
 
       Name-filtered queries prepare matches while holding the same borrow: exact queries collect the
-      identifiers of the matching entries from one hash chain; substring and glob queries scan the
-      published name entries into a rented bitset before scanning rows. Identifiers appended after
-      that entry pass do not match it. The entry pass checks cancellation before starting and every
-      4096 name entries, and bitset ownership ends on query completion or enumerator disposal.
+      identifiers of the matching entries from one hash chain and then gather the candidate rows of those
+      identifiers from the posting regions, reading only the candidate rows and keeping a row only if one
+      descriptor read still shows a matching identifier (a stale posting is skipped, and a row unchanged during the
+      query is never missed); substring and glob queries scan the published name entries into a rented bitset before
+      scanning rows. Identifiers appended after that entry pass, delta entries and rows beyond the counts captured at
+      gather time do not match it. The entry pass checks cancellation before starting and every
+      4096 name entries, and bitset and candidate-buffer ownership ends on query completion or enumerator disposal.
+      A path segment of `Find` is one such exact query, so a lookup costs its depth times that segment's matches.
+      The block's posting regions are read under the same borrow and the same per-access release check as the rows.
 
       `EnumerateRows` rejects null queries and undefined match modes at call time. Admission at
       `GetEnumerator` checks cancellation and index disposal; `MoveNext` checks cancellation during

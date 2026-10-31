@@ -11,6 +11,9 @@ static class MftBlockScan
     // The processing step each flushed range of the completed block publishes.
     internal const string FlushStep = "block flush";
 
+    // The processing step the posting build publishes, so a host sees progress while the base is written.
+    internal const string PostingBuildStep = "posting build";
+
     /// <summary>Fits a scan's skipped count into the public diagnostic without failing a completed scan.</summary>
     internal static int SaturateSkippedRecordCount(long skippedRecordCount) =>
         (int)Math.Min(skippedRecordCount, int.MaxValue);
@@ -33,7 +36,10 @@ static class MftBlockScan
         writer.SetJournalCursor(stamp.Cursor.JournalIdentifier, stamp.Cursor.NextUsn);
         var operation = reporting.Operation;
         writer.Complete(stamp.TimeProvider.GetUtcNow().UtcDateTime,
-            operation is null ? null : _ => operation.Processing(FlushStep));
+            operation is null ? null : _ => operation.Processing(FlushStep),
+            operation is null ? null : () => operation.Processing(PostingBuildStep),
+            // A producer re-runs a scan whose name regions ran out, so the posting build would be discarded with it.
+            !writer.NameRegionsNeedGrowth, cancellationToken);
         return result;
     }
 }
