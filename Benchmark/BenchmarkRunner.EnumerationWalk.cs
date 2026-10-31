@@ -161,7 +161,7 @@ public partial class BenchmarkRunner
             NameEntryCapacity = BlockLayout.ComputeSlotCapacity(rows),
             NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(BlockLayout.ComputeSlotCapacity(rows)),
             DeltaCapacity = BlockLayout.ComputeDeltaCapacity(BlockLayout.ComputeSlotCapacity(rows)),
-            ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), root)
+            ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), RootKey.FromDirectory(root), root)
         });
         var writer = new BlockWriter(block);
         var producer = new EnumerationProducer(new EnumerationProducerOptions { RootDirectory = root, Root = new VolumeKey('T') });

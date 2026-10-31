@@ -165,7 +165,8 @@ public sealed class FileIndexScanShapeTests : IDisposable
     public void ForEnumeration_DistinguishesPatternTextOptionsAndUnpairedSurrogatesWhileIgnoringOrderDuplicatesAndTimeout()
     {
         static ulong Shape(params Regex[] patterns) =>
-            ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNamePatterns = patterns }, "/root");
+            ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNamePatterns = patterns },
+                RootKey.FromDirectory(Path.GetFullPath("/root")), "/root");
 
         var lower = Shape(new Regex(@"^\.git$", RegexOptions.None));
         var upper = Shape(new Regex(@"^\.GIT$", RegexOptions.None));

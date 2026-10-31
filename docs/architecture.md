@@ -139,9 +139,10 @@
       `IncludeFreed` from an internal flag on the source), and `FileIndexOptions.DirectoryWalk`
       (`PrunedDirectoryNames`, `PrunedDirectoryNamePatterns` by pattern text and `RegexOptions`
       without `MatchTimeout`, `PrunedDirectoryAttributes`, `PruneDotDirectories` and the
-      `PrunedDirectoryPaths` within that root's directory) for an enumeration block. Every
-      producer writes every eligible record; the walk records but does not enter a pruned
-      directory. Warm start compares the shape after the cache tag: a mismatch reports
+      `PrunedDirectoryPaths` within that root's directory) for an enumeration block. For an
+      aliased root, configured-root pruned paths are rebased onto the resolved final directory
+      before the shape is computed. Every producer writes every eligible record; the walk records
+      but does not enter a pruned directory. Warm start compares the shape after the cache tag: a mismatch reports
       `WrongScanShape`, deletes the block under its owner lock and cold-scans, and a cache-only
       open fails with `RootFailureKind.CacheIdentityMismatch` and leaves the block in place. The index passes the expected
       shape in the produce request; a producer returning another shape fails the root. The

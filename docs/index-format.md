@@ -298,9 +298,10 @@ For an enumeration block, exact pruned names and pruned paths fold to upper-inva
 Windows and stay as given elsewhere, matching the root's path comparison; regex pattern
 text is never folded by the root comparison because each `Regex` carries its own
 `RegexOptions`. Paths are normalized with `Path.GetFullPath` and
-`Path.TrimEndingDirectorySeparator`, and only the paths equal to or beneath the root's
-directory are encoded, so editing a pruned path under one root leaves every other volume's
-block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`, including
+`Path.TrimEndingDirectorySeparator`. Only paths equal to or beneath the configured root are
+encoded, after rebasing them onto the resolved root, so equivalent alias and plain roots share
+a shape and editing a pruned path under one root leaves every other volume's block valid.
+MFT blocks ignore `FileIndexOptions.DirectoryWalk`, including
 `PrunedDirectoryNamePatterns`. The MFT `IncludeFreed` value comes from the scan options of
 `FileIndexOptions.MftSource`; an open with no source computes it as false.
 

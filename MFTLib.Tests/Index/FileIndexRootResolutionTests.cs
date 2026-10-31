@@ -277,6 +277,56 @@ public sealed class FileIndexRootResolutionTests
         Assert.AreEqual(outerIndex.RootKey, found[0].Root);
     }
 
+    [TestMethod]
+    public async Task AliasPrunedPathIssue878_MatchesPlainRoot()
+    {
+        using var temp = new TempDirectory("mftlib-resolve-pruned");
+        var real = Folder(temp.Path, "real");
+        var ignored = Folder(real, "ignored");
+        await File.WriteAllTextAsync(Path.Combine(ignored, "inner.txt"), "x", Token);
+        await File.WriteAllTextAsync(Path.Combine(real, "kept.txt"), "x", Token);
+        var alias = Path.Combine(temp.Path, "alias");
+        try
+        {
+            Directory.CreateSymbolicLink(alias, real);
+        }
+        catch (Exception exception)
+        {
+            Assert.Inconclusive($"Could not create a directory symbolic link: {exception.Message}");
+        }
+
+        using var linkRemoval = new LinkRemoval(alias);
+        var aliasOptions = Options(alias) with
+        {
+            DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(alias, "ignored")] }
+        };
+        var plainOptions = Options(real) with
+        {
+            DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryPaths = [ignored] }
+        };
+        var aliasResolved = new ResolvedRoot
+        {
+            Root = RootKey.FromDirectory(alias),
+            RootDirectory = real,
+            Producer = ProducerKind.Enumeration
+        };
+        var plainResolved = new ResolvedRoot
+        {
+            Root = RootKey.FromDirectory(real),
+            RootDirectory = real,
+            Producer = ProducerKind.Enumeration
+        };
+
+        await using var index = await FileIndex.OpenAsync(aliasOptions, Token);
+
+        Assert.AreEqual(RootState.Ready, index.Status.State);
+        Assert.IsNotNull(index.Find(Path.Combine(real, "kept.txt"), Token));
+        Assert.IsNull(index.Find(Path.Combine(ignored, "inner.txt"), Token),
+            "the configured-root prune path must exclude descendants through the resolved root");
+        Assert.AreEqual(ScanShape.For(plainResolved, plainOptions), ScanShape.For(aliasResolved, aliasOptions),
+            "the alias and plain root must hash the same effective pruned paths");
+    }
+
     // Removes only the link, not its target, so the temporary directory's recursive delete never crosses it.
     sealed class LinkRemoval(string link) : IDisposable
     {

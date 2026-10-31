@@ -74,7 +74,7 @@ public partial class BenchmarkRunner
         }
 
         var expectedShape = input.Producer == ProducerKind.Enumeration
-            ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), input.RootDirectory)
+            ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), rootKey, input.RootDirectory)
             : ScanShape.ForMft(includeFreed: false);
         if (input.ScanShape != expectedShape)
         {

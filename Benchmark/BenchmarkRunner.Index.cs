@@ -130,7 +130,7 @@ public partial class BenchmarkRunner
                 NameEntryCapacity = BlockLayout.ComputeSlotCapacity(rows),
                 NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(BlockLayout.ComputeSlotCapacity(rows)),
                 DeltaCapacity = BlockLayout.ComputeDeltaCapacity(BlockLayout.ComputeSlotCapacity(rows)),
-                ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), directory)
+                ScanShape = ScanShape.ForEnumeration(new DirectoryWalkOptions(), RootKey.FromDirectory(directory), directory)
             }))
             {
                 var writer = new BlockWriter(block);
@@ -175,7 +175,7 @@ public partial class BenchmarkRunner
             // any others here. A block replaced after inspection is refused by the cache-only open,
             // which never deletes a block, and reported as a failed drive below.
             var benchmarkShape = producer == ProducerKind.Enumeration
-                ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), candidate.RootDirectory)
+                ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), candidate.File.Root, candidate.RootDirectory)
                 : ScanShape.ForMft(includeFreed: false);
             if (storedShape != benchmarkShape)
             {
