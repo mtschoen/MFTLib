@@ -8,6 +8,11 @@ static class NameHash
 
     internal static ulong Compute(ReadOnlySpan<char> name)
     {
+        if (NameFolding.IsAscii(name))
+        {
+            return ComputeAscii(name);
+        }
+
         var hash = OffsetBasis;
         for (var index = 0; index < name.Length;)
         {
@@ -36,6 +41,20 @@ static class NameHash
         foreach (var value in name.AsciiBytes)
         {
             AddUnit(ref hash, NameFolding.Fold((char)value));
+        }
+
+        return hash;
+    }
+
+    /// <summary>Hashes ASCII text; <see cref="NameFolding.Fold(char)"/> maps only a to z for ASCII and the high byte is zero.</summary>
+    static ulong ComputeAscii(ReadOnlySpan<char> name)
+    {
+        var hash = OffsetBasis;
+        foreach (var character in name)
+        {
+            var folded = (uint)(character - 'a') <= 'z' - 'a' ? character - ('a' - 'A') : character;
+            hash = unchecked((hash ^ (byte)folded) * Prime);
+            hash = unchecked(hash * Prime);
         }
 
         return hash;
