@@ -564,6 +564,25 @@ the rule's name despite the repetition; `JournalCheckpointLossDetection.DriveOpe
 `DriveCaughtUp` is `VolumeCaughtUp`; `TestDriveRoot` is `TestRootDirectory`; `SyntheticDriveHeader` is `SyntheticRootHeader`; `DriveKind` is
 `RootKind`; `System.IO.DriveType` stays the BCL type. Consumer migration is plain renaming by file in the pin-bump pull requests.
 
+## Synthetic volume facts support host-owned test opens
+
+**Decision (issue 869):** `MFTLibTestExtensions.SyntheticVolumeFacts.Override(Func<RootKey, string, SyntheticVolumeFactsResult?> reader)`
+returns an `IDisposable` process-global scope for tests that cannot transform the options an index host builds internally.
+`SyntheticVolumeFacts.AllowOverrides()` is the one-way, idempotent activation a test assembly calls from its module initializer,
+matching `JournalIsolation.ForbidLiveJournalReads`; `Override` throws `InvalidOperationException` until it has run in the process,
+so the seam cannot leak into production. Activation is in-process and is not inherited by child processes.
+`SyntheticVolumeFactsResult` carries the same serial, file-system, locality, volume and volume-root values and defaults as
+`SyntheticVolumeFacts.Apply`. Facts applied to an individual options object take precedence over the global reader. A null
+reader result reads the platform, and disposing the scope restores platform reads. Nested and overlapping scopes throw
+`InvalidOperationException`; repeated disposal is harmless.
+
+**Reason:** file-wizard's `FileWizardTests/TestSupport/CliTestHarness.cs` opens cached roots through `FileIndexHost`, which
+builds the options internally. The scoped test-package override removes the test-only `CliServices.ConfigureCachedRoot`
+plumbing from file-wizard production code without exposing the internal `VolumeFacts` record.
+
+**Revisit only if:** a consumer needs simultaneous independent volume-facts overrides, or a production feature needs to
+supply volume facts rather than a test needing synthetic ones.
+
 ## VolumeKey parses volume specs
 
 **Decision (2026-10-19):** `VolumeKey.TryParse(string? text, out VolumeKey result)`
@@ -1267,7 +1286,7 @@ Each `FileIndex` coordinates one root: `FileIndexOptions.Root` (`RootKey?`) repl
 `StopWatchingAsync`, `WaitForCatchUpAsync`, and `RescanAsync` take only a required `CancellationToken` and return
 `Task<RootOperationResult>`. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index
 and throws `InvalidOperationException` (`"Root {root} has no block (state: {state})."`) when the index has no block.
-`FileIndexOptions.DriveOpenProgress` and `IndexDriveOpened` are deleted. `DriveStatus` is renamed to `RootStatus`, and `SyntheticVolumeFacts.Apply` is the test package's volume seam.
+`FileIndexOptions.DriveOpenProgress` and `IndexDriveOpened` are deleted. `DriveStatus` is renamed to `RootStatus`, and `SyntheticVolumeFacts.Apply` and `SyntheticVolumeFacts.Override` are the test package's volume seams.
 
 `FileIndexSet` is a public sealed read-only query coordinator over a fixed ordered list of distinct-root `FileIndex`
 instances (`new FileIndexSet(IReadOnlyList<FileIndex> indices)`, which rejects null entries and repeated `RootKey`s; nested roots such as `D:\` beside `D:\src` are accepted, see below). It exposes `Indices`, `Find`, `Search`, `Enumerate`,

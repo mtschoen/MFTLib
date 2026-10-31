@@ -242,5 +242,20 @@ MFTLibTestExtensions.SyntheticScanRecord :: property public required FileName { 
 MFTLibTestExtensions.SyntheticScanRecord :: property public required ParentRecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticScanRecord :: property public required RecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticScanRecord :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticScanRecord>
+MFTLibTestExtensions.SyntheticVolumeFacts :: method public static AllowOverrides() : void
 MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Apply(MFTLib.Index.FileIndexOptions options, uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default) : MFTLib.Index.FileIndexOptions
+MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Override(System.Func<MFTLib.Index.RootKey, string, MFTLibTestExtensions.SyntheticVolumeFactsResult?> reader) : System.IDisposable
 MFTLibTestExtensions.SyntheticVolumeFacts :: type public static class
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: constructor public (uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default)
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public Equals(MFTLibTestExtensions.SyntheticVolumeFactsResult other) : bool
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public override Equals(object obj) : bool
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public static op_Equality(MFTLibTestExtensions.SyntheticVolumeFactsResult left, MFTLibTestExtensions.SyntheticVolumeFactsResult right) : bool
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public static op_Inequality(MFTLibTestExtensions.SyntheticVolumeFactsResult left, MFTLibTestExtensions.SyntheticVolumeFactsResult right) : bool
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public IsLocal { get; init; } : bool
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public IsNtfs { get; init; } : bool
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public Volume { get; init; } : MFTLib.Index.VolumeKey?
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public VolumeRootDirectory { get; init; } : string?
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public VolumeSerial { get; init; } : uint
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticVolumeFactsResult>

@@ -9,5 +9,6 @@ static class JournalIsolationInitializer
     internal static void Initialize()
     {
         JournalIsolation.ForbidLiveJournalReads();
+        SyntheticVolumeFacts.AllowOverrides();
     }
 }

@@ -112,7 +112,7 @@ public sealed record FileIndexOptions
 
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
-    /// <summary>Reads the volume facts of a root. Null reads the platform; the test package supplies synthetic facts.</summary>
+    /// <summary>Reads the volume facts of a root. Null lets the test package's scoped override or the platform supply them.</summary>
     internal VolumeFactsReader? VolumeFacts { get; init; }
 
     /// <summary>Resolves a directory root's final path at open. Null reads the platform; tests choose what a path resolves to.</summary>

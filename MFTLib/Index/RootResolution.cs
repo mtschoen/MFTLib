@@ -3,6 +3,23 @@ namespace MFTLib.Index;
 /// <summary>Resolves admitted options into a <see cref="ResolvedRoot" />: reads the volume facts once and picks the producer.</summary>
 static class RootResolution
 {
+    internal static readonly RootResolutionHooks Hooks = new();
+
+    internal sealed class RootResolutionHooks
+    {
+        int _volumeFactsOverridesAllowed;
+
+        internal bool VolumeFactsOverridesAllowed => Volatile.Read(ref _volumeFactsOverridesAllowed) != 0;
+
+        internal void AllowVolumeFactsOverrides() => Interlocked.Exchange(ref _volumeFactsOverridesAllowed, 1);
+
+        internal Func<RootKey, string, VolumeFacts?>? VolumeFactsOverride
+        {
+            get => Volatile.Read(ref field);
+            set => Volatile.Write(ref field, value);
+        }
+    }
+
     /// <summary>
     ///     Reads the facts of the volume under the root once and applies <see cref="FileIndexOptions.Producer" />.
     ///     A missing <see cref="FileIndexOptions.MftSource" /> is not a fact: it is judged last, and only by an open
@@ -31,8 +48,9 @@ static class RootResolution
             hostPath = ResolveDirectory(prepared, root, hostPath);
         }
 
-        var readFacts = prepared.VolumeFacts ?? PlatformVolumeFacts.Read;
-        var facts = readFacts(root, hostPath);
+        var facts = prepared.VolumeFacts is { } readFacts
+            ? readFacts(root, hostPath)
+            : Hooks.VolumeFactsOverride?.Invoke(root, hostPath) ?? PlatformVolumeFacts.Read(root, hostPath);
         var unavailable = MftEligibility.Evaluate(in facts, hasMftSource: true);
         var resolved = new ResolvedRoot
         {

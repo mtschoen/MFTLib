@@ -172,7 +172,8 @@ public class NativeSeamIsolationTests
         type == typeof(CacheDirectory.DeletionHooks) ||
         type == typeof(FileEntry.OpenDependencies) ||
         type == typeof(UsnJournalSettingsQuery.QueryDependencies) ||
-        type == typeof(JournalCheckpointCheck.JournalHooks);
+        type == typeof(JournalCheckpointCheck.JournalHooks) ||
+        type == typeof(RootResolution.RootResolutionHooks);
 
     static bool IsNativeSeam(MemberInfo member)
     {
@@ -212,7 +213,7 @@ public class NativeSeamIsolationTests
     // Static methods in the repository assemblies that install process-wide overrides or reset them.
     static readonly HashSet<string> ProductionMutators = new(StringComparer.Ordinal)
     {
-        "ResetToDefaults", "Enable", "OverrideJournalWindow"
+        "ResetToDefaults", "Enable", "OverrideJournalWindow", "Override"
     };
 
     // Framework members that change state shared by every concurrently running test class.

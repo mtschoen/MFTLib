@@ -29,6 +29,68 @@ public static class SyntheticVolumeFacts
         bool isLocal = true, VolumeKey? volume = null, string? volumeRootDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        return options with
+        {
+            VolumeFacts = CreateReader(volumeSerial, isNtfs, isLocal, volume, volumeRootDirectory)
+        };
+    }
+
+    /// <summary>
+    ///     Permits <see cref="Override" /> for the remainder of this process's life. Call from the test assembly's
+    ///     module initializer, before opening any indexes, so the process-global seam cannot be installed by a
+    ///     process that never opted in. Repeated calls are safe; there is no reset. Activation is in-process and is
+    ///     not inherited by child processes.
+    /// </summary>
+    public static void AllowOverrides()
+    {
+        RootResolution.Hooks.AllowVolumeFactsOverrides();
+    }
+
+    /// <summary>Supplies synthetic volume facts to index opens until the returned scope is disposed.</summary>
+    /// <param name="reader">
+    ///     Called with each opened root and its resolved host directory. Return null to read that root's platform facts.
+    /// </param>
+    /// <returns>A process-global scope that restores platform reads.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reader" /> is null.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     <see cref="AllowOverrides" /> has not been called in this process, or another synthetic volume-facts
+    ///     override scope is active.
+    /// </exception>
+    /// <remarks>
+    ///     Facts supplied to an individual options object through <see cref="Apply" /> take precedence over this override.
+    ///     The test assembly's module initializer must have called <see cref="AllowOverrides" />, matching
+    ///     <see cref="JournalIsolation.ForbidLiveJournalReads" />.
+    ///     Use a nonparallel fixture for the entire scope lifetime, including awaited work, and dispose indexes before
+    ///     disposing the scope. Readers may run concurrently for different opens; synchronize mutable observations.
+    ///     Nested and overlapping scopes are rejected. Repeated disposal is harmless and does not drain active readers.
+    /// </remarks>
+    public static IDisposable Override(Func<RootKey, string, SyntheticVolumeFactsResult?> reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        RequireActivation(RootResolution.Hooks);
+        return ProcessGlobalScope.Acquire("A synthetic volume-facts override", () =>
+        {
+            RootResolution.Hooks.VolumeFactsOverride = (root, rootDirectory) =>
+                reader(root, rootDirectory) is { } result
+                    ? CreateReader(result.VolumeSerial, result.IsNtfs, result.IsLocal,
+                        result.Volume, result.VolumeRootDirectory)(root, rootDirectory)
+                    : null;
+            return () => RootResolution.Hooks.VolumeFactsOverride = null;
+        });
+    }
+
+    internal static void RequireActivation(RootResolution.RootResolutionHooks hooks)
+    {
+        if (!hooks.VolumeFactsOverridesAllowed)
+        {
+            throw new InvalidOperationException(
+                "SyntheticVolumeFacts.AllowOverrides must be called from the test assembly's module initializer before Override.");
+        }
+    }
+
+    static VolumeFactsReader CreateReader(uint volumeSerial, bool isNtfs, bool isLocal,
+        VolumeKey? volume, string? volumeRootDirectory)
+    {
         volume?.Validated();
         if (volume is null != volumeRootDirectory is null)
         {
@@ -38,13 +100,10 @@ public static class SyntheticVolumeFacts
 
         var driveType = isLocal ? DriveType.Fixed : DriveType.Network;
         var format = isNtfs ? "NTFS" : "exFAT";
-        return options with
+        return (root, rootDirectory) =>
         {
-            VolumeFacts = (root, rootDirectory) =>
-            {
-                var (letter, volumeRoot) = Locate(root, rootDirectory, volume, volumeRootDirectory);
-                return new VolumeFacts(true, letter, volumeRoot, volumeSerial, true, driveType, format);
-            }
+            var (letter, volumeRoot) = Locate(root, rootDirectory, volume, volumeRootDirectory);
+            return new VolumeFacts(true, letter, volumeRoot, volumeSerial, true, driveType, format);
         };
     }
 
