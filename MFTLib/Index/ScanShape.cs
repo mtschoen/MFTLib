@@ -17,12 +17,12 @@ namespace MFTLib.Index;
 static class ScanShape
 {
     /// <summary>The shape a root's block must carry under the given admitted options.</summary>
-    /// <param name="root">The resolved root, which names its producer and the directory a walk starts at.</param>
+    /// <param name="root">The resolved root, which retains the configured key and names the walk's final directory.</param>
     /// <param name="options">The admitted index options.</param>
     /// <returns>The expected scan shape.</returns>
     public static ulong For(ResolvedRoot root, FileIndexOptions options) =>
         root.Producer == ProducerKind.Enumeration
-            ? ForEnumeration(options.DirectoryWalk, root.RootDirectory)
+            ? ForEnumeration(options.DirectoryWalk, root.Root, root.RootDirectory)
             : ForMft(options.MftSource?.IncludeFreed ?? false);
 
     /// <summary>The shape of an MFT block: producer kind, then freed-record inclusion.</summary>
@@ -37,20 +37,21 @@ static class ScanShape
     }
 
     /// <summary>
-    ///     The shape of an enumeration block: producer kind, then the walk options, keeping only the pruned paths
-    ///     that can match under <paramref name="rootDirectory" />.
+    ///     The shape of an enumeration block: producer kind, then the walk options, keeping the configured-root
+    ///     pruned paths rebased onto <paramref name="rootDirectory" />.
     /// </summary>
     /// <param name="walk">The admitted walk options.</param>
-    /// <param name="rootDirectory">The root's directory.</param>
+    /// <param name="configuredRoot">The root key the consumer configured.</param>
+    /// <param name="rootDirectory">The root's resolved directory.</param>
     /// <returns>The scan shape.</returns>
-    public static ulong ForEnumeration(DirectoryWalkOptions walk, string rootDirectory)
+    public static ulong ForEnumeration(DirectoryWalkOptions walk, RootKey configuredRoot, string rootDirectory)
     {
         var buffer = new ArrayBufferWriter<byte>();
         WriteUInt32(buffer, (uint)ProducerKind.Enumeration);
         WriteStrings(buffer, walk.PrunedDirectoryNames.Select(FoldForVolume));
         WriteUInt32(buffer, (uint)walk.PrunedDirectoryAttributes);
         WriteFlag(buffer, walk.PruneDotDirectories);
-        WriteStrings(buffer, walk.PathsWithin(rootDirectory).Select(FoldForVolume));
+        WriteStrings(buffer, walk.PathsWithin(configuredRoot, rootDirectory).Select(FoldForVolume));
         WritePatterns(buffer, walk.PrunedDirectoryNamePatterns);
         return Digest(buffer);
     }

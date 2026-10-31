@@ -164,10 +164,10 @@ public partial class BenchmarkRunnerTests
         // be declined as an unsupported scan shape and its bytes left intact.
         var declined = new (char Drive, ulong Shape, ProducerKind Producer)[]
         {
-            ('X', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory), ProducerKind.Enumeration),
-            ('Y', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, directory), ProducerKind.Enumeration),
-            ('Z', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, directory), ProducerKind.Enumeration),
-            ('S', ScanShape.ForEnumeration(new DirectoryWalkOptions { PruneDotDirectories = true }, directory), ProducerKind.Enumeration),
+            ('X', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, RootKey.FromDirectory(directory), directory), ProducerKind.Enumeration),
+            ('Y', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, RootKey.FromDirectory(directory), directory), ProducerKind.Enumeration),
+            ('Z', ScanShape.ForEnumeration(new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, RootKey.FromDirectory(directory), directory), ProducerKind.Enumeration),
+            ('S', ScanShape.ForEnumeration(new DirectoryWalkOptions { PruneDotDirectories = true }, RootKey.FromDirectory(directory), directory), ProducerKind.Enumeration),
             ('N', ScanShape.ForMft(includeFreed: true), ProducerKind.Mft)
         };
         foreach (var (drive, shape, producer) in declined)

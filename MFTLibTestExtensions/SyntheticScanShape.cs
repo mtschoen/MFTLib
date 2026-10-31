@@ -12,6 +12,6 @@ static class SyntheticScanShape
     /// <param name="producerKind">The producer recorded in the block's header.</param>
     /// <returns>The default shape for that producer.</returns>
     internal static ulong Default(ProducerKind producerKind) => producerKind == ProducerKind.Enumeration
-        ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), Path.GetTempPath())
+        ? ScanShape.ForEnumeration(new DirectoryWalkOptions(), RootKey.FromDirectory(Path.GetTempPath()), Path.GetTempPath())
         : ScanShape.ForMft(includeFreed: false);
 }

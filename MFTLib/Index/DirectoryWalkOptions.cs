@@ -30,7 +30,8 @@ public sealed record DirectoryWalkOptions
     ///     Fully qualified directory paths that are recorded but not entered. A directory is pruned when its
     ///     full path equals one of these after <see cref="Path.GetFullPath(string)" /> and
     ///     <see cref="Path.TrimEndingDirectorySeparator(string)" />, so everything beneath it is skipped too.
-    ///     A path outside a root's directory has no effect on that root. <see cref="FileIndex.OpenAsync" />
+    ///     For an aliased root, a path at or under the configured root is rebased onto the resolved root;
+    ///     a path outside the configured root has no effect. <see cref="FileIndex.OpenAsync" />
     ///     rejects a null collection and a null, blank, relative or unpaired-surrogate path.
     /// </summary>
     public IReadOnlyCollection<string> PrunedDirectoryPaths { get; init; } = [];
@@ -80,17 +81,21 @@ public sealed record DirectoryWalkOptions
     }
 
     /// <summary>
-    ///     The admitted pruned paths that can match a directory under <paramref name="rootDirectory" />: those
-    ///     equal to it or beneath it, by the root comparison.
+    ///     The admitted pruned paths at or under <paramref name="configuredRoot" />, rebased onto the resolved
+    ///     <paramref name="rootDirectory" /> so an alias root keeps the consumer's configured-root paths.
     /// </summary>
-    /// <param name="rootDirectory">The root's directory.</param>
-    /// <returns>The paths that can affect the root, in the admitted order.</returns>
-    internal string[] PathsWithin(string rootDirectory)
+    /// <param name="configuredRoot">The root key the consumer configured.</param>
+    /// <param name="rootDirectory">The root's resolved directory.</param>
+    /// <returns>The rebased paths that can affect the root, in the admitted order.</returns>
+    internal string[] PathsWithin(RootKey configuredRoot, string rootDirectory)
     {
         var root = NormalizePath(rootDirectory);
-        var rootWithSeparator = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
+        var configured = configuredRoot.IsVolume ? root : NormalizePath(configuredRoot.ToString());
+        var configuredWithSeparator = Path.EndsInDirectorySeparator(configured) ? configured : configured + Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return [.. PrunedDirectoryPaths.Where(path => string.Equals(path, root, comparison) || path.StartsWith(rootWithSeparator, comparison))];
+        return [.. PrunedDirectoryPaths
+            .Where(path => string.Equals(path, configured, comparison) || path.StartsWith(configuredWithSeparator, comparison))
+            .Select(path => NormalizePath(Path.Combine(root, Path.GetRelativePath(configured, path))))];
     }
 
     /// <summary>

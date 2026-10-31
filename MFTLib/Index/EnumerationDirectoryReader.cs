@@ -20,7 +20,7 @@ sealed class EnumerationDirectoryReader
             .GetAlternateLookup<ReadOnlySpan<char>>();
 
         _prunedNamePatterns = [.. walk.PrunedDirectoryNamePatterns];
-        _prunedPaths = new HashSet<string>(walk.PathsWithin(options.RootDirectory), DirectoryWalkOptions.PathComparer);
+        _prunedPaths = new HashSet<string>(walk.PathsWithin(options.Root, options.RootDirectory), DirectoryWalkOptions.PathComparer);
         _prunedAttributes = walk.PrunedDirectoryAttributes;
         _pruneDotDirectories = walk.PruneDotDirectories;
         _enumerationOptions = EnumerationProducer.CreateDirectoryEnumerationOptions();
