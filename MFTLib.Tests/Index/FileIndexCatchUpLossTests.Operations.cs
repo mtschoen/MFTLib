@@ -23,7 +23,6 @@ public partial class FileIndexCatchUpLossTests
         var index = harness.Index;
         var token = Token;
         var queuedRescan = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var handlerReturning = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>
         {
             if (fault.Kind != WatchFaultKind.CatchUpLost)
@@ -31,12 +30,15 @@ public partial class FileIndexCatchUpLossTests
                 return;
             }
 
+            // The continuation inherits the delivery marker, which stays active until every
+            // subscriber has returned. The held retry scan enters Produce only after RaiseWatchFaulted
+            // has returned, while the scan operation still holds the lifecycle gate, so waiting for it
+            // releases the queued rescan outside the handler and before the gate frees.
             _ = Task.Run(async () =>
             {
-                await handlerReturning.Task;
+                await heldRetry.Entered;
                 queuedRescan.TrySetResult(index.RescanAsync(token));
             }, TestContext.CancellationToken);
-            handlerReturning.TrySetResult();
         };
         var producedBefore = harness.ProductionCount('T');
 
