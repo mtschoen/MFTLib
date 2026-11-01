@@ -6,6 +6,73 @@ namespace MFTLib.Tests.Index;
 public partial class IndexNavigationTests
 {
     [TestMethod]
+    [DataRow(false, "alias/", "", "資料", "leaf")]
+    [DataRow(false, "", "", "a/", "leaf")]
+    [DataRow(false, "alias", "before", "/rooted", "leaf")]
+    [DataRow(false, "alias", "C:relative", "D:\\rooted", "資料")]
+    [DataRow(false, "alias\\", "before\\", "", "leaf")]
+    [DataRow(false, "", "", "", "")]
+    [DataRow(true, "dump:/T///", "", "資料", "leaf")]
+    [DataRow(true, "dump:/T///", "", "", "")]
+    [DataRow(true, "dump:/T", "a/", "/b", "leaf")]
+    public void PathWriter_PreservesRootAndSeparatorPolicy(bool isDump, string root, params string[] names)
+    {
+        using var builder = new SyntheticBlockBuilder();
+        var row = builder.AddRoot();
+        foreach (var name in names)
+        {
+            row = builder.AddRow(name, row, RowFlags.InUse, 0, Moment, 0);
+        }
+        builder.Complete(Moment);
+        using var block = builder.OpenForReading(out _)!;
+        var identifiers = names.Reverse().Select(name =>
+        {
+            Assert.IsTrue(NamePool.TryFindOrdinal(block, name, out var identifier));
+            return identifier;
+        }).ToArray();
+        var expected = isDump
+            ? MftDumpPaths.Join(root, names.Where(name => name.Length != 0).ToArray())
+            : Path.Combine([root, .. names]);
+        Assert.AreEqual(expected, RootKind.For(ProducerKind.Mft, isDump).JoinPath(block, root, identifiers));
+    }
+
+    [TestMethod]
+    [DataRow(12)]
+    [DataRow(2048)]
+    public async Task Path_MixedNamesUnderAnAlias_AllocatesOnlyTheResult_Issue882(int segmentLength)
+    {
+        using var builder = new SyntheticBlockBuilder(namePoolCapacity: 16384);
+        var row = builder.AddRoot();
+        var rootDirectory = Path.Combine(builder.DirectoryPath, "Alias資料");
+        var components = new List<string> { rootDirectory };
+        for (var depth = 0; depth < 12; depth++)
+        {
+            var name = depth % 2 == 0 ? new string('a', segmentLength) : "資料😀MiXeD";
+            row = builder.AddRow(name, row, RowFlags.InUse | RowFlags.Directory, 0, Moment, 0);
+            components.Add(name);
+        }
+        builder.Complete(Moment);
+        var block = builder.OpenForReading(out _)!;
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: rootDirectory)];
+        try
+        {
+            var entry = FileEntry.Create(snapshot[0], row);
+            var expected = Path.Combine(components.ToArray());
+            Assert.AreEqual(expected, entry.Path);
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
+            var actual = entry.Path;
+            allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            Assert.AreEqual(expected, actual);
+            Assert.IsLessThanOrEqualTo(2L * actual.Length + 64, allocated,
+                "Path construction must allocate the result, not strings or collections for its ancestors.");
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
     public async Task Path_RendersTheBlockRootDirectory_NotTheRootKey()
     {
         using var builder = new SyntheticBlockBuilder();

@@ -76,7 +76,7 @@ public ref struct IndexRowEnumerator
     RootBlock? _rootBlock;
     readonly RowEnumerationResources _resources;
     int _advanceVersion;
-    ReadOnlySpan<char> _currentName;
+    uint _currentNameId;
     int _nextRoot;
     int _segment;
 
@@ -115,7 +115,7 @@ public ref struct IndexRowEnumerator
         _rootBlock = null;
         _resources = new RowEnumerationResources();
         _advanceVersion = 0;
-        _currentName = default;
+        _currentNameId = 0;
         _nextRoot = 0;
         _segment = 0;
     }
@@ -138,7 +138,7 @@ public ref struct IndexRowEnumerator
         _rootBlock = null;
         _resources = new RowEnumerationResources();
         _advanceVersion = 0;
-        _currentName = default;
+        _currentNameId = 0;
         _nextRoot = 0;
         _segment = 0;
     }
@@ -154,7 +154,7 @@ public ref struct IndexRowEnumerator
             ThrowIfDisposed();
             _resources.ValidateVersion(_advanceVersion);
             var rootBlock = _rootBlock ?? throw new InvalidOperationException("The enumerator has no current row.");
-            return new IndexRow(rootBlock, _scanner.CurrentRowIndex, in _scanner.Current, _currentName);
+            return new IndexRow(rootBlock, _scanner.CurrentRowIndex, in _scanner.Current, _currentNameId, _resources, _advanceVersion);
         }
     }
 
@@ -174,7 +174,8 @@ public ref struct IndexRowEnumerator
                 if (_resources.Candidates is { } candidates ? MoveToNextCandidateMatch(candidates) :
                     _flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch())
                 {
-                    _currentName = _resources.Capture(_scanner.CurrentName);
+                    // Capture identity now, not at first Name access: a rename must not change this row's captured text.
+                    _currentNameId = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in _scanner.Current));
                     return true;
                 }
 

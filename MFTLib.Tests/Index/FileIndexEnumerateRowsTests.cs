@@ -44,6 +44,87 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     }
 
     [TestMethod]
+    public async Task EnumerateRows_MetadataDoesNotResolveNames_Issue882()
+    {
+        await using var index = await _fixture.OpenAsync();
+        AssertLazyNameRead(index);
+    }
+
+    static void AssertLazyNameRead(FileIndex index)
+    {
+        var block = index.CurrentBlock!.Block;
+        ref var first = ref block.Rows[0];
+        var descriptor = FileRow.ReadDescriptorWord(in first);
+        FileRow.WriteDescriptorWord(ref first, uint.MaxValue, FileRow.DescriptorFlags(descriptor));
+        using var enumerator = index.EnumerateRows(new SearchQuery(null)).GetEnumerator();
+        InvalidDataException? prematureRead = null;
+        try
+        {
+            Assert.IsTrue(enumerator.MoveNext());
+            Assert.IsTrue(enumerator.Current.IsDirectory);
+        }
+        catch (InvalidDataException exception)
+        {
+            prematureRead = exception;
+        }
+        Assert.IsNull(prematureRead, "A metadata-only pass must not resolve or widen the name.");
+        InvalidDataException? nameFailure = null;
+        try
+        {
+            _ = enumerator.Current.Name.Length;
+        }
+        catch (InvalidDataException exception)
+        {
+            nameFailure = exception;
+        }
+        Assert.IsNotNull(nameFailure, "A requested name must still undergo the normal read-safety checks.");
+    }
+
+    [TestMethod]
+    [DataRow("before.txt")]
+    [DataRow("caf\u00e9.txt")]
+    [DataRow("")]
+    public async Task EnumerateRows_LazyNameKeepsAdvanceTimeIdentity_Issue882(string original)
+    {
+        await using var index = await _fixture.OpenAsync();
+        var writer = new BlockWriter(index.CurrentBlock!.Block);
+        Assert.IsTrue(writer.TryRenameRow(0, original, 0));
+        using var enumerator = index.EnumerateRows(new SearchQuery(null)).GetEnumerator();
+        Assert.IsTrue(enumerator.MoveNext());
+        Assert.IsTrue(writer.TryRenameRow(0, "replacement.txt", 0));
+        var row = enumerator.Current;
+        Assert.AreEqual(original, row.Name.ToString(), "The first read uses the descriptor captured by MoveNext.");
+        Assert.AreEqual(original, row.Name.ToString(), "Repeated reads share the same captured name.");
+        Assert.AreEqual("replacement.txt", row.ToEntry().Name, "A retained handle still reads the live row.");
+    }
+
+    [TestMethod]
+    public async Task EnumerateRows_LazyNameChecksReleaseBeforeMappedAccess_Issue882()
+    {
+        await using var index = await _fixture.OpenAsync();
+        AssertReleasedNameRejected(index);
+    }
+
+    static void AssertReleasedNameRejected(FileIndex index)
+    {
+        using var enumerator = index.EnumerateRows(new SearchQuery(null)).GetEnumerator();
+        Assert.IsTrue(enumerator.MoveNext());
+        var row = enumerator.Current;
+        enumerator.Dispose();
+        index.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        ObjectDisposedException? caught = null;
+        try
+        {
+            _ = row.Name.Length;
+        }
+        catch (ObjectDisposedException exception)
+        {
+            caught = exception;
+        }
+        Assert.IsNotNull(caught, "A lazy name read must reject a released mapping before reading the name entry.");
+    }
+
+    [TestMethod]
     public async Task EnumerateRows_WithoutIteration_TakesNoBorrow()
     {
         await using var index = await _fixture.OpenAsync();
@@ -108,6 +189,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     {
         using var enumerator = index.EnumerateRows(new SearchQuery("")).GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());
+        var exportedRow = enumerator.Current;
         using var copy = enumerator;
         Assert.IsTrue(copy.MoveNext());
         if (!readCurrent)
@@ -135,6 +217,17 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
             caught = exception;
         }
         Assert.IsNotNull(caught, "A stale copy must not expose another copy's name buffer or returned bitset.");
+
+        InvalidOperationException? staleName = null;
+        try
+        {
+            _ = exportedRow.Name.Length;
+        }
+        catch (InvalidOperationException exception)
+        {
+            staleName = exception;
+        }
+        Assert.IsNotNull(staleName, "A lazy read from an exported stale row must not resolve through another row's buffer.");
     }
 
     [TestMethod]

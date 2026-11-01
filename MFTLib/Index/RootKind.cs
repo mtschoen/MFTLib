@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>Path and capability policy for live volumes, directory walks and dump inventories.</summary>
-sealed class RootKind
+sealed partial class RootKind
 {
     enum Kind { LiveVolume, DirectoryWalk, Dump }
 
@@ -75,10 +75,6 @@ sealed class RootKind
         UsesBackslashSeparators ? foldedPath ??= MftDumpPaths.Fold(path) : path;
 
     internal bool IsSeparator(char character) => Separators.Contains(character);
-
-    internal string JoinPath(string[] components) => _kind == Kind.Dump
-        ? MftDumpPaths.Join(components[0], components.Skip(1).ToArray())
-        : Path.Combine(components);
 
     internal static FileIndexOptions PrepareOpenOptions(FileIndexOptions options)
     {

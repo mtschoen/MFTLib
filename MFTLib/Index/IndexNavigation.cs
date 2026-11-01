@@ -58,15 +58,9 @@ static class IndexNavigation
                 $"Root block {rootBlock.Root} has no configured root directory to build a path from.");
         }
 
-        var segments = CollectSegments(rootBlock.Block, rowIndex);
-        var components = new string[segments.Count + 1];
-        components[0] = rootDirectoryPath;
-        for (var index = 0; index < segments.Count; index++)
-        {
-            components[index + 1] = segments[segments.Count - 1 - index];
-        }
-
-        return rootBlock.Kind.JoinPath(components);
+        Span<uint> segments = stackalloc uint[BlockLayout.MaximumPathDepth];
+        var count = CollectSegments(rootBlock.Block, rowIndex, segments);
+        return rootBlock.Kind.JoinPath(rootBlock.Block, rootDirectoryPath, segments[..count]);
     }
 
     /// <summary>
@@ -91,32 +85,28 @@ static class IndexNavigation
         return children;
     }
 
-    static List<string> CollectSegments(BlockFile block, uint rowIndex)
+    static int CollectSegments(BlockFile block, uint rowIndex, Span<uint> segments)
     {
-        var segments = new List<string>();
-        var visited = new HashSet<uint>();
+        Span<uint> visited = stackalloc uint[BlockLayout.MaximumPathDepth];
         var current = rowIndex;
         var rowCount = block.Header.RowCount;
 
         for (var depth = 0; depth < BlockLayout.MaximumPathDepth; depth++)
         {
-            if (current >= rowCount || !visited.Add(current) || IsRootRow(block, current))
+            if (current >= rowCount || visited[..depth].Contains(current) || IsRootRow(block, current))
             {
-                return segments;
+                return depth;
             }
 
-            var name = NamePool.ReadRowName(block, current);
-            if (!name.IsEmpty)
-            {
-                segments.Add(name.ToString());
-            }
-
+            visited[depth] = current;
+            // Capture the descriptor once: names remain immutable even if the row is renamed before copying.
+            segments[depth] = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in block.Rows[(int)current]));
             current = block.Rows[(int)current].ParentRow;
         }
 
         if (current >= rowCount || visited.Contains(current) || IsRootRow(block, current))
         {
-            return segments;
+            return segments.Length;
         }
 
         throw new InvalidDataException(

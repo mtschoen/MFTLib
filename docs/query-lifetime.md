@@ -66,8 +66,10 @@
       A snapshot borrow guarantees stable ownership of that set of mapped blocks, not frozen contents.
       Journal updates write row fields in place while a watch runs. Names are appended to an immutable
       pool, with name identifier and flags published together as one atomic descriptor word;
-      Each successful `MoveNext` captures a name from one descriptor read and its immutable entry. UTF-16 names
-      borrow mapped text; ASCII names use the enumerator's reusable character buffer.
+      Each successful `MoveNext` captures the name identifier from one descriptor read. The immutable entry is
+      resolved only when `IndexRow.Name` is read, so metadata-only passes neither resolve nor widen names.
+      A rename between advance and the first name read still returns the advance-time spelling. UTF-16 names
+      borrow mapped text; ASCII names are widened once per row into the enumerator's reusable character buffer.
       That captured span keeps its text for its valid lifetime. Other `IndexRow` properties
       read the live row, and neither the whole row nor query filtering plus subsequent reads is atomic.
       A row can change between matching and consumption, and a scanner captures its row-count bound
@@ -149,7 +151,11 @@
       filesystem path, and `FileIndex.Find` accepts it back, resolving a native path against the
       longest matching indexed root directory (on a `FileIndexSet`, the outermost available member whose root contains the path). A dump entry renders a virtual `dump:/X` path that
       `Open` refuses, a detached deleted row renders its bare name, and `Find` skips deleted
-      entries, so a deleted entry's path does not resolve.
+       entries, so a deleted entry's path does not resolve.
+       Path construction keeps at most 128 captured name identifiers and visited rows in per-call
+       stack scratch, sizes the result from immutable pool names, then copies ASCII or UTF-16
+       directly into the returned string. No borrowed name span escapes the call and no
+       intermediate ancestor strings or retained path cache are created.
 
     - **Writer lifetime**: every internal `BlockWriter` operation holds a `BlockAccessScope` on its
       `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when

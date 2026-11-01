@@ -611,6 +611,40 @@ usage, occupied name entries (12 bytes per entry, excluding reserved entry zero)
 and the whole bucket directory. A single run is a throughput observation, not a statistical performance comparison.
 The temporary block is deleted after measurement.
 
+### Separating completion from row consumption
+
+`Benchmark.exe index-pipeline --synthetic 14000000 --distinct-names 1000000 --iterations 5`
+measures a larger, deduplicated block; omit `--distinct-names` for one distinct name per row.
+The default iteration count is five. Rows and distinct names are positive, at most 100 million,
+and distinct names cannot exceed rows. Names are fixed-length, 13-character ASCII text.
+The first vocabulary-sized prefix interns every name, and subsequent rows select names by
+`row * 2654435761 % distinctNames`, computed with 64-bit arithmetic. This is synthetic input,
+not a model of NTFS record gaps, watch churn, name lengths or directory structure.
+
+The runner warms up one fresh block, then measures each iteration in another fresh,
+exactly sized block. `block-completion` times `BlockWriter.Complete`, including posting construction,
+the complete flag and flush. `posting-rebuild` separately times the posting builder over the resident,
+completed block. These observations do not isolate flush by subtraction: their page conditions differ.
+Input generation, row writing, allocation and disposal are outside both timed intervals.
+
+`rows-metadata` and `rows-names` exercise the production row enumerator with a snapshot borrow
+and no query predicate. Both paths warm their pages once before measurement. The former sums
+non-directory sizes; the latter hashes every name character without allocating strings. Checksums
+are printed so a faster run cannot silently omit consumption.
+
+`rows-paths` uses a separate block with the requested row count: each group of 128 rows has
+a twelve-directory spine, leaves under directory depths six through twelve, and a mix of ASCII
+and UTF-16 names. It warms up once, then builds `FileEntry.Path` for every row on each pass and
+hashes every result character. Generation and completion are not timed. The scenario reports the
+median elapsed time and current-thread allocated bytes per pass, including the result strings.
+All five scenarios report medians; `--distinct-names` controls only the first four scenarios.
+
+Memory counters cover the **whole pipeline**, including synthetic input generation, warmup and all
+iterations, in the current process. They are not isolated per-scenario allocation measurements.
+Use a fresh process for each comparison, identical arguments and at least five iterations on the
+same quiet machine. Repeat or alternate baseline/candidate runs to assess environmental noise.
+Temporary blocks are delete-on-close and the temporary directory is removed after the run.
+
 ## Enumeration blocks
 
 An enumeration producer has no record numbers. Its single writer assigns dense

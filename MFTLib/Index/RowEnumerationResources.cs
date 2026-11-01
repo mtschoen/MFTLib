@@ -11,6 +11,7 @@ sealed class RowEnumerationResources : IDisposable
     PostingCandidates? _candidates;
     SubtreeMembership? _membership;
     char[] _nameCharacters = [];
+    int _capturedAsciiLength = -1;
     int _version;
 
     internal NameQueryMatches Names => _names ??
@@ -33,6 +34,7 @@ sealed class RowEnumerationResources : IDisposable
     internal int Advance(int version)
     {
         ValidateVersion(version);
+        _capturedAsciiLength = -1;
         return ++_version;
     }
 
@@ -61,8 +63,14 @@ sealed class RowEnumerationResources : IDisposable
     }
 
     /// <summary>Exposes a name as characters: mapped UTF-16 text directly, ASCII through the shared buffer.</summary>
-    internal ReadOnlySpan<char> Capture(NameView name)
+    internal ReadOnlySpan<char> Capture(BlockFile block, uint nameId)
     {
+        if (_capturedAsciiLength >= 0)
+        {
+            return _nameCharacters.AsSpan(0, _capturedAsciiLength);
+        }
+
+        var name = NamePool.Read(block, nameId);
         if (name.IsUtf16)
         {
             return name.Utf16Characters;
@@ -74,8 +82,13 @@ sealed class RowEnumerationResources : IDisposable
         }
 
         name.CopyTo(_nameCharacters);
+        _capturedAsciiLength = name.Length;
         return _nameCharacters.AsSpan(0, name.Length);
     }
 
-    public void Dispose() => EndRoot();
+    public void Dispose()
+    {
+        ++_version;
+        EndRoot();
+    }
 }

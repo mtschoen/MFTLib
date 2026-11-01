@@ -9,17 +9,31 @@ public readonly ref struct IndexRow
     readonly RootBlock _rootBlock;
     readonly ref readonly FileRow _row;
     readonly uint _rowIndex;
+    readonly uint _nameId;
+    readonly RowEnumerationResources _resources;
+    readonly int _advanceVersion;
 
-    internal IndexRow(RootBlock rootBlock, uint rowIndex, ref readonly FileRow row, ReadOnlySpan<char> name)
+    internal IndexRow(RootBlock rootBlock, uint rowIndex, ref readonly FileRow row, uint nameId,
+        RowEnumerationResources resources, int advanceVersion)
     {
         _rootBlock = rootBlock;
         _rowIndex = rowIndex;
         _row = ref row;
-        Name = name;
+        _nameId = nameId;
+        _resources = resources;
+        _advanceVersion = advanceVersion;
     }
 
-    /// <summary>The name, borrowing mapped UTF-16 text or the enumerator's reusable ASCII conversion buffer.</summary>
-    public ReadOnlySpan<char> Name { get; }
+    /// <summary>The captured name, resolved on first access, borrowing mapped UTF-16 text or the enumerator's reusable ASCII conversion buffer.</summary>
+    public ReadOnlySpan<char> Name
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_rootBlock.IsReleased, nameof(IndexRow));
+            _resources.ValidateVersion(_advanceVersion);
+            return _resources.Capture(_rootBlock.Block, _nameId);
+        }
+    }
 
     /// <summary>The configured logical volume key, including for virtual dump roots.</summary>
     public RootKey Root => _rootBlock.Root;
