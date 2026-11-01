@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     A writer's claim on a block's mapped view, held for the whole of one
-///     <see cref="BlockWriter" /> operation or <see cref="JournalMutator.Apply" /> batch. While one is outstanding, <see cref="BlockFile.Dispose" />
+///     <see cref="BlockWriter" /> operation, MFT transfer batch or <see cref="JournalMutator.Apply" /> batch. While one is outstanding, <see cref="BlockFile.Dispose" />
 ///     waits rather than unmapping, so a write admitted before disposal began completes against
 ///     memory that is still mapped. Admission closes the moment disposal begins: a late writer is
 ///     answered with <see cref="ObjectDisposedException" /> instead of a view that is on its way
@@ -24,6 +24,16 @@ sealed class BlockAccessScope : IDisposable
         }
 
         _acquired = 1;
+    }
+
+    /// <summary>Validates a batch's live claim before a writer reuses it for another row.</summary>
+    internal void Validate(BlockFile block)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _acquired) == 0, this);
+        if (!ReferenceEquals(_block, block))
+        {
+            throw new ArgumentException("The access scope belongs to a different block.", nameof(block));
+        }
     }
 
     /// <summary>

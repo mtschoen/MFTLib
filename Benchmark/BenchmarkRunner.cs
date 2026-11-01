@@ -23,6 +23,11 @@ public partial class BenchmarkRunner
 
     public Task<int> RunAsync(string[] arguments)
     {
+        if (arguments.Length > 0 && arguments[0].Equals("index-write", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunIndexWriteAsync(arguments[1..]);
+        }
+
         if (arguments.Length > 0 && arguments[0].Equals("index", StringComparison.OrdinalIgnoreCase))
         {
             return RunIndexAsync(arguments[1..]);
@@ -53,7 +58,7 @@ public partial class BenchmarkRunner
             return RunEnumerationWalkAsync(arguments[1..]);
         }
 
-        _output.WriteLine("Usage: Benchmark.exe <index|index-storage|index-pipeline|compare|native-timings|enumeration-walk> ...");
+        _output.WriteLine("Usage: Benchmark.exe <index|index-storage|index-pipeline|index-write|compare|native-timings|enumeration-walk> ...");
         return Task.FromResult(1);
     }
 }

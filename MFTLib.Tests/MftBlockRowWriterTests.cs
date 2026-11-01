@@ -24,6 +24,27 @@ public sealed class MftBlockRowWriterTests : IDisposable
     public void Dispose() => Cleanup();
 
     [TestMethod]
+    public void WriteBatches_Issue882_DoesNotAllocateAnAccessScopePerRow()
+    {
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
+            slotCapacity: 8192, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
+        var writer = new BlockWriter(block);
+        var options = new MftScanOptions();
+        // Warm the mapping and interning paths before measuring the allocation contract.
+        MftBlockRowWriter.WriteBatches(writer, [[Record(5, "same")]], options, null, CancellationToken.None);
+        IReadOnlyList<MftRecord>[] batches = [Enumerable.Range(6, 4096).Select(row => Record((ulong)row, "same")).ToArray()];
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var result = MftBlockRowWriter.WriteBatches(writer, batches, options, null, CancellationToken.None);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.IsLessThan(4096L, allocated, "A batch must not allocate a scope object for each row.");
+        Assert.AreEqual(4102L, result.RowCount);
+        Assert.AreEqual(4097u, block.Header.LiveRowCount);
+        Assert.AreEqual(1u, block.NameEntryCount);
+    }
+
+    [TestMethod]
     public void WriteBatches_MapsColumnsAtRecordNumbersAndReturnsHeaderTotals()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,

@@ -25,28 +25,31 @@ static class MftBlockRowWriter
         foreach (var batch in batches)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            foreach (var record in batch)
+            using (var access = writer.Block.TakeAccess())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!record.InUse && freedRows is null)
+                foreach (var record in batch)
                 {
-                    continue;
-                }
-
-                freedRows?.Observe(in record);
-                if (TryWriteRecord(writer, record))
-                {
-                    recordsWritten++;
-                    freedRows?.Wrote(in record);
-                }
-                else
-                {
-                    skippedRecordCount++;
-                    // A producer retries this scan into a larger block, so the remaining batches are not copied into this one and its postings are never built.
-                    if (writer.NameRegionsNeedGrowth)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!record.InUse && freedRows is null)
                     {
-                        stoppedForGrowth = true;
-                        break;
+                        continue;
+                    }
+
+                    freedRows?.Observe(in record);
+                    if (TryWriteRecord(writer, access, record))
+                    {
+                        recordsWritten++;
+                        freedRows?.Wrote(in record);
+                    }
+                    else
+                    {
+                        skippedRecordCount++;
+                        // A producer retries this scan into a larger block, so the remaining batches are not copied into this one and its postings are never built.
+                        if (writer.NameRegionsNeedGrowth)
+                        {
+                            stoppedForGrowth = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -71,7 +74,7 @@ static class MftBlockRowWriter
             skippedRecordCount);
     }
 
-    static bool TryWriteRecord(BlockWriter writer, MftRecord record)
+    static bool TryWriteRecord(BlockWriter writer, BlockAccessScope access, MftRecord record)
     {
         // Both identifiers are 48-bit on disk. A truncated parent would point the row at an
         // unrelated record, so an out-of-range record number and an out-of-range parent are
@@ -102,6 +105,6 @@ static class MftBlockRowWriter
         var columns = new RowColumns((uint)record.ParentRecordNumber, flags,
             (uint)record.FileAttributes, record.IsDirectory ? 0 : record.Size, record.ModifiedUtc.Ticks,
             record.SequenceNumber);
-        return writer.TryWriteRow((uint)record.RecordNumber, name, in columns);
+        return writer.TryWriteRowUnderAccess(access, (uint)record.RecordNumber, name, in columns);
     }
 }

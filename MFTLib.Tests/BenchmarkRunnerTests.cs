@@ -285,7 +285,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_NoVerb_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync([]));
-        Assert.Contains("Usage: Benchmark.exe <index|index-storage|index-pipeline|compare|native-timings|enumeration-walk>", _output.ToString());
+        Assert.Contains("Usage: Benchmark.exe <index|index-storage|index-pipeline|index-write|compare|native-timings|enumeration-walk>", _output.ToString());
     }
 
     [TestMethod]

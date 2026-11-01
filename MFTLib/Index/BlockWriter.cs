@@ -68,6 +68,19 @@ sealed partial class BlockWriter
     public bool TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         using var access = Block.TakeAccess();
+        return TryWriteRowCore(rowIndex, name, in columns);
+    }
+
+    /// <summary>Writes a row using the caller's live batch scope, preserving the single-row publication protocol.</summary>
+    internal bool TryWriteRowUnderAccess(BlockAccessScope access, uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
+    {
+        access.Validate(Block);
+        return TryWriteRowCore(rowIndex, name, in columns);
+    }
+
+    /// <summary>Shared publication path; callers hold either a single-row or a validated batch access scope.</summary>
+    bool TryWriteRowCore(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
+    {
         if (rowIndex >= Block.SlotCapacity)
         {
             MarkCapacityExhaustedCore();

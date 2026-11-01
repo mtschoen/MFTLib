@@ -645,6 +645,15 @@ Use a fresh process for each comparison, identical arguments and at least five i
 same quiet machine. Repeat or alternate baseline/candidate runs to assess environmental noise.
 Temporary blocks are delete-on-close and the temporary directory is removed after the run.
 
+`Benchmark.exe index-write --synthetic 2000000 --iterations 5 --unique-names 200000` isolates transfer with
+prebuilt 4096-row batches and deterministic 20-character ASCII spellings. The distinct-name count controls repetition.
+After one warmup it reports medians and ranges for the production MFT transfer, name interning under one scope,
+empty-name row writes (including per-row access and publication), access scopes alone, and the UTF-16 append/copy
+algorithm. These are independent workloads, not additive sub-step instrumentation. The append comparison is not a
+run of the former complete writer. Allocation, native parse, completion and flush are outside the timing windows.
+Temporary blocks are deleted after each phase. Memory counters cover the whole benchmark process, including input
+generation and all phases; use fresh processes when comparing peak private bytes and working set.
+
 ## Enumeration blocks
 
 An enumeration producer has no record numbers. Its single writer assigns dense

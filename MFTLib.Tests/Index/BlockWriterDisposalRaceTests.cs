@@ -23,7 +23,9 @@ public class BlockWriterDisposalRaceTests
     }
 
     [TestMethod]
-    public void TryWriteRow_RacingDispose_CompletesTheWriteThenDisposeUnmaps()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void TryWriteRow_RacingDispose_CompletesTheWriteThenDisposeUnmaps(bool batch)
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
@@ -40,7 +42,17 @@ public class BlockWriterDisposalRaceTests
         block.Hooks._disposeStarted = _ => disposeStarted.MarkEntered();
 
         Task? disposeTask = null;
-        var writeTask = Task.Run(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
+        var writeTask = Task.Run(() =>
+        {
+            if (!batch)
+            {
+                return writer.TryWriteRow(1, "report.pdf", FileColumns());
+            }
+
+            using var access = block.TakeAccess();
+            return writer.TryWriteRowUnderAccess(access, 1, "report.pdf", FileColumns()) &&
+                   writer.TryWriteRowUnderAccess(access, 2, "second.pdf", FileColumns());
+        });
         try
         {
             Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3, TestContext.CancellationToken),
