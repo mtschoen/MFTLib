@@ -205,8 +205,13 @@ testing, consumer pins, and consumer results separately in the release checklist
 ### Benchmark release checklist
 
 Use the same machine and workload as the reference for meaningful performance
-comparisons; the reports record the hardware and runtime. `compare` checks only
-the first matching scenario's median and permits growth of at most 25 percent.
+comparisons; the reports record the hardware and runtime. `compare` checks the
+first matching scenario's median and peak private bytes and requires matching
+memory measurement methods. Timing passes when growth is at most 25 percent
+or the absolute increase is at most 0.001 ms (one report display tick), including
+when the baseline rounds to zero. The timing comparison line prints this absolute
+allowance. Peak private bytes retains a strict 25 percent growth limit with no
+absolute allowance.
 A different machine's result is not a comparable release-performance verdict.
 Investigate failed comparisons rather than replacing a reference to hide a
 regression. These measurements are attended release work, not a CI timing gate.
@@ -229,12 +234,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Index benchmark failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Enumeration benchmark failed.' }
 $reportText = (Get-Content -LiteralPath $indexReport -Raw).TrimEnd() + [Environment]::NewLine + (Get-Content -LiteralPath $walkReport -Raw)
 Set-Content -LiteralPath $candidateReport -Value $reportText -Encoding utf8
-foreach ($scenario in @('exact-search', 'substring-search')) {
-    & $benchmark compare Benchmark/baselines/2026-10-16-abaf975d.txt $candidateReport $scenario
-    if ($LASTEXITCODE -ne 0) { throw "Release comparison failed: $scenario" }
-}
-foreach ($scenario in @('enumeration-walk-sequential', 'enumeration-walk-parallel')) {
-    & $benchmark compare Benchmark/baselines/2026-10-20-36f07c79.txt $candidateReport $scenario
+foreach ($scenario in @('exact-search', 'substring-search', 'enumeration-walk-sequential', 'enumeration-walk-parallel')) {
+    & $benchmark compare Benchmark/baselines/2026-11-01-94cf8eaf.txt $candidateReport $scenario
     if ($LASTEXITCODE -ne 0) { throw "Release comparison failed: $scenario" }
 }
 $measuredRevision = git rev-parse --short HEAD
@@ -247,7 +248,6 @@ Copy-Item -LiteralPath $candidateReport -Destination $releaseReport
 The filename identifies the measured code revision. Review and commit the report
 before the clean-tree release dry run, then validate the resulting release
 commit using the existing ordered release steps. On subsequent releases, select
-the previous accepted report for the same scenarios and workload; the two
-explicit references above bootstrap that convention. A future combined report
-serves both groups. Retain temporary files only as local scratch, never as
+the previous accepted combined report for the same four scenarios and workload.
+Retain temporary files only as local scratch, never as
 committed logs or captures.

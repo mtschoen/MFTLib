@@ -5,8 +5,10 @@ namespace Benchmark;
 
 public partial class BenchmarkRunner
 {
-    // A scenario fails when its median or peak private bytes grows by more than this share of the baseline.
+    // Growth above this share fails unless the timing increase fits within the report-resolution allowance.
     const decimal MaximumGrowthPercentage = 25m;
+    // Reports round medians to 0.001 ms; one display tick is not a timing regression.
+    const decimal MaximumTimingNoiseMilliseconds = 0.001m;
 
     internal readonly record struct ScenarioMeasurements(
         decimal MedianMilliseconds, long PeakPrivateBytes, long PeakWorkingSetBytes, string MemoryMethod);
@@ -37,7 +39,8 @@ public partial class BenchmarkRunner
         try
         {
             var timePassed = PrintComparison(
-                scenario, "Median", beforeMeasurements.MedianMilliseconds, afterMeasurements.MedianMilliseconds, "ms");
+                scenario, "Median", beforeMeasurements.MedianMilliseconds, afterMeasurements.MedianMilliseconds, "ms",
+                MaximumTimingNoiseMilliseconds);
             var memoryPassed = PrintComparison(
                 scenario, "Peak private bytes", beforeMeasurements.PeakPrivateBytes, afterMeasurements.PeakPrivateBytes, "bytes");
             return timePassed && memoryPassed ? 0 : 1;
@@ -53,13 +56,17 @@ public partial class BenchmarkRunner
         ? (after - before) / before * 100m
         : after > 0 ? decimal.MaxValue : 0m;
 
-    bool PrintComparison(string scenario, string metric, decimal before, decimal after, string unit)
+    bool PrintComparison(string scenario, string metric, decimal before, decimal after, string unit,
+        decimal absoluteAllowance = 0m)
     {
         var growth = Growth(before, after);
-        var passed = growth <= MaximumGrowthPercentage;
+        var passed = growth <= MaximumGrowthPercentage || after - before <= absoluteAllowance;
         var format = unit == "ms" ? "F3" : "F0";
+        var allowanceText = absoluteAllowance > 0
+            ? string.Create(CultureInfo.InvariantCulture, $", absolute allowance {absoluteAllowance:F3} {unit}")
+            : string.Empty;
         _output.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"{scenario} {metric}: {before.ToString(format, CultureInfo.InvariantCulture)} {unit} -> {after.ToString(format, CultureInfo.InvariantCulture)} {unit} ({growth:F1}% growth, limit {MaximumGrowthPercentage:F1}%) {(passed ? "PASSED" : "FAILED")}"));
+            $"{scenario} {metric}: {before.ToString(format, CultureInfo.InvariantCulture)} {unit} -> {after.ToString(format, CultureInfo.InvariantCulture)} {unit} ({growth:F1}% growth, limit {MaximumGrowthPercentage:F1}%{allowanceText}) {(passed ? "PASSED" : "FAILED")}"));
         return passed;
     }
 

@@ -31,8 +31,8 @@ release report in `Benchmark/baselines/<date>-<short sha>.txt`, measured on a
 quiet machine and committed beside the code as input to `Benchmark.exe compare`.
 These reports are the deliberate exception to the no-measurement-dumps rule;
 logs and raw captures remain excluded. Keep baselines for scenarios the current
-runner emits. The retained references are `2026-10-16-abaf975d.txt` for index
-queries and `2026-10-20-36f07c79.txt` for enumeration walks.
+runner emits. The retained reference is `2026-11-01-94cf8eaf.txt`, combining
+index queries and enumeration walks with timing and peak-memory measurements.
 
 **Reason:** Benchmark numbers need a quiet machine, so release baselines are
 captured by hand rather than CI. CI artifacts expire, and CI runners share load,

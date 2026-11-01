@@ -538,6 +538,10 @@ public partial class BenchmarkRunnerTests
     [TestMethod]
     [DataRow("4.000", "5.000", 100L, 125L, 0)]
     [DataRow("0.020", "0.025", 100L, 100L, 0)]
+    [DataRow("0.002", "0.003", 100L, 100L, 0)]
+    [DataRow("0.002", "0.004", 100L, 100L, 1)]
+    [DataRow("32.600", "45.000", 100L, 100L, 1)]
+    [DataRow("0.002", "0.003", 100L, 126L, 1)]
     [DataRow("4.000", "5.001", 100L, 100L, 1)]
     [DataRow("0.020", "0.026", 100L, 100L, 1)]
     [DataRow("4.000", "4.000", 100L, 126L, 1)]
@@ -553,6 +557,7 @@ public partial class BenchmarkRunnerTests
             Assert.AreEqual(expectedExitCode, await Compare(
                 ScenarioReport(before, beforePrivate),
                 ScenarioReport(after, afterPrivate)));
+            Assert.Contains("absolute allowance 0.001 ms", _output.ToString());
         }
         finally
         {
@@ -565,7 +570,8 @@ public partial class BenchmarkRunnerTests
     {
         Assert.AreEqual(0, await Compare(ScenarioReport("4.000"), ScenarioReport("1.000")));
         Assert.AreEqual(0, await Compare(ScenarioReport("0.000"), ScenarioReport("0.000")));
-        Assert.AreEqual(1, await Compare(ScenarioReport("0.000"), ScenarioReport("0.001")));
+        Assert.AreEqual(0, await Compare(ScenarioReport("0.000"), ScenarioReport("0.001")));
+        Assert.AreEqual(1, await Compare(ScenarioReport("0.000"), ScenarioReport("0.002")));
         Assert.AreEqual(1, await Compare(
             ScenarioReport("0.0000000000000000000000000001"),
             ScenarioReport("79228162514264337593543950335")));
