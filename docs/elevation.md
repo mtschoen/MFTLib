@@ -41,6 +41,16 @@ launch it. A session-construction failure is printed as `Error creating broker s
 A lazy launch failure is reported as `Error on root X: ...` for the root that settles failed, or `Error opening the index: ...` when the open itself throws.
 Watch waits the default 30 seconds for the elevated broker to connect unless `--connect-timeout N` names another wait in seconds.
 
+## Coverage and release scripts
+
+`scripts/coverage-child.ps1` is the one place the repository scripts elevate (the `runas` verb in `Start-CoverageChild`).
+`run-coverage.ps1`, `native-coverage-elevated.ps1` and `release.ps1` (through `run-coverage.ps1`) reach it, so each attended elevation is preceded by the same heads-up
+as the samples: a system-modal `WScript.Shell.Popup` (flags 4096 + 64 + 1, so it takes the foreground and plays the information sound) naming the script, saying a UAC
+prompt follows and why (elevated admin tests and coverage), and listing the elevated command. OK continues; Cancel stops with a clear message and a nonzero exit.
+A dismissal within 0.75 seconds is shown again, and five minutes unanswered (Popup returns -1) counts as Cancel with no UAC prompt.
+`MFTLIB_SAMPLE_UNATTENDED=1` skips elevation with a message and the same nonzero exit, never showing the dialog; `run-coverage.ps1 -NonInteractive` and `-NoElevation` never elevate.
+The dialog is the replaceable function `Invoke-ElevationPopup`, which `test-native-coverage-elevated.ps1` stubs to cover OK, Cancel, quick dismissal and timeout, and that test also fails when a `'runas'` spelling appears in any other file under `scripts/`.
+
 ## Double-click and bare launches
 
 A sample started from Explorer owns its console window, which closes when the process ends. Each sample therefore

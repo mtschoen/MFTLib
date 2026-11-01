@@ -88,8 +88,48 @@ function Invoke-CoverageTarget {
     return [int]$outcome.ExitCode
 }
 
+# Popup return codes (WScript.Shell): 1 OK, 2 Cancel, -1 timeout.
+function Invoke-ElevationPopup {
+    param([string]$Message, [string]$Title, [int]$TimeoutSeconds)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $shell = New-Object -ComObject WScript.Shell
+    # 1 OK/Cancel + 64 information icon (plays its sound) + 4096 system modal (takes foreground).
+    $result = $shell.Popup($Message, $TimeoutSeconds, $Title, 1 + 64 + 4096)
+    return [pscustomobject]@{ Result = [int]$result; ElapsedSeconds = $clock.Elapsed.TotalSeconds }
+}
+
+function Get-CoverageEntryScriptName {
+    $frames = @(Get-PSCallStack | Where-Object { $_.ScriptName })
+    if ($frames.Count -eq 0) { return 'coverage-child.ps1' }
+    return [IO.Path]::GetFileName($frames[$frames.Count - 1].ScriptName)
+}
+
+# System-modal heads-up before the UAC prompt, matching the samples (docs/elevation.md):
+# a dismissal within 0.75 seconds is shown again; five minutes unanswered counts as Cancel.
+function Confirm-CoverageElevation {
+    param([hashtable]$Request, [string]$ScriptName = (Get-CoverageEntryScriptName))
+    $command = (@([string]$Request.Target) + @($Request.Arguments | ForEach-Object { [string]$_ })) -join ' '
+    $message = "$ScriptName needs administrator rights to run the elevated admin tests and collect coverage.`n`n" +
+        "A Windows UAC prompt follows this message.`n`nElevated command:`n$command`n`n" +
+        'OK continues to the UAC prompt. Cancel stops without elevating.'
+    while ($true) {
+        $answer = Invoke-ElevationPopup $message "$ScriptName : UAC prompt next" 300
+        if ($answer.Result -eq 1 -and $answer.ElapsedSeconds -lt 0.75) { continue }
+        if ($answer.Result -eq 2 -and $answer.ElapsedSeconds -lt 0.75) { continue }
+        return $answer.Result -eq 1
+    }
+}
+
 function Start-CoverageChild {
     param([hashtable]$Request, [switch]$NoElevation)
+    if (-not $NoElevation) {
+        if ($env:MFTLIB_SAMPLE_UNATTENDED -eq '1') {
+            throw 'Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped. Run from an elevated shell or use run-coverage.ps1 -NonInteractive.'
+        }
+        if (-not (Confirm-CoverageElevation $Request)) {
+            throw 'Elevation cancelled at the heads-up dialog (Cancel or five minutes unanswered); no UAC prompt was raised.'
+        }
+    }
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(
         ($Request | ConvertTo-Json -Depth 6 -Compress)))
     $start = [Diagnostics.ProcessStartInfo]::new()

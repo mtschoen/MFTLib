@@ -559,6 +559,62 @@ exit 7
     Assert-Equal $failExit 7 'failing target exit 7'
     Assert-Equal (Test-Path -LiteralPath $coberturaOut) $true 'cobertura written by failing child'
 
+    # Elevation heads-up: injectable popup seam, no UI shown
+    $headsUpRequest = New-TestRequest $echoTarget @('one', 'two') 'headsup'
+    foreach ($case in @(
+        @{ Name = 'OK'; Answers = @(,@(1, 5.0)); Calls = 1; Expected = $true },
+        @{ Name = 'Cancel'; Answers = @(,@(2, 5.0)); Calls = 1; Expected = $false },
+        @{ Name = 'quick OK reshown'; Answers = @(@(1, 0.2), @(1, 4.0)); Calls = 2; Expected = $true },
+        @{ Name = 'quick Cancel reshown'; Answers = @(@(2, 0.2), @(2, 4.0)); Calls = 2; Expected = $false },
+        @{ Name = 'timeout is Cancel'; Answers = @(,@(-1, 300.0)); Calls = 1; Expected = $false }
+    )) {
+        & {
+            $script:popupAnswers = [Collections.Generic.Queue[object]]::new($case.Answers)
+            $script:popupMessages = [Collections.Generic.List[string]]::new()
+            function Invoke-ElevationPopup {
+                param([string]$Message, [string]$Title, [int]$TimeoutSeconds)
+                $script:popupMessages.Add("$Title|$TimeoutSeconds|$Message")
+                $answer = $script:popupAnswers.Dequeue()
+                [pscustomobject]@{ Result = $answer[0]; ElapsedSeconds = $answer[1] }
+            }
+            Assert-Equal (Confirm-CoverageElevation $headsUpRequest 'fixture.ps1') $case.Expected "heads-up $($case.Name)"
+            Assert-Equal $script:popupMessages.Count $case.Calls "heads-up $($case.Name) shown count"
+            Assert-Contains $script:popupMessages[0] 'fixture.ps1'
+            Assert-Contains $script:popupMessages[0] 'UAC prompt'
+            Assert-Contains $script:popupMessages[0] 'one two'
+            Assert-Contains $script:popupMessages[0] '|300|'
+        }
+    }
+    # Cancel and unattended runs never reach the elevated start.
+    & {
+        function Invoke-ElevationPopup { [pscustomobject]@{ Result = 2; ElapsedSeconds = 5.0 } }
+        $cancelled = $null
+        try { Start-CoverageChild $headsUpRequest } catch { $cancelled = $_.ToString() }
+        Assert-Contains $cancelled 'Elevation cancelled'
+        Assert-Equal (Invoke-CoverageChild $headsUpRequest -TimeoutSeconds 1) 1 'cancelled elevation exit status'
+    }
+    & {
+        function Invoke-ElevationPopup { throw 'Unattended run showed the heads-up dialog' }
+        $saved = $env:MFTLIB_SAMPLE_UNATTENDED
+        $env:MFTLIB_SAMPLE_UNATTENDED = '1'
+        try {
+            $skipped = $null
+            try { Start-CoverageChild $headsUpRequest } catch { $skipped = $_.ToString() }
+            Assert-Contains $skipped 'elevation skipped'
+        } finally { $env:MFTLIB_SAMPLE_UNATTENDED = $saved }
+    }
+
+    # No runas call site under scripts/ bypasses the heads-up helper (fixed spelling).
+    $scriptsRoot = $PSScriptRoot
+    foreach ($file in Get-ChildItem -LiteralPath $scriptsRoot -Recurse -File -Include *.ps1, *.psm1, *.sh, *.bat, *.cmd) {
+        if ($file.Name -eq 'test-native-coverage-elevated.ps1') { continue }
+        $hasRunAs = (Get-Content -LiteralPath $file.FullName -Raw).IndexOf("'runas'", [StringComparison]::OrdinalIgnoreCase) -ge 0
+        Assert-Equal $hasRunAs ($file.Name -eq 'coverage-child.ps1') "runas spelling only in coverage-child.ps1: $($file.Name)"
+    }
+    $helperText = Get-Content -LiteralPath (Join-Path $scriptsRoot 'coverage-child.ps1') -Raw
+    Assert-Equal ([regex]::Matches($helperText, "Verb = 'runas'|Verb = 'runas'".Substring(0, 14)).Count) 1 'single runas call site'
+    Assert-Contains $helperText 'Confirm-CoverageElevation $Request'
+
     # Task 3: CI integration and delegation guards
     $sourceRoot = Split-Path -Parent $PSScriptRoot
     $workflow = Get-Content -LiteralPath (Join-Path $sourceRoot '.gitea/workflows/test.yml') -Raw
