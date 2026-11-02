@@ -16,9 +16,32 @@ namespace MFTLib.Tests;
 [TestClass]
 public class JournalCloseCoalescingLiveTests
 {
+    // Cancellation bound only, never an asserted duration. When another process (a first-run scanner)
+    // holds a handle on the new file, Windows POSIX delete semantics rename the file into \$Extend\$Deleted
+    // and the FileDelete|Close record arrives later under that new name, so the file is tracked by its
+    // file reference, not its name. Healthy runs exit on the record.
+    private const int DeleteCloseWaitSeconds = 60;
+
+    private readonly record struct FileReference(ulong RecordNumber, ushort SequenceNumber, ulong ParentRecordNumber);
+
     [TestMethod]
     [TestCategory("RequiresAdmin")]
-    public async Task LiveWatch_CreateModifyDeleteCycle_ReportsOneChangePerRealTransition()
+    public Task LiveWatch_CreateModifyDeleteCycle_ReportsOneChangePerRealTransition()
+    {
+        return RunCreateModifyDeleteCycleAsync(holdShareDeleteHandleAcrossDelete: false);
+    }
+
+    // A share-delete handle held across the delete forces the POSIX delete-pending path every time:
+    // NTFS moves the file into \$Extend\$Deleted (RenameOldName/RenameNewName under a different parent)
+    // before the FileDelete|Close record, instead of leaving it to a first-run scanner.
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public Task LiveWatch_DeleteWhileHandleHeld_ReportsOneChangePerRealTransition()
+    {
+        return RunCreateModifyDeleteCycleAsync(holdShareDeleteHandleAcrossDelete: true);
+    }
+
+    private async Task RunCreateModifyDeleteCycleAsync(bool holdShareDeleteHandleAcrossDelete)
     {
         if (!ElevationUtilities.DefaultProvider.IsElevated())
         {
@@ -37,18 +60,25 @@ public class JournalCloseCoalescingLiveTests
         var tempFileName = Path.GetFileName(tempPath);
 
         var batches = new List<UsnJournalEntry[]>();
+        var sawDeleteClose = false;
+        FileReference? fileReference = null;
         var watchTask = Task.Run(async () =>
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            timeout.CancelAfter(TimeSpan.FromSeconds(DeleteCloseWaitSeconds));
             // ReSharper disable once AccessToDisposedClosure
             // volume is captured from outer scope; watchTask is awaited before volume's using exits.
             await foreach (var (batch, _) in volume.Journal.WatchUsnJournal(cursor, timeout.Token))
             {
                 batches.Add(batch);
-                if (batch.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)
-                        && e.IsDelete && e.IsClose))
+                fileReference ??= batch
+                    .Where(e => e.IsCreate && e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase))
+                    .Select(e => (FileReference?)new FileReference(e.RecordNumber, e.SequenceNumber,
+                        e.ParentRecordNumber))
+                    .FirstOrDefault();
+                if (batch.Any(e => IsTrackedFile(e, fileReference) && e.IsDelete && e.IsClose))
                 {
+                    sawDeleteClose = true;
                     break;
                 }
             }
@@ -56,30 +86,46 @@ public class JournalCloseCoalescingLiveTests
 
         await File.WriteAllTextAsync(tempPath, "create", CancellationToken.None);
         await File.AppendAllTextAsync(tempPath, "modify", CancellationToken.None);
-        File.Delete(tempPath);
+        if (holdShareDeleteHandleAcrossDelete)
+        {
+            using var heldHandle = new FileStream(tempPath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            File.Delete(tempPath);
+        }
+        else
+        {
+            File.Delete(tempPath);
+        }
 
-        var timedOut = false;
+        // WatchUsnJournal ends quietly on cancellation, so a timeout is the enumeration finishing
+        // (or cancelling) without the delete-close record, not only an OperationCanceledException.
         try
         {
             await watchTask;
         }
         catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
         {
-            timedOut = true;
         }
 
-        Assert.IsFalse(timedOut, $"Timed out waiting for the delete-close record of {tempFileName}.");
+        Assert.IsTrue(sawDeleteClose,
+            $"Timed out waiting for the delete-close record of {tempFileName} after {DeleteCloseWaitSeconds} s. "
+            + $"Records seen for the file: {DescribeRecords(batches, fileReference)}");
 
         // Premise guard: the fix targets the record shape NTFS writes. Without both an
         // intermediate create record and a create-close record in the raw stream, the
         // replay below would prove nothing.
         var fileEntries = batches.SelectMany(batch => batch)
-            .Where(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase))
+            .Where(e => IsTrackedFile(e, fileReference))
             .ToArray();
         Assert.Contains(e => e.IsCreate && !e.IsClose, fileEntries,
             "Expected an intermediate FileCreate record before the close record.");
         Assert.Contains(e => e.IsCreate && e.IsClose, fileEntries,
             "Expected a FileCreate|Close record.");
+        if (holdShareDeleteHandleAcrossDelete)
+        {
+            Assert.Contains(e => IsDeletePendingRename(e, fileReference), fileEntries,
+                "Expected a RenameNewName record outside the original parent (POSIX delete-pending move).");
+        }
 
         await using var fixture = new MutatorFixture();
         var changes = new List<FileChange>();
@@ -88,7 +134,7 @@ public class JournalCloseCoalescingLiveTests
         foreach (var batch in batches)
         {
             var replayed = batch
-                .Where(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase))
+                .Where(e => IsTrackedFile(e, fileReference) && !IsDeletePendingRename(e, fileReference))
                 .Select(e => UsnJournalEntry.Create(new UsnJournalEntryOptions
                 {
                     RecordNumber = 20,
@@ -129,6 +175,33 @@ changes, "One real delete must raise exactly one Deleted change.");
             "The close record's timestamp must never be written into the last-write column.");
         Assert.IsFalse(fixture.Block.Rows[20].LastWriteTimeKnown,
             "The create-write cycle invalidated the last-write observation and no scan restored it.");
+    }
+
+    private static bool IsTrackedFile(UsnJournalEntry entry, FileReference? fileReference)
+    {
+        return fileReference is { } reference
+            && entry.RecordNumber == reference.RecordNumber && entry.SequenceNumber == reference.SequenceNumber;
+    }
+
+    // POSIX delete-pending: the RenameNewName half of the move into \$Extend\$Deleted lands outside the
+    // original parent. It is an implementation detail of the delete, not a user rename, and the replay
+    // remaps every parent onto one synthetic directory, so it would surface as a spurious rename change.
+    // The FileDelete|Close record that follows is kept and still drives the single Deleted change.
+    private static bool IsDeletePendingRename(UsnJournalEntry entry, FileReference? fileReference)
+    {
+        return fileReference is { } reference
+            && (entry.Reason & UsnReason.RenameNewName) != 0 && !entry.IsDelete
+            && entry.ParentRecordNumber != reference.ParentRecordNumber;
+    }
+
+    private static string DescribeRecords(List<UsnJournalEntry[]> batches, FileReference? fileReference)
+    {
+        var descriptions = batches.SelectMany(batch => batch)
+            .Where(e => IsTrackedFile(e, fileReference))
+            .Select(e => $"[Usn={e.Usn}, Name={e.FileName}, ParentRecordNumber={e.ParentRecordNumber}, TimestampUtc={e.TimestampUtc:O}, Reason={e.Reason}, "
+                + $"IsClose={e.IsClose}, IsDelete={e.IsDelete}]")
+            .ToArray();
+        return descriptions.Length == 0 ? "none" : string.Join(" ", descriptions);
     }
 
     public TestContext TestContext { get; set; } = null!;
