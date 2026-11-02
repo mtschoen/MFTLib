@@ -32,16 +32,36 @@ public sealed class MftBlockRowWriterTests : IDisposable
         var options = new MftScanOptions();
         // Warm the mapping and interning paths before measuring the allocation contract.
         MftBlockRowWriter.WriteBatches(writer, [[Record(5, "same")]], options, null, CancellationToken.None);
-        IReadOnlyList<MftRecord>[] batches = [Enumerable.Range(6, 4096).Select(row => Record((ulong)row, "same")).ToArray()];
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        const int smallRowCount = 1024;
+        const int largeRowCount = 4096;
+        IReadOnlyList<MftRecord>[] smallBatches = [Records(6, smallRowCount)];
+        IReadOnlyList<MftRecord>[] largeBatches = [Records(6 + smallRowCount, largeRowCount)];
 
-        var result = MftBlockRowWriter.WriteBatches(writer, batches, options, null, CancellationToken.None);
+        var smallAllocated = MeasureAllocatedBytes(() =>
+            MftBlockRowWriter.WriteBatches(writer, smallBatches, options, null, CancellationToken.None));
+        var result = default(BlockWriteResult);
+        var largeAllocated = MeasureAllocatedBytes(() =>
+            result = MftBlockRowWriter.WriteBatches(writer, largeBatches, options, null, CancellationToken.None));
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.IsLessThan(4096L, allocated, "A batch must not allocate a scope object for each row.");
-        Assert.AreEqual(4102L, result.RowCount);
-        Assert.AreEqual(4097u, block.Header.LiveRowCount);
+        // One-off allocations (tiered JIT, lazy initialization, coverage instrumentation) land in either
+        // call and cancel in the difference; a per-row scope object of at least 24 bytes cannot, so the
+        // growth across the extra rows must stay under 4 bytes per row.
+        var growth = largeAllocated - smallAllocated;
+        var growthBudget = 4L * (largeRowCount - smallRowCount);
+        Assert.IsLessThan(growthBudget, growth, "A batch must not allocate a scope object for each row.");
+        Assert.AreEqual(6L + smallRowCount + largeRowCount, result.RowCount);
+        Assert.AreEqual(1u + smallRowCount + largeRowCount, block.Header.LiveRowCount);
         Assert.AreEqual(1u, block.NameEntryCount);
+    }
+
+    private static MftRecord[] Records(int firstRow, int count) =>
+        Enumerable.Range(firstRow, count).Select(row => Record((ulong)row, "same")).ToArray();
+
+    private static long MeasureAllocatedBytes(Action action)
+    {
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        action();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     [TestMethod]
