@@ -28,5 +28,12 @@ enum RowFlags : ushort
     ///     The last-write time is not an observation of the file system: a journal event created the row or
     ///     invalidated the scanned value. The last-write column holds zero.
     /// </summary>
-    LastWriteTimeUnknown = 32
+    LastWriteTimeUnknown = 32,
+
+    /// <summary>
+    ///     A delete removed the record's name while a handle was still open. The name column holds the full pre-move
+    ///     path, and the row is hidden from every query until the final delete record completes the tombstone and
+    ///     restores the bare file name.
+    /// </summary>
+    DeletePending = 64
 }

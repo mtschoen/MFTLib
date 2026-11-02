@@ -46,10 +46,19 @@ static class IndexNavigation
     /// </exception>
     internal static string BuildPath(RootBlock rootBlock, uint rowIndex)
     {
-        // A detached row has no verified ancestor, so a root prefix would invent one.
-        if (rowIndex < rootBlock.Block.Header.RowCount && IsDetached(rootBlock.Block, rowIndex))
+        if (rowIndex < rootBlock.Block.Header.RowCount)
         {
-            return NamePool.ReadRowName(rootBlock.Block, rowIndex).ToString();
+            var descriptor = FileRow.ReadDescriptorWord(in rootBlock.Block.Rows[(int)rowIndex]);
+            if ((FileRow.DescriptorFlags(descriptor) & RowFlags.DeletePending) != 0)
+            {
+                return NamePool.Read(rootBlock.Block, FileRow.DescriptorNameId(descriptor)).ToString();
+            }
+
+            // A detached row has no verified ancestor, so a root prefix would invent one.
+            if (IsDetached(rootBlock.Block, rowIndex))
+            {
+                return NamePool.Read(rootBlock.Block, FileRow.DescriptorNameId(descriptor)).ToString();
+            }
         }
 
         if (rootBlock.RootDirectoryPath is not { } rootDirectoryPath)
@@ -61,6 +70,23 @@ static class IndexNavigation
         Span<uint> segments = stackalloc uint[BlockLayout.MaximumPathDepth];
         var count = CollectSegments(rootBlock.Block, rowIndex, segments);
         return rootBlock.Kind.JoinPath(rootBlock.Block, rootDirectoryPath, segments[..count]);
+    }
+
+    /// <summary>
+    ///     Extracts the terminal path segment from a stored name or full pre-move path. When a row is marked
+    ///     <see cref="RowFlags.DeletePending" />, its name column stores the full pre-move path; its bare name is
+    ///     the segment after the last path separator.
+    /// </summary>
+    internal static string LastPathSegmentString(NameView name)
+    {
+        if (name.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var full = name.ToString();
+        var separatorIndex = full.AsSpan().LastIndexOfAny('\\', '/');
+        return separatorIndex < 0 ? full : full[(separatorIndex + 1)..];
     }
 
     /// <summary>

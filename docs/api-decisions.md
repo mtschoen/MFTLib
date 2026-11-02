@@ -1384,3 +1384,11 @@ requests, where a comparer-keyed dictionary would not reproduce the fold. git-wi
 so a single-index form has no consumer production caller. The three single-pattern forms stay as recorded in F26.
 
 **Revisit only if:** a consumer needs the multi-name search on a single `FileIndex`, or needs it streamed.
+
+## A held-handle delete is two events: DeletePending then Deleted
+
+**Decision (owner ruling 2026-11-02, issue 891):** when POSIX delete semantics move an open file into `\$Extend\$Deleted`, the `RenameNewName` record emits `FileChangeKind.DeletePending` with the row's pre-move path (`PreviousPath` is null), writes the full pre-move path into the row's name column (`RowFlags.DeletePending` means the name column holds the full pre-move path), sets `RowFlags.DeletePending` (persisted in the block), and hides the row from every query (`IsDeleted` is true, `LiveRowCount` drops, and `Search`, `Enumerate`, `EnumerateRows`, `Find`, `Children` and `Root` exclude it, including when `IncludeDeleted` is true). The move is never reported as `Renamed`, and subsequent modifications or close records from the handle holder on the pending row report nothing. When the last handle closes and the journal delivers `FileDelete` for the same record and sequence number, `JournalMutator` materializes `Path` verbatim from the name column and restores `Name` from its last segment without walking the parent chain, completes the tombstone (`RowFlags.Tombstone`, clearing `RowFlags.DeletePending`), and emits `FileChangeKind.Deleted` with the same pre-move path and name once; a second delete on the tombstoned row is dropped. Detection is an internal, injectable predicate over the rename target held by `JournalMutator` (defaulting to a parent row named `$Deleted` under `$Extend` under the volume root at record 5) and exposed to tests through `MFTLibTestExtensions`. Consumers remove the entry on `DeletePending` and treat the later `Deleted` for an entry they no longer hold as the expected completion.
+
+**Reason:** the name is gone from the namespace at the move, so consumers must drop the entry then; the later delete is real and must not be swallowed; the detector is a seam because the trigger set may grow.
+
+**Revisit only if:** NTFS or another supported rename-to-trash mechanism needs an additional default predicate arm behind the detector seam.

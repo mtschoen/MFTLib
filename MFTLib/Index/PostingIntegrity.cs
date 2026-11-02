@@ -107,7 +107,15 @@ static class PostingIntegrity
         var entries = block.DeltaEntries;
         for (var rowIndex = 0; rowIndex < block.RowCount; rowIndex++)
         {
-            var nameId = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in rows[rowIndex]));
+            var descriptor = FileRow.ReadDescriptorWord(in rows[rowIndex]);
+            if ((FileRow.DescriptorFlags(descriptor) & RowFlags.DeletePending) != 0)
+            {
+                // A delete-pending row stores its full pre-move path in the name column and is excluded
+                // from every query until the final delete restores its bare file name.
+                continue;
+            }
+
+            var nameId = FileRow.DescriptorNameId(descriptor);
             if (nameId == 0)
             {
                 continue;

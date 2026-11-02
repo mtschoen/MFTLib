@@ -209,7 +209,7 @@ Console.ReadLine();
 Eligible MFT indexes with the same source instance, volume, serial, cache directory and CacheTag share one scan,
 mapping, owner lock and journal watch. Each index keeps its own root, query scope, borrows and disposal. Adding a
 directory view while watching attaches without another scan. Its Changed event reports changes whose current or
-previous path lies inside that view; a move across two views reaches both as Renamed. Rescans coalesce per scan,
+previous path lies inside that view; a move across two views reaches both as Renamed, while a held-handle delete into `$Extend\$Deleted` keeps its pre-move path and reports `DeletePending` followed by `Deleted` when the last handle closes. Rescans coalesce per scan,
 and block generation and checkpoint facts are shared. Walks and dumps own private scans.
 
 ## Failure channels

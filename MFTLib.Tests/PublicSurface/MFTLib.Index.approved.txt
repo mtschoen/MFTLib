@@ -114,6 +114,7 @@ MFTLib.Index.FileChange :: property public PreviousPath { get; init; } : string?
 MFTLib.Index.FileChange :: property public Timestamp { get; init; } : System.DateTime
 MFTLib.Index.FileChange :: type public sealed class : System.IEquatable<MFTLib.Index.FileChange>
 MFTLib.Index.FileChangeKind :: field public const Created : MFTLib.Index.FileChangeKind = 0
+MFTLib.Index.FileChangeKind :: field public const DeletePending : MFTLib.Index.FileChangeKind = 4
 MFTLib.Index.FileChangeKind :: field public const Deleted : MFTLib.Index.FileChangeKind = 1
 MFTLib.Index.FileChangeKind :: field public const Modified : MFTLib.Index.FileChangeKind = 3
 MFTLib.Index.FileChangeKind :: field public const Renamed : MFTLib.Index.FileChangeKind = 2

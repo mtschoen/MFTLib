@@ -189,7 +189,7 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       the attached recipients before releasing the gate. Current or previous path containment uses
       LookupEngine.TryMatchRootPrefix, including equal paths; a block-root view receives every change. Each Entry is
       rebound to the recipient's RootBlock with its captured sequence. A move across view boundaries is Renamed on
-      both views. Changed delivery does not require a watch request; scan fault delivery does.
+      both views; a held-handle delete into `$Extend\$Deleted` keeps its pre-move path and emits `DeletePending` followed by `Deleted`, never `Renamed`. Changed delivery does not require a watch request; scan fault delivery does.
     - **Lock order**: the order is the lifecycle gate, the write gate, then
       `StateLock`. No gate is acquired while `StateLock` is held; disposal takes the lifecycle gate and then the
       write gate. Production holds the lifecycle gate but neither

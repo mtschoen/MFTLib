@@ -14,5 +14,11 @@ public enum FileChangeKind
     /// <summary>A row changed names; the previous path is supplied with the change.</summary>
     Renamed,
     /// <summary>An existing row changed without being created, deleted, or renamed.</summary>
-    Modified
+    Modified,
+    /// <summary>
+    ///     A delete removed the entry's name while another process still held it open; the entry
+    ///     is hidden from queries from this change on, consumers remove it now, and a later
+    ///     <see cref="Deleted" /> for the same entry completes it.
+    /// </summary>
+    DeletePending
 }

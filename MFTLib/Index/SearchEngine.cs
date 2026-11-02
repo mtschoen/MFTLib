@@ -69,7 +69,7 @@ static partial class SearchEngine
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping.")]
     internal static bool RowColumnsMatch(in FileRow row, SearchQuery query)
     {
-        if (!row.IsInUse || (row.IsDeleted && !query.IncludeDeleted))
+        if (!row.IsInUse || (row.Flags & RowFlags.DeletePending) != 0 || (row.IsDeleted && !query.IncludeDeleted))
         {
             return false;
         }

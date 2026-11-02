@@ -195,7 +195,7 @@ public ref struct IndexRowEnumerator
         while (_scanner.MoveNext())
         {
             ref readonly var row = ref _scanner.Current;
-            if (!row.IsInUse || (!_includeDeleted && row.IsDeleted) ||
+            if (!row.IsInUse || (row.Flags & RowFlags.DeletePending) != 0 || (!_includeDeleted && row.IsDeleted) ||
                 (_filterDirectories && row.IsDirectory != _wantDirectories))
             {
                 continue;

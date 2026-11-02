@@ -24,10 +24,17 @@ namespace MFTLib.Index;
 /// </summary>
 sealed class JournalMutator
 {
-    public JournalMutator(BlockWriter writer)
+    const uint VolumeRootRecordNumber = 5;
+
+    internal delegate bool DeletePendingRenameDetector(BlockFile block, ulong newParentRecordNumber, string newName);
+
+    readonly DeletePendingRenameDetector _isDeletePendingRename;
+
+    public JournalMutator(BlockWriter writer, DeletePendingRenameDetector? isDeletePendingRename = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
         Writer = writer;
+        _isDeletePendingRename = isDeletePendingRename ?? IsExtendDeletedTarget;
     }
 
     public BlockWriter Writer { get; }
@@ -98,12 +105,8 @@ sealed class JournalMutator
         var meaningful = entry.Reason & ~(UsnReason.Close | UsnReason.RenameOldName);
         var classification = meaningful & ~reported;
 
-        // The reason bit alone cannot tell a repeated RenameNewName apart from a new
-        // rename: NTFS writes one old-name/new-name pair per rename and does not require a
-        // close between renames, so one open cycle can hold several real renames. Only the
-        // exact repetition of the name and parent this cycle already applied is the close
-        // record's (or a cumulative intermediate record's) echo; a different name or
-        // parent classifies as the new rename it is.
+        // Only the exact repetition of the name and parent this cycle already applied is a rename echo;
+        // a different name or parent inside the same open cycle classifies as the new rename it is.
         if ((classification & UsnReason.RenameNewName) == 0
             && (meaningful & UsnReason.RenameNewName) != 0
             && !cycles.IsReportedRenameEcho(rowIndex, entry.SequenceNumber, entry.FileName,
@@ -115,8 +118,6 @@ sealed class JournalMutator
         FileChange? change;
         if ((classification & UsnReason.FileCreate) == 0 && IsEarlierIncarnation(rowIndex, entry))
         {
-            // The row already holds a newer file reference than this record names, as when a scan imported the
-            // later file while the replayed journal still carries the earlier one's delete.
             change = null;
         }
         else if ((classification & UsnReason.FileCreate) != 0)
@@ -138,12 +139,9 @@ sealed class JournalMutator
         else
         {
             change = null;
-            if (entry.IsClose)
+            if (entry.IsClose && ApplyCloseMetadata(entry, rowIndex))
             {
-                if (ApplyCloseMetadata(entry, rowIndex))
-                {
-                    rowMutated = true;
-                }
+                rowMutated = true;
             }
         }
 
@@ -153,10 +151,6 @@ sealed class JournalMutator
         }
         else if (meaningful != UsnReason.None)
         {
-            // Every meaningful bit of a reported record counts as reported, not only the
-            // bit that won the classification: the record was reported once, and its
-            // remaining bits are subsumed by that one change. The name and parent ride
-            // along so the cycle can tell a rename echo from the next real rename.
             cycles.MarkReported(rowIndex, entry.SequenceNumber, meaningful, entry.FileName,
                 entry.ParentRecordNumber);
         }
@@ -166,12 +160,17 @@ sealed class JournalMutator
 
     FileChange? ApplyDelete(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
     {
-        if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out _))
+        var flags = Writer.ReadRowFlags(rowIndex);
+        if ((flags & RowFlags.Tombstone) != 0 || !TryHydrateRow(entry, rowIndex, out _))
         {
             return null;
         }
 
-        var path = IndexNavigation.BuildPath(rootBlock, rowIndex);
+        // A pending row stores its pre-move full path verbatim in the name column, so completing
+        // the tombstone never walks a parent chain that may have been renamed or reused since.
+        var path = (flags & RowFlags.DeletePending) != 0
+            ? NamePool.ReadRowName(Writer.Block, rowIndex).ToString()
+            : IndexNavigation.BuildPath(rootBlock, rowIndex);
         Writer.MarkTombstone(rowIndex);
         return new FileChange(FileChangeKind.Deleted, FileEntry.Create(rootBlock, rowIndex), path,
             entry.TimestampUtc);
@@ -199,15 +198,9 @@ sealed class JournalMutator
     }
 
     /// <summary>
-    ///     A close record that repeats only already-reported reasons still carries the
-    ///     freshest attributes for the row, so they are applied without a change notification
-    ///     (mutation separated from notification). The record's time is never stored: the
-    ///     reasons the cycle already reported have already invalidated whatever they could
-    ///     have changed, and a close that reports nothing new leaves the scanned size and
-    ///     last-write observations alone. An unused or tombstoned slot stays untouched:
-    ///     bookkeeping never hydrates a row or resurrects a deleted file. Name and parent are
-    ///     not restamped: they were written by the record that opened the cycle and cannot
-    ///     change without a rename record of their own. Returns true if row metadata was modified.
+    ///     Applies a close record's attributes without a change notification when its cycle already
+    ///     reported every meaningful reason. Scanned size and last-write observations are preserved,
+    ///     and unused or deleted slots stay untouched.
     /// </summary>
     bool ApplyCloseMetadata(UsnJournalEntry entry, uint rowIndex)
     {
@@ -217,8 +210,6 @@ sealed class JournalMutator
     FileChange? ApplyCreate(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
     {
         var columns = BuildColumns(entry);
-        // A refused write (the name, the row slot or the posting delta no longer fits) has set the capacity-exhausted
-        // flag and written no column: the row keeps its prior shape and the rescan that follows rebuilds the postings.
         if (!Writer.TryWriteRow(rowIndex, entry.FileName, in columns))
         {
             return null;
@@ -234,35 +225,33 @@ sealed class JournalMutator
         UsnReason classification, ref bool rowMutated)
     {
         var previousPath = IndexNavigation.BuildPath(rootBlock, rowIndex);
-        // A false result means the new name or its posting delta entry did not fit; the row keeps its old name.
-        if (!Writer.TryRenameRow(rowIndex, entry.FileName, (uint)entry.ParentRecordNumber))
+        if (_isDeletePendingRename(Writer.Block, entry.ParentRecordNumber, entry.FileName))
         {
-            // The name did not fit, but the cycle now counts every reason of this record as reported, so a
-            // content or basic-information reason must still invalidate the row here or a close record cannot.
-            if (Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification)))
+            if (Writer.MarkDeletePending(rowIndex, previousPath))
             {
-                rowMutated = true;
+                return new FileChange(FileChangeKind.DeletePending,
+                    FileEntry.Create(rootBlock, rowIndex), previousPath, entry.TimestampUtc);
             }
-
-            return null;
+        }
+        else if (Writer.TryRenameRow(rowIndex, entry.FileName, (uint)entry.ParentRecordNumber))
+        {
+            Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
+            return new FileChange(FileChangeKind.Renamed,
+                FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildPath(rootBlock, rowIndex),
+                entry.TimestampUtc, previousPath);
         }
 
-        // A rename alone changes neither size nor last-write time, so the scan's observations survive it.
-        Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
-        return new FileChange(FileChangeKind.Renamed,
-            FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildPath(rootBlock, rowIndex),
-            entry.TimestampUtc, previousPath);
+        if (Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification)))
+        {
+            rowMutated = true;
+        }
+
+        return null;
     }
 
     /// <summary>
-    ///     Handles any reason other than create, delete, or rename. Updating <c>Attributes</c>
-    ///     here is intentional (plan decision 10), not an oversight: a non-create, non-delete,
-    ///     non-rename USN reason is exactly the case where attribute metadata can have changed
-    ///     without the name or the parent changing. A USN record carries no size and no
-    ///     last-write time, so the freshness the reasons imply (<see cref="FreshnessFor" />)
-    ///     marks those observations unknown rather than replacing them with the record's own
-    ///     time. <see cref="ApplyOne" /> calls this only for a classification that still holds
-    ///     a reason other than Close and RenameOldName.
+    ///     Handles any reason other than create, delete, or rename, updating attributes and
+    ///     invalidating scanned observations per <see cref="FreshnessFor" />.
     /// </summary>
     FileChange? ApplyModification(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
         UsnReason classification)
@@ -278,11 +267,6 @@ sealed class JournalMutator
             IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
     }
 
-    /// <summary>
-    ///     What the reasons a record newly reports do to a row's scanned observations. Content
-    ///     reasons can change both the size and the last-write time; a basic-information change
-    ///     can change the last-write time; every other reason changes neither.
-    /// </summary>
     static RowFreshness FreshnessFor(UsnReason classification)
     {
         const UsnReason contentReasons = UsnReason.DataOverwrite | UsnReason.DataExtend | UsnReason.DataTruncation;
@@ -297,33 +281,73 @@ sealed class JournalMutator
     }
 
     /// <summary>
-    ///     A deleted row, whether the journal deleted it or a scan imported it freed, is never modified, renamed,
-    ///     deleted again or hydrated live. Only a create reuses its slot, because NTFS reuses record numbers.
-    /// </summary>
-    /// <summary>
     ///     True when the row holds a file whose sequence number differs from the record's: the record belongs to
-    ///     another incarnation of the record number and must not mutate this one. A free or tombstoned row has no
-    ///     live file to protect, and a stored zero means the producer recorded no sequence (NTFS never uses zero).
+    ///     another incarnation of the record number and must not mutate this one.
     /// </summary>
     bool IsEarlierIncarnation(uint rowIndex, UsnJournalEntry entry)
     {
         ref readonly var row = ref Writer.Block.Rows[(int)rowIndex];
         var stored = Writer.Block.SequenceNumbers[(int)rowIndex];
-        return row.IsInUse && !row.IsDeleted && stored != 0 && stored != entry.SequenceNumber;
+        return row.IsInUse && (row.Flags & RowFlags.Tombstone) == 0 && stored != 0 && stored != entry.SequenceNumber;
     }
 
     bool IsDeletedRow(uint rowIndex)
     {
-        return (Writer.ReadRowFlags(rowIndex) & RowFlags.Tombstone) != 0;
+        return (Writer.ReadRowFlags(rowIndex) & FileRow.DeletedFlags) != 0;
     }
 
     /// <summary>
-    ///     Fills an unwritten slot from the journal entry that just referred to it. Without this,
-    ///     a modification produces no change at all and a delete tombstones an empty slot with no
-    ///     name to report. <paramref name="hydrated" /> tells the caller whether this call is what
-    ///     populated the row, which only the rename arm needs: a rename of a row the index never
-    ///     had is reported as a create, not a rename, because there is no real previous path to give it.
+    ///     Default delete-pending detector: true when the new parent row is named <c>$Deleted</c> under a row named
+    ///     <c>$Extend</c> whose parent is the volume root (record 5).
     /// </summary>
+    static bool IsExtendDeletedTarget(BlockFile block, ulong newParentRecordNumber, string newName)
+    {
+        _ = newName;
+        if (newParentRecordNumber >= block.RowCount || newParentRecordNumber == VolumeRootRecordNumber)
+        {
+            return false;
+        }
+
+        var deletedRowIndex = (uint)newParentRecordNumber;
+        ref readonly var deletedRow = ref block.Rows[(int)deletedRowIndex];
+        if (!deletedRow.IsInUse || deletedRow.IsDeleted || !RowNameEquals(block, deletedRowIndex, "$Deleted"))
+        {
+            return false;
+        }
+
+        var extendRowIndex = deletedRow.ParentRow;
+        if (extendRowIndex == deletedRowIndex || extendRowIndex == VolumeRootRecordNumber ||
+            extendRowIndex >= block.RowCount)
+        {
+            return false;
+        }
+
+        ref readonly var extendRow = ref block.Rows[(int)extendRowIndex];
+        if (!extendRow.IsInUse || extendRow.IsDeleted || !RowNameEquals(block, extendRowIndex, "$Extend"))
+        {
+            return false;
+        }
+
+        var rootRowIndex = extendRow.ParentRow;
+        return rootRowIndex == VolumeRootRecordNumber &&
+               rootRowIndex < block.RowCount &&
+               block.Rows[(int)rootRowIndex].IsInUse &&
+               block.Rows[(int)rootRowIndex].ParentRow == rootRowIndex;
+    }
+
+    static bool RowNameEquals(BlockFile block, uint rowIndex, ReadOnlySpan<char> expected)
+    {
+        var name = NamePool.ReadRowName(block, rowIndex);
+        if (name.Length != expected.Length)
+        {
+            return false;
+        }
+
+        Span<char> buffer = stackalloc char[expected.Length];
+        name.CopyTo(buffer);
+        return MemoryExtensions.Equals(buffer, expected, StringComparison.OrdinalIgnoreCase);
+    }
+
     bool TryHydrateRow(UsnJournalEntry entry, uint rowIndex, out bool hydrated)
     {
         if ((Writer.ReadRowFlags(rowIndex) & RowFlags.InUse) != 0)
@@ -344,13 +368,6 @@ sealed class JournalMutator
         return Writer.TryWriteRow(rowIndex, entry.FileName, in columns);
     }
 
-    /// <summary>
-    ///     The row one journal entry describes. Shared by the create arm and the hydration arm,
-    ///     which write the same row from the same entry, so the two cannot describe it
-    ///     differently. A USN record carries neither a size nor a last-write time, so the row is
-    ///     written with both unknown and only a producer
-    ///     can supply them. The record's own time is never stored in the last-write column.
-    /// </summary>
     static RowColumns BuildColumns(UsnJournalEntry entry)
     {
         var flags = RowFlags.InUse | RowFlags.SizeUnknown | RowFlags.LastWriteTimeUnknown;

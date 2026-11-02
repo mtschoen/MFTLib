@@ -16,6 +16,8 @@ namespace MFTLib.Index;
 [StructLayout(LayoutKind.Explicit, Size = BlockLayout.RowBytes)]
 struct FileRow
 {
+    internal const RowFlags DeletedFlags = RowFlags.Tombstone | RowFlags.DeletePending;
+
     /// <summary>Row index of the parent directory. The volume root points at itself.</summary>
     [FieldOffset(0)] public uint ParentRow;
 
@@ -43,8 +45,8 @@ struct FileRow
     /// <summary>Determines whether this row represents a directory.</summary>
     public readonly bool IsDirectory => (Flags & RowFlags.Directory) != 0;
 
-    /// <summary>Determines whether this row was deleted but retained as a tombstone.</summary>
-    public readonly bool IsDeleted => (Flags & RowFlags.Tombstone) != 0;
+    /// <summary>Determines whether this row was deleted or is delete-pending.</summary>
+    public readonly bool IsDeleted => (Flags & DeletedFlags) != 0;
 
     /// <summary>Determines whether <see cref="Size" /> is known.</summary>
     public readonly bool SizeKnown => (Flags & RowFlags.SizeUnknown) == 0;

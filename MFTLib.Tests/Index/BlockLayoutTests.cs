@@ -258,6 +258,8 @@ public class BlockLayoutTests
     [DataRow((ushort)RowFlags.Tombstone, (ushort)4)]
     [DataRow((ushort)RowFlags.SizeUnknown, (ushort)8)]
     [DataRow((ushort)RowFlags.SubtreeSkipped, (ushort)16)]
+    [DataRow((ushort)RowFlags.LastWriteTimeUnknown, (ushort)32)]
+    [DataRow((ushort)RowFlags.DeletePending, (ushort)64)]
     public void RowFlags_HaveDistinctSingleBitValues(ushort flag, ushort expected)
     {
         Assert.AreEqual(expected, flag);

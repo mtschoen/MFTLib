@@ -24,6 +24,42 @@ sealed partial class BlockWriter
     }
 
     /// <summary>
+    ///     Marks an allocated row deleted while retaining its name for change reporting. When completing a
+    ///     <see cref="RowFlags.DeletePending" /> row, restores the bare file name from the last segment of the
+    ///     stored pre-move path.
+    /// </summary>
+    /// <param name="rowIndex">Zero-based row slot to mark.</param>
+    public void MarkTombstone(uint rowIndex)
+    {
+        using var access = Block.TakeAccess();
+        AddRowFlags(rowIndex, RowFlags.Tombstone, ReadOnlySpan<char>.Empty);
+    }
+
+    /// <summary>
+    ///     Marks an allocated row delete-pending so it is hidden from queries like a tombstone while storing its
+    ///     full pre-move path in the name column for the later delete record that completes the tombstone. A row
+    ///     becomes delete-pending only when <paramref name="preMovePath" /> is interned into the name column;
+    ///     if interning fails, the block is marked capacity-exhausted and the transition is refused without
+    ///     changing the row.
+    /// </summary>
+    /// <param name="rowIndex">Zero-based row slot to mark.</param>
+    /// <param name="preMovePath">The row's full path before the delete-pending rename.</param>
+    /// <returns>true when the pre-move path was interned and the row was marked delete-pending; otherwise, false.</returns>
+    public bool MarkDeletePending(uint rowIndex, ReadOnlySpan<char> preMovePath)
+    {
+        using var access = Block.TakeAccess();
+        return AddRowFlags(rowIndex, RowFlags.DeletePending, preMovePath);
+    }
+
+    /// <summary>Marks a directory whose subtree enumeration was skipped after an access denial.</summary>
+    /// <param name="rowIndex">Zero-based directory row slot to mark.</param>
+    public void MarkSubtreeSkipped(uint rowIndex)
+    {
+        using var access = Block.TakeAccess();
+        AddRowFlags(rowIndex, RowFlags.SubtreeSkipped, ReadOnlySpan<char>.Empty);
+    }
+
+    /// <summary>
     ///     Applies a journal event's metadata to a live row without touching its parent or name:
     ///     the attribute word is replaced, and <paramref name="freshness" /> decides which scanned
     ///     observations survive. An invalidated observation is marked unknown through the descriptor
@@ -47,7 +83,7 @@ sealed partial class BlockWriter
         Hooks._rowCaptured?.Invoke();
         var descriptor = FileRow.ReadDescriptorWord(in row);
         var flags = FileRow.DescriptorFlags(descriptor);
-        if ((flags & RowFlags.InUse) == 0 || (flags & RowFlags.Tombstone) != 0)
+        if ((flags & RowFlags.InUse) == 0 || (flags & FileRow.DeletedFlags) != 0)
         {
             return false;
         }
@@ -90,5 +126,58 @@ sealed partial class BlockWriter
         }
 
         return changed;
+    }
+
+    /// <summary>
+    ///     Sets flag bits on a live row by rewriting the whole descriptor word. Touching the
+    ///     flags field on its own would be a second independent store into the same word that a
+    ///     rename publishes atomically, which is exactly the tear this layout exists to prevent.
+    ///     Callers reach this only from members already holding an access scope.
+    /// </summary>
+    bool AddRowFlags(uint rowIndex, RowFlags additionalFlags, ReadOnlySpan<char> replacementName)
+    {
+        if (rowIndex >= Block.SlotCapacity)
+        {
+            MarkCapacityExhaustedCore();
+            return false;
+        }
+
+        ref var row = ref Block.Rows[(int)rowIndex];
+        var descriptor = FileRow.ReadDescriptorWord(in row);
+        var flags = FileRow.DescriptorFlags(descriptor);
+        var nameId = FileRow.DescriptorNameId(descriptor);
+        if ((additionalFlags & RowFlags.DeletePending) != 0)
+        {
+            if (!TryInternName(replacementName, out nameId))
+            {
+                return false;
+            }
+        }
+        else if ((additionalFlags & RowFlags.Tombstone) != 0 && (flags & RowFlags.DeletePending) != 0)
+        {
+            var lastSegment = IndexNavigation.LastPathSegmentString(NamePool.Read(Block, nameId));
+            if (lastSegment.Length > 0 && TryInternName(lastSegment, out var restoredNameId))
+            {
+                nameId = restoredNameId;
+            }
+        }
+
+        var marksDeleted = (additionalFlags & FileRow.DeletedFlags) != 0;
+        if (marksDeleted && (flags & RowFlags.InUse) != 0 && (flags & FileRow.DeletedFlags) == 0)
+        {
+            Block.Header.LiveRowCount--;
+        }
+
+        if (marksDeleted && (flags & FileRow.DeletedFlags) == 0)
+        {
+            Block._deletedChildren?.AddDeletedRow(rowIndex, row.ParentRow);
+        }
+
+        var updatedFlags = (flags | additionalFlags) &
+            ((additionalFlags & RowFlags.Tombstone) != 0 ? ~RowFlags.DeletePending : ~RowFlags.None);
+        FileRow.WriteDescriptorWord(ref row,
+            nameId,
+            updatedFlags);
+        return true;
     }
 }

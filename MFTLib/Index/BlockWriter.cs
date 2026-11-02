@@ -107,8 +107,8 @@ sealed partial class BlockWriter
         }
 
         var previousParentRow = row.ParentRow;
-        var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
-        var isLive = (columns.Flags & RowFlags.InUse) != 0 && (columns.Flags & RowFlags.Tombstone) == 0;
+        var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & FileRow.DeletedFlags) == 0;
+        var isLive = (columns.Flags & RowFlags.InUse) != 0 && (columns.Flags & FileRow.DeletedFlags) == 0;
         // The supplied NTFS sequence is stored as given and published before any column changes, so a handle
         // minted for a different file reference is refused from the first overwritten field on.
         Block.SequenceNumbers[(int)rowIndex] = columns.SequenceNumber;
@@ -137,12 +137,12 @@ sealed partial class BlockWriter
         {
             // A create can reuse a deleted row's slot: drop the row's old link before linking its
             // new shape, so the links always mirror the rows as written.
-            if ((previousFlags & RowFlags.Tombstone) != 0)
+            if ((previousFlags & FileRow.DeletedFlags) != 0)
             {
                 links.RemoveDeletedRow(rowIndex, previousParentRow);
             }
 
-            if ((columns.Flags & RowFlags.Tombstone) != 0)
+            if ((columns.Flags & FileRow.DeletedFlags) != 0)
             {
                 links.AddDeletedRow(rowIndex, columns.ParentRow);
             }
@@ -218,14 +218,6 @@ sealed partial class BlockWriter
         links.AddDeletedRow(rowIndex, parentRow);
     }
 
-    /// <summary>Marks an allocated row deleted while retaining its name for change reporting.</summary>
-    /// <param name="rowIndex">Zero-based row slot to mark.</param>
-    public void MarkTombstone(uint rowIndex)
-    {
-        using var access = Block.TakeAccess();
-        AddRowFlags(rowIndex, RowFlags.Tombstone);
-    }
-
     /// <summary>
     ///     Points a row at <see cref="BlockLayout.DetachedParentRow" />: its parent could not be verified, so it is
     ///     nobody's child and its path is its bare name. The parent column is a plain 32-bit field, so the store
@@ -273,14 +265,6 @@ sealed partial class BlockWriter
 
         var links = Block._deletedChildren ??= DeletedChildLinks.Build(Block);
         links.DetachDescendants(Block, ancestorRow);
-    }
-
-    /// <summary>Marks a directory whose subtree enumeration was skipped after an access denial.</summary>
-    /// <param name="rowIndex">Zero-based directory row slot to mark.</param>
-    public void MarkSubtreeSkipped(uint rowIndex)
-    {
-        using var access = Block.TakeAccess();
-        AddRowFlags(rowIndex, RowFlags.SubtreeSkipped);
     }
 
     /// <summary>Marks the block stale because an update could not fit its reserved capacity.</summary>
@@ -368,39 +352,6 @@ sealed partial class BlockWriter
 
         header.Flags |= BlockFlags.Complete;
         Block.FlushUnderHeldAccess(rangeFlushed);
-    }
-
-    /// <summary>
-    ///     Sets flag bits on a live row by rewriting the whole descriptor word. Touching the
-    ///     flags field on its own would be a second independent store into the same word that a
-    ///     rename publishes atomically, which is exactly the tear this layout exists to prevent.
-    ///     Callers reach this only from members already holding an access scope.
-    /// </summary>
-    void AddRowFlags(uint rowIndex, RowFlags additionalFlags)
-    {
-        if (rowIndex >= Block.SlotCapacity)
-        {
-            MarkCapacityExhaustedCore();
-            return;
-        }
-
-        ref var row = ref Block.Rows[(int)rowIndex];
-        var descriptor = FileRow.ReadDescriptorWord(in row);
-        var flags = FileRow.DescriptorFlags(descriptor);
-        if (additionalFlags.HasFlag(RowFlags.Tombstone) &&
-            (flags & RowFlags.InUse) != 0 && (flags & RowFlags.Tombstone) == 0)
-        {
-            Block.Header.LiveRowCount--;
-        }
-
-        if (additionalFlags.HasFlag(RowFlags.Tombstone) && (flags & RowFlags.Tombstone) == 0)
-        {
-            Block._deletedChildren?.AddDeletedRow(rowIndex, row.ParentRow);
-        }
-
-        FileRow.WriteDescriptorWord(ref row,
-            FileRow.DescriptorNameId(descriptor),
-            flags | additionalFlags);
     }
 
     /// <summary>

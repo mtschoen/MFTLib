@@ -24,4 +24,8 @@ public static class FileIndexTestAccess
 
     internal static FileIndexOptions WithTimeProvider(FileIndexOptions options, TimeProvider timeProvider) =>
         options with { TimeProvider = timeProvider };
+
+    internal static JournalMutator CreateJournalMutator(BlockWriter writer,
+        JournalMutator.DeletePendingRenameDetector? isDeletePendingRename = null) =>
+        new(writer, isDeletePendingRename);
 }
