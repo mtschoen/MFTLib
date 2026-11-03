@@ -54,7 +54,7 @@ sealed partial class RootKind
     }
 
     static bool NeedsSeparator(bool isDump, int length, char last) =>
-        isDump || length != 0 && last != Path.DirectorySeparatorChar && last != Path.AltDirectorySeparatorChar;
+        length != 0 && (isDump || last != Path.DirectorySeparatorChar && last != Path.AltDirectorySeparatorChar);
 
     static bool IsRooted(NameView name)
     {

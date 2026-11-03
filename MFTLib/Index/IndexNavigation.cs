@@ -14,15 +14,6 @@ static class IndexNavigation
     }
 
     /// <summary>
-    ///     True for a deleted row whose parent chain could not be verified or whose ancestor slot was reused;
-    ///     see <see cref="BlockLayout.DetachedParentRow" />.
-    /// </summary>
-    static bool IsDetached(BlockFile block, uint rowIndex)
-    {
-        return block.Rows[(int)rowIndex].ParentRow == BlockLayout.DetachedParentRow;
-    }
-
-    /// <summary>
     ///     Reads the parent row without regard to whether either row is tombstoned. A deleted
     ///     row keeps its name and parent link so the upward walk can still resolve a full path
     ///     for a deleted file, or for a live file under a deleted directory; only <see cref="GetChildren" />
@@ -39,6 +30,7 @@ static class IndexNavigation
     ///     rules. Host roots use host separators; dump roots use virtual separators.
     ///     Root normalization and lookup use the same policy so rendered paths round-trip.
     ///     The root key identifies the indexed root and is not a host path.
+    ///     A broken parent link leaves the collected chain unrooted, including its descendants.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     ///     The root block has no configured root directory, so there is nothing to root the name
@@ -53,12 +45,14 @@ static class IndexNavigation
             {
                 return NamePool.Read(rootBlock.Block, FileRow.DescriptorNameId(descriptor)).ToString();
             }
+        }
 
-            // A detached row has no verified ancestor, so a root prefix would invent one.
-            if (IsDetached(rootBlock.Block, rowIndex))
-            {
-                return NamePool.Read(rootBlock.Block, FileRow.DescriptorNameId(descriptor)).ToString();
-            }
+        Span<uint> segments = stackalloc uint[BlockLayout.MaximumPathDepth];
+        var count = CollectSegments(rootBlock.Block, rowIndex, segments, out var isDetached);
+        // Nothing above a broken parent link is verified, including for descendants of that link.
+        if (isDetached)
+        {
+            return rootBlock.Kind.JoinPath(rootBlock.Block, string.Empty, segments[..count]);
         }
 
         if (rootBlock.RootDirectoryPath is not { } rootDirectoryPath)
@@ -67,8 +61,6 @@ static class IndexNavigation
                 $"Root block {rootBlock.Root} has no configured root directory to build a path from.");
         }
 
-        Span<uint> segments = stackalloc uint[BlockLayout.MaximumPathDepth];
-        var count = CollectSegments(rootBlock.Block, rowIndex, segments);
         return rootBlock.Kind.JoinPath(rootBlock.Block, rootDirectoryPath, segments[..count]);
     }
 
@@ -111,16 +103,18 @@ static class IndexNavigation
         return children;
     }
 
-    static int CollectSegments(BlockFile block, uint rowIndex, Span<uint> segments)
+    static int CollectSegments(BlockFile block, uint rowIndex, Span<uint> segments, out bool isDetached)
     {
         Span<uint> visited = stackalloc uint[BlockLayout.MaximumPathDepth];
         var current = rowIndex;
         var rowCount = block.Header.RowCount;
+        isDetached = false;
 
         for (var depth = 0; depth < BlockLayout.MaximumPathDepth; depth++)
         {
             if (current >= rowCount || visited[..depth].Contains(current) || IsRootRow(block, current))
             {
+                isDetached = current >= rowCount;
                 return depth;
             }
 
@@ -132,6 +126,7 @@ static class IndexNavigation
 
         if (current >= rowCount || visited.Contains(current) || IsRootRow(block, current))
         {
+            isDetached = current >= rowCount;
             return segments.Length;
         }
 

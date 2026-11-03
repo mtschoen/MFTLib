@@ -6,6 +6,56 @@ namespace MFTLib.Tests.Index;
 public partial class IndexNavigationTests
 {
     [TestMethod]
+    [DataRow(false, uint.MaxValue, 1)]
+    [DataRow(true, uint.MaxValue, 1)]
+    [DataRow(false, uint.MaxValue, 2)]
+    [DataRow(true, uint.MaxValue, 2)]
+    [DataRow(false, 300u, 1)]
+    [DataRow(true, 300u, 1)]
+    [DataRow(false, 300u, 2)]
+    [DataRow(true, 300u, 2)]
+    public async Task Path_OfDetachedDescendants_ExtendsEachParentWithoutTheRoot_Issue886(
+        bool isDump, uint missingParentRow, int descendantDepth)
+    {
+        using var builder = new SyntheticBlockBuilder('D');
+        builder.MutateHeader((ref header) => header.ProducerKind = ProducerKind.Mft);
+        builder.AddRoot();
+        var detached = builder.AddRow("detached", missingParentRow,
+            RowFlags.InUse | RowFlags.Directory | RowFlags.Tombstone, 0, Moment, 0);
+        var parent = detached;
+        string[] names = descendantDepth == 1 ? ["child.bin"] : ["sub", "leaf.txt"];
+        for (var level = 0; level < names.Length; level++)
+        {
+            var flags = level == names.Length - 1 ? RowFlags.InUse : RowFlags.InUse | RowFlags.Directory;
+            parent = builder.AddRow(names[level], parent, flags, 0, Moment, 0);
+        }
+        builder.Complete(Moment);
+        var block = builder.OpenForReading(out _)!;
+        var rootDirectory = isDump ? MftDumpIndexes.Root : builder.DirectoryPath;
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('D'), block, rootDirectoryPath: rootDirectory,
+            mftSource: isDump ? MftDumpIndexes.Source() : null)];
+        try
+        {
+            var separator = isDump ? '/' : Path.DirectorySeparatorChar;
+            var entry = FileEntry.Create(snapshot[0], parent);
+            Assert.AreEqual(string.Join(separator, new[] { "detached" }.Concat(names)), entry.Path);
+            for (var level = 0; level < descendantDepth; level++)
+            {
+                Assert.IsNotNull(entry.Parent);
+                var ancestor = entry.Parent.Value;
+                Assert.AreEqual(ancestor.Path + separator + entry.Name, entry.Path);
+                entry = ancestor;
+            }
+            Assert.AreEqual("detached", entry.Path);
+            Assert.IsNull(entry.Parent);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
     [DataRow(false, "alias/", "", "資料", "leaf")]
     [DataRow(false, "", "", "a/", "leaf")]
     [DataRow(false, "alias", "before", "/rooted", "leaf")]

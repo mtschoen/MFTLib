@@ -357,7 +357,11 @@ A deleted row has the in-use and tombstone flags together, whatever deleted it: 
 tombstone on a live row, and a scan that imports freed records writes the same two flags, so
 `LiveRowCount` excludes both. A freed row whose parent chain verified at scan time keeps its parent
 row. Any other freed row is detached: its parent column holds `uint.MaxValue`, no row has that index,
-so it is nobody's child, its parent walk ends at once and its path is its bare name. A held-handle delete into `$Extend\$Deleted` interns the pre-move full path into the row's name column and sets the delete-pending flag (64), hiding the row from every query and `LiveRowCount`, and completes to a tombstone on the later `FileDelete` record (materializing the deleted path verbatim from that column and restoring the bare file name from its last segment without walking the parent chain); a row is delete-pending only when its name column holds the full pre-move path, and if interning fails the block is marked capacity-exhausted and the transition is refused without changing the row or emitting `DeletePending`. Only a create
+so it is nobody's child, its parent walk ends at once and its path is its bare name.
+Every descendant of a detached row also renders without the root prefix: `detached/child.bin`
+for a dump, or the same name chain with host separators for a host root. Any out-of-range parent
+link ends path rooting this way, so no path claims ancestors above the broken link.
+A held-handle delete into `$Extend\$Deleted` interns the pre-move full path into the row's name column and sets the delete-pending flag (64), hiding the row from every query and `LiveRowCount`, and completes to a tombstone on the later `FileDelete` record (materializing the deleted path verbatim from that column and restoring the bare file name from its last segment without walking the parent chain); a row is delete-pending only when its name column holds the full pre-move path, and if interning fails the block is marked capacity-exhausted and the transition is refused without changing the row or emitting `DeletePending`. Only a create
 reuses a deleted row's slot; the journal never edits or renames a delete-pending or tombstoned row, and never deletes a tombstoned row again.
 
 Freed records are opt-in: `MftScanOptions.IncludeFreed` (default false) makes a cold scan of a

@@ -6,7 +6,8 @@ public readonly partial record struct FileEntry
     ///     The path built from the block's root directory and the name chain using the host
     ///     separator. For a live entry of a real source it is a filesystem path, openable and
     ///     accepted by <see cref="FileIndex.Find" />. A dump entry renders a virtual <c>dump:/X</c>
-    ///     path that cannot be opened, a detached deleted row renders its bare name, and
+    ///     path that cannot be opened. A detached row and its descendants render without the root
+    ///     prefix, starting at the detached row's name and using the root kind's separator, and
     ///     <see cref="FileIndex.Find" /> skips deleted entries.
     ///     Built once per call by walking the parent column upward. This allocates; other property
     ///     reads except <see cref="Name" /> do not. The parent walk is limited to

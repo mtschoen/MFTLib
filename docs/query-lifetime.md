@@ -150,7 +150,8 @@
       name chain using the host separator. For a live entry of a real source it is an openable
       filesystem path, and `FileIndex.Find` accepts it back, resolving a native path against the
       longest matching indexed root directory (on a `FileIndexSet`, the outermost available member whose root contains the path). A dump entry renders a virtual `dump:/X` path that
-      `Open` refuses, a detached deleted row renders its bare name, and `Find` skips deleted
+      `Open` refuses. A detached row renders its bare name; its descendants extend that name with
+      the root kind's separator and no root prefix. `Find` skips deleted
        entries, so a deleted entry's path does not resolve.
        Path construction keeps at most 128 captured name identifiers and visited rows in per-call
        stack scratch, sizes the result from immutable pool names, then copies ASCII or UTF-16
