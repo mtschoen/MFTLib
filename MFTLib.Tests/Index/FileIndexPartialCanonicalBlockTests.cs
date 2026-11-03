@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -28,11 +29,14 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         _canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), VolumeSerial));
     }
 
-    FileIndexOptions Options(MftBlockProducer producer, List<string> diagnostics, bool cacheOnly = false) =>
+    [TestCleanup]
+    public void Cleanup() => EnumerationWalkLimit.Hooks.ResetToDefaults();
+
+    FileIndexOptions Options(MftBlockProducer producer, ConcurrentQueue<string> diagnostics, bool cacheOnly = false) =>
         Fixture.Options(volumeSerial: VolumeSerial, producer: ProducerSelection.MftOnly, cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             MftSource = new MftIndexSource(producer),
-            Diagnostics = diagnostics.Add
+            Diagnostics = diagnostics.Enqueue
         };
 
     /// <summary>Leaves a half-written canonical file behind, as a producer killed mid-scan would.</summary>
@@ -45,11 +49,19 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!, 0);
     }
 
-    void AssertPartialDeleteLogged(List<string> diagnostics)
+    void AssertPartialDeleteLogged(ConcurrentQueue<string> diagnostics)
     {
         var line = diagnostics.SingleOrDefault(entry => entry.Contains(_canonicalPath) && entry.Contains("partial"));
-        Assert.IsNotNull(line, "the partial block's delete is reported with its path and reason");
+        Assert.IsNotNull(line, $"the partial block's delete is reported with its path and reason. {DescribeCanonicalBlock(diagnostics)}");
         Assert.IsTrue(line.StartsWith("Deleted block file", StringComparison.Ordinal), line);
+    }
+
+    string DescribeCanonicalBlock(ConcurrentQueue<string> diagnostics)
+    {
+        using var block = BlockFile.Open(_canonicalPath, VolumeSerial, out var validation);
+        return $"Canonical path: {_canonicalPath}; exists: {File.Exists(_canonicalPath)}; " +
+               $"complete: {block is not null}; validation: {validation}. Diagnostics: " +
+               string.Join(Environment.NewLine, diagnostics);
     }
 
     [TestMethod]
@@ -58,26 +70,28 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         Directory.CreateDirectory(Path.Combine(TreeRoot, "Documents"));
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "readme.md"), "hello", Token);
         using var cancellation = new CancellationTokenSource();
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
+        var producerCancellation = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EnumerationWalkLimit.Hooks._directoryEntered = (_, _, token) => producerCancellation.TrySetResult(token);
         var options = new FileIndexOptions
         {
 
             CacheDirectory = CacheDirectoryPath,
-            ScanProgress = new CancelingProgress(cancellation),
-            Diagnostics = diagnostics.Add
+            ScanProgress = new CancelingProgress(cancellation, producerCancellation.Task),
+            Diagnostics = diagnostics.Enqueue
         }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, VolumeSerial, ProducerKind.Enumeration));
 
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => FileIndex.OpenAsync(options, cancellation.Token));
 
-        Assert.IsFalse(File.Exists(_canonicalPath), "the cancelled cold scan leaves no partial canonical block");
+        Assert.IsFalse(File.Exists(_canonicalPath), $"the cancelled cold scan leaves no partial canonical block. {DescribeCanonicalBlock(diagnostics)}");
         AssertPartialDeleteLogged(diagnostics);
     }
 
     [TestMethod]
     public async Task OpenAsync_MftProducerCancelled_DeletesThePartialCanonicalBlock()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var options = Options((request, _) =>
         {
             WritePartialFile(request);
@@ -93,7 +107,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_MftProducerFails_DeletesThePartialCanonicalBlockAndKeepsTheFailure()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var options = Options((request, _) =>
         {
             WritePartialFile(request);
@@ -112,7 +126,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_MftProducerFailsBeforeCreatingAFile_LogsNoDelete()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var options = Options((_, _) => throw new IOException("nothing was written"), diagnostics);
 
         await using var index = await FileIndex.OpenAsync(options, Token);
@@ -125,7 +139,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_PartialCanonicalBlockThatCannotBeDeleted_ReportsItAndKeepsTheOriginalFailure()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var options = Options((request, _) =>
         {
             // File.Delete refuses a directory on every platform, standing in for a locked file.
@@ -144,7 +158,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task RescanAsync_OfABlocklessRootWhoseProducerFails_DeletesThePartialCanonicalBlock()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var options = Options((request, _) =>
         {
             WritePartialFile(request);
@@ -162,7 +176,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task RescanAsync_OfABlocklessRootCancelled_DeletesThePartialCanonicalBlock()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var options = Options((request, _) =>
         {
             WritePartialFile(request);
@@ -179,7 +193,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task RescanAsync_CancelledOverAPublishedBlock_KeepsThePreviousBlockAndItsFile()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var scans = 0;
         var options = Options((request, _) =>
         {
@@ -219,7 +233,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
             }
 
             throw new IOException("the producer lost the volume");
-        }, []) with
+        }, new()) with
         { Diagnostics = null };
 
         await using (var index = await FileIndex.OpenAsync(options, Token))
@@ -242,7 +256,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         {
             WritePartialFile(request);
             throw new IOException("the producer lost the volume");
-        }, []) with
+        }, new()) with
         { Diagnostics = _ => throw new IOException("the log destination closed") };
 
         await using var index = await FileIndex.OpenAsync(options, Token);
@@ -258,7 +272,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         {
             Directory.CreateDirectory(request.BlockPath);
             throw new OperationCanceledException();
-        }, []) with
+        }, new()) with
         { Diagnostics = _ => throw new InvalidOperationException("the log destination closed") };
 
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(options, Token));
@@ -270,7 +284,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     ///     over the still-present file. Returns the seeded bytes.
     /// </summary>
     async Task<byte[]> OpenOverUnresumableCacheAsync(Func<MftBlockProduceRequest, Exception> scanFailure,
-        List<string> diagnostics, Func<Task<FileIndex>, Task> assertOutcome)
+        ConcurrentQueue<string> diagnostics, Func<Task<FileIndex>, Task> assertOutcome)
     {
         var failTheScan = new System.Runtime.CompilerServices.StrongBox<bool>(false);
         var options = Options((request, _) => failTheScan.Value
@@ -296,7 +310,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_UnresumableCachedBlockAndAProducerThatFailsBeforeWriting_KeepsTheCachedFile()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         var seededBytes = await OpenOverUnresumableCacheAsync(_ => new IOException("the broker could not connect"),
             diagnostics, async opening =>
             {
@@ -311,7 +325,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_UnresumableCachedBlockOverwrittenThenTheProducerFails_DeletesThePartialReplacement()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         await OpenOverUnresumableCacheAsync(request =>
             {
                 WritePartialFile(request);
@@ -329,7 +343,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_UnresumableCachedBlockOverwrittenThenTheProducerIsCancelled_DeletesThePartialReplacement()
     {
-        var diagnostics = new List<string>();
+        var diagnostics = new ConcurrentQueue<string>();
         await OpenOverUnresumableCacheAsync(request =>
             {
                 WritePartialFile(request);
@@ -341,8 +355,23 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
         AssertPartialDeleteLogged(diagnostics);
     }
 
-    sealed class CancelingProgress(CancellationTokenSource cancellation) : IProgress<IndexScanProgress>
+    sealed class CancelingProgress(CancellationTokenSource cancellation, Task<CancellationToken> producerCancellation)
+        : IProgress<IndexScanProgress>
     {
-        public void Report(IndexScanProgress value) => cancellation.Cancel();
+        public void Report(IndexScanProgress value)
+        {
+            if (value.Phase != IndexScanPhase.Enumerating)
+            {
+                return;
+            }
+
+            // Caller cancellation only stops the view's wait. Keep production here until
+            // last-detach teardown cancels its separate token, before it can complete the block.
+            TestGate.WaitSynchronously(producerCancellation);
+            var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = producerCancellation.GetAwaiter().GetResult().Register(() => stopped.TrySetResult());
+            cancellation.Cancel();
+            TestGate.WaitSynchronously(stopped.Task);
+        }
     }
 }
