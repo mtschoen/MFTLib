@@ -6,20 +6,21 @@ namespace MFTLib.Tests;
 
 public partial class JournalBrokerHostTests
 {
-    const string DiagClientLogPath = @"C:\broker-diag-tests\client\broker-diagnostics.ui.log";
+    const string DiagDirectory = @"T:\synthetic-broker-diagnostics";
+    const string DiagClientLogPath = DiagDirectory + @"\client\broker-diagnostics.ui.log";
     const ulong DiagOwnLogReference = 9101;
     const ulong DiagClientLogReference = 9102;
 
     static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.broker.log") =>
         JournalEntries.Create(recordNumber, 110, fileName);
 
-    // Point diagnostics at a synthetic C:-rooted directory and resolve both log paths to fixed file
+    // Point diagnostics at a synthetic T: path that is never created, and resolve both log paths to fixed file
     // reference numbers, so no real file system or elevation is involved. The log lines go to a
     // sink that discards them.
     static Func<BrokerDiagnosticsLogFilter?> EnableDiagFilterSeams()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
-        BrokerDiagnostics.Enable("broker", @"C:\broker-diag-tests");
+        BrokerDiagnostics.Enable("broker", DiagDirectory);
         BrokerDiagnostics.ClientLogPath = DiagClientLogPath;
         BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(_ => { }, () => "broker"));
         var ownPath = BrokerDiagnostics.LogPath;
@@ -56,7 +57,7 @@ public partial class JournalBrokerHostTests
             await using var harness = new HostChannelHarness(host);
 
             // since (7,100) < tip (7,140): backlog
-            var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+            var pipe = await harness.OpenWatchChannelAsync('T', new UsnJournalCursor(7UL, 100L));
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
             // No JournalBatch for the filtered-empty first batch, but the CaughtUp marker still
@@ -95,7 +96,7 @@ public partial class JournalBrokerHostTests
                 createLogFilter: createLogFilter);
             await using var harness = new HostChannelHarness(host);
 
-            var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+            var pipe = await harness.OpenWatchChannelAsync('T', new UsnJournalCursor(7UL, 100L));
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
             Assert.HasCount(1, frames);
@@ -123,7 +124,7 @@ public partial class JournalBrokerHostTests
             watchVolume: (_, _, _, _) => FiniteWatch(batches));
         await using var harness = new HostChannelHarness(host);
 
-        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+        var pipe = await harness.OpenWatchChannelAsync('T', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.HasCount(1, frames);
@@ -144,7 +145,7 @@ public partial class JournalBrokerHostTests
                     DiagEntry(DiagOwnLogReference), DiagEntry(4242, "real.txt")));
             await using var harness = new HostChannelHarness(host, sectionWriter);
 
-            var pipe = await harness.OpenScanChannelAsync('C');
+            var pipe = await harness.OpenScanChannelAsync('T');
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
             Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.JournalBatch, frames);
