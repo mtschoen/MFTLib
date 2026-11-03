@@ -379,6 +379,10 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
                 return result;
             }
 
+            auto fixupStart = SteadyClock::now();
+            ApplyExtensionDataSizes(state.output);
+            state.parseMs += ElapsedMs(fixupStart, SteadyClock::now());
+
             result->usedRecords = state.output.entryCount;
             result->invalidFixupRecords = state.invalidFixupRecords;
             result->entries = state.output.entries;

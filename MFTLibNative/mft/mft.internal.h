@@ -141,11 +141,18 @@ struct ParsedEntry {
     uint16_t nameLength;
 };
 
+struct ExtensionDataSize {
+    uint64_t baseRecordNumber;
+    uint16_t baseSequenceNumber;
+    int64_t size;
+};
+
 // Per-worker accumulator. Uses std::vector so growth is exception-safe;
 // the merge step copies entries and strings out.
 struct SliceResult {
     std::vector<MftCompactEntry> entries;
     std::vector<uint16_t> strings;
+    std::vector<ExtensionDataSize> extensionDataSizes;
     // Allocated records this worker passed over because their fixup was invalid.
     uint64_t invalidFixupRecords = 0;
 
@@ -171,6 +178,7 @@ struct CompactOutput {
     uint16_t* strings = nullptr;
     uint64_t stringUnits = 0;
     uint64_t stringCapacity = 0;
+    std::vector<ExtensionDataSize> extensionDataSizes;
 };
 
 // Read-only inputs that steer record scanning, threaded through the scan pipeline as one
@@ -186,6 +194,7 @@ struct ScanContext {
 };
 
 bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage);
+void ApplyExtensionDataSizes(CompactOutput& output);
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
 

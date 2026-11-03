@@ -109,6 +109,12 @@
       duplicate records, and requires each followed record to be readable and valid through the runs merged
       so far. References for other attribute types or named streams are not read because they contribute
       no runs to the `$MFT`'s unnamed data stream.
+    - **Extension data sizes**: the native scan collects unnamed `$DATA` sizes from allocated extension
+      records, using only the nonresident extent whose lowest VCN is zero or a resident value. After all
+      slices and read chunks merge, it fills size-unknown non-directory base rows whose sequence number
+      matches the extension's base reference. Known sizes are preserved; freed, stale, named-stream and
+      malformed extensions cannot donate sizes. Both volume and dump parses finish this fix-up before
+      managed code receives its first record batch. Journal hydration keeps its existing unknown sizes.
     - **Cache directory ownership**: cached opens require an explicit nonblank
       application-owned `FileIndexOptions.CacheDirectory` and a non-null `FileIndexOptions.Root`.
       Missing configuration throws `ArgumentException` before directory creation.

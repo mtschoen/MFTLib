@@ -131,7 +131,8 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
 
 // Scan one eligible base record. If it has a validated non-DOS FileName, fill *outEntry
 // and return true. A freed base record is eligible only when the scan includes freed rows.
-bool ScanRecordForEntry(uint8_t* recordPointer, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
+bool ScanRecordForEntry(uint8_t* recordPointer, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry,
+                        std::vector<ExtensionDataSize>& extensionDataSizes) {
     auto* recordHeader = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recordPointer);
 
     if (recordHeader->MultiSectorHeader.Magic != kFileRecordMagic) {
@@ -143,12 +144,13 @@ bool ScanRecordForEntry(uint8_t* recordPointer, uint64_t recordIndex, const Scan
 
     uint64_t baseReference = static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberLowPart) |
                              (static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
-    if (baseReference != 0) {
-        return false;
-    }
-    // A freed extension record can still carry its base reference; a base record's
-    // whole reference, sequence included, is zero.
-    if ((recordHeader->Flags & kRecordInUse) == 0 && recordHeader->BaseFileRecordSegment.SequenceNumber != 0) {
+    if (baseReference != 0 || recordHeader->BaseFileRecordSegment.SequenceNumber != 0) {
+        RecordAttributes attributes{};
+        if ((recordHeader->Flags & kRecordInUse) != 0 &&
+            ScanRecordAttributes(recordHeader, scan.geometry, &attributes) && attributes.dataPresent) {
+            extensionDataSizes.push_back(
+                {baseReference, recordHeader->BaseFileRecordSegment.SequenceNumber, attributes.dataSize});
+        }
         return false;
     }
 
@@ -224,6 +226,8 @@ bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t 
 }  // namespace
 
 bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage) {
+    output.extensionDataSizes.insert(output.extensionDataSizes.end(), slice.extensionDataSizes.begin(),
+                                     slice.extensionDataSizes.end());
     if (slice.entries.empty()) {
         return true;
     }
@@ -258,12 +262,29 @@ bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar
     return true;
 }
 
+// Slices and chunks merge in record order. Only the small extension list needs lookups;
+// base records keep their existing hot path and no row is delivered before this fix-up.
+void ApplyExtensionDataSizes(CompactOutput& output) {
+    auto* end = output.entries + output.entryCount;
+    for (const auto& extension : output.extensionDataSizes) {
+        auto* entry =
+            std::lower_bound(output.entries, end, extension.baseRecordNumber,
+                             [](const MftCompactEntry& row, uint64_t number) { return row.recordNumber < number; });
+        if (entry != end && entry->recordNumber == extension.baseRecordNumber &&
+            entry->sequenceNumber == extension.baseSequenceNumber &&
+            (entry->flags & (MFT_ENTRY_FLAG_SIZE_UNKNOWN | kRecordDirectory)) == MFT_ENTRY_FLAG_SIZE_UNKNOWN) {
+            entry->size = extension.size;
+            entry->flags &= static_cast<uint16_t>(~MFT_ENTRY_FLAG_SIZE_UNKNOWN);
+        }
+    }
+}
+
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan) {
     for (uint64_t i = range.start; i < range.end; i++) {
         ParsedEntry entry{};
         if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordBase + i, scan,
-                               &entry)) {
+                               &entry, slice->extensionDataSizes)) {
             slice->append(entry);
         }
     }

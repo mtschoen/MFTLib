@@ -66,13 +66,13 @@ readonly struct MftRecord
     /// <summary>
     ///     Size in bytes of the unnamed data stream. Zero for a directory, and zero when
     ///     <see cref="SizeKnown" /> is false because no usable data size was found in the base
-    ///     record, including data in an extension record or a negative non-resident size.
+    ///     record or an allocated extension referencing the same base sequence number.
     /// </summary>
     public long Size { get; }
 
     /// <summary>
-    ///     False when <see cref="Size" /> is a placeholder zero because the base record carried
-    ///     no usable data size. A true <see cref="Size" /> of zero reads true here.
+    ///     False when <see cref="Size" /> is a placeholder zero because neither the base record
+    ///     nor a matching allocated extension carried a usable data size. A true size of zero reads true here.
     /// </summary>
     public bool SizeKnown => (_flags & SizeUnknownFlag) == 0;
 
