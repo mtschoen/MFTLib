@@ -147,6 +147,9 @@ internal sealed class ProcessFixture : IDisposable
         EnvironmentValues["MFTLIB_INIT_REAL_SHELL"] = Host;
         EnvironmentValues["DOTNET_ROOT"] = Path.GetDirectoryName(RealDotnet)!;
         EnvironmentValues["DOTNET_NOLOGO"] = "1";
+        // An empty per-fixture SDK home repeats background network checks on every forwarded call.
+        EnvironmentValues["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
+        EnvironmentValues["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         // The fixture HOME is a throwaway directory, so the SDK first-run step would append
         // <fixture home>/.dotnet/tools to the persistent Windows user PATH on every run.
         EnvironmentValues["DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"] = "false";

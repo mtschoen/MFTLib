@@ -98,10 +98,25 @@ internal static class AdapterTests
         }
     }
 
+    private static void CheckDotnetBackgroundNetworkIsolation(string root)
+    {
+        foreach (var realDependencies in new[] { false, true })
+        {
+            using var fixture = new ProcessFixture(root, 0, 0, realDependencies);
+            TestProgram.Equal("true", fixture.EnvironmentValues.GetValueOrDefault("DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"),
+                $"fixture sets DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE (real dependencies: {realDependencies})");
+            foreach (var name in new[] { "DOTNET_NOLOGO", "DOTNET_CLI_TELEMETRY_OPTOUT" })
+                TestProgram.Equal("1", fixture.EnvironmentValues.GetValueOrDefault(name),
+                    $"fixture sets {name} (real dependencies: {realDependencies})");
+        }
+        Console.WriteLine("SDK background network isolation passed for both fixture modes.");
+    }
+
     internal static int Run(string root)
     {
         TestProgram.Policy();
         CheckDotnetUserPathIsolation(root);
+        CheckDotnetBackgroundNetworkIsolation(root);
         CheckRestrictiveDisposal(root);
 
         var entries = OperatingSystem.IsWindows() ? new[] { "init.ps1", "init.bat" } : new[] { "init.sh" };
