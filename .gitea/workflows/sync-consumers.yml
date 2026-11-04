@@ -1,9 +1,16 @@
 # .gitea/workflows/sync-consumers.yml
 name: sync-consumers
-# Moves every consumer repo's MFTLib pin to main, when run by hand
-# (workflow_dispatch only): each consumer otherwise moves its own pin in its own
-# pull request, because an automatic pin-bump pull request cannot compile while a
-# breaking MFTLib slice is in flight. Deleted at bridge retirement.
+# Moves every consumer repo's MFTLib pin to main automatically on every push to
+# main, and on manual dispatch. A bump pull request that does not compile is
+# expected: its CI fails and the review crew fixes it. The path filter skips
+# pushes that only change TEST-REPORT.md, docs or benchmark baselines, so CI's
+# own TEST-REPORT regeneration commits on main never churn the consumer pull
+# requests. A path filter is safe here because this workflow is push-only and is
+# not a required pull request check.
+# Each bump pull request is labeled auto-bump and asked to merge itself when CI
+# is green. When a bump branch already carries a commit other than a pin bump
+# (a fix pushed so the new pin compiles), the script appends the new pin without
+# force-pushing, so the fix survives the next main push.
 # Convention: a consumer repo pins MFTLib with a git submodule whose url
 # resolves to this repository, declared in .gitmodules on its default branch.
 # Both consumers declare it at external/MFTLib with the relative url
@@ -22,6 +29,9 @@ name: sync-consumers
 # Manual dispatch runs against this workflow's Gitea server. The public
 # mirror can lag, so consumer lookup and git transport use that server.
 on:
+  push:
+    branches: [main]
+    paths-ignore: ['TEST-REPORT.md', 'docs/**', 'Benchmark/baselines/**']
   workflow_dispatch:
 
 concurrency:

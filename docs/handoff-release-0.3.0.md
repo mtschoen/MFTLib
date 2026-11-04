@@ -56,7 +56,7 @@ Delete these four whole files:
 
 | File | Size | Responsibility |
 | --- | --- | --- |
-| `.gitea/workflows/sync-consumers.yml` | 52 lines | Manual consumer pin-publication workflow |
+| `.gitea/workflows/sync-consumers.yml` | 52 lines | Automatic consumer pin-publication workflow |
 | `scripts/sync_consumers.sh` | 462 lines | Consumer pin-bump publication |
 | `scripts/sync_consumers.tests.sh` | 589 lines | Offline consumer-sync fixtures |
 | `scripts/mftlib_submodules.sh` | 118 lines | Shared submodule matcher |
@@ -114,9 +114,10 @@ their package migration is complete:
 1. Declare a submodule URL resolving to the canonical MFTLib repository on the consumer's forge.
    Both consumers use `external/MFTLib` with the relative URL `../MFTLib.git`, keeping
    the same Gitea instance and owner. The gitlink is the only stored MFTLib revision.
-2. Move the pin in each consumer's own pull request so its code is migrated with
-   breaking library changes. The `workflow_dispatch`-only `sync-consumers.yml`
-   runs `scripts/sync_consumers.sh` by hand, enumerates `schoen/*` repositories and
+2. Pin bumps are automatic: a bump pull request that does not compile is expected, and
+   its CI and the review crew fix it. `sync-consumers.yml` runs on every push to `main`
+   (except pushes that change only `TEST-REPORT.md`, `docs/**` or `Benchmark/baselines/**`)
+   and by `workflow_dispatch`. It runs `scripts/sync_consumers.sh`, which enumerates `schoen/*` repositories and
    opens `chore/mftlib-pin-bump` pull requests as `claude-code`, using the
    `MFTLIB_SYNC_TOKEN` Actions secret. It updates each matching gitlink; `.gitmodules`
    supplies the submodule path. Repositories without an MFTLib submodule are skipped.

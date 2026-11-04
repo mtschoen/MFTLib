@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fan out an MFTLib pin bump to every consumer repository on the
-# configured Gitea instance. Invoked manually by .gitea/workflows/sync-consumers.yml.
+# configured Gitea instance. Invoked by .gitea/workflows/sync-consumers.yml after
+# a push to main (or a manual dispatch).
 #
 # Required one-time setup (not performed by this script): create an Actions
 # secret named MFTLIB_SYNC_TOKEN on this repository holding a Gitea personal
@@ -15,6 +16,16 @@
 # .gitmodules rather than assumed. The gitlink is the single source of truth
 # for the pin, so the bump commits the new sha into the gitlink and opens a
 # pull request. A repository with no such submodule is not a consumer.
+#
+# When the pin-bump branch is absent or holds only pin-bump commits (commits
+# that change nothing but submodule gitlinks), update_consumer rebuilds it from
+# the default branch and force-pushes with a lease on the observed tip; an
+# already-open pull request then has its title and body refreshed to the new
+# sha. When the branch holds any other commit (fixes added so the new pin
+# compiles), it commits the new gitlink on top and pushes without --force,
+# leaving the open pull request's title and body alone; a rejected push is a
+# failure and is never retried with force. The run summary names the path
+# ("rebuild" or "append") taken for each consumer.
 #
 # Every bump pull request, whether newly opened or refreshed, is labeled
 # `auto-bump` and asked to merge its current head once all "*" checks pass.
@@ -162,24 +173,57 @@ list_consumer_candidates() {
 }
 
 bump_gitlink() {
-	# bump_gitlink <repo_dir> <branch> <newline_separated_paths>: create the
-	# bump branch and commit the new sha into every listed gitlink.
-	local repo_dir="$1" branch="$2" paths="$3"
+	# bump_gitlink <repo_dir> <branch> <newline_separated_paths> <bump_path>:
+	# commit the new sha into every listed gitlink. The rebuild path creates
+	# BRANCH from the checked-out default branch; the append path checks out the
+	# existing remote BRANCH tip first. Exits 3 when the append path has nothing
+	# to commit because the tip already carries the pin.
+	local repo_dir="$1" branch="$2" paths="$3" bump_path="$4"
 	local path
 	(
 		cd "$repo_dir" || exit 1
 		git config user.name "$BOT_LOGIN"
 		git config user.email "$BOT_EMAIL"
-		git checkout --quiet -b "$branch"
+		if [ "$bump_path" = "append" ]; then
+			git checkout --quiet -B "$branch" "origin/$branch"
+		else
+			git checkout --quiet -b "$branch"
+		fi
 		while IFS= read -r path; do
 			[ -n "$path" ] || continue
 			# --cacheinfo writes the gitlink straight into the index. The new
-			# MFTLib commit is absent from this shallow clone and never needs
-			# to be present, because nothing here checks the submodule out.
+			# MFTLib commit is absent from this clone and never needs to be
+			# present, because nothing here checks the submodule out.
 			git update-index --cacheinfo "$GITLINK_MODE,$NEW_SHA,$path" || exit 1
 		done <<<"$paths"
+		if [ "$bump_path" = "append" ] && git diff --cached --quiet; then
+			exit 3
+		fi
 		git commit --quiet -m "chore: bump MFTLib pin to $SHORT_SHA"
 	)
+}
+
+branch_has_only_pin_commits() {
+	# branch_has_only_pin_commits <repo_dir> <default_branch>: returns 0 when
+	# every commit reachable from origin/BRANCH but not from origin/<default>
+	# is a plain (non-merge) commit whose every change modifies a gitlink, or
+	# when there is no such commit. Returns 1 when anything else is on the
+	# branch and 2 when history cannot be read.
+	local repo_dir="$1" default_branch="$2"
+	local range="origin/$default_branch..origin/$BRANCH"
+	local merges commits commit changes line old_mode new_mode status
+	merges="$(git -C "$repo_dir" rev-list --min-parents=2 "$range")" || return 2
+	[ -n "$merges" ] && return 1
+	commits="$(git -C "$repo_dir" rev-list "$range")" || return 2
+	for commit in $commits; do
+		changes="$(git -C "$repo_dir" diff-tree --no-commit-id -r --root --raw "$commit")" || return 2
+		[ -n "$changes" ] || return 1
+		while IFS= read -r line; do
+			read -r old_mode new_mode _ _ status _ <<<"$line"
+			[ "$old_mode" = ":$GITLINK_MODE" ] && [ "$new_mode" = "$GITLINK_MODE" ] && [ "$status" = "M" ] || return 1
+		done <<<"$changes"
+	done
+	return 0
 }
 
 find_open_pull_request_index() {
@@ -259,12 +303,12 @@ pull_request_body() {
 }
 
 refresh_existing_pull_request() {
-	# refresh_existing_pull_request <repo> <base_branch> <newline_separated_paths>
+	# refresh_existing_pull_request <repo> <base_branch> <newline_separated_paths> [bump_path]
 	# An open pull request for BRANCH already exists (the create call returned
 	# 409). Find its index and PATCH its title and body so they name the sha
 	# the branch now pins, instead of leaving the wording from when the pull
 	# request was first opened (file-wizard#478).
-	local repo="$1" base_branch="$2" paths="$3"
+	local repo="$1" base_branch="$2" paths="$3" bump_path="${4:-rebuild}"
 	local detail title body index exit_code url
 	detail="${paths//$'\n'/, }"
 	title="chore: bump MFTLib pin to $SHORT_SHA"
@@ -288,19 +332,25 @@ refresh_existing_pull_request() {
 		;;
 	esac
 
+	if [ "$bump_path" = "append" ]; then
+		record "$repo" "updated" "path=append: pin commit for $SHORT_SHA on $BRANCH, PR #$index title/body left alone"
+		finalize_pull_request "$repo" "$base_branch" "$index" "$PUSHED_HEAD_SHA"
+		return 0
+	fi
+
 	if ! url="$(update_pull_request "$repo" "$index" "$title" "$body")"; then
 		record "$repo" "failed" "PR update (PATCH) failed for #$index"
 		return 1
 	fi
 
-	record "$repo" "updated" "PR #$index refreshed to $SHORT_SHA (${url:-no url})"
+	record "$repo" "updated" "path=rebuild: PR #$index refreshed to $SHORT_SHA (${url:-no url})"
 	finalize_pull_request "$repo" "$base_branch" "$index" "$PUSHED_HEAD_SHA"
 	return 0
 }
 
 open_pull_request() {
-	# open_pull_request <repo> <base_branch> <newline_separated_paths>
-	local repo="$1" base_branch="$2" paths="$3"
+	# open_pull_request <repo> <base_branch> <newline_separated_paths> [bump_path]
+	local repo="$1" base_branch="$2" paths="$3" bump_path="${4:-rebuild}"
 	local detail pr_body pr_status pr_response label_id
 	detail="${paths//$'\n'/, }"
 	label_id="$(ensure_auto_bump_label_id "$repo")" || label_id=""
@@ -323,12 +373,12 @@ open_pull_request() {
 
 	case "$pr_status" in
 	200 | 201)
-		record "$repo" "updated" "PR opened ($(jq -r '.html_url // "no url"' "$pr_response"))"
+		record "$repo" "updated" "path=$bump_path: PR opened ($(jq -r '.html_url // "no url"' "$pr_response"))"
 		finalize_pull_request "$repo" "$base_branch" "$(jq -r '.number // empty' "$pr_response")" "$PUSHED_HEAD_SHA"
 		return 0
 		;;
 	409)
-		refresh_existing_pull_request "$repo" "$base_branch" "$paths"
+		refresh_existing_pull_request "$repo" "$base_branch" "$paths" "$bump_path"
 		return $?
 		;;
 	*)
@@ -354,18 +404,57 @@ update_consumer() {
 		return 1
 	fi
 
-	if ! bump_gitlink "$repo_dir" "$BRANCH" "$paths"; then
-		record "$repo" "failed" "local gitlink commit failed"
+	local bump_path="rebuild" remote_heads expected_branch_tip=""
+	if ! remote_heads="$(git -C "$repo_dir" ls-remote --heads origin "refs/heads/$BRANCH" 2>/dev/null)"; then
+		record "$repo" "failed" "could not look up $BRANCH on the remote"
 		return 1
 	fi
+	if [ -n "$remote_heads" ]; then
+		if [ "$(git -C "$repo_dir" rev-parse --is-shallow-repository)" = "true" ]; then
+			if ! git -C "$repo_dir" fetch --quiet --unshallow origin >/dev/null 2>&1; then
+				record "$repo" "failed" "could not fetch history of $branch"
+				return 1
+			fi
+		fi
+		if ! git -C "$repo_dir" fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
+			record "$repo" "failed" "could not fetch existing $BRANCH"
+			return 1
+		fi
+		expected_branch_tip="$(git -C "$repo_dir" rev-parse "refs/remotes/origin/$BRANCH")"
+		branch_has_only_pin_commits "$repo_dir" "$branch"
+		case $? in
+		0) bump_path="rebuild" ;;
+		1) bump_path="append" ;;
+		*)
+			record "$repo" "failed" "could not inspect commits on $BRANCH"
+			return 1
+			;;
+		esac
+	fi
 
-	if ! git -C "$repo_dir" push --quiet --force "$push_url" "HEAD:refs/heads/$BRANCH" >/dev/null 2>&1; then
-		record "$repo" "failed" "force-push to $BRANCH failed"
+	local nothing_to_commit=0
+	bump_gitlink "$repo_dir" "$BRANCH" "$paths" "$bump_path"
+	case $? in
+	0) ;;
+	3) nothing_to_commit=1 ;;
+	*)
+		record "$repo" "failed" "path=$bump_path: local gitlink commit failed"
+		return 1
+		;;
+	esac
+
+	if [ "$bump_path" = "append" ]; then
+		if [ "$nothing_to_commit" -eq 0 ] && ! git -C "$repo_dir" push --quiet "$push_url" "HEAD:refs/heads/$BRANCH" >/dev/null 2>&1; then
+			record "$repo" "failed" "path=append: push to $BRANCH rejected (non-fast-forward or error), not retried with force"
+			return 1
+		fi
+	elif ! git -C "$repo_dir" push --quiet --force-with-lease="refs/heads/$BRANCH:$expected_branch_tip" "$push_url" "HEAD:refs/heads/$BRANCH" >/dev/null 2>&1; then
+		record "$repo" "failed" "path=rebuild: force-push to $BRANCH failed"
 		return 1
 	fi
 
 	PUSHED_HEAD_SHA="$(git -C "$repo_dir" rev-parse HEAD)"
-	open_pull_request "$repo" "$branch" "$paths"
+	open_pull_request "$repo" "$branch" "$paths" "$bump_path"
 }
 
 process_repo() {

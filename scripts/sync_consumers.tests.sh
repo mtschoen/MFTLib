@@ -249,8 +249,8 @@ api_read_gitlink_sha() {
 }
 
 open_pull_request() {
-	local repo="$1" base_branch="$2" paths="$3"
-	printf '%s|%s|%s|%s\n' "$repo" "$base_branch" "$BRANCH" "${paths//$'\n'/,}" >>"$PR_LOG"
+	local repo="$1" base_branch="$2" paths="$3" bump_path="${4:-rebuild}"
+	printf '%s|%s|%s|%s|%s\n' "$repo" "$base_branch" "$BRANCH" "${paths//$'\n'/,}" "$bump_path" >>"$PR_LOG"
 	record "$repo" "updated" "PR opened (fixture)"
 	return 0
 }
@@ -438,6 +438,20 @@ assert_contains "${SUMMARY[*]}" "failed" "records the failure"
 assert_contains "${SUMMARY[*]}" "more than one pull request is open" "the summary explains why: more than one is open"
 assert_equals "" "$(cat "$UPDATE_PR_LOG")" "never calls update_pull_request"
 assert_equals "" "$(cat "$FINALIZE_LOG")" "never labels or auto-merges"
+
+start_test "the append path leaves the pull request title and body alone but still finalizes it"
+SUMMARY=()
+: >"$FINALIZE_LOG"
+: >"$UPDATE_PR_LOG"
+FIND_PR_INDEX_RESULT="42"
+FIND_PR_INDEX_EXIT=0
+PUSHED_HEAD_SHA="appendhead"
+refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib" append
+REFRESH_STATUS=$?
+assert_equals "0" "$REFRESH_STATUS" "reports success"
+assert_equals "" "$(cat "$UPDATE_PR_LOG")" "never PATCHes the title or body"
+assert_contains "$(cat "$FINALIZE_LOG")" "consumer-refresh|main|42|appendhead" 	"labels and requests auto-merge for the moved head"
+assert_contains "${SUMMARY[*]}" "path=append" "the summary names the append path"
 
 # --- transport-level regression: real HTTP status handling and endpoint choice
 # The tests above fake find_open_pull_request_index and update_pull_request as
@@ -962,6 +976,82 @@ assert_contains "$(cat "$RUN_STDOUT")" "consumer-broken" "reports the broken rep
 assert_contains "$(cat "$RUN_STDOUT")" "is not a readable gitlink" "explains the failure"
 assert_equals "$NEW_SHA" "$(gitlink_of consumer-a2 "$BRANCH")" "still bumps the healthy consumer"
 
+# --- integration: rebuild versus append of an existing bump branch ----------
+
+NEWER_SHA="$(append_mftlib_commit third)"
+pr_paths_of() { tail -n 1 "$PR_LOG"; }
+bump_tip_of() { git --git-dir="$FIXTURE_GITEA/schoen/$1.git" rev-parse "$BRANCH"; }
+
+start_test "a bump branch holding only pin commits is rebuilt and force-pushed with a lease"
+FIXTURE_REPOS="consumer-rebuild"
+make_consumer consumer-rebuild "$OLD_SHA" "../MFTLib.git"
+run_sync "$NEW_SHA"
+FIRST_TIP="$(bump_tip_of consumer-rebuild)"
+run_sync "$NEWER_SHA"
+assert_equals "0" "$RUN_STATUS" "exits successfully"
+assert_equals "$NEWER_SHA" "$(gitlink_of consumer-rebuild "$BRANCH")" "the branch records the newer sha"
+assert_equals "1" 	"$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-rebuild.git" rev-list --count "main..$BRANCH")" 	"the branch is rebuilt to a single commit on the default branch"
+assert_contains "$(pr_paths_of)" "|rebuild" "the pull request step is told the rebuild path"
+assert_not_contains "$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-rebuild.git" rev-list "$BRANCH")" "$FIRST_TIP" 	"the superseded pin commit is gone from the branch"
+
+start_test "a bump branch carrying a foreign commit gets the pin appended without force"
+FIXTURE_REPOS="consumer-append"
+make_consumer consumer-append "$OLD_SHA" "../MFTLib.git"
+run_sync "$NEW_SHA"
+APPEND_WORK="$FIXTURE_WORK/consumer-append-fix"
+git clone -q "$FIXTURE_GITEA/schoen/consumer-append.git" "$APPEND_WORK" 2>/dev/null
+(
+	cd "$APPEND_WORK" || exit 1
+	git config user.name fixture
+	git config user.email fixture@example.invalid
+	git checkout -q "$BRANCH"
+	echo fixed >crew-fix.txt
+	git add crew-fix.txt
+	git commit -qm "fix: compile against the new MFTLib"
+	git push -q origin "HEAD:refs/heads/$BRANCH"
+)
+FIX_TIP="$(bump_tip_of consumer-append)"
+run_sync "$NEWER_SHA"
+assert_equals "0" "$RUN_STATUS" "exits successfully"
+assert_equals "$NEWER_SHA" "$(gitlink_of consumer-append "$BRANCH")" "the branch records the newer sha"
+assert_equals "$FIX_TIP" "$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-append.git" rev-parse "$BRANCH~1")" 	"the new pin commit sits directly on the crew fix"
+assert_equals "fixed" 	"$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-append.git" show "$BRANCH:crew-fix.txt")" "the crew fix survives"
+assert_contains "$(pr_paths_of)" "|append" "the pull request step is told the append path"
+
+start_test "an append run whose branch already carries the new pin pushes nothing"
+BEFORE_TIP="$(bump_tip_of consumer-append)"
+run_sync "$NEWER_SHA"
+assert_equals "0" "$RUN_STATUS" "exits successfully"
+assert_equals "$BEFORE_TIP" "$(bump_tip_of consumer-append)" "the branch tip is unchanged"
+assert_contains "$(pr_paths_of)" "|append" "still the append path"
+
+start_test "a rejected append push is a failure and is never retried with force"
+FIXTURE_REPOS="consumer-reject"
+make_consumer consumer-reject "$OLD_SHA" "../MFTLib.git"
+run_sync "$NEW_SHA"
+REJECT_WORK="$FIXTURE_WORK/consumer-reject-fix"
+git clone -q "$FIXTURE_GITEA/schoen/consumer-reject.git" "$REJECT_WORK" 2>/dev/null
+(
+	cd "$REJECT_WORK" || exit 1
+	git config user.name fixture
+	git config user.email fixture@example.invalid
+	git checkout -q "$BRANCH"
+	echo fixed >crew-fix.txt
+	git add crew-fix.txt
+	git commit -qm "fix: compile against the new MFTLib"
+	git push -q origin "HEAD:refs/heads/$BRANCH"
+)
+REJECT_TIP="$(bump_tip_of consumer-reject)"
+# A pre-receive hook that refuses every update stands in for a concurrent push.
+printf '#!/bin/sh
+exit 1
+' >"$FIXTURE_GITEA/schoen/consumer-reject.git/hooks/pre-receive"
+chmod +x "$FIXTURE_GITEA/schoen/consumer-reject.git/hooks/pre-receive"
+run_sync "$NEWER_SHA"
+assert_equals "1" "$RUN_STATUS" "exits non-zero"
+assert_contains "$(cat "$RUN_STDOUT")" "not retried with force" "the summary says force was not used"
+assert_equals "$REJECT_TIP" "$(bump_tip_of consumer-reject)" "the branch tip is untouched"
+
 start_test "fixture setup ignores inherited Git overrides and never pushes to a foreign remote"
 # Issue 856: a parent environment that points remote.origin.pushurl elsewhere
 # and exports author variables must not redirect the seeding pushes or rename
@@ -987,6 +1077,20 @@ assert_equals "fixture <fixture@example.invalid> / fixture <fixture@example.inva
 assert_equals "" "$(git --git-dir="$FOREIGN_REMOTE" for-each-ref)" \
 	"the foreign push destination was never contacted"
 assert_equals "$OWNED_CONFIG_BEFORE" "$(cat "$OWNED_CONFIG")" 	"the inherited GIT_CONFIG file was left unchanged"
+
+# --- workflow trigger ---------------------------------------------------------
+
+# The fan-out must run on every main push (except report, docs and baseline
+# commits) as well as on manual dispatch. Fixed spelling of the whole on: block,
+# so a dispatch-only workflow fails here instead of silently never bumping.
+start_test "sync workflow runs on main pushes and on dispatch"
+EXPECTED_TRIGGER="on:
+  push:
+    branches: [main]
+    paths-ignore: ['TEST-REPORT.md', 'docs/**', 'Benchmark/baselines/**']
+  workflow_dispatch:"
+WORKFLOW_TEXT="$(tr -d '\r' <"$SCRIPT_DIRECTORY/../.gitea/workflows/sync-consumers.yml")"
+assert_contains "$WORKFLOW_TEXT" "$EXPECTED_TRIGGER" "workflow declares the push trigger with its path filter"
 
 # --- report -----------------------------------------------------------------
 

@@ -59,7 +59,7 @@ have Syntax as their baseline coverage.
 | `scripts/script-syntax.tests.ps1` | Prove script discovery, rejection and non-execution | agent, CI | Syntax; Windows Test script syntax gate |
 | `scripts/smoke-package-linux.sh` | Verify Linux package-native resolution through a local consumer | agent, release, CI | Syntax; Linux package Smoke test the package |
 | `scripts/smoke-package-windows.ps1` | Verify Windows build and RID-less publish package resolution | agent, release, CI | Syntax; Windows Smoke Windows NuGet native resolution |
-| `scripts/sync_consumers.sh` | Publish consumer gitlink updates and pull requests | release, manually dispatched CI | Syntax; Linux sync_consumers.tests.sh |
+| `scripts/sync_consumers.sh` | Publish consumer gitlink updates and pull requests | release, CI on every main push | Syntax; Linux sync_consumers.tests.sh |
 | `scripts/sync_consumers.tests.sh` | Regress consumer discovery and pin updates offline | agent, CI | Syntax; Linux Test the consumer sync script |
 | `scripts/test-agent-instructions.sh` | Restore, build and run managed instruction guards | agent, CI | Syntax; docs job and Linux initialization verification |
 | `scripts/test-coverage-status.ps1` | Regress coverage validation and publication decisions offline | agent, CI | Syntax; Windows Test coverage status guard |

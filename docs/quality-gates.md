@@ -202,7 +202,7 @@ Git/Node fixtures and deterministic heartbeat observations.
 
 The runtime also lists checks that cannot be reproduced offline on either host:
 coverage status publication (Gitea token and historical main-line statuses),
-consumer pin publication (manual workflow writing other repositories), and
+consumer pin publication (workflow writing other repositories), and
 Actions provisioning, cache transfers and artifact uploads. Windows post-clean
 init verification is main-push-only and destructively cleans its CI checkout;
 local PR preflight reports it skipped. `RequiresAdmin` tests remain excluded
