@@ -353,7 +353,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          token: ${{ secrets.MFTLIB_SYNC_TOKEN }}
+          token: ${{ secrets.CI_REPORT_TOKEN }}
       - name: Download the Windows coverage artifact
         # Gitea-native fork, paired with the upload pin: the stock download action cannot read artifacts uploaded by it.
         uses: ChristopherHX/gitea-download-artifact@75635f32b4c1c41c4b3d64e8f85210112ed4c9c7
@@ -369,7 +369,7 @@ jobs:
         id: summary
         shell: pwsh
         env:
-          GITEA_TOKEN: ${{ secrets.MFTLIB_SYNC_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}
           SERVER_URL: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
           SOURCE_COMMIT: ${{ github.sha }}
@@ -410,11 +410,12 @@ jobs:
           if (Test-Path -LiteralPath $native) { $arguments.LinuxNativeSummary = $native }
           & ./scripts/generate-test-report.ps1 @arguments
           'publish=true' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-      - name: Commit the generated report as the bot
+      - name: Commit the generated report as test-report-bot
         if: steps.summary.outputs.publish == 'true'
         shell: pwsh
         env:
           WORKFLOW_RUN: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
           $ErrorActionPreference = 'Stop'
           git add -- TEST-REPORT.md
@@ -422,7 +423,9 @@ jobs:
           git diff --cached --quiet -- TEST-REPORT.md
           if ($LASTEXITCODE -eq 0) { Write-Host 'Report is unchanged.'; exit 0 }
           if ($LASTEXITCODE -ne 1) { throw 'Cannot compare generated report' }
-          git -c user.name=claude-code -c user.email=claude-code@noreply.local commit -m "chore: regenerate TEST-REPORT.md from $env:WORKFLOW_RUN"
+          # The bot's registered address is the server host without its service label.
+          $domain = ([Uri]$env:SERVER_URL).Host.Split('.', 2)[1]
+          git -c user.name=test-report-bot -c "user.email=test-report-bot@$domain" commit -m "chore: regenerate TEST-REPORT.md from $env:WORKFLOW_RUN"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot commit generated report' }
           git push origin HEAD:main
           if ($LASTEXITCODE -ne 0) { throw 'Cannot publish report; main may have advanced' }

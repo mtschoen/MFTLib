@@ -69,6 +69,19 @@ public partial class AgentInstructionsTests
     }
 
     [TestMethod]
+    public void ReportPublication_UsesTheDedicatedReportBotIdentity()
+    {
+        var workflow = RepositoryFiles.Read(".gitea/workflows/test.yml");
+        Assert.IsFalse(workflow.Contains("MFTLIB_SYNC_TOKEN", StringComparison.Ordinal),
+            "Report publication must not use the consumer-sync bot credential.");
+        Assert.IsTrue(workflow.Contains("token: ${{ secrets.CI_REPORT_TOKEN }}", StringComparison.Ordinal));
+        Assert.IsTrue(workflow.Contains("GITEA_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}", StringComparison.Ordinal));
+        Assert.IsTrue(workflow.Contains(
+            "user.name=test-report-bot -c \"user.email=test-report-bot@$domain\"",
+            StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void LinuxCi_UsesFleetDefaultsAndLockedRestores()
     {
         var workflow = RepositoryFiles.Read(".gitea/workflows/test.yml");

@@ -100,8 +100,9 @@ source commit and workflow run id as plain text (no host links, so the tracked f
 and coverage output remain CI artifacts. The generator reuses the coverage status
 helper's invariant percentage validation. Identical inputs produce identical bytes.
 
-Publication reuses `MFTLIB_SYNC_TOKEN`, the consumer-sync bot credential, and commits
-as `claude-code` with `chore: regenerate TEST-REPORT.md from <run id>`. An identical
+Publication uses `CI_REPORT_TOKEN`, the `test-report-bot` credential (the only bot allowed to
+push to a default branch), for the checkout, the push and the workflow-run lookup, and commits
+as `test-report-bot` (address `test-report-bot@<domain>`, the server host without its first label) with `chore: regenerate TEST-REPORT.md from <run id>`. An identical
 file is not committed. A run whose source is no longer main's tip does not publish;
 a concurrent main update makes the ordinary non-force push fail safely. The first
 report is created by CI after this workflow reaches main.
