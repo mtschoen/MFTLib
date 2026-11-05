@@ -11,11 +11,11 @@ public readonly partial record struct FileEntry
     ///     <see cref="FileIndex.Find" /> skips deleted entries.
     ///     Built once per call by walking the parent column upward. This allocates; other property
     ///     reads except <see cref="Name" /> do not. The parent walk is limited to
-    ///     128 parent hops.
+    ///     16383 parent hops, the deepest path NTFS can name in its 32767-unit path limit.
     /// </summary>
     /// <exception cref="InvalidDataException">
     ///     The parent chain does not reach the volume root within
-    ///     128 parent hops.
+    ///     16383 parent hops and is not a cycle, so the block is corrupt.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's root block released.</exception>
     /// <exception cref="InvalidOperationException">The root block has no configured root directory, or a newer file has reused this entry's row slot.</exception>

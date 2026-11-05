@@ -351,19 +351,21 @@ public sealed class RowScanningContractTests
         Assert.AreEqual(0, BorrowCount(index));
     }
 
-    // Rows 6-133 chain one directory per row below the root; row 4300 is a matching file under the last
-    // of them, so its subtree check exceeds the path depth and throws InvalidDataException before the
-    // per-yield token check. Only the root-scan checkpoint at row 4096 can end the scan cancelled.
+    // Row 6 is the first match. From row 4400 the rows chain one directory per row below the root for
+    // MaximumPathDepth rows; row 4300 is a matching file under the last of them, so its subtree check exceeds the
+    // path depth and throws InvalidDataException before the per-yield token check. Only the root-scan checkpoint
+    // at row 4096 can end the scan cancelled.
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task StreamingCancelledAfterTheFirstMatch_StopsAtTheRowCheckpointBeforeTheDeepSentinel(bool rows)
     {
-        const uint chainEnd = 6 + BlockLayout.MaximumPathDepth - 1;
+        const uint chainStart = 4400;
+        const uint chainEnd = chainStart + BlockLayout.MaximumPathDepth - 1;
         const uint sentinel = 4300;
-        await using var index = await OpenSyntheticAsync(4400,
-            row => row == chainEnd + 1 ? "needle.dat" : row == sentinel ? "needle-deep.dat" : $"file{row}.dat",
-            row => row == sentinel ? chainEnd : row is > 6 and <= chainEnd ? row - 1 : 5);
+        await using var index = await OpenSyntheticAsync(chainEnd + 1,
+            row => row == 6 ? "needle.dat" : row == sentinel ? "needle-deep.dat" : $"file{row}.dat",
+            row => row == sentinel ? chainEnd : row is > chainStart and <= chainEnd ? row - 1 : 5);
         using var cancellation = new CancellationTokenSource();
 
         var query = new SearchQuery("needle", Subtree: index.Root(TestContext.CancellationToken));

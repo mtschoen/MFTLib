@@ -161,7 +161,7 @@ public ref struct IndexRowEnumerator
     /// <summary>Advances to the next matching row, moving across root blocks as each is exhausted.</summary>
     /// <exception cref="OperationCanceledException">The token was cancelled; observed before the first row and every 4096 rows.</exception>
     /// <exception cref="ObjectDisposedException">This enumerator or a copy has returned the shared borrow.</exception>
-    /// <exception cref="InvalidDataException">A candidate's parent chain exceeds 128 hops while applying a subtree restriction.</exception>
+    /// <exception cref="InvalidDataException">A candidate's parent chain exceeds 16383 hops while applying a subtree restriction.</exception>
     /// <exception cref="InvalidOperationException">Another copy of this enumerator has advanced.</exception>
     public bool MoveNext()
     {

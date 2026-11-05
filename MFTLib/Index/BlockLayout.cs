@@ -68,8 +68,14 @@ static class BlockLayout
     /// <summary>Largest name entry capacity: the posting offsets region holds one word per entry plus two, int-indexed.</summary>
     internal const uint MaximumNameEntryCapacity = int.MaxValue - 2;
 
-    /// <summary>Mirrors the native resolver's cap so a corrupt parent column cannot loop forever.</summary>
-    public const int MaximumPathDepth = 128;
+    /// <summary>The longest path NTFS can name, in UTF-16 code units.</summary>
+    internal const int MaximumPathUnits = 32767;
+
+    /// <summary>
+    ///     The deepest parent chain NTFS can name: every component is at least one unit plus its separator, so the
+    ///     longest path holds at most this many components. A longer chain is corrupt, never a real tree.
+    /// </summary>
+    public const int MaximumPathDepth = (MaximumPathUnits - 1) / 2;
 
     /// <summary>
     ///     The parent row of a row with no verified parent: a freed or deleted record whose parent chain could not be

@@ -9,13 +9,10 @@ namespace MFTLib;
 ///     sequence the child's name referenced, or exactly one higher when the parent was freed too (NTFS bumps the
 ///     sequence when it frees a record, and 16-bit arithmetic wraps). The walk is at most
 ///     <see cref="BlockLayout.MaximumPathDepth" /> components, never revisits a record and rebuilds to a path of at
-///     most <see cref="MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
+///     most <see cref="BlockLayout.MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
 /// </summary>
 sealed class FreedRowTrust
 {
-    // The longest path NTFS can name, in UTF-16 code units.
-    internal const int MaximumPathUnits = 32767;
-
     const uint RootRecord = 5;
 
     readonly ushort[] _parentSequences;
@@ -87,20 +84,18 @@ sealed class FreedRowTrust
             return false;
         }
 
-        Span<uint> visited = stackalloc uint[BlockLayout.MaximumPathDepth];
-        var visitedCount = 0;
-        var depth = 0;
+        var visited = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
         long units = 0;
         var current = origin;
         var rowCount = Block.RowCount;
-        while (current != RootRecord && current < rowCount && depth < BlockLayout.MaximumPathDepth)
+        while (current != RootRecord && current < rowCount && visited.Count < BlockLayout.MaximumPathDepth)
         {
-            if (visited[..visitedCount].Contains(current))
+            if (visited.Contains(current))
             {
                 break;
             }
 
-            visited[visitedCount++] = current;
+            visited.Add(current);
             var nameLength = NamePool.ReadRowName(Block, current).Length;
             if (nameLength == 0)
             {
@@ -108,7 +103,6 @@ sealed class FreedRowTrust
             }
 
             units += nameLength;
-            depth++;
             var parent = Block.Rows[(int)current].ParentRow;
             if (!TrustsParentHop(current, parent))
             {
@@ -119,7 +113,7 @@ sealed class FreedRowTrust
         }
 
         // The separators between the components are part of the path.
-        return current == RootRecord && units + depth - 1 <= MaximumPathUnits;
+        return current == RootRecord && units + visited.Count - 1 <= BlockLayout.MaximumPathUnits;
     }
 
     bool TrustsParentHop(uint child, uint parent)

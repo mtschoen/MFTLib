@@ -22,7 +22,7 @@
       `IsValid` and `IsDisposed` use stored identity/state and remain available after
       release. `ToString()` also remains safe and renders a disposed marker after
       release. Row-column getters access the mapped row; `Path` (and `ToString()`
-      when formatting a live path) follows the parent chain for at most 128 hops.
+      when formatting a live path) follows the parent chain for at most 16383 hops, the deepest path NTFS can name. A journal change whose chain cannot be rendered within that limit reports the bare file name instead of faulting the watch.
       A borrow takes ViewBorrows first and the MappedBlock's RootBlockRelease second, returning in reverse.
       DisposeAsync closes the view and cancels its linked queries and waits, then drains its own current/retired
       borrows. Last detach drains and unmaps the scan's blocks. A suspended `Enumerate` enumerator holds its borrow between yields, so

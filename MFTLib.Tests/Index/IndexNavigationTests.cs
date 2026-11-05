@@ -138,7 +138,7 @@ public partial class IndexNavigationTests
     [TestMethod]
     public async Task Membership_WhenTheCappedChainEndsAtARoot_ReturnsFalse()
     {
-        using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
+        using var builder = SyntheticBlockBuilder.ForDeepChains('Z');
         var root = builder.AddRoot();
         var unrelated = builder.AddRow("unrelated", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
         var candidate = root;
@@ -260,7 +260,7 @@ public partial class IndexNavigationTests
     [TestMethod]
     public async Task Path_AtTheDepthCap_ResolvesTheCompletePath()
     {
-        using var builder = new SyntheticBlockBuilder('X', slotCapacity: 512, namePoolCapacity: 16384);
+        using var builder = SyntheticBlockBuilder.ForDeepChains('X');
         var root = builder.AddRoot();
         var parent = root;
         for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)
@@ -275,7 +275,7 @@ public partial class IndexNavigationTests
         {
             var path = FileEntry.Create(snapshot[0], parent).Path;
             Assert.IsTrue(path.StartsWith(Path.Combine(TestRootDirectory.For('X'), "d0", "d1"), StringComparison.Ordinal));
-            Assert.IsTrue(path.EndsWith($"{Path.DirectorySeparatorChar}d127", StringComparison.Ordinal));
+            Assert.IsTrue(path.EndsWith($"{Path.DirectorySeparatorChar}d{BlockLayout.MaximumPathDepth - 1}", StringComparison.Ordinal));
             Assert.AreEqual(BlockLayout.MaximumPathDepth, path[TestRootDirectory.For('X').TrimEnd(Path.DirectorySeparatorChar).Length..]
                 .Count(character => character == Path.DirectorySeparatorChar));
         }
@@ -288,7 +288,7 @@ public partial class IndexNavigationTests
     [TestMethod]
     public async Task Path_DeeperThanTheDepthCap_ThrowsInvalidDataException()
     {
-        using var builder = new SyntheticBlockBuilder('X', slotCapacity: 512, namePoolCapacity: 16384);
+        using var builder = SyntheticBlockBuilder.ForDeepChains('X');
         var root = builder.AddRoot();
         var parent = root;
         for (var level = 0; level <= BlockLayout.MaximumPathDepth; level++)
@@ -314,7 +314,7 @@ public partial class IndexNavigationTests
     [TestMethod]
     public async Task Membership_AncestorExactlyAtTheDepthCap_ReturnsTrue()
     {
-        using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
+        using var builder = SyntheticBlockBuilder.ForDeepChains('Z');
         var root = builder.AddRoot();
         var candidate = root;
         for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)

@@ -21,6 +21,9 @@ namespace MFTLib.Index;
 ///     rename inside one open cycle (NTFS writes one record pair per rename and requires no
 ///     close between renames) carries a new name or parent and classifies again; only the
 ///     repetition of the applied name and parent is the echo.
+///     Change paths come from <see cref="IndexNavigation.BuildChangePath" />, which never fails on content: a parent
+///     chain that cannot be rendered degrades that one change to the bare name, so the batch still commits and the
+///     cursor still advances.
 /// </summary>
 sealed class JournalMutator
 {
@@ -170,7 +173,7 @@ sealed class JournalMutator
         // the tombstone never walks a parent chain that may have been renamed or reused since.
         var path = (flags & RowFlags.DeletePending) != 0
             ? NamePool.ReadRowName(Writer.Block, rowIndex).ToString()
-            : IndexNavigation.BuildPath(rootBlock, rowIndex);
+            : IndexNavigation.BuildChangePath(rootBlock, rowIndex);
         Writer.MarkTombstone(rowIndex);
         return new FileChange(FileChangeKind.Deleted, FileEntry.Create(rootBlock, rowIndex), path,
             entry.TimestampUtc);
@@ -191,7 +194,7 @@ sealed class JournalMutator
         if (hydrated)
         {
             return new FileChange(FileChangeKind.Created, FileEntry.Create(rootBlock, rowIndex),
-                IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
+                IndexNavigation.BuildChangePath(rootBlock, rowIndex), entry.TimestampUtc);
         }
 
         return ApplyRename(rootBlock, entry, rowIndex, classification, ref rowMutated);
@@ -218,13 +221,13 @@ sealed class JournalMutator
         Writer.InvalidateDeletedDescendants(rowIndex);
 
         return new FileChange(FileChangeKind.Created, FileEntry.Create(rootBlock, rowIndex),
-            IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
+            IndexNavigation.BuildChangePath(rootBlock, rowIndex), entry.TimestampUtc);
     }
 
     FileChange? ApplyRename(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
         UsnReason classification, ref bool rowMutated)
     {
-        var previousPath = IndexNavigation.BuildPath(rootBlock, rowIndex);
+        var previousPath = IndexNavigation.BuildChangePath(rootBlock, rowIndex);
         if (_isDeletePendingRename(Writer.Block, entry.ParentRecordNumber, entry.FileName))
         {
             if (Writer.MarkDeletePending(rowIndex, previousPath))
@@ -237,7 +240,7 @@ sealed class JournalMutator
         {
             Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
             return new FileChange(FileChangeKind.Renamed,
-                FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildPath(rootBlock, rowIndex),
+                FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildChangePath(rootBlock, rowIndex),
                 entry.TimestampUtc, previousPath);
         }
 
@@ -264,7 +267,7 @@ sealed class JournalMutator
         Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
         Hooks._beforeModificationPath?.Invoke();
         return new FileChange(FileChangeKind.Modified, FileEntry.Create(rootBlock, rowIndex),
-            IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
+            IndexNavigation.BuildChangePath(rootBlock, rowIndex), entry.TimestampUtc);
     }
 
     static RowFreshness FreshnessFor(UsnReason classification)

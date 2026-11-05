@@ -52,7 +52,7 @@ public sealed partial class FileIndex
     /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
-    ///     128 parent hops while applying the subtree restriction
+    ///     16383 parent hops while applying the subtree restriction
     ///     (<see cref="SearchQuery.Subtree" />).
     /// </exception>
     /// <exception cref="ArgumentNullException"><paramref name="query" /> is null.</exception>
@@ -93,7 +93,7 @@ public sealed partial class FileIndex
     /// </returns>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
-    ///     128 parent hops while applying the subtree
+    ///     16383 parent hops while applying the subtree
     ///     restriction (<see cref="SearchQuery.Subtree" />). Where <see cref="Search" /> throws
     ///     it before returning, the streaming form throws it from the MoveNext that reaches
     ///     the candidate.
@@ -149,7 +149,7 @@ public sealed partial class FileIndex
     /// </exception>
     /// <exception cref="ObjectDisposedException">At GetEnumerator: the index has been disposed, or the subtree anchor's own index has. At Current or MoveNext: this enumeration's shared borrow has been returned.</exception>
     /// <exception cref="OperationCanceledException">At GetEnumerator or MoveNext: caller cancellation or index disposal cancels the enumeration.</exception>
-    /// <exception cref="InvalidDataException">At MoveNext: a candidate's parent chain does not resolve within 128 parent hops while applying <see cref="SearchQuery.Subtree" />.</exception>
+    /// <exception cref="InvalidDataException">At MoveNext: a candidate's parent chain does not resolve within 16383 parent hops while applying <see cref="SearchQuery.Subtree" />.</exception>
     public IndexRowEnumerable EnumerateRows(SearchQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);

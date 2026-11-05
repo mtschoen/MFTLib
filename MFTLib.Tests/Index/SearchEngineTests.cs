@@ -185,7 +185,7 @@ public class SearchEngineTests
     [TestMethod]
     public async Task Search_Under_WhenCandidateExceedsTheDepthCap_ThrowsInvalidDataException()
     {
-        using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
+        using var builder = SyntheticBlockBuilder.ForDeepChains('Z');
         var root = builder.AddRoot();
         var parent = root;
         for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)

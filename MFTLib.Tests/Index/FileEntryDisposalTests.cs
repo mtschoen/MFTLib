@@ -72,7 +72,7 @@ public class FileEntryDisposalTests
     [TestMethod]
     public async Task ToString_OnAnEntryPastTheMaximumPathDepth_FallsBackToTheNameAndKey()
     {
-        using var builder = new SyntheticBlockBuilder();
+        using var builder = SyntheticBlockBuilder.ForDeepChains('T');
         var parent = builder.AddRoot();
         for (var depth = 0; depth <= BlockLayout.MaximumPathDepth; depth++)
         {

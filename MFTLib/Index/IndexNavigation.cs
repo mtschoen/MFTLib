@@ -4,7 +4,8 @@ namespace MFTLib.Index;
 ///     Walks the parent column. The upward walk mirrors the native path resolver: it stops at a
 ///     row whose parent is itself, caps at <see cref="BlockLayout.MaximumPathDepth" />, and
 ///     never revisits a row already seen on this walk, so a cyclic parent column yields a
-///     truncated path instead of a hang while depth exhaustion throws <see cref="InvalidDataException" />.
+///     truncated path instead of a hang. Depth exhaustion throws <see cref="InvalidDataException" />
+///     from <see cref="BuildPath" /> and degrades to the bare name in <see cref="BuildChangePath" />.
 /// </summary>
 static class IndexNavigation
 {
@@ -32,11 +33,34 @@ static class IndexNavigation
     ///     The root key identifies the indexed root and is not a host path.
     ///     A broken parent link leaves the collected chain unrooted, including its descendants.
     /// </summary>
+    /// <exception cref="InvalidDataException">
+    ///     The parent chain does not end within <see cref="BlockLayout.MaximumPathDepth" /> hops and is not a cycle.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     ///     The root block has no configured root directory, so there is nothing to root the name
     ///     chain in. Every production block sets one; a synthetic test block need not.
     /// </exception>
     internal static string BuildPath(RootBlock rootBlock, uint rowIndex)
+    {
+        return TryBuildPath(rootBlock, rowIndex)
+               ?? throw new InvalidDataException(
+                   $"Parent chain for row {rowIndex} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
+    }
+
+    /// <summary>
+    ///     The path a journal change reports. A parent chain that does not end within
+    ///     <see cref="BlockLayout.MaximumPathDepth" /> hops cannot be rendered; that change reports the row's bare
+    ///     name, as a detached row does, so one corrupt chain degrades one change instead of failing the batch.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The root block has no configured root directory.</exception>
+    internal static string BuildChangePath(RootBlock rootBlock, uint rowIndex)
+    {
+        return TryBuildPath(rootBlock, rowIndex)
+               ?? NamePool.ReadRowName(rootBlock.Block, rowIndex).ToString();
+    }
+
+    // The rendered path, or null when the parent chain does not end within the depth limit.
+    static string? TryBuildPath(RootBlock rootBlock, uint rowIndex)
     {
         if (rowIndex < rootBlock.Block.Header.RowCount)
         {
@@ -47,12 +71,16 @@ static class IndexNavigation
             }
         }
 
-        Span<uint> segments = stackalloc uint[BlockLayout.MaximumPathDepth];
-        var count = CollectSegments(rootBlock.Block, rowIndex, segments, out var isDetached);
+        var segments = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
+        if (!TryCollectSegments(rootBlock.Block, rowIndex, ref segments, out var isDetached))
+        {
+            return null;
+        }
+
         // Nothing above a broken parent link is verified, including for descendants of that link.
         if (isDetached)
         {
-            return rootBlock.Kind.JoinPath(rootBlock.Block, string.Empty, segments[..count]);
+            return rootBlock.Kind.JoinPath(rootBlock.Block, string.Empty, segments.Values);
         }
 
         if (rootBlock.RootDirectoryPath is not { } rootDirectoryPath)
@@ -61,7 +89,7 @@ static class IndexNavigation
                 $"Root block {rootBlock.Root} has no configured root directory to build a path from.");
         }
 
-        return rootBlock.Kind.JoinPath(rootBlock.Block, rootDirectoryPath, segments[..count]);
+        return rootBlock.Kind.JoinPath(rootBlock.Block, rootDirectoryPath, segments.Values);
     }
 
     /// <summary>
@@ -103,34 +131,34 @@ static class IndexNavigation
         return children;
     }
 
-    static int CollectSegments(BlockFile block, uint rowIndex, Span<uint> segments, out bool isDetached)
+    // Collects the name chain upward until a root, an out-of-range parent or a repeated row ends it; false when the
+    // chain is still made of new rows after the depth limit.
+    static bool TryCollectSegments(BlockFile block, uint rowIndex, ref ParentChainBuffer segments,
+        out bool isDetached)
     {
-        Span<uint> visited = stackalloc uint[BlockLayout.MaximumPathDepth];
+        var visited = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
         var current = rowIndex;
         var rowCount = block.Header.RowCount;
-        isDetached = false;
-
-        for (var depth = 0; depth < BlockLayout.MaximumPathDepth; depth++)
+        for (var depth = 0; depth <= BlockLayout.MaximumPathDepth; depth++)
         {
-            if (current >= rowCount || visited[..depth].Contains(current) || IsRootRow(block, current))
+            if (current >= rowCount || visited.Contains(current) || IsRootRow(block, current))
             {
                 isDetached = current >= rowCount;
-                return depth;
+                return true;
             }
 
-            visited[depth] = current;
+            if (depth == BlockLayout.MaximumPathDepth)
+            {
+                break;
+            }
+
+            visited.Add(current);
             // Capture the descriptor once: names remain immutable even if the row is renamed before copying.
-            segments[depth] = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in block.Rows[(int)current]));
+            segments.Add(FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in block.Rows[(int)current])));
             current = block.Rows[(int)current].ParentRow;
         }
 
-        if (current >= rowCount || visited.Contains(current) || IsRootRow(block, current))
-        {
-            isDetached = current >= rowCount;
-            return segments.Length;
-        }
-
-        throw new InvalidDataException(
-            $"Parent chain for row {rowIndex} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
+        isDetached = false;
+        return false;
     }
 }

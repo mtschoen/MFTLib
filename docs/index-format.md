@@ -368,7 +368,7 @@ Freed records are opt-in: `MftScanOptions.IncludeFreed` (default false) makes a 
 live volume, direct or through the broker, import them, and the dump source never does. A freed
 row's parent chain verifies when every parent through the root is a directory whose stored
 sequence equals the sequence the child's name referenced, or is one higher when that parent was
-freed too (16-bit wraparound), within 128 components and without a cycle. Queries return
+freed too (16-bit wraparound), within 16383 components and without a cycle. Queries return
 deleted rows only when `SearchQuery.IncludeDeleted` is true; `FileIndex.Find`, `FileIndex.Root`
 and `FileEntry.Children` return live rows only.
 

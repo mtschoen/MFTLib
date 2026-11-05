@@ -324,14 +324,15 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
     }
 
-    // 127 freed directories and the freed file make 128 components, which still resolve; one more does not.
+    // One-unit names keep the path length inside its limit at the depth limit, so depth alone decides: the freed
+    // directories and the freed file make MaximumPathDepth components, which still resolve; one more does not.
     [TestMethod]
-    [DataRow(127, true)]
-    [DataRow(128, false)]
+    [DataRow(BlockLayout.MaximumPathDepth - 1, true)]
+    [DataRow(BlockLayout.MaximumPathDepth, false)]
     public void TrustRule_ComponentLimit(int directoryCount, bool trusted)
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
-            slotCapacity: 256, namePoolCapacity: 4096, volumeSerial: 123, rootRow: 5);
+            slotCapacity: BlockLayout.MaximumPathDepth + 64, namePoolCapacity: 4096, volumeSerial: 123, rootRow: 5);
         var records = new List<MftRecord> { Root() };
         for (var index = 0; index < directoryCount; index++)
         {
@@ -340,7 +341,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
                 index == 0 ? RootSequence : (ushort)14, isDirectory: true));
         }
 
-        records.Add(Freed(13, (ulong)(19 + directoryCount), "file.txt", 14, parentSequence: 14));
+        records.Add(Freed(13, (ulong)(19 + directoryCount), "f", 14, parentSequence: 14));
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
             CancellationToken.None);
@@ -372,7 +373,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             CancellationToken.None);
 
         var expectedUnits = (300L * componentCount) + (componentCount - 1);
-        Assert.AreEqual(expectedUnits <= FreedRowTrust.MaximumPathUnits, trusted,
+        Assert.AreEqual(expectedUnits <= BlockLayout.MaximumPathUnits, trusted,
             "The case table agrees with the limit it exercises.");
         Assert.AreEqual(trusted ? (uint)(19 + componentCount - 1) : BlockLayout.DetachedParentRow,
             block.Rows[13].ParentRow);

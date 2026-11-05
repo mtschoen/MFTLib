@@ -121,6 +121,10 @@ sealed class SyntheticBlockBuilder : IDisposable
         _block.Flush(null);
     }
 
+    /// <summary>A builder with room for a parent chain past <see cref="BlockLayout.MaximumPathDepth" /> of distinct names.</summary>
+    public static SyntheticBlockBuilder ForDeepChains(char driveLetter) =>
+        new(driveLetter, slotCapacity: BlockLayout.MaximumPathDepth + 64, namePoolCapacity: 1 << 18);
+
     public static SyntheticBlockBuilder MftShaped()
     {
         var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);

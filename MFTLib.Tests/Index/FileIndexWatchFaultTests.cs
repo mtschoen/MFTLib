@@ -45,6 +45,37 @@ public class FileIndexWatchFaultTests
     }
 
     [TestMethod]
+    public async Task NestedTreeDeeperThan128Levels_AppliesWithoutAFaultAndKeepsTheRootWatching()
+    {
+        const uint firstDirectoryRecord = 10;
+        const int nestedDirectoryCount = 140;
+        const uint shallowFileRecord = firstDirectoryRecord + nestedDirectoryCount;
+        using var harness = new WatchHarness('T');
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        var entries = new List<UsnJournalEntry>();
+        for (var level = 0u; level < nestedDirectoryCount; level++)
+        {
+            entries.Add(WatchHarness.Create(firstDirectoryRecord + level, "d",
+                parentRecordNumber: level == 0 ? 5u : firstDirectoryRecord + level - 1));
+        }
+
+        entries.Add(WatchHarness.Create(shallowFileRecord, "shallow.txt"));
+
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(entries, WatchHarness.JournalIdentifier, NextUsn: 5000));
+
+        Assert.IsEmpty(harness.Faults);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
+        Assert.AreNotEqual(WatchState.Faulted, harness.RootFor('T').Watch.State);
+        Assert.AreNotEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
+        Assert.HasCount(nestedDirectoryCount + 1, harness.Changes);
+        Assert.IsTrue(harness.Changes.All(change => !string.IsNullOrEmpty(change.Path)));
+        Assert.AreEqual(5000L, harness.BlockFor('T').Header.UsnNextUsn);
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "no recovery restarted the watch");
+
+        await harness.IndexFor('T').StopWatchingAsync(Token);
+    }
+
+    [TestMethod]
     public async Task DriveFailure_IsReportedAsADriveFaultCarryingTheDriveLetter()
     {
         using var harness = new WatchHarness('T', 'U');

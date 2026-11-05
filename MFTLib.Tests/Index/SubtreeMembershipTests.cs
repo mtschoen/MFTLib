@@ -9,6 +9,9 @@ public class SubtreeMembershipTests
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
     const RowFlags Directory = RowFlags.InUse | RowFlags.Directory;
 
+    // Past the one-byte cached distance (255) and past a climb's 128-row stack storage.
+    const int DeeperThanTheCachedDistance = 300;
+
     static BlockFile Open(SyntheticBlockBuilder builder)
     {
         builder.Complete(Moment);
@@ -61,13 +64,13 @@ public class SubtreeMembershipTests
         var detached = builder.AddRow("detached", (uint)rows.Count + 900, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         var cycleFirst = builder.AddRow("cycleA", detached + 2, Directory, 0, Moment, sequenceNumber: 0);
         var cycleSecond = builder.AddRow("cycleB", cycleFirst, Directory, 0, Moment, sequenceNumber: 0);
-        // A two-row cycle entered by a short tail (answered outside, cycle detected within the cap) and by a long tail
-        // (still going after the cap, so it throws), plus the chain below.
+        // A two-row cycle entered by a short tail (the cycle is found within the climb's stack storage) and by a long
+        // tail (found only past it), plus a chain below the root deeper than a cached distance can count.
         var shortTail = new List<uint>();
         var longTail = new List<uint>();
         var shortParent = cycleSecond;
         var longParent = cycleSecond;
-        for (var depth = 0; depth < 140; depth++)
+        for (var depth = 0; depth < DeeperThanTheCachedDistance; depth++)
         {
             longParent = builder.AddRow($"lt{depth}", longParent, Directory, 0, Moment, sequenceNumber: 0);
             longTail.Add(longParent);
@@ -80,7 +83,7 @@ public class SubtreeMembershipTests
 
         var chain = new List<uint>();
         var parent = root;
-        for (var depth = 0; depth < 130; depth++)
+        for (var depth = 0; depth < DeeperThanTheCachedDistance; depth++)
         {
             parent = builder.AddRow($"c{depth}", parent, Directory, 0, Moment, sequenceNumber: 0);
             chain.Add(parent);
@@ -88,7 +91,7 @@ public class SubtreeMembershipTests
 
         using var block = Open(builder);
         var rowCount = block.Header.RowCount;
-        uint[] anchors = [root, rows[3], rows[100], cycleFirst, chain[10], shortTail[5]];
+        uint[] anchors = [root, rows[3], rows[100], cycleFirst, chain[10], chain[270], shortTail[5]];
         var ascending = Enumerable.Range(0, (int)rowCount).Select(row => (uint)row).ToArray();
         var descending = ascending.Reverse().ToArray();
         var shuffled = ascending.OrderBy(row => (row * 2654435761u) % 4093).ToArray();
@@ -115,6 +118,42 @@ public class SubtreeMembershipTests
 
         Assert.IsTrue(cycleSecond > cycleFirst);
         Assert.IsNotEmpty(longTail);
+    }
+
+    // The chain ends exactly at the cap one row in, and runs past it below that; the cache must give the same answer
+    // whether the shallow rows were decided first or the deep ones were.
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void Contains_PastTheDepthCap_ThrowsWhicheverRowIsAskedFirst(bool shallowFirst)
+    {
+        using var builder = SyntheticBlockBuilder.ForDeepChains('Z');
+        var root = builder.AddRoot();
+        var chain = new List<uint>();
+        var parent = root;
+        for (var depth = 0; depth < BlockLayout.MaximumPathDepth + 2; depth++)
+        {
+            parent = builder.AddRow($"c{depth}", parent, Directory, 0, Moment, sequenceNumber: 0);
+            chain.Add(parent);
+        }
+
+        using var block = Open(builder);
+        using var membership = new SubtreeMembership(block, root);
+        uint[] withinTheCap = [chain[10], chain[DeeperThanTheCachedDistance], chain[BlockLayout.MaximumPathDepth - 1]];
+        uint[] pastTheCap = [chain[BlockLayout.MaximumPathDepth], chain[BlockLayout.MaximumPathDepth + 1]];
+        uint[] order = shallowFirst ? [.. withinTheCap, .. pastTheCap] : [.. pastTheCap, .. withinTheCap];
+        foreach (var row in order)
+        {
+            if (withinTheCap.Contains(row))
+            {
+                Assert.IsTrue(membership.Contains(row), $"row {row} is within the cap");
+            }
+            else
+            {
+                Assert.ThrowsExactly<InvalidDataException>(() => membership.Contains(row),
+                    $"row {row} is deeper than the cap");
+            }
+        }
     }
 
     [TestMethod]

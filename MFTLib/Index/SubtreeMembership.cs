@@ -22,6 +22,10 @@ namespace MFTLib.Index;
 /// </remarks>
 sealed class SubtreeMembership : IDisposable
 {
+    // A cached distance this large means "at least this far": a byte per row keeps the cache small, and only chains
+    // deeper than this, which are rare, climb uncached past it.
+    const byte SaturatedDistance = byte.MaxValue;
+
     readonly BlockFile _block;
     readonly uint _anchorRow;
     readonly uint _rowCount;
@@ -67,35 +71,47 @@ sealed class SubtreeMembership : IDisposable
     /// <exception cref="InvalidDataException">
     ///     The parent chain from <paramref name="row" /> does not end within
     ///     <see cref="BlockLayout.MaximumPathDepth" /> hops and is not a cycle. The verdict cache stores each row's
-    ///     distance to its chain's end, so this does not depend on the order rows are asked in.
+    ///     distance to its chain's end (saturating, so a deeper row climbs uncached), so this does not depend on the
+    ///     order rows are asked in.
     /// </exception>
     internal bool Contains(uint row) => (_outer is null || _outer.Contains(row)) && ContainsBelowAnchor(row);
 
     bool ContainsBelowAnchor(uint row)
     {
+        // The rows this climb visited, to record one verdict for all of them once it is known.
+        var visited = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
+        if (!TryClimbToVerdict(row, ref visited, out var verdict, out var endDistance) ||
+            endDistance > BlockLayout.MaximumPathDepth)
+        {
+            // A climb that ran out of hops, met a cycle, reached a row whose cached distance saturated, or whose
+            // cached tail makes the chain longer than the cap is answered by one uncached climb, so the answer (a
+            // cycle is outside, a chain deeper than the cap throws) never depends on which rows were asked first,
+            // and nothing is recorded from it.
+            return ClimbWithoutCache(row);
+        }
+
+        Record(visited.Values, verdict, endDistance);
+        return verdict;
+    }
+
+    // Climbs until the anchor, a top or a row with a cached verdict decides; false when the climb cannot decide.
+    // endDistance is the hops from the start to where the climb stopped, plus the stopping row's cached distance.
+    bool TryClimbToVerdict(uint row, ref ParentChainBuffer visited, out bool verdict, out int endDistance)
+    {
         var known = _known ?? throw new ObjectDisposedException(nameof(SubtreeMembership));
         var inside = _inside ?? throw new ObjectDisposedException(nameof(SubtreeMembership));
         var depth = _depth ?? throw new ObjectDisposedException(nameof(SubtreeMembership));
-
-        // The rows this climb visited, to record one verdict for all of them once it is known.
-        Span<uint> visited = stackalloc uint[BlockLayout.MaximumPathDepth + 1];
-        var visitedCount = 0;
         var current = row;
-        var verdict = false;
-        var decided = false;
-
-        // Hops from the start to where the climb stopped, plus the stopping row's own cached distance to its chain's end.
-        var endDistance = 0;
-
+        verdict = false;
+        endDistance = 0;
         for (var hops = 0; hops <= BlockLayout.MaximumPathDepth; hops++)
         {
             if (current == _anchorRow)
             {
-                visited[visitedCount++] = current;
+                visited.Add(current);
                 verdict = true;
-                decided = true;
                 endDistance = hops;
-                break;
+                return true;
             }
 
             if (current < _rowCount)
@@ -105,50 +121,37 @@ sealed class SubtreeMembership : IDisposable
                 if ((Volatile.Read(ref known[word]) & bit) != 0)
                 {
                     verdict = (Volatile.Read(ref inside[word]) & bit) != 0;
-                    decided = true;
                     endDistance = hops + depth[current];
-                    break;
+                    return depth[current] != SaturatedDistance;
                 }
             }
 
-            visited[visitedCount++] = current;
-            if (hops == BlockLayout.MaximumPathDepth)
+            // Past the stack storage a repeat is a cycle; a shorter cycle is caught once the climb reaches that length.
+            if (hops == BlockLayout.MaximumPathDepth ||
+                (visited.Count >= ParentChainBuffer.StackCapacity && visited.Contains(current)))
             {
-                endDistance = hops;
-                break;
+                return false;
             }
 
+            visited.Add(current);
             _parentReads++;
             if (!IndexNavigation.TryGetParentRow(_block, current, out var parent))
             {
-                verdict = false;
-                decided = true;
                 endDistance = hops;
-                break;
+                return true;
             }
 
             current = parent;
         }
 
-        // A climb that ran out of hops, or whose cached tail makes the chain longer than the cap, is the rare corrupt
-        // case. It is answered by one uncached climb, so the answer (a cycle is outside, a chain deeper than the cap
-        // throws) never depends on which rows were asked first, and nothing is recorded from it.
-        if (!decided || endDistance > BlockLayout.MaximumPathDepth)
-        {
-            return ClimbWithoutCache(row);
-        }
-
-        Record(visited[..visitedCount], verdict, endDistance);
-        return verdict;
+        return false;
     }
 
     // The uncached climb: the anchor within the cap is inside, a top is outside, a row repeating within the cap is a
-    // cycle and outside, and a chain still made of new rows after the cap throws. The repeat check is a linear scan of
-    // the rows seen so far, affordable because only corrupt chains reach it.
+    // cycle and outside, and a chain still made of new rows after the cap throws.
     bool ClimbWithoutCache(uint row)
     {
-        Span<uint> seen = stackalloc uint[BlockLayout.MaximumPathDepth + 1];
-        var seenCount = 0;
+        var seen = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
         var current = row;
         for (var hops = 0; hops <= BlockLayout.MaximumPathDepth; hops++)
         {
@@ -157,12 +160,12 @@ sealed class SubtreeMembership : IDisposable
                 return true;
             }
 
-            if (seen[..seenCount].Contains(current))
+            if (seen.Contains(current))
             {
                 return false;
             }
 
-            seen[seenCount++] = current;
+            seen.Add(current);
             if (hops == BlockLayout.MaximumPathDepth)
             {
                 break;
@@ -183,7 +186,8 @@ sealed class SubtreeMembership : IDisposable
             $"Parent chain for row {row} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
     }
 
-    // Each visited row's distance to the chain's end is the total minus its own position.
+    // Each visited row's distance to the chain's end is the total minus its own position, saturating at
+    // SaturatedDistance, which reads back as "at least this far" and sends a later climb through it uncached.
     void Record(ReadOnlySpan<uint> rows, bool verdict, int endDistance)
     {
         var known = _known ?? throw new ObjectDisposedException(nameof(SubtreeMembership));
@@ -197,7 +201,7 @@ sealed class SubtreeMembership : IDisposable
                 continue;
             }
 
-            depth[visitedRow] = (byte)Math.Max(endDistance - position, 0);
+            depth[visitedRow] = (byte)Math.Clamp(endDistance - position, 0, SaturatedDistance);
             var bit = 1UL << (int)(visitedRow & 63);
             var word = (int)(visitedRow >> 6);
             if (verdict)
