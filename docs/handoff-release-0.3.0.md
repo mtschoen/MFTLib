@@ -217,26 +217,45 @@ A different machine's result is not a comparable release-performance verdict.
 Investigate failed comparisons rather than replacing a reference to hide a
 regression. These measurements are attended release work, not a CI timing gate.
 
-This recipe saves the two compact `--out` reports outside the checkout, combines
-their report sections into one candidate, compares all four scenarios, and
+This recipe saves the three compact `--out` reports outside the checkout, combines
+their report sections into one candidate, compares all eight scenarios, and
 copies only the accepted small report into the release convention without
-capturing console logs:
+capturing console logs. The reference is the newest committed release report:
+the last `Benchmark/baselines/*.txt` in ordinal filename order, so the
+`<date>-<short sha>` name decides and the result is deterministic (commit at most
+one report per date, since same-date names order by their short sha). A scenario
+the reference does not contain yet (the four `mft-enumeration-*` blocks until the
+first report that includes them is committed) is reported as having no reference
+rather than compared; the release report then becomes its first reference:
 
 ```powershell
 $benchmark = './Benchmark/bin/x64/Release/net10.0/Benchmark.exe'
+$baselineNames = [string[]] @(Get-ChildItem -LiteralPath 'Benchmark/baselines' -Filter '*.txt' -File | ForEach-Object Name)
+if ($baselineNames.Count -eq 0) { throw 'No committed release report to compare against.' }
+[Array]::Sort($baselineNames, [StringComparer]::Ordinal)
+$reference = Join-Path 'Benchmark/baselines' $baselineNames[-1]
 $reportDirectory = Join-Path ([IO.Path]::GetTempPath()) ('mftlib-release-benchmark-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $reportDirectory | Out-Null
 $indexReport = Join-Path $reportDirectory 'index.txt'
 $walkReport = Join-Path $reportDirectory 'walk.txt'
+$mftReport = Join-Path $reportDirectory 'mft.txt'
 $candidateReport = Join-Path $reportDirectory 'release.txt'
 & $benchmark index --synthetic 1000000 --iterations 5 --out $indexReport
 if ($LASTEXITCODE -ne 0) { throw 'Index benchmark failed.' }
 & $benchmark enumeration-walk --directories 32768 --files-per-directory 1 --iterations 5 --out $walkReport
 if ($LASTEXITCODE -ne 0) { throw 'Enumeration benchmark failed.' }
-$reportText = (Get-Content -LiteralPath $indexReport -Raw).TrimEnd() + [Environment]::NewLine + (Get-Content -LiteralPath $walkReport -Raw)
+& $benchmark mft-enumeration --synthetic 1000000 --iterations 5 --out $mftReport
+if ($LASTEXITCODE -ne 0) { throw 'MFT enumeration benchmark failed.' }
+$reportText = (@($indexReport, $walkReport, $mftReport) | ForEach-Object { (Get-Content -LiteralPath $_ -Raw).TrimEnd() }) -join [Environment]::NewLine
 Set-Content -LiteralPath $candidateReport -Value $reportText -Encoding utf8
-foreach ($scenario in @('exact-search', 'substring-search', 'enumeration-walk-sequential', 'enumeration-walk-parallel')) {
-    & $benchmark compare Benchmark/baselines/2026-11-01-94cf8eaf.txt $candidateReport $scenario
+$referenceText = Get-Content -LiteralPath $reference -Raw
+foreach ($scenario in @('exact-search', 'substring-search', 'enumeration-walk-sequential', 'enumeration-walk-parallel',
+        'mft-enumeration-scan', 'mft-enumeration-rows', 'mft-enumeration-exact-name', 'mft-enumeration-substring-name')) {
+    if (-not $referenceText.Contains("--- $scenario ---")) {
+        Write-Output "$scenario has no reference in $reference; this release report becomes its first."
+        continue
+    }
+    & $benchmark compare $reference $candidateReport $scenario
     if ($LASTEXITCODE -ne 0) { throw "Release comparison failed: $scenario" }
 }
 $measuredRevision = git rev-parse --short HEAD
@@ -246,9 +265,12 @@ if (Test-Path -LiteralPath $releaseReport) { throw 'Release report already exist
 Copy-Item -LiteralPath $candidateReport -Destination $releaseReport
 ```
 
+Pick the reference before copying the new report into `Benchmark/baselines/`, as the
+recipe does, so a release never compares against itself.
+
 The filename identifies the measured code revision. Review and commit the report
 before the clean-tree release dry run, then validate the resulting release
-commit using the existing ordered release steps. On subsequent releases, select
-the previous accepted combined report for the same four scenarios and workload.
+commit using the existing ordered release steps. Subsequent releases select it
+automatically as the newest report.
 Retain temporary files only as local scratch, never as
 committed logs or captures.

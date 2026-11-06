@@ -53,6 +53,8 @@ public partial class BenchmarkRunner
             "native-parse-timings" => await MeasureNativeMemoryAsync(request, capture).ConfigureAwait(false),
             "enumeration-walk-sequential" or "enumeration-walk-parallel" =>
                 await MeasureWalkMemoryAsync(request, capture).ConfigureAwait(false),
+            MftEnumerationScan or MftEnumerationRows or MftEnumerationExact or MftEnumerationSubstring =>
+                await MeasureMftEnumerationMemoryAsync(request, capture).ConfigureAwait(false),
             _ => throw new ArgumentException($"Unknown benchmark memory scenario '{request.Scenario}'.")
         };
     }

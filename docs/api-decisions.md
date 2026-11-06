@@ -31,8 +31,8 @@ release report in `Benchmark/baselines/<date>-<short sha>.txt`, measured on a
 quiet machine and committed beside the code as input to `Benchmark.exe compare`.
 These reports are the deliberate exception to the no-measurement-dumps rule;
 logs and raw captures remain excluded. Keep baselines for scenarios the current
-runner emits. The retained reference is `2026-11-01-94cf8eaf.txt`, combining
-index queries and enumeration walks with timing and peak-memory measurements.
+runner emits. The newest committed release report, by its `<date>-<short sha>`
+filename, is the reference that `compare` runs against.
 
 **Reason:** Benchmark numbers need a quiet machine, so release baselines are
 captured by hand rather than CI. CI artifacts expire, and CI runners share load,
@@ -41,6 +41,26 @@ easiest input for `compare`.
 
 **Revisit only if:** an explicitly approved replacement provides durable,
 quiet-machine measurements with equally straightforward comparison inputs.
+
+## Release baselines include MFT enumeration throughput
+
+**Decision (owner ruling 2026-11-05):** `Benchmark.exe mft-enumeration` measures records per second through the
+production dump-source `FileIndex` scan and its row and name-matching passes, and ships in 0.3.0. Every release report
+under `Benchmark/baselines/` includes its four `mft-enumeration-*` blocks beside the index and enumeration-walk blocks.
+A pull request that claims or risks a performance change pastes `compare` output for the affected scenarios, as
+[quality gates](quality-gates.md#performance-claims-in-pull-requests) describe. The 0.3.0 release waits for the first
+quiet-machine report that contains these blocks. This ruling also changes B13's reference: instead of a fixed retained
+file, the newest committed release report is the reference for both the release checklist and pull requests, and a
+scenario that report lacks has no reference rather than a failed comparison.
+
+**Reason:** performance work was unmeasurable without an enumeration baseline. The owner could not tell whether a
+name-filtering refactor moved enumeration speed, because no current scenario measured it; the remembered figure of about
+3M records per second came from baselines of scenarios retired in PR 619 and deleted in PR 826, which `compare` cannot
+read (see the historical figures in [architecture](architecture.md)). A fixed retained file let the release
+checklist and the pull-request rule name different references.
+
+**Revisit only if:** the production scan path changes so that a dump-source `FileIndex` open no longer exercises the
+parser and block writer that consumers use.
 
 ## Windows native releases target plain x64
 

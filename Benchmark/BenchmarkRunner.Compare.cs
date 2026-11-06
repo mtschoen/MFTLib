@@ -155,7 +155,8 @@ public partial class BenchmarkRunner
         var suffix = field[(unitIndex + 3)..];
         if (suffix.Length > 0 &&
             !suffix.StartsWith("; Matches: ", StringComparison.Ordinal) &&
-            !suffix.StartsWith("; Rows: ", StringComparison.Ordinal))
+            !suffix.StartsWith("; Rows: ", StringComparison.Ordinal) &&
+            !suffix.StartsWith("; Records: ", StringComparison.Ordinal))
         {
             return false;
         }

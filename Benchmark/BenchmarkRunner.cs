@@ -58,7 +58,12 @@ public partial class BenchmarkRunner
             return RunEnumerationWalkAsync(arguments[1..]);
         }
 
-        _output.WriteLine("Usage: Benchmark.exe <index|index-storage|index-pipeline|index-write|compare|native-timings|enumeration-walk> ...");
+        if (arguments.Length > 0 && arguments[0].Equals("mft-enumeration", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunMftEnumerationAsync(arguments[1..]);
+        }
+
+        _output.WriteLine("Usage: Benchmark.exe <index|index-storage|index-pipeline|index-write|compare|native-timings|enumeration-walk|mft-enumeration> ...");
         return Task.FromResult(1);
     }
 }
