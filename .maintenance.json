@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "tasks": {
+    "project-maintenance": {
+      "runs": [
+        {
+          "timestamp": "2026-11-06T01:05:25Z",
+          "head": "0b4df77e3aa030293794ac854186f5f4d562fdd4",
+          "automated": [
+            {
+              "kind": "clean_init_aislop_docs_missing",
+              "action": "Regenerated local aislop agent instruction files",
+              "detail": "aislop hook install claude --project; tracked .claude/settings.json unchanged"
+            },
+            {
+              "kind": "unmerged_branch",
+              "action": "Preserved both local unmerged branches without deletion",
+              "detail": "Inspected tips and diffs for agent/20019-drivekey-has-no-string-parse-so- and agent/20028-hand-run-developer-and-release-s; read-only forge lookups returned HTTP 404"
+            },
+            {
+              "kind": "branch_triage",
+              "action": "Deferred fetch/prune under Phase 1 and used read-only inspection",
+              "detail": "No refs or remote branches changed"
+            },
+            {
+              "kind": "hygiene_survey",
+              "action": "Deleted no untracked files and preserved job harness and coordination files",
+              "detail": ".llm-harness/, .markdownlintignore and .agent-lock/ are job infrastructure, not repository maintenance outputs"
+            },
+            {
+              "kind": "stale_memory",
+              "action": "Found no project-scoped stale memory",
+              "detail": "project-tracker find-stale-memory --days 30 --json returned an empty list"
+            },
+            {
+              "kind": "maintenance_breadcrumb",
+              "action": "Used the documented direct-file fallback for the isolated worktree",
+              "detail": "project-tracker maintenance record rejected the unregistered location; no project location was registered and no other checkout was touched"
+            },
+            {
+              "kind": "clean_init_maintenance_json_ignored",
+              "action": "Proposed tracking durable maintenance breadcrumbs and aligning the portability guard and documentation",
+              "detail": ".gitignore, .maintenance.json, AGENTS.md, docs/checkout-maintenance.md, docs/quality-gates.md and MFTLib.Tests/AgentInstructionsTests.cs; proposed by this automated maintenance run and awaiting owner approval on the pull request, which cites no owner authorization"
+            }
+          ],
+          "user_authorized": [],
+          "rejected": []
+        }
+      ]
+    }
+  }
+}

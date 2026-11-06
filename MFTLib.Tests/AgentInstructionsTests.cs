@@ -166,9 +166,9 @@ public partial class AgentInstructionsTests
         }
 
         Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
-        Assert.DoesNotContain(".maintenance.json", paths, "Maintenance state must be local.");
-        Assert.AreEqual(".maintenance.json",
-            RepositoryFiles.Git("check-ignore", "--no-index", ".maintenance.json").Trim());
+        Assert.Contains(".maintenance.json", paths, "Maintenance state must remain tracked.");
+        StringAssert.Contains(RepositoryFiles.Read(".gitignore"), "!.maintenance.json",
+            "The maintenance log must not be ignored.");
         Assert.DoesNotContain("TEST-REPORT", RepositoryFiles.Read(".gitignore"),
             "CI tracks the generated report on main, so it must not be ignored.");
         if (paths.Contains("TEST-REPORT.md"))

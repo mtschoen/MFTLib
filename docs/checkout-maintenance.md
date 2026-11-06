@@ -8,7 +8,7 @@ That safety comes from an invariant, not from a wrapper: **nothing unrecoverable
 
 Anything that fails that test belongs somewhere else. If a file is worth keeping, track it and push it; if it is only worth keeping on one machine, keep it outside the working tree. Do not add a file to this repository that is neither.
 
-`.maintenance.json` is ignored local maintenance state and may be discarded by `git clean -ffxd`. Record durable project decisions in tracked documentation. The backlog in `.plan` remains tracked.
+`.maintenance.json` is tracked maintenance state: it records which findings were actioned and which were deliberately rejected, and nothing regenerates that history. The backlog in `.plan` also remains tracked.
 
 Git offers no way to protect a file from `git clean`. Aliases cannot shadow built-in commands, there is no `pre-clean` hook, and `-x` overrides `.git/info/exclude`. Only tracked files and files outside the tree are safe, which is why the invariant above is the whole mechanism.
 

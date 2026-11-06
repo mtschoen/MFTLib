@@ -327,7 +327,7 @@ and private checkout pointers. Git failures, missing metadata and unreadable fil
 the gate. There are no file exemptions; the detector scans its own source and has
 negative controls. Stage intended additions and removals before local verification.
 The same class checks the scanner and consumer-sync server context.
-`.plan` remains tracked; `.maintenance.json` is ignored local state.
+`.plan` and `.maintenance.json` remain tracked; the latter preserves actioned and rejected maintenance findings.
 
 ### Character budgets
 
