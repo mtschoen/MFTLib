@@ -1,12 +1,5 @@
 # Backlog / Future Work
 
-## Test Infrastructure
-
-- **Admin test runs hang on exit (historic; not reproduced in the last two attended runs)**: `run-coverage.ps1` (full mode) or `native-coverage.ps1` launched elevated via UAC has intermittently failed to exit cleanly after `dotnet test` reports all tests passed, with the parent shell sitting indefinitely on `Start-Process -Wait`. This is a different failure mode than the build-start hang (it happens after tests pass, not at build start). Not reproduced in the 2026-07-13 or 2026-08-22 attended runs - two clean runs, not proof the underlying issue is gone. If it recurs, prior investigation narrowed the suspects to:
-  - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait - possible the cancel races with process teardown and leaves a worker thread in a non-signaled wait, blocking the runtime's exit.
-  - The `dotnet test` host process (`testhost.dll`) running under instrumentation may not flush the coverage file before the parent reaps it.
-  - Long-term remedy if it recurs: split admin-only tests into a separate test project so the non-admin run stays the default and elevated runs can be opted into with a known-stable test set.
-
 ## Packed Index Follow-Ups (deferred)
 
 - **Children table (CSR)**: revisit when measured tree UI expand latency exceeds 50 ms.
