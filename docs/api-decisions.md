@@ -1104,13 +1104,10 @@ Linux fanotify watch. The draft design (issue comment 129571) also still has an 
 `FileSystemWatcher` cannot prune, so heavy `.git` and `node_modules` activity overflows its buffer and turns
 overflow-then-rescan into a rescan loop.
 
-**Update (owner ruling 2026-11-06):** the 0.4.0 work is the
-[FastFileIndex epic, issue 913](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/913): `FileIndex` is
+**Update (owner ruling 2026-11-06):** the 0.4.0 work is the FastFileIndex epic, issue 913: `FileIndex` is
 hoisted into its own package behind a public backend contract, and every backend's live watch arrives through
 that contract. A standalone walked-root watch inside the current assembly was dropped as a half-measure, so
-[issue 675](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/675) is closed as superseded; the Windows
-directory-walk watch is [issue 922](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/922) and Linux is
-[issue 919](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/919).
+issue 675 is closed as superseded; the Windows directory-walk watch is issue 922 and Linux is issue 919.
 
 **Revisit only if:** the 0.4.0 plan changes shape.
 
