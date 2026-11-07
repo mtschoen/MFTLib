@@ -37,7 +37,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" PrivateAssets="all" />
+    <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" PrivateAssets="all" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <Import Project="..\MFTLibNative.Linux.props" />

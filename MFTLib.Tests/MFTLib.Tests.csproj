@@ -65,7 +65,7 @@
 
   <!-- Windows: build the native vcxproj. -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
+    <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Both samples and Benchmark build and test on every platform. -->

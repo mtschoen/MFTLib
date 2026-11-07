@@ -9,7 +9,7 @@
 
   <!-- Windows: build native DLL via MSBuild vcxproj -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
+    <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

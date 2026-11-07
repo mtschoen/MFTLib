@@ -1,6 +1,9 @@
 <Project>
-  <!-- When building with dotnet CLI (MSBuildRuntimeType == 'Core'), drop ProjectReference to native vcxproj
-       which dotnet cannot evaluate (MSB4278). VS MSBuild compiles MFTLibNative.vcxproj separately. -->
+  <!-- Native ProjectReferences carry ReferenceOutputAssembly="false" so NuGet restore never lists them in
+       packages.lock.json, whichever MSBuild restores (Visual Studio's keeps the reference). The CopyMFTLibNative
+       target below delivers the DLL. Under the dotnet CLI (MSBuildRuntimeType == 'Core') the reference is also
+       removed, because dotnet cannot evaluate a vcxproj at build time (MSB4278); VS MSBuild compiles
+       MFTLibNative.vcxproj separately. -->
   <ItemGroup Condition="'$(MSBuildRuntimeType)' == 'Core' And '$(MSBuildProjectExtension)' == '.csproj'">
     <ProjectReference Remove="..\MFTLibNative\MFTLibNative.vcxproj" />
   </ItemGroup>
