@@ -1097,15 +1097,22 @@ branches on `DriveType`, `IsReady` and `Format` instead of parsing the reason te
 **Decision (2026-10-20):** in MFTLib 0.3.0, live watch is an MFT-only feature. Enumeration (directory-walk)
 roots report `RootWatchStatus.IsSupported` false. Their refresh contract is rescan-by-age: a consumer
 compares `RootBlockStatus.ScanTimestamp` with its own maximum age and calls `FileIndex.RescanAsync`
-(file-wizard's `CacheFreshness` does this). Live watch for enumeration roots is deferred to 0.4.0. Issue 675
-stays open for that work.
+(file-wizard's `CacheFreshness` does this). Live watch for enumeration roots is deferred to 0.4.0.
 
 **Reason:** neither consumer needs it for 0.3.0: file-wizard refreshes by age, and git-wizard keeps its own
 Linux fanotify watch. The draft design (issue comment 129571) also still has an unsolved Windows problem:
 `FileSystemWatcher` cannot prune, so heavy `.git` and `node_modules` activity overflows its buffer and turns
 overflow-then-rescan into a rescan loop.
 
-**Revisit only if:** a consumer needs live updates on a walked root, or during 0.4.0 planning.
+**Update (owner ruling 2026-11-06):** the 0.4.0 work is the
+[FastFileIndex epic, issue 913](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/913): `FileIndex` is
+hoisted into its own package behind a public backend contract, and every backend's live watch arrives through
+that contract. A standalone walked-root watch inside the current assembly was dropped as a half-measure, so
+[issue 675](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/675) is closed as superseded; the Windows
+directory-walk watch is [issue 922](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/922) and Linux is
+[issue 919](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/919).
+
+**Revisit only if:** the 0.4.0 plan changes shape.
 
 ## Windows-only annotations sit on the member that reaches Windows
 

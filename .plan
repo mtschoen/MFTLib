@@ -1,5 +1,13 @@
 # Backlog / Future Work
 
+## 0.4.0: FastFileIndex
+
+The index becomes its own package, `FastFileIndex`, backed by MFTLib as the NTFS driver and by new macOS
+(`getattrlistbulk` plus FSEvents) and Linux (`getdents64` plus `statx`, fanotify or inotify) drivers behind one
+public backend contract. The plan, measurements, ordering and every child issue live on the
+[0.4 epic, issue 913](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/913); query the
+`ship:mftlib-0.4.0` label across MFTLib, file-wizard and git-wizard for the board.
+
 ## Packed Index Follow-Ups (deferred)
 
 - **Children table (CSR)**: revisit when measured tree UI expand latency exceeds 50 ms.
