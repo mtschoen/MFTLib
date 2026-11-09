@@ -102,6 +102,11 @@ public sealed partial class FileIndex
                     }
 
                     PublishBindingsLocked(rootBlock, bindings);
+                    if (recovery is not null)
+                    {
+                        recovery.FailedBlock = rootBlock;
+                    }
+
                     RecordPendingResultLocked(produced, clearsCheckpointLoss);
                     NoteWatchStateLocked();
                     return (_consecutiveLostCatchUps, handoff);

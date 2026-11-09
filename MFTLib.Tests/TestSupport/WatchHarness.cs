@@ -11,7 +11,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     <see cref="ScriptedWatchSource" />, and tears them down again. It collects every
 ///     <see cref="FileIndex.Changed" /> change and every <see cref="FileIndex.WatchFaulted" /> fault.
 /// </summary>
-sealed class WatchHarness : IDisposable
+sealed partial class WatchHarness : IDisposable
 {
     public const ulong JournalIdentifier = 7;
     public const long NextUsn = 100;
@@ -64,12 +64,12 @@ sealed class WatchHarness : IDisposable
             var mftSource = new MftIndexSource(Produce, watchSource ?? Source.IndexSource);
             foreach (var (letter, builder) in _blockBuilders)
             {
-                var index = FileIndex.OpenAsync(new FileIndexOptions
+                var index = FileIndex.OpenAsync(WithClockAndVolumeAbsence(new FileIndexOptions
                 {
 
                     CacheDirectory = CacheDirectory,
                     MftSource = mftSource
-                }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial)), CancellationToken.None).GetAwaiter().GetResult();
+                }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial)), letter), CancellationToken.None).GetAwaiter().GetResult();
                 index.Changed += _changes.Enqueue;
                 index.WatchFaulted += fault => RecordFault(index, fault);
                 _indicesByDrive[letter] = index;
@@ -362,10 +362,16 @@ sealed class WatchHarness : IDisposable
             throw productionFailure;
         }
 
-        var scripted = _scriptedScansByDrive.TryGetValue(driveLetter, out var scans) &&
-                       scans.TryDequeue(out var scan)
+        var scriptedScan = _scriptedScansByDrive.TryGetValue(driveLetter, out var scans) &&
+                           scans.TryDequeue(out var scan)
             ? scan
-            : new WatchHarnessScan();
+            : null;
+        if (scriptedScan is null && IsAbsent(driveLetter))
+        {
+            throw new IOException($"Volume {driveLetter} is absent.");
+        }
+
+        var scripted = scriptedScan ?? new WatchHarnessScan();
         if (scripted.Hold is { } scriptedHold)
         {
             scriptedHold.MarkEntered();

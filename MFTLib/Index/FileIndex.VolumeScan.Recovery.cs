@@ -34,6 +34,7 @@ public sealed partial class FileIndex
         /// </summary>
         void ClearRecoveryLocked()
         {
+            Recovery?.MarkSuperseded();
             Recovery = null;
             _recoveryState = RecoveryState.None;
         }
@@ -74,11 +75,25 @@ public sealed partial class FileIndex
         }
 
         /// <summary>
+        ///     The pauses before each retry of a recovery rescan that failed because its volume is
+        ///     absent: about 30 seconds in all, for a volume that is replugged or remounted.
+        /// </summary>
+        internal static readonly TimeSpan[] RecoveryRetryDelays =
+        [
+            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4),
+            TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(15)
+        ];
+
+        /// <summary>
         ///     One recovery: takes the root's lifecycle gate, revalidates the ticket, and runs the
-        ///     rescan body with the gate held. A recovery that fails while its ticket is still the
-        ///     root's raises <see cref="WatchFaultKind.Recovery" /> after releasing the gate, and the
-        ///     root stays <see cref="WatchState.Faulted" /> until the consumer rescans or starts
-        ///     it. Never throws, and always completes its ticket.
+        ///     rescan body with the gate held. A rescan that fails while the volume is absent is
+        ///     retried after each of <see cref="RecoveryRetryDelays" />, with the gate released
+        ///     during the wait and the root still <see cref="WatchState.Recovering" />; a stop,
+        ///     start or rescan, or disposal, ends the wait at once. A recovery that fails any other
+        ///     way, or fails its last retry, while its ticket is still the root's raises
+        ///     <see cref="WatchFaultKind.Recovery" /> after releasing the gate, and the root stays
+        ///     <see cref="WatchState.Faulted" /> until the consumer rescans or starts it. Never
+        ///     throws, and always completes its ticket.
         /// </summary>
         async Task RunRecoveryAsync(RecoveryTicket ticket)
         {
@@ -90,17 +105,20 @@ public sealed partial class FileIndex
                     await beforeGate(Root, ticket.Cancellation.Token).ConfigureAwait(false);
                 }
 
-                await LifecycleGate.WaitAsync(ticket.Cancellation.Token).ConfigureAwait(false);
-                try
+                for (var retry = 0; ; retry++)
                 {
-                    if (RevalidateRecovery(ticket))
+                    failure = await RecoverOnceAsync(ticket).ConfigureAwait(false);
+                    if (failure is null || retry == RecoveryRetryDelays.Length || !ticket.RescanProducerFailed ||
+                        !IsVolumeAbsent())
                     {
-                        failure = await RecoverWithGateHeldAsync(ticket).ConfigureAwait(false);
+                        break;
                     }
-                }
-                finally
-                {
-                    LifecycleGate.Release();
+
+                    if (!await WaitForRecoveryRetryAsync(ticket, RecoveryRetryDelays[retry]).ConfigureAwait(false))
+                    {
+                        failure = null;
+                        break;
+                    }
                 }
             }
             catch (OperationCanceledException) when (ticket.Cancellation.IsCancellationRequested)
@@ -112,6 +130,50 @@ public sealed partial class FileIndex
             finally
             {
                 EndRecovery(ticket, failure);
+            }
+        }
+
+        /// <summary>One recovery attempt under the root's lifecycle gate; null when it succeeded or was superseded.</summary>
+        async Task<Exception?> RecoverOnceAsync(RecoveryTicket ticket)
+        {
+            await LifecycleGate.WaitAsync(ticket.Cancellation.Token).ConfigureAwait(false);
+            try
+            {
+                ticket.RescanProducerFailed = false;
+                return RevalidateRecovery(ticket)
+                    ? await RecoverWithGateHeldAsync(ticket).ConfigureAwait(false)
+                    : null;
+            }
+            finally
+            {
+                LifecycleGate.Release();
+            }
+        }
+
+        /// <summary>
+        ///     True when the volume under the root reads as not ready now, which is what a rescan
+        ///     that produced no block is retried for. Reads the facts the open read; a dump has no
+        ///     volume to lose.
+        /// </summary>
+        bool IsVolumeAbsent() =>
+            !Resolved.IsDump && !RootResolution.ReadVolumeFacts(Options, Root, Resolved.RootDirectory).IsReady;
+
+        /// <summary>
+        ///     Waits out one retry pause on the index's clock. Returns false when disposal or a
+        ///     stop, start or rescan of the root ended the recovery first.
+        /// </summary>
+        async Task<bool> WaitForRecoveryRetryAsync(RecoveryTicket ticket, TimeSpan delay)
+        {
+            using var timerCancellation = CancellationTokenSource.CreateLinkedTokenSource(ticket.Cancellation.Token);
+            var elapsed = Task.Delay(delay, Options.TimeProvider, timerCancellation.Token);
+            try
+            {
+                var finished = await Task.WhenAny(elapsed, ticket.Superseded).ConfigureAwait(false);
+                return ReferenceEquals(finished, elapsed) && elapsed.IsCompletedSuccessfully;
+            }
+            finally
+            {
+                await timerCancellation.CancelAsync().ConfigureAwait(false);
             }
         }
 

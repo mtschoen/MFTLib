@@ -51,6 +51,11 @@ public sealed partial class FileIndex
             }
 
             _ = RefuseWatchOverUnresumableBlock();
+            if (recovery is not null)
+            {
+                recovery.RescanProducerFailed = true;
+            }
+
             throw new InvalidOperationException(
                 $"Root {Root} was not rescanned: {outcome.ProducerFailureMessage}", outcome.ProducerFailure);
         }

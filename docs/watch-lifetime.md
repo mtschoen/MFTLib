@@ -72,7 +72,13 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       the failed result sees the same state a `WatchFaulted` handler sees. A stop in that
       window retains the watch's fault in the wait's result. A `Volume` or
       `Apply` fault publishes `Recovering`, raises `WatchFaulted`, and automatically rescans and
-      restarts the root. A second fault before the restarted watch reaches `CaughtUp`, or a failed
+      restarts the root. A recovery rescan that produces no block while the volume reads not ready
+      (detached, replugged or remounting) is retried after pauses of 1, 2, 4, 8 and 15 seconds
+      on the index's `TimeProvider`, about 30 seconds in all; the root reads `Recovering` throughout,
+      the lifecycle gate is released during each pause, and a stop, start, rescan or disposal ends
+      the pause and abandons the remaining retries. Any other recovery scan failure, a failure with
+      the volume ready, and a failure of the last retry do not retry. A second fault before the
+      restarted watch reaches `CaughtUp`, or a failed
       recovery scan, raises `WatchFaulted(Recovery)` and leaves the root `Faulted` until a consumer
       calls `RescanAsync(token)` or `StartWatchingAsync(token)`; a failed automatic restart likewise
       reads `Faulted`, never `NotStarted`. `Channel` faults never recover.
