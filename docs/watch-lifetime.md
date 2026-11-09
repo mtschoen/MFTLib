@@ -76,12 +76,32 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       (detached, replugged or remounting) is retried after pauses of 1, 2, 4, 8 and 15 seconds
       on the index's `TimeProvider`, about 30 seconds in all; the root reads `Recovering` throughout,
       the lifecycle gate is released during each pause, and a stop, start, rescan or disposal ends
-      the pause and abandons the remaining retries. Any other recovery scan failure, a failure with
-      the volume ready, and a failure of the last retry do not retry. A second fault before the
+      the pause and abandons the remaining retries. A rescan that produces no block while the volume
+      reads ready is re-attempted at once, with no pause and without using a retry, once per
+      recovery, since a volume that came back after the scan failed reads ready too; a second such
+      failure stands. Any other recovery scan failure and a failure of the last retry do not retry,
+      so one recovery runs at most seven scans. A second fault before the
       restarted watch reaches `CaughtUp`, or a failed
       recovery scan, raises `WatchFaulted(Recovery)` and leaves the root `Faulted` until a consumer
       calls `RescanAsync(token)` or `StartWatchingAsync(token)`; a failed automatic restart likewise
       reads `Faulted`, never `NotStarted`. `Channel` faults never recover.
+      Automatic recovery also hears the operating system announce that a volume arrived (on Windows,
+      `CM_Register_Notification` on the volume device interface class, registered unelevated in the
+      process hosting the index while some root's recovery needs it and released when none does; other
+      platforms have no signal). An arrival names no root and can precede its drive letter by seconds,
+      so it is a wake-up, never a promise: a root in a retry pause probes its volume and rescans at
+      once only when it reads ready, and otherwise keeps the pause's original deadline and the
+      remaining schedule. A root whose last retry failed with the volume still absent, and only such
+      a root, stays `Faulted` with `WatchFaultKind.Recovery` until either a consumer acts or an
+      arrival revives it: the arrival queues a fresh automatic recovery, which publishes `Recovering`
+      and runs the same retry schedule, while the faulted watch and its block are still the root's
+      and the watch is still requested; an arrival that lands while a recovery whose last rescan
+      produced no block is ending revives it the same way as soon as it ends, never lost between
+      them. A stop, start, rescan or disposal clears that standing
+      revival, and wins over a revived recovery as over any other. A root has at most one recovery,
+      and an arrival during it only wakes its pauses, so repeated arrivals never overlap recoveries.
+      A platform that refuses the registration is reported once per recovery to
+      `FileIndexOptions.Diagnostics`, and recovery then retries on its schedule only.
       A rescan keeps a healthy watch and its pending catch-up waits attached throughout
       production. Failed or cancelled production leaves them untouched; retirement cancels
       pending waits when the replacement commits. From that commit until the replacement

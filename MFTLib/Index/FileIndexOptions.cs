@@ -112,6 +112,9 @@ public sealed record FileIndexOptions
 
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
+    /// <summary>The volume arrivals automatic recovery wakes on; tests raise their own.</summary>
+    internal VolumeArrivalSignal VolumeArrivals { get; init; } = VolumeArrivalSignal.Platform;
+
     /// <summary>Reads the volume facts of a root. Null lets the test package's scoped override or the platform supply them.</summary>
     internal VolumeFactsReader? VolumeFacts { get; init; }
 

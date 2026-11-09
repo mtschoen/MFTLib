@@ -68,19 +68,66 @@ public partial class FileIndexWatchRecoveryTests
     }
 
     [TestMethod]
-    public async Task ScanFailureWithVolumePresent_DoesNotRetry()
+    public async Task ScanFailingTwiceWithVolumePresent_RaisesRecoveryWithoutPausing()
     {
         using var harness = new WatchHarness('T');
         await harness.IndexFor('T').StartWatchingAsync(Token);
         var producedBefore = harness.ProductionCount('T');
-        harness.FailNextProduction('T', new IOException("the block would not parse"));
+        harness.ScriptScans('T', new WatchHarnessScan(Failure: new IOException("the block would not parse")),
+            new WatchHarnessScan(Failure: new IOException("the block still would not parse")));
 
         harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'T');
         await harness.WaitForRecoveryAsync('T');
 
-        Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(0, harness.Clock.PausesBegun, "no pause begins for a failure that is not the volume's absence");
+        Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore, "one immediate re-attempt, then the failure stands");
+        Assert.AreEqual(0, harness.Clock.PausesBegun, "no pause begins while the volume reads ready");
+        Assert.AreEqual(WatchState.Faulted, harness.RootFor('T').Watch.State);
+    }
+
+    [TestMethod]
+    public async Task VolumeBackBeforeTheProbe_ReattemptsAtOnceAndReachesCaughtUp()
+    {
+        using var harness = new WatchHarness('T');
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        var producedBefore = harness.ProductionCount('T');
+        harness.SetVolumeAbsent('T', absent: true);
+        harness.ReturnVolumeBeforeNextProbe('T');
+
+        harness.Source.WatchFor('T').FailVolume(new IOException("T was detached"));
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        await harness.WaitForRecoveryAsync('T');
+
+        Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore);
+        Assert.AreEqual(0, harness.Clock.PausesBegun, "no clock advance was needed");
+        Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('T').Watch.State);
+        await harness.Source.WatchFor('T').Publish(new VolumeCaughtUp());
+        Assert.AreEqual(WatchState.CaughtUp, harness.RootFor('T').Watch.State);
+        Assert.AreSequenceEqual([WatchFaultKind.Volume], FaultKinds(harness, 'T'), "no Recovery fault");
+        await harness.IndexFor('T').StopWatchingAsync(Token);
+    }
+
+    [TestMethod]
+    public async Task FlappingVolume_ReattemptsAtOnceOnlyOncePerRecovery()
+    {
+        using var harness = new WatchHarness('T');
+        await harness.IndexFor('T').StartWatchingAsync(Token);
+        var producedBefore = harness.ProductionCount('T');
+        harness.ScriptScans('T', [.. Enumerable.Range(0, 20).Select(attempt =>
+            new WatchHarnessScan(Failure: new IOException($"T flapped away during scan {attempt}")))]);
+        harness.SetVolumeAbsent('T', absent: true);
+        harness.FlapVolumeOnEveryProbe('T');
+
+        harness.Source.WatchFor('T').FailVolume(new IOException("T was detached"));
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        await harness.Clock.WaitForPauseAsync(Token).WaitAsync(HangGuard, Token);
+        harness.Clock.Advance(FileIndex.VolumeScan.RecoveryRetryDelays[0]);
+        await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'T');
+        await harness.WaitForRecoveryAsync('T');
+
+        Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore,
+            "scan, immediate re-attempt on ready, pause on absent, then the second ready failure stands");
+        Assert.AreEqual(1, harness.Clock.PausesBegun);
         Assert.AreEqual(WatchState.Faulted, harness.RootFor('T').Watch.State);
     }
 

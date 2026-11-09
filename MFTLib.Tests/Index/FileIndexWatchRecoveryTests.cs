@@ -108,7 +108,9 @@ public partial class FileIndexWatchRecoveryTests
         using var harness = new WatchHarness('T');
         await harness.IndexFor('T').StartWatchingAsync(Token);
         var producerFailure = new IOException("the volume went away");
-        harness.FailNextProduction('T', producerFailure);
+        // The volume reads ready, so the first failure is re-attempted at once; the second stands.
+        harness.ScriptScans('T', new WatchHarnessScan(Failure: new IOException("the volume went away first")),
+            new WatchHarnessScan(Failure: producerFailure));
 
         harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         var recoveryFault = await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'T');
@@ -198,7 +200,8 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         await harness.IndexFor('T').StartWatchingAsync(Token);
-        harness.FailNextProduction('T', new IOException("the volume went away"));
+        harness.ScriptScans('T', new WatchHarnessScan(Failure: new IOException("the volume went away")),
+            new WatchHarnessScan(Failure: new IOException("the volume is still away")));
         harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'T');
         await harness.WaitForRecoveryAsync('T');

@@ -28,7 +28,8 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     Clears the root's recovery ticket, which a manual rescan, a consumer start, a stop, or
-        ///     disposal supersedes. A recovery already past its revalidation keeps running, and its
+        ///     disposal supersedes, and any recovery that gave up on an absent volume, which an arrival
+        ///     would otherwise revive. A recovery already past its revalidation keeps running, and its
         ///     failure is then no longer reported, since the ticket is not the root's any more. The
         ///     caller holds <see cref="StateLock" />.
         /// </summary>
@@ -37,6 +38,8 @@ public sealed partial class FileIndex
             Recovery?.MarkSuperseded();
             Recovery = null;
             _recoveryState = RecoveryState.None;
+            _absentRecovery = null;
+            ReleaseArrivalSubscriptionLocked();
         }
 
         /// <summary>
@@ -89,32 +92,59 @@ public sealed partial class FileIndex
         ///     rescan body with the gate held. A rescan that fails while the volume is absent is
         ///     retried after each of <see cref="RecoveryRetryDelays" />, with the gate released
         ///     during the wait and the root still <see cref="WatchState.Recovering" />; a stop,
-        ///     start or rescan, or disposal, ends the wait at once. A recovery that fails any other
-        ///     way, or fails its last retry, while its ticket is still the root's raises
+        ///     start or rescan, or disposal, ends the wait at once. A rescan that produces no block
+        ///     while the volume reads ready is re-attempted at once, once per recovery, without using
+        ///     a retry, since a volume that came back after the scan failed reads ready too. A
+        ///     recovery that fails any other way, fails that re-attempt with the volume still ready,
+        ///     or fails its last retry, while its ticket is still the root's raises
         ///     <see cref="WatchFaultKind.Recovery" /> after releasing the gate, and the root stays
-        ///     <see cref="WatchState.Faulted" /> until the consumer rescans or starts it. Never
+        ///     <see cref="WatchState.Faulted" /> until the consumer rescans or starts it, or, when
+        ///     the last retry failed with the volume still absent, until a volume arrival revives it.
+        ///     A volume arrival during a pause ends it early once the volume reads ready. Never
         ///     throws, and always completes its ticket.
         /// </summary>
         async Task RunRecoveryAsync(RecoveryTicket ticket)
         {
             Exception? failure = null;
+            var gaveUpOnAbsentVolume = false;
             try
             {
+                SubscribeToVolumeArrivals();
                 if (Hooks.RecoveryBeforeLifecycleGate is { } beforeGate)
                 {
                     await beforeGate(Root, ticket.Cancellation.Token).ConfigureAwait(false);
                 }
 
-                for (var retry = 0; ; retry++)
+                var retry = 0;
+                var reattemptedWhileReady = false;
+                while (true)
                 {
                     failure = await RecoverOnceAsync(ticket).ConfigureAwait(false);
-                    if (failure is null || retry == RecoveryRetryDelays.Length || !ticket.RescanProducerFailed ||
-                        !IsVolumeAbsent())
+                    if (failure is null || !ticket.RescanProducerFailed)
                     {
                         break;
                     }
 
-                    if (!await WaitForRecoveryRetryAsync(ticket, RecoveryRetryDelays[retry]).ConfigureAwait(false))
+                    if (!IsVolumeAbsent())
+                    {
+                        // A volume that came back after the scan failed reads ready too, so the
+                        // first such failure is re-attempted at once; only a second one stands.
+                        if (reattemptedWhileReady)
+                        {
+                            break;
+                        }
+
+                        reattemptedWhileReady = true;
+                        continue;
+                    }
+
+                    if (retry == RecoveryRetryDelays.Length)
+                    {
+                        gaveUpOnAbsentVolume = true;
+                        break;
+                    }
+
+                    if (!await WaitForRecoveryRetryAsync(ticket, RecoveryRetryDelays[retry++]).ConfigureAwait(false))
                     {
                         failure = null;
                         break;
@@ -129,7 +159,7 @@ public sealed partial class FileIndex
             }
             finally
             {
-                EndRecovery(ticket, failure);
+                EndRecovery(ticket, failure, gaveUpOnAbsentVolume);
             }
         }
 
@@ -159,8 +189,11 @@ public sealed partial class FileIndex
             !Resolved.IsDump && !RootResolution.ReadVolumeFacts(Options, Root, Resolved.RootDirectory).IsReady;
 
         /// <summary>
-        ///     Waits out one retry pause on the index's clock. Returns false when disposal or a
-        ///     stop, start or rescan of the root ended the recovery first.
+        ///     Waits out one retry pause on the index's clock. A volume arrival probes the volume and
+        ///     ends the pause at once when it reads ready; while it still reads not ready the pause
+        ///     keeps its original deadline, since an interface can arrive before its drive letter
+        ///     mounts. Returns false when disposal or a stop, start or rescan of the root ended the
+        ///     recovery first.
         /// </summary>
         async Task<bool> WaitForRecoveryRetryAsync(RecoveryTicket ticket, TimeSpan delay)
         {
@@ -168,8 +201,20 @@ public sealed partial class FileIndex
             var elapsed = Task.Delay(delay, Options.TimeProvider, timerCancellation.Token);
             try
             {
-                var finished = await Task.WhenAny(elapsed, ticket.Superseded).ConfigureAwait(false);
-                return ReferenceEquals(finished, elapsed) && elapsed.IsCompletedSuccessfully;
+                while (true)
+                {
+                    var arrival = ticket.WaitForArrivalAsync(timerCancellation.Token);
+                    var finished = await Task.WhenAny(elapsed, ticket.Superseded, arrival).ConfigureAwait(false);
+                    if (!ReferenceEquals(finished, arrival) || !arrival.IsCompletedSuccessfully)
+                    {
+                        return ReferenceEquals(finished, elapsed) && elapsed.IsCompletedSuccessfully;
+                    }
+
+                    if (!IsVolumeAbsent())
+                    {
+                        return true;
+                    }
+                }
             }
             finally
             {
@@ -226,13 +271,18 @@ public sealed partial class FileIndex
         ///     Clears the ticket when it is still the root's, raises <see cref="WatchFaultKind.Recovery" />
         ///     for a failure only in that case, since a superseded recovery's failure describes no watch
         ///     the root still has, then completes the ticket, and only then stops counting it among
-        ///     the recoveries disposal waits for. A root whose recovery restarted its watch
+        ///     the recoveries disposal waits for. A recovery whose last retry failed with the volume
+        ///     still absent is kept for a volume arrival to revive, and an arrival that reached the ticket
+        ///     of a recovery whose last rescan produced no block revives it at once, in the same
+        ///     state-lock section, so the handoff loses no arrival. A root whose recovery restarted its watch
         ///     keeps <see cref="RecoveryState.RecoveredAwaitingCatchUp" /> until that watch catches up.
         /// </summary>
-        void EndRecovery(RecoveryTicket ticket, Exception? failure)
+        void EndRecovery(RecoveryTicket ticket, Exception? failure, bool gaveUpOnAbsentVolume)
         {
             WatchFault? reported = null;
             IndexView[] recipients = [];
+            RecoveryTicket? revived = null;
+            var arrivalPending = false;
             lock (StateLock)
             {
                 if (ReferenceEquals(Recovery, ticket))
@@ -247,9 +297,20 @@ public sealed partial class FileIndex
                     if (reported is not null)
                     {
                         recipients = CaptureFaultLocked(reported);
+                        arrivalPending = ticket.RescanProducerFailed && ticket.TryTakeArrival();
+                        if (gaveUpOnAbsentVolume || arrivalPending)
+                        {
+                            _absentRecovery = new AbsentRecovery(ticket.FailedInstance, ticket.FailedBlock);
+                        }
                     }
                     NoteWatchStateLocked(reported);
+                    if (arrivalPending)
+                    {
+                        revived = ReviveAbsentRecoveryLocked();
+                    }
                 }
+
+                ReleaseArrivalSubscriptionLocked();
             }
 
             try
@@ -274,6 +335,12 @@ public sealed partial class FileIndex
                 lock (StateLock)
                 {
                     _recoveryCompletions.Remove(ticket.Completion);
+                }
+
+                // Disposal already counts the revived recovery, so it must start whatever was raised.
+                if (revived is not null)
+                {
+                    StartRecovery(revived);
                 }
             }
         }

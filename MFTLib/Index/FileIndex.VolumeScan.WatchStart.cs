@@ -185,7 +185,7 @@ public sealed partial class FileIndex
                         return null;
                     }
 
-                    if (recovery is null && Recovery is not null)
+                    if (recovery is null && (Recovery is not null || _absentRecovery is not null))
                     {
                         ClearRecoveryLocked();
                     }

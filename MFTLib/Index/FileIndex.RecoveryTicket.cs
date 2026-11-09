@@ -1,3 +1,5 @@
+using System.Threading.Channels;
+
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
@@ -45,6 +47,22 @@ public sealed partial class FileIndex
         public Task Superseded => _superseded.Task;
 
         public void MarkSuperseded() => _superseded.TrySetResult();
+
+        /// <summary>
+        ///     Holds at most one volume arrival the recovery has not consumed yet, so an arrival during
+        ///     a rescan attempt is seen by the pause that follows and a storm of arrivals coalesces.
+        /// </summary>
+        readonly Channel<bool> _arrivals = Channel.CreateBounded<bool>(
+            new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true });
+
+        public void SignalArrival() => _arrivals.Writer.TryWrite(true);
+
+        /// <summary>Consumes an arrival the recovery has not seen yet; true when there was one.</summary>
+        public bool TryTakeArrival() => _arrivals.Reader.TryRead(out _);
+
+        /// <summary>Completes, consuming it, with the next arrival; cancellation leaves a pending arrival in place.</summary>
+        public Task WaitForArrivalAsync(CancellationToken cancellationToken) =>
+            _arrivals.Reader.ReadAsync(cancellationToken).AsTask();
 
         /// <summary>Whether the latest rescan attempt of this recovery failed in the producer, publishing nothing.</summary>
         public bool RescanProducerFailed { get; set; }

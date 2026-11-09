@@ -16,7 +16,9 @@ public class FileIndexWatchFaultSerializationTests
     {
         using var harness = new WatchHarness('T');
         await harness.IndexFor('T').StartWatchingAsync(Token);
-        harness.FailNextProduction('T', new IOException("the volume went away"));
+        // The volume reads ready, so the recovery re-attempts its failed scan once before it fails.
+        harness.ScriptScans('T', new WatchHarnessScan(Failure: new IOException("the volume went away")),
+            new WatchHarnessScan(Failure: new IOException("the volume is still away")));
         var recoveryHandlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseRecoveryHandler = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var successorHandlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

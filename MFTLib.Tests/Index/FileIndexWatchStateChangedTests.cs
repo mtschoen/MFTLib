@@ -142,7 +142,8 @@ public partial class FileIndexWatchStateChangedTests
         }
         else
         {
-            harness.FailNextProduction('T', failure);
+            // The volume reads ready, so the recovery re-attempts its failed scan once before it fails.
+            harness.ScriptScans('T', new WatchHarnessScan(Failure: failure), new WatchHarnessScan(Failure: failure));
         }
 
         harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
