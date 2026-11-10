@@ -20,7 +20,7 @@
 using SteadyClock = std::chrono::steady_clock;
 using TimePoint = SteadyClock::time_point;
 
-static double ElapsedMs(const TimePoint start, const TimePoint end) {
+inline double ElapsedMs(const TimePoint start, const TimePoint end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 

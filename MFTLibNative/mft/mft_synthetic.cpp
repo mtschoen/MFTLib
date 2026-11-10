@@ -116,7 +116,7 @@ SyntheticMeta RollSyntheticMeta(const uint16_t flags, uint64_t* randomState) {
 
     const bool isDirectory = (flags & kRecordDirectory) != 0;
     const uint64_t fileSize = isDirectory ? 0 : nextRandom() % (256ULL * 1024 * 1024);
-    const uint64_t allocatedSize = fileSize + 4095 & ~4095ULL;
+    const uint64_t allocatedSize = (fileSize + 4095) & ~4095ULL;
     uint32_t fileAttributes = isDirectory ? 0x10 : 0x20;
     if (nextRandom() % 20 == 0) {
         fileAttributes |= 0x02;
@@ -139,7 +139,7 @@ uint16_t WriteStandardInformationAttribute(uint8_t* record, const uint16_t offse
     standardInformationAttribute->FormCode = 0;
     standardInformationAttribute->Form.Resident.ValueLength = 0x48;
     standardInformationAttribute->Form.Resident.ValueOffset = 0x18;
-    standardInformationAttribute->RecordLength = 0x18 + 0x48 + 7 & ~7;
+    standardInformationAttribute->RecordLength = (0x18 + 0x48 + 7) & ~7;
 
     auto* standardInformationValue = record + offset + 0x18;
     memcpy(standardInformationValue + 0x00, &meta.createTime, 8);
@@ -161,7 +161,7 @@ uint16_t WriteFileNameAttribute(uint8_t* record, const uint16_t offset, const Sy
     fileNameAttribute->FormCode = 0;
     fileNameAttribute->Form.Resident.ValueLength = fileNameValueSize;
     fileNameAttribute->Form.Resident.ValueOffset = 0x18;
-    fileNameAttribute->RecordLength = 0x18 + fileNameValueSize + 7 & ~7;
+    fileNameAttribute->RecordLength = (0x18 + fileNameValueSize + 7) & ~7;
 
     auto* nameAttribute = reinterpret_cast<PFILE_NAME>(record + offset + 0x18);
     nameAttribute->ParentDirectory.SegmentNumberLowPart = static_cast<ULONG>(spec.parentRecord & 0xFFFFFFFF);
@@ -204,7 +204,7 @@ uint16_t WriteDataAttribute(uint8_t* record, const uint16_t offset, const Synthe
     *runPointer++ = static_cast<uint8_t>((clusterOffset >> 8) & 0xFF);
     *runPointer++ = static_cast<uint8_t>((clusterOffset >> 16) & 0xFF);
     *runPointer = 0;
-    dataAttribute->RecordLength = 0x48 + 6 + 7 & ~7;
+    dataAttribute->RecordLength = (0x48 + 6 + 7) & ~7;
     return offset + static_cast<uint16_t>(dataAttribute->RecordLength);
 }
 
@@ -218,7 +218,7 @@ void BuildSyntheticRecord(uint8_t* record, const SyntheticRecordSpec& spec, uint
     recordHeader->MultiSectorHeader.UpdateSequenceArraySize = usaSize;
     recordHeader->SequenceNumber = static_cast<uint16_t>(spec.recordIndex + 1);
     recordHeader->Flags = spec.flags;
-    recordHeader->FirstAttributeOffset = static_cast<uint16_t>(0x30 + usaSize * sizeof(uint16_t) + 7 & ~7);
+    recordHeader->FirstAttributeOffset = static_cast<uint16_t>((0x30 + usaSize * sizeof(uint16_t) + 7) & ~7);
     memcpy(record + 0x1C, &spec.recordSize, sizeof(spec.recordSize));
 
     recordHeader->BaseFileRecordSegment.SegmentNumberLowPart = static_cast<ULONG>(spec.baseReference & 0xFFFFFFFF);
@@ -251,7 +251,7 @@ void BuildSyntheticRecord(uint8_t* record, const SyntheticRecordSpec& spec, uint
 // independent (workers need no shared state). The exact order of nextRandom() calls
 // is load-bearing - it determines record contents the parser-side tests assert on.
 void BuildRecordForIndex(uint8_t* record, const uint32_t recordSize, const uint64_t recordIndex) {
-    uint64_t randomState = 12345678901ULL ^ recordIndex * 6364136223846793005ULL + 1;
+    uint64_t randomState = 12345678901ULL ^ (recordIndex * 6364136223846793005ULL + 1);
     auto nextRandom = [&randomState]() -> uint32_t {
         randomState ^= randomState << 13;
         randomState ^= randomState >> 7;
