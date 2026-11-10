@@ -1,5 +1,7 @@
 # AGENTS.md
 
+@PLAN.md
+
 This file is the cross-tool source of truth for coding agents working in this repository. Tool-specific instruction files (`CLAUDE.md`, etc.) import it via `@AGENTS.md`.
 
 Each linked docs page holds the full contract for its area: open it before you change that area.
