@@ -46,7 +46,17 @@ public sealed partial class FileIndex
 
         public HashSet<IndexView> SubscriberFaultAnnounced { get; } = [];
 
-        /// <summary>Rethrown once by the stop that retires this instance.</summary>
+        /// <summary>
+        ///     The fault that ended this instance's pump, set under the state lock at settlement. A
+        ///     recovery that restarts the root resolves it once the restarted watch catches up.
+        /// </summary>
+        public Exception? Fault { get; set; }
+
+        /// <summary>
+        ///     The faulted predecessor's <see cref="Fault" /> when an automatic recovery started this
+        ///     instance; reaching <see cref="WatchState.CaughtUp" /> resolves it on every view.
+        /// </summary>
+        public Exception? RecoveredFault { get; init; }
 
         public WatchCatchUpSlot CatchUp { get; }
 

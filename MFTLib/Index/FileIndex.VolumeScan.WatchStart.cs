@@ -296,11 +296,15 @@ public sealed partial class FileIndex
                     }
                 }
 
+                var currentRecovery = recovery is not null && ReferenceEquals(Recovery, recovery) ? recovery : null;
                 var instance = new WatchInstance(Root, _nextGeneration++, armedBlock,
-                    TakeRestartPendingWaiterLocked(), ClosingToken);
+                    TakeRestartPendingWaiterLocked(), ClosingToken)
+                {
+                    RecoveredFault = currentRecovery?.FailedInstance.Fault
+                };
                 Current = instance;
                 _refusedStartFault = null;
-                _recoveryState = recovery is not null && ReferenceEquals(Recovery, recovery)
+                _recoveryState = currentRecovery is not null
                     ? RecoveryState.RecoveredAwaitingCatchUp
                     : RecoveryState.None;
                 _watchFailureMessage = null;

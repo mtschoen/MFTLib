@@ -187,7 +187,9 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       A manual commit clears the superseded ticket and recovery state under the publication
       lock, before draining; an automatic recovery's own commit keeps its ticket and state.
       Stop during a recovery or rescan wins: it clears the request, prevents the restart, and
-      reports that view's outstanding fault once as Failed. Fault recipients are captured under the state lock at
+      reports that view's outstanding fault once as Failed. An automatic recovery, including a revived one, resolves
+      the fault it recovered from when its restarted watch reaches `CaughtUp`: no view retains that fault afterwards,
+      so a later stop succeeds, while a stop before then still returns it once as Failed. Fault recipients are captured under the state lock at
       settlement, then delivered outside it. Each view retains the first outstanding fault of a watch generation;
       a later generation's fault or RescanRestart replaces it. Subscriber faults stay on the throwing view, once per
       watch generation per view. A rescan retains its retired watch's subscriber fault through draining and replacement

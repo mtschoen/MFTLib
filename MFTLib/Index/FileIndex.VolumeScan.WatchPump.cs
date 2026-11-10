@@ -148,6 +148,7 @@ public sealed partial class FileIndex
                     if (_recoveryState == RecoveryState.RecoveredAwaitingCatchUp)
                     {
                         _recoveryState = RecoveryState.None;
+                        ResolveRecoveredFaultLocked(instance);
                     }
 
                     NoteWatchStateLocked();
@@ -155,6 +156,28 @@ public sealed partial class FileIndex
             }
 
             RaiseWatchStateChanged();
+        }
+
+        /// <summary>
+        ///     A recovery's restarted watch caught up, so the fault the recovery was for is no longer
+        ///     outstanding on any view and a later stop does not report it. Any other retained fault,
+        ///     such as a subscriber fault, stays. The caller holds <see cref="StateLock" />.
+        /// </summary>
+        void ResolveRecoveredFaultLocked(WatchInstance instance)
+        {
+            if (instance.RecoveredFault is not { } recovered)
+            {
+                return;
+            }
+
+            foreach (var view in _views)
+            {
+                if (ReferenceEquals(view.OutstandingFault, recovered))
+                {
+                    view.OutstandingFault = null;
+                    view.OutstandingFaultGeneration = null;
+                }
+            }
         }
 
         /// <summary>
@@ -190,6 +213,7 @@ public sealed partial class FileIndex
                     }
 
                     instance.State = WatchInstanceState.Faulted;
+                    instance.Fault = fault.Exception;
                     _watchFailureMessage = fault.Exception.Message;
                     faultedWaiter = instance.CatchUp.MarkFaulted(fault.Exception);
                     recoveryFailed = _recoveryState == RecoveryState.RecoveredAwaitingCatchUp;
