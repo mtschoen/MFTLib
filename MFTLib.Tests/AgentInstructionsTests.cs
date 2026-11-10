@@ -11,6 +11,17 @@ public partial class AgentInstructionsTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public void InstructionFile_HasNoCarriageReturn()
+    {
+        var bytes = File.ReadAllBytes(
+            Path.Combine(AppContext.BaseDirectory, "repository-docs", "AGENTS.md"));
+        Assert.DoesNotContain((byte)0x0D, bytes,
+            "AGENTS.md contains a carriage return. .gitattributes pins it to LF so the " +
+            "character budget is identical on every platform; re-check it out " +
+            "(delete the file, then git checkout -- AGENTS.md).");
+    }
+
+    [TestMethod]
     public void WholeDocument_RemainsBelowCharacterBudget()
     {
         var text = ReadInstructions();

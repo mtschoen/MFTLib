@@ -92,7 +92,7 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 [Aislop rules](docs/quality-gates.md): invoke installed `aislop`, never `npx aislop`. Before completion run `aislop scan .` and address findings; before committing run `aislop scan --staged`. `aislop ci .` enforces `.aislop/config.yml`'s `failBelow: 100`; failure is a failing gate.
 
-[Instruction budgets](docs/quality-gates.md): keep this file strictly below 15000 characters and each blank-line-delimited block strictly below 3000. Preserve rules here and relocate narrative verbatim to linked docs. `AgentInstructionsTests` runs in both existing test jobs; locally run `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter FullyQualifiedName~AgentInstructionsTests` and `wc -m AGENTS.md`. Build before a `--no-build` test run so its copied document is current.
+[Instruction budgets](docs/quality-gates.md): keep this file strictly below 15000 characters and each blank-line-delimited block strictly below 3000. Preserve rules here and relocate narrative verbatim to linked docs. `AgentInstructionsTests` runs in both existing test jobs; locally run `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter FullyQualifiedName~AgentInstructionsTests` and `wc -m AGENTS.md` (the file is pinned to LF). Build before a `--no-build` test run so its copied document is current.
 
 ## Architecture
 

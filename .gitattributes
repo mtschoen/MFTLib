@@ -10,6 +10,13 @@
 *.sh text eol=lf
 
 ###############################################################################
+# The agent instruction file is character-budgeted by AgentInstructionsTests.
+# It must check out with LF on every platform so the counted size is the same
+# on Windows and Linux; CRLF would add one character per line on Windows only.
+###############################################################################
+AGENTS.md text eol=lf
+
+###############################################################################
 # Batch files must check out with CRLF. cmd.exe tolerates LF for simple
 # line-by-line scripts, but mis-parses labels, goto targets, and multi-line
 # blocks, so an LF-only .bat works until someone adds one and then fails in a

@@ -347,8 +347,10 @@ The same class checks the scanner and consumer-sync server context.
 
 `MFTLib.Tests/AgentInstructionsTests.cs` checks that the root `AGENTS.md` stays
 strictly below 15000 Unicode characters and that every blank-line-delimited
-block stays strictly below 3000. Both limits include the file's actual line
-endings. The test project copies the source document to
+block stays strictly below 3000. `.gitattributes` pins `AGENTS.md` to LF, so the
+limits are identical on every platform and `wc -m AGENTS.md` matches the test.
+`AgentInstructionsTests.InstructionFile_HasNoCarriageReturn` fails a checkout
+that contains any carriage return. The test project copies the source document to
 `repository-docs/AGENTS.md` in its output on every build. Missing input fails.
 
 Run `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter FullyQualifiedName~AgentInstructionsTests`.
