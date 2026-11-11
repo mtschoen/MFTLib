@@ -104,11 +104,24 @@ public sealed partial class WatchVerbTests : IDisposable
     }
 
     [TestMethod]
-    public async Task Run_JournalWithBothSizes_GrowsTheJournalThroughTheBroker()
+    [DataRow(false, UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended, 8000L)]
+    [DataRow(true, UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, 9000L)]
+    public async Task Run_JournalWithBothSizes_GrowsTheJournalThroughTheBroker(
+        bool allowAboveMaximumRecommendedSize,
+        UsnJournalGrowthOutcome expectedOutcome,
+        long expectedMaximumSize)
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes() with
         {
-            GrowUsnJournal = (_, target) => target
+            GrowUsnJournal = (_, target, overrideCap) => new UsnJournalGrowthResult
+            {
+                Outcome = overrideCap
+                    ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
+                    : UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended,
+                RequestedMaximumSize = target.MaximumSize,
+                MaximumRecommendedSize = 8000,
+                JournalSettings = target with { MaximumSize = overrideCap ? target.MaximumSize : 8000 }
+            }
         });
         var lines = new List<string>();
         var host = HostOver(lines.Add);
@@ -116,10 +129,23 @@ public sealed partial class WatchVerbTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, [new VolumeKey('X')]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureOptions, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(
+            new WatchArguments(WatchVerb.Journal, [new VolumeKey('X')])
+            {
+                CacheDirectory = cacheDir,
+                MaximumSize = 9000,
+                AllocationDelta = 4096,
+                AllowAboveMaximumRecommendedSize = allowAboveMaximumRecommendedSize
+            },
+            session,
+            FixtureOptions,
+            CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        Assert.Contains("Journal X: maximum size 9000, allocation delta 4096", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(
+            $"Journal X: {expectedOutcome}, requested 9000, maximum recommended 8000, maximum size {expectedMaximumSize}, allocation delta 4096",
+            lines,
+            string.Join(Environment.NewLine, lines));
     }
 
     // A directory root read from the MFT is a view of its volume's block: the journal verb must reach that volume's
@@ -134,7 +160,13 @@ public sealed partial class WatchVerbTests : IDisposable
                 new SyntheticScanRecord { RecordNumber = 8, ParentRecordNumber = 7, FileName = "file.txt", Size = 4096 }
             ]
         ],
-        GrowUsnJournal = (_, target) => target
+        GrowUsnJournal = (_, target, _) => new UsnJournalGrowthResult
+        {
+            Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+            RequestedMaximumSize = target.MaximumSize,
+            MaximumRecommendedSize = 16000,
+            JournalSettings = target
+        }
     };
 
     SampleHost DirectoryViewHost(List<string> lines)
@@ -163,7 +195,10 @@ public sealed partial class WatchVerbTests : IDisposable
         var result = await DirectoryViewHost(lines).RunThroughBrokerAsync(arguments, session, FixtureOptions, CancellationToken.None);
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
-        Assert.Contains("Journal X: maximum size 9000, allocation delta 4096", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(
+            "Journal X: GrewAsRequested, requested 9000, maximum recommended 16000, maximum size 9000, allocation delta 4096",
+            lines,
+            string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -186,6 +221,33 @@ public sealed partial class WatchVerbTests : IDisposable
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.Contains("Journal X: maximum size 8000, allocation delta 2000", lines, string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Windows)]
+    public async Task Run_JournalWithMaximumRecommended_ReportsCurrentSettingsAndRecommendedCap()
+    {
+        UsnJournalSettingsQuery.Dependencies._queryOverride =
+            volume => volume == 'C' ? new UsnJournalSettings { MaximumSize = 8000, AllocationDelta = 2000 } : throw new IOException($"Unexpected volume {volume}");
+        await using var handle = BrokerTestHarness.StartInProcess(Volumes());
+        var lines = new List<string>();
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var arguments = new WatchArguments(WatchVerb.Journal, [new VolumeKey('C')])
+        {
+            CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache"),
+            MaximumRecommended = true
+        };
+
+        var result = await HostOver(lines.Add).RunThroughBrokerAsync(arguments, session, FixtureOptions, CancellationToken.None);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        var expectedCap = UsnJournalSettings.QueryMaximumRecommendedSize('C');
+        Assert.IsGreaterThan(0L, expectedCap);
+        Assert.Contains(
+            $"Journal C: maximum size 8000, allocation delta 2000, maximum recommended {expectedCap}",
+            lines,
+            string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

@@ -1,3 +1,7 @@
+using System.ComponentModel;
+using MFTLib.Index;
+using MFTLib.NativeInterop;
+
 namespace MFTLib;
 
 /// <summary>
@@ -15,4 +19,17 @@ public readonly record struct UsnJournalSettings
     ///     The journal's configured allocation delta in bytes.
     /// </summary>
     public required long AllocationDelta { get; init; }
+
+    /// <summary>
+    ///     Queries the largest <see cref="MaximumSize" /> in bytes that MFTLib recommends by default
+    ///     for <paramref name="volume" />: the smaller of 8 GiB and 5 percent of the volume's total size,
+    ///     read from Windows at request time without requiring administrator rights.
+    /// </summary>
+    /// <param name="volume">The NTFS volume to query.</param>
+    /// <returns>The maximum recommended journal size in bytes before clamping.</returns>
+    /// <exception cref="ArgumentException"><paramref name="volume" /> is the default (uninitialized) value.</exception>
+    /// <exception cref="Win32Exception">Windows refused the volume disk-space query.</exception>
+    /// <exception cref="InvalidOperationException">Windows reported unusable volume geometry or the byte count overflowed.</exception>
+    public static long QueryMaximumRecommendedSize(VolumeKey volume) =>
+        UsnJournalVolume.QueryMaximumRecommendedSize(MFTUtilities.GetVolumePath(volume.Validated()));
 }

@@ -112,10 +112,13 @@ and its representable retained sizes are positive. Those two nonpositive guards
 are reachable through `SyntheticNotifications.CreateJournalCheckpointLoss` and
 `with` expressions; the other reasons can arise from production observations.
 
-The method performs no I/O, growth or new arithmetic. It does not round again or
-invent a larger target. The library reports the journal size that would have retained
-the checkpoint; the consumer owns the decision to grow. Pass the target struct to
-`BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken)`.
-Query current settings immediately before requesting
-growth and refuse the request if the target maximum is no longer greater than
-the current maximum. Growing cannot recover lost records; rescan afterward.
+The method performs no I/O, growth or new arithmetic. It does not round again,
+clamp to the recommended cap or invent a larger target. The library reports the raw journal
+size that would have retained the checkpoint; the consumer owns the decision to grow.
+Query `UsnJournalSettings.QueryMaximumRecommendedSize(volume)` before elevation to inspect
+the volume's recommended cap, and pass the target struct to
+`BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken, allowAboveMaximumRecommendedSize)`.
+Its `UsnJournalGrowthResult` classifies whether the journal grew as requested, clamped
+to the recommended cap, grew above the recommended cap by explicit override, or was already at or above the
+target (`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget`). Growing cannot recover lost
+records; rescan afterward.

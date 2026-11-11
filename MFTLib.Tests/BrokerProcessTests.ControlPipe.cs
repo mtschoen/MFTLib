@@ -76,12 +76,19 @@ public partial class BrokerProcessTests
         await broker.ReadRequestAsync();
 
         await broker.WriteControlAsync(writer =>
-            BrokerProtocol.WriteUsnJournalSettings(writer, BrokerFrame.UsnJournalSettings(request.RequestId, 65536, 4096)));
+            BrokerProtocol.WriteUsnJournalGrowthResult(writer, BrokerFrame.UsnJournalGrowthResult(request.RequestId,
+                new UsnJournalGrowthResult
+                {
+                    Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                    RequestedMaximumSize = 65536,
+                    MaximumRecommendedSize = 65536,
+                    JournalSettings = new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }
+                })));
 
         var wrongReply = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             answered.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsNull(wrongReply.Volume);
-        Assert.Contains("UsnJournalSettings instead of VolumeInfo", wrongReply.Message);
+        Assert.Contains("UsnJournalGrowthResult instead of VolumeInfo", wrongReply.Message);
         Assert.AreEqual(wrongReply.Message, await ended.WaitAsync(HangGuard, TestContext.CancellationToken),
             "The process ends with the mismatch as its reason.");
         await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);

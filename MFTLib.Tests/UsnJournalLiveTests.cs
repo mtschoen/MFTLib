@@ -152,32 +152,25 @@ public class UsnJournalLiveTests
         }
 
         var targetMaximum = before.MaximumSize + before.AllocationDelta;
-        var volumeAllowedCap = Math.Min(UsnJournalVolume.MaximumAllowedGrowthBytes, new DriveInfo("C").TotalSize / 20L);
-        if (targetMaximum > volumeAllowedCap)
+        var volumeRecommendedCap = UsnJournalSettings.QueryMaximumRecommendedSize('C');
+        if (targetMaximum > volumeRecommendedCap)
         {
             Assert.Inconclusive(
-                $"Target journal size {targetMaximum} bytes exceeds volume C: cap {volumeAllowedCap} bytes.");
+                $"Target journal size {targetMaximum} bytes exceeds volume C: recommended cap {volumeRecommendedCap} bytes.");
             return;
         }
 
         var grown = volume.Journal.GrowUsnJournal(targetMaximum, before.AllocationDelta);
 
-        Assert.IsGreaterThanOrEqualTo(targetMaximum, grown.MaximumSize,
-            $"Expected at least {targetMaximum} bytes, got {grown.MaximumSize}");
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, grown.Outcome);
+        Assert.IsGreaterThanOrEqualTo(targetMaximum, grown.JournalSettings.MaximumSize,
+            $"Expected at least {targetMaximum} bytes, got {grown.JournalSettings.MaximumSize}");
 
-        // Grow-only refusal, using the just-grown size (no second mutation).
-        InvalidOperationException? caught = null;
-        try
-        {
-            volume.Journal.GrowUsnJournal(grown.MaximumSize, grown.AllocationDelta);
-        }
-        catch (InvalidOperationException exception)
-        {
-            caught = exception;
-        }
+        // Grow-only no-op outcome, using the just-grown size (no second mutation).
+        var unchanged = volume.Journal.GrowUsnJournal(grown.JournalSettings.MaximumSize, grown.JournalSettings.AllocationDelta);
 
-        Assert.IsNotNull(caught);
-        Assert.Contains("only growth", caught.Message);
+        Assert.AreEqual(UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget, unchanged.Outcome);
+        Assert.AreEqual(grown.JournalSettings, unchanged.JournalSettings);
     }
 
     public TestContext TestContext { get; set; } = null!;

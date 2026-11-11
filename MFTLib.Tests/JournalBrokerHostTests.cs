@@ -19,7 +19,7 @@ public partial class JournalBrokerHostTests
         Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
         Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchVolume = null,
         Func<VolumeKey, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<VolumeKey, long, long, UsnJournalSettings>? growUsnJournal = null,
+        Func<VolumeKey, long, long, bool, UsnJournalGrowthResult>? growUsnJournal = null,
         int processorCount = 4,
         TimeProvider? timeProvider = null) =>
         BrokerHostFactory.Create(new()

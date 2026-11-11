@@ -17,7 +17,7 @@ enum BrokerFrameKind : byte
     QueryVolume = 3,
     VolumeInfo = 4,
     GrowUsnJournal = 5,
-    UsnJournalSettings = 6,
+    UsnJournalGrowthResult = 6,
     Error = 7,
     Heartbeat = 8,
     Stalled = 9,
@@ -71,9 +71,13 @@ readonly record struct BrokerFrame
     public uint BytesPerFileRecordSegment { get; private init; }
     public long MftValidDataLength { get; private init; }
 
-    // Journal sizing payload of the GrowUsnJournal request and UsnJournalSettings reply.
+    // Journal sizing payload of the GrowUsnJournal request and UsnJournalGrowthResult reply.
+    public UsnJournalGrowthOutcome JournalGrowthOutcome { get; private init; }
+    public long JournalRequestedMaximumSize { get; private init; }
+    public long JournalMaximumRecommendedSize { get; private init; }
     public long JournalMaximumSize { get; private init; }
     public long JournalAllocationDelta { get; private init; }
+    public bool JournalAllowAboveMaximumRecommendedSize { get; private init; }
 
     internal BrokerCatchUpLoss? CatchUpLoss { get; private init; }
 
@@ -173,26 +177,48 @@ readonly record struct BrokerFrame
         };
     }
 
-    // The host refuses any requested maximum at or below the current one (grow only).
-    public static BrokerFrame GrowUsnJournal(uint requestId, VolumeKey volume, long maximumSize, long allocationDelta)
+    // The host clamps any requested maximum above the recommended cap unless allowAboveMaximumRecommendedSize is true,
+    // and reports AlreadyAtOrAboveTarget when the live maximum is already at or above the effective target.
+    public static BrokerFrame GrowUsnJournal(
+        uint requestId,
+        VolumeKey volume,
+        long maximumSize,
+        long allocationDelta,
+        bool allowAboveMaximumRecommendedSize = false)
     {
         return Empty(BrokerFrameKind.GrowUsnJournal, requestId) with
         {
             Volume = volume.Validated(),
             JournalMaximumSize = maximumSize,
-            JournalAllocationDelta = allocationDelta
+            JournalAllocationDelta = allocationDelta,
+            JournalAllowAboveMaximumRecommendedSize = allowAboveMaximumRecommendedSize
         };
     }
 
-    // The post-change journal sizing, read back from the volume after FSCTL_CREATE_USN_JOURNAL.
-    public static BrokerFrame UsnJournalSettings(uint requestId, long maximumSize, long allocationDelta)
+    // The classified journal growth result, carrying the outcome, requested maximum, recommended cap, and live sizing.
+    public static BrokerFrame UsnJournalGrowthResult(uint requestId, UsnJournalGrowthResult growth)
     {
-        return Empty(BrokerFrameKind.UsnJournalSettings, requestId) with
+        return Empty(BrokerFrameKind.UsnJournalGrowthResult, requestId) with
         {
-            JournalMaximumSize = maximumSize,
-            JournalAllocationDelta = allocationDelta
+            JournalGrowthOutcome = growth.Outcome,
+            JournalRequestedMaximumSize = growth.RequestedMaximumSize,
+            JournalMaximumRecommendedSize = growth.MaximumRecommendedSize,
+            JournalMaximumSize = growth.JournalSettings.MaximumSize,
+            JournalAllocationDelta = growth.JournalSettings.AllocationDelta
         };
     }
+
+    public UsnJournalGrowthResult ToJournalGrowthResult() => new()
+    {
+        Outcome = JournalGrowthOutcome,
+        RequestedMaximumSize = JournalRequestedMaximumSize,
+        MaximumRecommendedSize = JournalMaximumRecommendedSize,
+        JournalSettings = new UsnJournalSettings
+        {
+            MaximumSize = JournalMaximumSize,
+            AllocationDelta = JournalAllocationDelta
+        }
+    };
 
     public static BrokerFrame Error(uint requestId, string message)
     {

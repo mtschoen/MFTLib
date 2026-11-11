@@ -35,11 +35,31 @@ partial class SampleHost
     [SuppressMessage("Interoperability", "CA1416", Justification = "A broker session, which the journal needs first, is only created on Windows")]
     async Task WriteJournalAsync(BrokerSession session, FileIndex index, VolumeKey volume, WatchArguments parsed, CancellationToken cancellationToken)
     {
-        var settings = parsed.MaximumSize is { } maximum && parsed.AllocationDelta is { } delta
-            ? await session.GrowUsnJournalAsync(volume,
-                new UsnJournalSettings { MaximumSize = maximum, AllocationDelta = delta }, cancellationToken).ConfigureAwait(false)
-            : index.QueryUsnJournalSettings();
-        await _output.WriteLineAsync($"Journal {volume}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}").ConfigureAwait(false);
+        if (parsed.MaximumSize is { } maximum && parsed.AllocationDelta is { } delta)
+        {
+            var growth = await session.GrowUsnJournalAsync(
+                volume,
+                new UsnJournalSettings { MaximumSize = maximum, AllocationDelta = delta },
+                cancellationToken,
+                parsed.AllowAboveMaximumRecommendedSize).ConfigureAwait(false);
+            var settings = growth.JournalSettings;
+            await _output.WriteLineAsync(
+                $"Journal {volume}: {growth.Outcome}, requested {growth.RequestedMaximumSize}, maximum recommended {growth.MaximumRecommendedSize}, maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}")
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var current = index.QueryUsnJournalSettings();
+        if (parsed.MaximumRecommended)
+        {
+            var maximumRecommended = UsnJournalSettings.QueryMaximumRecommendedSize(volume);
+            await _output.WriteLineAsync(
+                $"Journal {volume}: maximum size {current.MaximumSize}, allocation delta {current.AllocationDelta}, maximum recommended {maximumRecommended}")
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await _output.WriteLineAsync($"Journal {volume}: maximum size {current.MaximumSize}, allocation delta {current.AllocationDelta}").ConfigureAwait(false);
     }
 
     // Lists the cached blocks of the drives named (all when none) in the cache directory, and removes them with --clear.

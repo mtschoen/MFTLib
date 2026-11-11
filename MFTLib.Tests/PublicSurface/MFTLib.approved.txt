@@ -8,7 +8,7 @@ MFTLib.BrokerSession :: event public Connected : System.Action?
 MFTLib.BrokerSession :: event public Connecting : System.Action?
 MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
 MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.VolumeKey volume, MFTLib.UsnJournalSettings target, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
+MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.VolumeKey volume, MFTLib.UsnJournalSettings target, System.Threading.CancellationToken cancellationToken, bool allowAboveMaximumRecommendedSize = false) : System.Threading.Tasks.Task<MFTLib.UsnJournalGrowthResult>
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static RunBrokerIfRequested(string[] arguments) : bool
@@ -33,10 +33,27 @@ MFTLib.MftScanOptions :: method public static op_Equality(MFTLib.MftScanOptions?
 MFTLib.MftScanOptions :: method public static op_Inequality(MFTLib.MftScanOptions? left, MFTLib.MftScanOptions? right) : bool
 MFTLib.MftScanOptions :: property public IncludeFreed { get; init; } : bool
 MFTLib.MftScanOptions :: type public sealed class : System.IEquatable<MFTLib.MftScanOptions>
+MFTLib.UsnJournalGrowthOutcome :: field public const AlreadyAtOrAboveTarget : MFTLib.UsnJournalGrowthOutcome = 3
+MFTLib.UsnJournalGrowthOutcome :: field public const GrewAboveMaximumRecommendedByOverride : MFTLib.UsnJournalGrowthOutcome = 2
+MFTLib.UsnJournalGrowthOutcome :: field public const GrewAsRequested : MFTLib.UsnJournalGrowthOutcome = 0
+MFTLib.UsnJournalGrowthOutcome :: field public const GrewClampedToMaximumRecommended : MFTLib.UsnJournalGrowthOutcome = 1
+MFTLib.UsnJournalGrowthOutcome :: type public enum : byte, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLib.UsnJournalGrowthResult :: method public Equals(MFTLib.UsnJournalGrowthResult other) : bool
+MFTLib.UsnJournalGrowthResult :: method public override Equals(object obj) : bool
+MFTLib.UsnJournalGrowthResult :: method public override GetHashCode() : int
+MFTLib.UsnJournalGrowthResult :: method public override ToString() : string
+MFTLib.UsnJournalGrowthResult :: method public static op_Equality(MFTLib.UsnJournalGrowthResult left, MFTLib.UsnJournalGrowthResult right) : bool
+MFTLib.UsnJournalGrowthResult :: method public static op_Inequality(MFTLib.UsnJournalGrowthResult left, MFTLib.UsnJournalGrowthResult right) : bool
+MFTLib.UsnJournalGrowthResult :: property public required JournalSettings { get; init; } : MFTLib.UsnJournalSettings
+MFTLib.UsnJournalGrowthResult :: property public required MaximumRecommendedSize { get; init; } : long
+MFTLib.UsnJournalGrowthResult :: property public required Outcome { get; init; } : MFTLib.UsnJournalGrowthOutcome
+MFTLib.UsnJournalGrowthResult :: property public required RequestedMaximumSize { get; init; } : long
+MFTLib.UsnJournalGrowthResult :: type public readonly struct : System.IEquatable<MFTLib.UsnJournalGrowthResult>
 MFTLib.UsnJournalSettings :: method public Equals(MFTLib.UsnJournalSettings other) : bool
 MFTLib.UsnJournalSettings :: method public override Equals(object obj) : bool
 MFTLib.UsnJournalSettings :: method public override GetHashCode() : int
 MFTLib.UsnJournalSettings :: method public override ToString() : string
+MFTLib.UsnJournalSettings :: method public static QueryMaximumRecommendedSize(MFTLib.Index.VolumeKey volume) : long
 MFTLib.UsnJournalSettings :: method public static op_Equality(MFTLib.UsnJournalSettings left, MFTLib.UsnJournalSettings right) : bool
 MFTLib.UsnJournalSettings :: method public static op_Inequality(MFTLib.UsnJournalSettings left, MFTLib.UsnJournalSettings right) : bool
 MFTLib.UsnJournalSettings :: property public required AllocationDelta { get; init; } : long

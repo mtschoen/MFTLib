@@ -14,7 +14,7 @@ sealed record BrokerHostOptions
         IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? WatchVolume
     { get; init; }
     public Func<VolumeKey, NtfsVolumeInformation>? QueryVolumeInformation { get; init; }
-    public Func<VolumeKey, long, long, UsnJournalSettings>? GrowUsnJournal { get; init; }
+    public Func<VolumeKey, long, long, bool, UsnJournalGrowthResult>? GrowUsnJournal { get; init; }
     public int? ProcessorCount { get; init; } = 4;
     public TimeProvider? TimeProvider { get; init; }
 }

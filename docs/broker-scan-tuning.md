@@ -74,11 +74,12 @@ consumer what happened. `loss.TryGetGrowthTarget(out var target)` returns the re
 retention size and allocation delta when an eligible growth target exists. It returns
 false for non-trimming losses, absent or nonpositive retention sizes, targets at or
 below the recorded maximum, or nonpositive allocation deltas. `loss.GrowthTargetRefusalReason`
-explains refusal and is null when a target exists. The library reports the size that
+explains refusal and is null when a target exists. The library reports the raw size that
 would have retained the checkpoint; the consumer decides whether to grow.
-After user consent, query fresh settings with `index.QueryUsnJournalSettings()`
-and require `target.MaximumSize` to exceed the current `MaximumSize`. Grow through
-`BrokerSession.GrowUsnJournalAsync(loss.Volume, target, cancellationToken)`. Then rescan the
+Before elevating, a consumer can call `UsnJournalSettings.QueryMaximumRecommendedSize(loss.Volume)`
+to inspect the volume's recommended cap. After user consent, grow through
+`BrokerSession.GrowUsnJournalAsync(loss.Volume, target, cancellationToken, allowAboveMaximumRecommendedSize)`
+and inspect the returned `UsnJournalGrowthResult.Outcome`. Then rescan the
 volume. Journal growth cannot recover records already discarded, so the rescan is
 required. If watching had been refused over the unresumable block, the successful
 rescan clears the refusal and starts the requested watch.

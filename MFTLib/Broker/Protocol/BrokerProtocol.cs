@@ -95,9 +95,8 @@ static partial class BrokerProtocol
             BrokerFrameKind.VolumeInfo => BrokerFrame.VolumeInfo(
                 payload.UInt32(), payload.UInt32(), payload.Int64()),
             BrokerFrameKind.GrowUsnJournal => BrokerFrame.GrowUsnJournal(
-                payload.UInt32(), payload.Volume(), payload.Int64(), payload.Int64()),
-            BrokerFrameKind.UsnJournalSettings => BrokerFrame.UsnJournalSettings(
-                payload.UInt32(), payload.Int64(), payload.Int64()),
+                payload.UInt32(), payload.Volume(), payload.Int64(), payload.Int64(), payload.Boolean()),
+            BrokerFrameKind.UsnJournalGrowthResult => ReadUsnJournalGrowthResultFrame(ref payload),
             BrokerFrameKind.Error => BrokerFrame.Error(payload.UInt32(), payload.String()),
             BrokerFrameKind.Heartbeat => BrokerFrame.Heartbeat(),
             BrokerFrameKind.Stalled => BrokerFrame.Stalled(payload.String()),
@@ -118,6 +117,38 @@ static partial class BrokerProtocol
     }
 
     // Private read helpers
+
+    static BrokerFrame ReadUsnJournalGrowthResultFrame(ref PayloadReader payload)
+    {
+        var requestId = payload.UInt32();
+        var outcome = ReadJournalGrowthOutcome(ref payload);
+        var requestedMaximumSize = payload.Int64();
+        var maximumRecommendedSize = payload.Int64();
+        var maximumSize = payload.Int64();
+        var allocationDelta = payload.Int64();
+        return BrokerFrame.UsnJournalGrowthResult(requestId, new UsnJournalGrowthResult
+        {
+            Outcome = outcome,
+            RequestedMaximumSize = requestedMaximumSize,
+            MaximumRecommendedSize = maximumRecommendedSize,
+            JournalSettings = new UsnJournalSettings
+            {
+                MaximumSize = maximumSize,
+                AllocationDelta = allocationDelta
+            }
+        });
+    }
+
+    static UsnJournalGrowthOutcome ReadJournalGrowthOutcome(ref PayloadReader payload)
+    {
+        var raw = payload.Byte();
+        if (raw > (byte)UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget)
+        {
+            throw new InvalidDataException($"Unknown journal growth outcome: {raw}");
+        }
+
+        return (UsnJournalGrowthOutcome)raw;
+    }
 
     static UsnJournalCursor ReadCursor(ref PayloadReader payload)
     {

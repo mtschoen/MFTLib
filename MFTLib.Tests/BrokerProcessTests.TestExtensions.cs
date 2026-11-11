@@ -383,20 +383,27 @@ public partial class BrokerProcessTests
                 readCursors.Enqueue(since);
                 return since == advanced ? ([], since) : ([], advanced);
             },
-            GrowUsnJournal = (_, target) => target
+            GrowUsnJournal = (_, target, _) => new UsnJournalGrowthResult
+            {
+                Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                RequestedMaximumSize = target.MaximumSize,
+                MaximumRecommendedSize = target.MaximumSize,
+                JournalSettings = target
+            }
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
 
         var scan = await handle.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
+        var growth = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual([ArmedSynthetic, advanced], [.. readCursors]);
         Assert.AreEqual(Armed, scan.ArmedCursor);
         Assert.IsNull(scan.CatchUpLoss);
-        Assert.AreEqual(0x08000000L, settings.MaximumSize);
-        Assert.AreEqual(0x01000000L, settings.AllocationDelta);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, growth.Outcome);
+        Assert.AreEqual(0x08000000L, growth.JournalSettings.MaximumSize);
+        Assert.AreEqual(0x01000000L, growth.JournalSettings.AllocationDelta);
     }
 
     [TestMethod]

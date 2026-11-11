@@ -64,10 +64,16 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task ServeAsync_GrowUsnJournalReplyHitsBrokenPipe_SessionEndsNormally()
     {
-        var host = ScanHost(growUsnJournal: (_, maximumSize, allocationDelta) => new UsnJournalSettings
+        var host = ScanHost(growUsnJournal: (_, maximumSize, allocationDelta, _) => new UsnJournalGrowthResult
         {
-            MaximumSize = maximumSize,
-            AllocationDelta = allocationDelta
+            Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+            RequestedMaximumSize = maximumSize,
+            MaximumRecommendedSize = maximumSize,
+            JournalSettings = new UsnJournalSettings
+            {
+                MaximumSize = maximumSize,
+                AllocationDelta = allocationDelta
+            }
         });
         await using var harness = new HostChannelHarness(host, breakableControl: true);
         harness.BreakableControl!.BreakPipe();

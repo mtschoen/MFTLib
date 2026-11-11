@@ -131,28 +131,39 @@ public sealed class BrokerSession : IAsyncDisposable
         new BrokerMftBlockProducer(ConnectAsync, scanOptions).CreateIndexSource();
 
     /// <summary>
-    ///     Grows the volume's USN journal within the broker's volume-size cap (never shrinks it) and returns the sizing
-    ///     the volume reports afterwards, launching the broker first if no use has yet.
+    ///     Grows the volume's USN journal (never shrinks it) and returns a <see cref="UsnJournalGrowthResult" />
+    ///     reporting the classified outcome, the requested and maximum recommended sizes, and the sizing Windows
+    ///     reports afterwards, launching the broker first if no use has yet.
     /// </summary>
     /// <param name="volume">The volume whose journal grows.</param>
     /// <param name="target">
-    ///     The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the
-    ///     current size or above the smaller of 8 GiB and 5% of the volume's total size queried at request time.
+    ///     The requested maximum size and allocation delta in bytes. Unless <paramref name="allowAboveMaximumRecommendedSize" />
+    ///     is <see langword="true" />, a requested maximum above <see cref="UsnJournalSettings.QueryMaximumRecommendedSize" />
+    ///     is clamped to that recommended cap and reported as <see cref="UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended" />.
+    ///     When the live journal maximum is already at or above the effective target, no control request is sent to
+    ///     Windows and <see cref="UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget" /> is returned.
     /// </param>
     /// <param name="cancellationToken">Ends this call's wait; it does not abort a launch other callers share.</param>
+    /// <param name="allowAboveMaximumRecommendedSize">
+    ///     When <see langword="true" />, bypasses the recommended cap and asks Windows for the full
+    ///     <paramref name="target" />.<see cref="UsnJournalSettings.MaximumSize" />, reporting
+    ///     <see cref="UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride" /> when it grows above the cap.
+    /// </param>
     /// <exception cref="InvalidOperationException">
-    ///     The process ended, the launch did not start, or the broker refused the change (including a requested maximum
-    ///     at or below the current size or above the broker's volume-size cap).
+    ///     The process ended, the launch did not start, or the broker reported an argument or Windows failure.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The session was disposed.</exception>
     /// <exception cref="IOException">The process ended first. <see cref="Ended" /> says why.</exception>
     /// <exception cref="TimeoutException">The broker never connected, or did not answer within the reply timeout.</exception>
-    public async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey volume, UsnJournalSettings target,
-        CancellationToken cancellationToken)
+    public async Task<UsnJournalGrowthResult> GrowUsnJournalAsync(
+        VolumeKey volume,
+        UsnJournalSettings target,
+        CancellationToken cancellationToken,
+        bool allowAboveMaximumRecommendedSize = false)
     {
         volume = volume.Validated();
         var process = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return await process.GrowUsnJournalAsync(volume, target, cancellationToken)
+        return await process.GrowUsnJournalAsync(volume, target, cancellationToken, allowAboveMaximumRecommendedSize)
             .ConfigureAwait(false);
     }
 

@@ -341,8 +341,13 @@ public class FileIndexCallbackReentrancyTests
                 RecordBatches = (_, _, _, _, _, _) => [],
                 JournalRead = (_, since, _) => ([], since),
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
-                JournalGrow = (_, maximumSize, allocationDelta) =>
-                    new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta }
+                JournalGrow = (_, maximumSize, allocationDelta, _) => new UsnJournalGrowthResult
+                {
+                    Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                    RequestedMaximumSize = maximumSize,
+                    MaximumRecommendedSize = maximumSize * 2,
+                    JournalSettings = new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta }
+                }
             },
             processorCount: 4));
         var process = broker.Process;
@@ -354,7 +359,7 @@ public class FileIndexCallbackReentrancyTests
                 _ = index.Search(new SearchQuery("t"), TestContext.CancellationToken);
                 var grown = process.GrowUsnJournalAsync(new VolumeKey('T'), new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }, CancellationToken.None)
                     .WaitAsync(HangGuard, TestContext.CancellationToken).GetAwaiter().GetResult();
-                outcome.TrySetResult((index.Status.State, grown.MaximumSize, null));
+                outcome.TrySetResult((index.Status.State, grown.JournalSettings.MaximumSize, null));
             }
             catch (Exception thrown)
             {

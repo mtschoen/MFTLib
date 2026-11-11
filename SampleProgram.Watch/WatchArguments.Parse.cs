@@ -31,6 +31,8 @@ sealed partial record WatchArguments
             ConnectTimeoutSeconds = connectTimeout is >= 1 and <= MaximumSeconds ? (int)connectTimeout : null,
             MaximumSize = reader.Number("--maximum-size"),
             AllocationDelta = reader.Number("--allocation-delta"),
+            AllowAboveMaximumRecommendedSize = reader.Flag("--allow-above-maximum"),
+            MaximumRecommended = reader.Flag("--maximum-recommended"),
             CacheDirectory = reader.Text("--cache-directory"),
             Clear = reader.Flag("--clear")
         };
@@ -79,6 +81,10 @@ sealed partial record WatchArguments
             _ when connectTimeout is < 1 or > MaximumSeconds => $"Option --connect-timeout must be from 1 to {MaximumSeconds}.",
             { Verb: WatchVerb.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
                 => "journal needs --maximum-size and --allocation-delta together.",
+            { Verb: WatchVerb.Journal, AllowAboveMaximumRecommendedSize: true, MaximumSize: null }
+                => "journal --allow-above-maximum needs --maximum-size and --allocation-delta.",
+            { Verb: WatchVerb.Journal, MaximumRecommended: true, MaximumSize: not null }
+                => "journal --maximum-recommended cannot be combined with --maximum-size.",
             _ => null
         };
     }

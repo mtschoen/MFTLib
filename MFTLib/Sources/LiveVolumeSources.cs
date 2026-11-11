@@ -72,10 +72,14 @@ static class LiveVolumeSources
         }
     }
 
-    internal static UsnJournalSettings GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta)
+    internal static UsnJournalGrowthResult GrowUsnJournal(
+        VolumeKey volume,
+        long maximumSize,
+        long allocationDelta,
+        bool allowAboveMaximumRecommendedSize = false)
     {
         using var mftVolume = MftVolume.Open(volume);
-        return mftVolume.Journal.GrowUsnJournal(maximumSize, allocationDelta);
+        return mftVolume.Journal.GrowUsnJournal(maximumSize, allocationDelta, allowAboveMaximumRecommendedSize);
     }
 
     internal static UsnJournalCursor QueryCursor(VolumeKey volume)

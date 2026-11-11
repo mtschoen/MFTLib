@@ -17,7 +17,7 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
     { get; init; } = UnsupportedWatch;
     internal Func<VolumeKey, NtfsVolumeInformation> VolumeInformation { get; init; } =
         _ => throw new NotSupportedException("Broker has no volume information source");
-    internal Func<VolumeKey, long, long, UsnJournalSettings> JournalGrow { get; init; } = UnsupportedGrow;
+    internal Func<VolumeKey, long, long, bool, UsnJournalGrowthResult> JournalGrow { get; init; } = UnsupportedGrow;
 
     internal static IEnumerable<IReadOnlyList<MftRecord>> UnsupportedScan(
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
@@ -33,7 +33,11 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
         throw new NotSupportedException("Broker has no watch source");
     }
 
-    internal static UsnJournalSettings UnsupportedGrow(VolumeKey volume, long maximumSize, long allocationDelta)
+    internal static UsnJournalGrowthResult UnsupportedGrow(
+        VolumeKey volume,
+        long maximumSize,
+        long allocationDelta,
+        bool allowAboveMaximumRecommendedSize)
     {
         throw new NotSupportedException("Broker has no journal grow source");
     }
@@ -50,6 +54,10 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
         VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
         CancellationToken cancellationToken) => JournalWatch(volume, since, operation, cancellationToken);
     public NtfsVolumeInformation QueryVolumeInformation(VolumeKey volume) => VolumeInformation(volume);
-    public UsnJournalSettings GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta) =>
-        JournalGrow(volume, maximumSize, allocationDelta);
+    public UsnJournalGrowthResult GrowUsnJournal(
+        VolumeKey volume,
+        long maximumSize,
+        long allocationDelta,
+        bool allowAboveMaximumRecommendedSize = false) =>
+        JournalGrow(volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize);
 }

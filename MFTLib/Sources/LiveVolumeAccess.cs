@@ -22,6 +22,10 @@ sealed class LiveVolumeAccess : IVolumeAccess
         LiveVolumeSources.WatchAndDisposeAsync(volume, since, operation, cancellationToken);
     public NtfsVolumeInformation QueryVolumeInformation(VolumeKey volume) =>
         LiveVolumeSources.QueryVolumeInfo(volume);
-    public UsnJournalSettings GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta) =>
-        LiveVolumeSources.GrowUsnJournal(volume, maximumSize, allocationDelta);
+    public UsnJournalGrowthResult GrowUsnJournal(
+        VolumeKey volume,
+        long maximumSize,
+        long allocationDelta,
+        bool allowAboveMaximumRecommendedSize = false) =>
+        LiveVolumeSources.GrowUsnJournal(volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize);
 }

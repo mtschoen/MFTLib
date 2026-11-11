@@ -572,11 +572,17 @@ public partial class BrokerSessionTests
     [TestMethod]
     public async Task GrowUsnJournalAsync_LaunchesOnFirstUseAndForwardsTheRequest()
     {
-        var received = new List<(VolumeKey Volume, long MaximumSize, long AllocationDelta)>();
-        await using var handle = StartBroker((volume, target) =>
+        var received = new List<(VolumeKey Volume, long MaximumSize, long AllocationDelta, bool AllowAboveMaximumRecommendedSize)>();
+        await using var handle = StartBroker((volume, target, allowAboveMaximumRecommendedSize) =>
         {
-            received.Add((volume, target.MaximumSize, target.AllocationDelta));
-            return target;
+            received.Add((volume, target.MaximumSize, target.AllocationDelta, allowAboveMaximumRecommendedSize));
+            return new UsnJournalGrowthResult
+            {
+                Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                RequestedMaximumSize = target.MaximumSize,
+                MaximumRecommendedSize = 8L * 1024 * 1024 * 1024,
+                JournalSettings = target
+            };
         });
         var brokerProcess = handle.Process;
         var launches = 0;
@@ -586,16 +592,18 @@ public partial class BrokerSessionTests
             return Task.FromResult(brokerProcess);
         });
 
-        var settings = await session.GrowUsnJournalAsync('c', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
+        var growth = await session.GrowUsnJournalAsync('c', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(0x08000000L, settings.MaximumSize);
-        Assert.AreEqual(0x01000000L, settings.AllocationDelta);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, growth.Outcome);
+        Assert.AreEqual(0x08000000L, growth.JournalSettings.MaximumSize);
+        Assert.AreEqual(0x01000000L, growth.JournalSettings.AllocationDelta);
         Assert.AreEqual(1, launches);
         Assert.HasCount(1, received);
         Assert.AreEqual('C', received[0].Volume);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
+        Assert.IsFalse(received[0].AllowAboveMaximumRecommendedSize);
     }
 
     [TestMethod]
@@ -758,7 +766,7 @@ public partial class BrokerSessionTests
             BrokerTestHarness.CreateSession(null!));
     }
 
-    static InProcessBrokerHandle StartBroker(Func<VolumeKey, UsnJournalSettings, UsnJournalSettings>? grow = null) =>
+    static InProcessBrokerHandle StartBroker(Func<VolumeKey, UsnJournalSettings, bool, UsnJournalGrowthResult>? grow = null) =>
         BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => throw new NotSupportedException("no scan in this test"),

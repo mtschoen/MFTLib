@@ -36,18 +36,28 @@ public partial class BrokerProcessTests
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            GrowUsnJournal = (volume, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize) =>
             {
                 Assert.AreEqual(new VolumeKey('E'), volume);
-                return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
+                Assert.IsFalse(allowAboveMaximumRecommendedSize);
+                return new UsnJournalGrowthResult
+                {
+                    Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                    RequestedMaximumSize = maximumSize,
+                    MaximumRecommendedSize = 8L * 1024 * 1024 * 1024,
+                    JournalSettings = new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta }
+                };
             }
         }));
 
-        var settings = await broker.Process.GrowUsnJournalAsync('E', new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }, CancellationToken.None)
+        var growth = await broker.Process.GrowUsnJournalAsync('E', new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(131072L, settings.MaximumSize);
-        Assert.AreEqual(4096L, settings.AllocationDelta);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, growth.Outcome);
+        Assert.AreEqual(65536L, growth.RequestedMaximumSize);
+        Assert.AreEqual(8L * 1024 * 1024 * 1024, growth.MaximumRecommendedSize);
+        Assert.AreEqual(131072L, growth.JournalSettings.MaximumSize);
+        Assert.AreEqual(4096L, growth.JournalSettings.AllocationDelta);
     }
 
     [TestMethod]

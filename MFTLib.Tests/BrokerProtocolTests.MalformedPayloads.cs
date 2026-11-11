@@ -65,8 +65,18 @@ public partial class BrokerProtocolTests
             case BrokerFrameKind.GrowUsnJournal:
                 BrokerProtocol.WriteGrowUsnJournal(buffer, BrokerFrame.GrowUsnJournal(1, 'C', 0x08000000, 0x01000000));
                 break;
-            case BrokerFrameKind.UsnJournalSettings:
-                BrokerProtocol.WriteUsnJournalSettings(buffer, BrokerFrame.UsnJournalSettings(1, 0x08000000, 0x01000000));
+            case BrokerFrameKind.UsnJournalGrowthResult:
+                BrokerProtocol.WriteUsnJournalGrowthResult(buffer, BrokerFrame.UsnJournalGrowthResult(1, new UsnJournalGrowthResult
+                {
+                    Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                    RequestedMaximumSize = 0x08000000,
+                    MaximumRecommendedSize = 0x10000000,
+                    JournalSettings = new UsnJournalSettings
+                    {
+                        MaximumSize = 0x08000000,
+                        AllocationDelta = 0x01000000
+                    }
+                }));
                 break;
             case BrokerFrameKind.Error:
                 BrokerProtocol.WriteError(buffer, BrokerFrame.Error(1, "e"));
@@ -119,7 +129,7 @@ public partial class BrokerProtocolTests
     [DataRow((int)BrokerFrameKind.QueryVolume)]
     [DataRow((int)BrokerFrameKind.VolumeInfo)]
     [DataRow((int)BrokerFrameKind.GrowUsnJournal)]
-    [DataRow((int)BrokerFrameKind.UsnJournalSettings)]
+    [DataRow((int)BrokerFrameKind.UsnJournalGrowthResult)]
     [DataRow((int)BrokerFrameKind.Error)]
     [DataRow((int)BrokerFrameKind.Heartbeat)]
     [DataRow((int)BrokerFrameKind.Stalled)]
@@ -207,7 +217,7 @@ public partial class BrokerProtocolTests
         var suffix = kind switch
         {
             BrokerFrameKind.OpenChannel => [2, 0, 0, 0, (byte)'p', 0],
-            BrokerFrameKind.GrowUsnJournal => new byte[16],
+            BrokerFrameKind.GrowUsnJournal => new byte[17],
             _ => []
         };
         foreach (var character in (ReadOnlySpan<char>)['\0', '1', ':', '\u00e9', 'c'])
@@ -237,5 +247,28 @@ public partial class BrokerProtocolTests
             var frame = FrameWithPayload(kind, payload);
             Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
         }
+    }
+
+    [TestMethod]
+    [DataRow(2)]
+    [DataRow(255)]
+    public void ReadFrame_GrowUsnJournalWithInvalidOverrideByte_ThrowsInvalidDataException(int rawOverrideByte)
+    {
+        var bytes = ValidFrame(BrokerFrameKind.GrowUsnJournal);
+        bytes[^1] = (byte)rawOverrideByte;
+
+        Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
+    }
+
+    [TestMethod]
+    [DataRow(4)]
+    [DataRow(255)]
+    public void ReadFrame_UsnJournalGrowthResultWithUnknownOutcomeByte_ThrowsInvalidDataException(int rawOutcomeByte)
+    {
+        var bytes = ValidFrame(BrokerFrameKind.UsnJournalGrowthResult);
+        bytes[9] = (byte)rawOutcomeByte;
+
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
+        Assert.Contains("Unknown journal growth outcome", exception.Message);
     }
 }

@@ -73,8 +73,10 @@ public static class BrokerTestHarness
                     watch(volume, since.ToSynthetic(), cancellationToken), cancellationToken),
             VolumeInformation = queryVolume,
             JournalGrow = grow is null ? ScriptedVolumeAccess.UnsupportedGrow :
-                (volume, maximumSize, allocationDelta) => grow(volume,
-                    new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })
+                (volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize) => grow(
+                    volume,
+                    new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta },
+                    allowAboveMaximumRecommendedSize)
         });
     }
 

@@ -138,15 +138,24 @@ opens the named section.
 
 ## Control requests
 
-`OpenChannel`, `QueryVolume`, and `GrowUsnJournal` carry the request id followed by one uppercase ASCII drive character in two little-endian UTF-16 bytes, without a string-length prefix. `OpenChannel` then carries the length-prefixed pipe name, which must match `mftlib-broker-` followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`, 46 UTF-16 units); `GrowUsnJournal` then carries the two signed 64-bit sizes. Invalid or noncanonical drive characters, truncated fields, and trailing request payload bytes are malformed control frames and end the session before a volume source or channel connector runs; an `OpenChannel` pipe name that fails the `mftlib-broker-<32hex>` check replies with a request-id-correlated `Error` frame on the control pipe without connecting to the named pipe while the control session continues. Application character inputs normalize through `VolumeKey` before encoding. Progress frames inherit identity from their channel.
+`OpenChannel`, `QueryVolume`, and `GrowUsnJournal` carry the request id followed by one uppercase ASCII drive character in two little-endian UTF-16 bytes, without a string-length prefix. `OpenChannel` then carries the length-prefixed pipe name, which must match `mftlib-broker-` followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`, 46 UTF-16 units); `GrowUsnJournal` then carries the two signed 64-bit sizes (`maximumSize`, `allocationDelta`) followed by a 1-byte `allowAboveMaximumRecommendedSize` flag (`0` or `1`), and `UsnJournalGrowthResult` replies with the request id, a 1-byte `UsnJournalGrowthOutcome` (`0`..`3`), and four signed 64-bit sizes (`requestedMaximumSize`, `maximumRecommendedSize`, `maximumSize`, `allocationDelta`). Invalid or noncanonical drive characters, unknown boolean or outcome bytes, truncated fields, and trailing request payload bytes are malformed control frames and end the session before a volume source or channel connector runs; an `OpenChannel` pipe name that fails the `mftlib-broker-<32hex>` check replies with a request-id-correlated `Error` frame on the control pipe without connecting to the named pipe while the control session continues. Application character inputs normalize through `VolumeKey` before encoding. Progress frames inherit identity from their channel.
 
 `BrokerSession.GrowUsnJournalAsync` is a control request, like the internal volume
-query. It grows a journal in place, never shrinks it, refuses a maximum at or below
-the current size or above `min(8 GiB, 5% of the volume's total size)` queried at
-request time through `GetDiskSpaceInformationW` (`ActualTotalAllocationUnits *
-SectorsPerAllocationUnit * BytesPerSector`), and returns settings read back from the
-volume. A cap refusal replies with a request-id-correlated `Error` frame before
-querying or growing the journal and leaves the broker session alive.
+query. `UsnJournalSettings.QueryMaximumRecommendedSize(volume)` queries the recommended cap
+(`min(8 GiB, 5% of the volume's total size)`) without elevation through
+`GetDiskSpaceInformationW` (`ActualTotalAllocationUnits * SectorsPerAllocationUnit *
+BytesPerSector`), and `GrowUsnJournalAsync` evaluates the same policy at request time.
+It grows a journal in place and never shrinks it: without `allowAboveMaximumRecommendedSize`,
+a requested maximum above the cap is clamped to `MaximumRecommendedSize` and reported as
+`UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended`; with
+`allowAboveMaximumRecommendedSize: true`, a request above the cap is applied in full and
+reported as `UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride`; a request at or
+below the cap reports `UsnJournalGrowthOutcome.GrewAsRequested`. When the effective
+target maximum is already at or below the current `MaximumSize`, no
+`FSCTL_CREATE_USN_JOURNAL` request is sent and the reply reports
+`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget` with the current settings. Nonpositive
+sizes and Windows failures reply with a request-id-correlated `Error` frame and leave
+the broker session alive.
 
 Cancellation before a request starts writing sends nothing. Once writing begins,
 the process completes the frame to avoid corrupting the control stream with a

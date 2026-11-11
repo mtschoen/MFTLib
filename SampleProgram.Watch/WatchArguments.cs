@@ -22,7 +22,7 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Root
         "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); a root is a drive letter or a full directory path; with no root, every ready local NTFS drive" + Environment.NewLine +
         "  --producer picks how a root is read: automatic (default) scans the MFT when the volume allows it and otherwise walks, mft never walks, walk never reads the MFT" + Environment.NewLine +
         "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch accepts add-root <path> until Enter, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
-        "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
+        "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-recommended] [--maximum-size B --allocation-delta B [--allow-above-maximum]]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
         "  cache exits 0 when listing; --clear attempts every selected block and exits 1 if any is InUse or Failed, otherwise 0" + Environment.NewLine +
         "  --connect-timeout N waits N seconds (default 30) for the elevated broker to connect; one cache directory D serves every drive and scan shape; scan never caches and refuses --cache-directory";
 
@@ -32,7 +32,7 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Root
         [WatchVerb.Scan] = ["--connect-timeout", "--producer"],
         [WatchVerb.Watch] = ["--cache-directory", "--seconds", "--connect-timeout", "--producer"],
         [WatchVerb.Rescan] = ["--cache-directory", "--connect-timeout", "--producer"],
-        [WatchVerb.Journal] = ["--cache-directory", "--maximum-size", "--allocation-delta", "--connect-timeout", "--producer"],
+        [WatchVerb.Journal] = ["--cache-directory", "--maximum-size", "--allocation-delta", "--allow-above-maximum", "--maximum-recommended", "--connect-timeout", "--producer"],
         [WatchVerb.Cache] = ["--cache-directory", "--clear"],
         [WatchVerb.ElevationStatus] = []
     };
@@ -45,6 +45,8 @@ sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<RootKey> Root
     internal ProducerSelection Producer { get; init; } = ProducerSelection.Automatic;
     internal long? MaximumSize { get; init; }
     internal long? AllocationDelta { get; init; }
+    internal bool AllowAboveMaximumRecommendedSize { get; init; }
+    internal bool MaximumRecommended { get; init; }
     internal string? CacheDirectory { get; init; }
     internal bool Clear { get; private init; }
 

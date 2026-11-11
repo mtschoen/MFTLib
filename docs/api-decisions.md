@@ -434,12 +434,14 @@ public value, or a consumer test needs to supply a scan observation as input to 
 ## Journal retention sizing is reported by the library; growth is a consumer decision
 
 **Decision (API review finding F12):**
-`BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken)` takes a `UsnJournalSettings` target.
+`BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken, allowAboveMaximumRecommendedSize = false)` takes a
+`UsnJournalSettings` target and returns `Task<UsnJournalGrowthResult>`.
 The library reports the exact journal size that would have retained a lost checkpoint; the consumer owns the
 decision to grow. `JournalCheckpointLoss.TryGetGrowthTarget` projects that recorded size and allocation delta,
 and `GrowthTargetRefusalReason` is a nullable `JournalGrowthTargetRefusalReason`, non-null only when no target is
 available. The reason enum has no success member, following the state-plus-nullable-reason rule below.
-`ScriptedBrokerVolumes.GrowUsnJournal` also receives the target settings as one value.
+`ScriptedBrokerVolumes.GrowUsnJournal` receives the volume, target settings, and `allowAboveMaximumRecommendedSize` flag
+and returns `UsnJournalGrowthResult`.
 
 **Reason:** settings already group both sizes, so unpacking them to request growth adds no information.
 Consumers must explain refusals without repeating eligibility checks. The reason is derived from the report's
@@ -1283,24 +1285,38 @@ is skipped and is not a failure (B2). `VolumeKey.TryParse(string? text, out Volu
 
 **Revisit only if:** a concrete production consumer requirement needs in-place cache-tag mutation outside block creation and replacement rescans.
 
-## GrowUsnJournal caps the requested maximum at 8 GiB and 5% of volume total size
+## GrowUsnJournal exposes a soft 8 GiB / 5% recommended cap with clamping, override, and classified outcomes
 
-**Decision (owner ruling, 2026-10-27, [issue 778](/schoen/MFTLib/issues/778)):** `UsnJournalVolume.GrowUsnJournal`
-(and therefore `BrokerSession.GrowUsnJournalAsync`) caps the requested `MaximumSize` at the smaller of 8 GiB
-(`8,589,934,592` bytes) and 5% of the volume's total size (`totalBytes / 20`), queried at request time through
-`GetDiskSpaceInformationW` (`ActualTotalAllocationUnits * SectorsPerAllocationUnit * BytesPerSector`) with no caching
-and ignoring caller quota or free-space fields. A request above that cap is refused before querying or modifying the
-journal (`ArgumentOutOfRangeException` on `UsnJournalVolume.GrowUsnJournal`, surfaced as a request-id-correlated
-`InvalidOperationException` on `BrokerSession.GrowUsnJournalAsync` without ending the broker session). Broker channel
-pipe names must match `mftlib-broker-` plus 32 ASCII hex digits, and scan section names must match
-`mftlib-block-<volume>-` plus 32 ASCII hex digits for the channel's volume.
+**Decision (owner rulings, 2026-11-10, [file-wizard issue 895](/schoen/file-wizard/issues/895); broker name validation from 2026-10-27, [issue 778](/schoen/MFTLib/issues/778)):**
+`UsnJournalSettings.QueryMaximumRecommendedSize(VolumeKey volume)` queries the maximum recommended journal size for a volume without
+requiring elevation: the smaller of 8 GiB (`8,589,934,592` bytes) and 5% of the volume's total size (`totalBytes / 20`),
+read at request time through `GetDiskSpaceInformationW` (`ActualTotalAllocationUnits * SectorsPerAllocationUnit *
+BytesPerSector`) with no caching and ignoring caller quota or free-space fields. One policy implementation
+(`UsnJournalVolume.QueryMaximumRecommendedSize`) serves both the public query and `UsnJournalVolume.GrowUsnJournal`.
+`BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken, allowAboveMaximumRecommendedSize = false)` carries the
+explicit `allowAboveMaximumRecommendedSize` override flag on the `GrowUsnJournal` control frame and returns a
+`UsnJournalGrowthResult` (`Outcome`, `RequestedMaximumSize`, `MaximumRecommendedSize`, `JournalSettings`) on the
+`UsnJournalGrowthResult` reply frame. The recommended cap is a soft safety rail: without `allowAboveMaximumRecommendedSize`, a requested
+`MaximumSize` above `MaximumRecommendedSize` is clamped to `MaximumRecommendedSize` and reported as
+`UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended`; with `allowAboveMaximumRecommendedSize: true`, a request above the cap
+is applied in full and reported as `UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride`; a request at or below the
+cap is applied as asked and reported as `UsnJournalGrowthOutcome.GrewAsRequested`. When the effective target maximum
+(after clamping when not overridden) is already at or below the volume's current `MaximumSize`, no
+`FSCTL_CREATE_USN_JOURNAL` control request is sent and the call returns
+`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget` with the current settings. Nonpositive sizes and Windows errors throw.
+`JournalCheckpointLoss.TryGetGrowthTarget` continues to report the uncapped retention size that would have kept the
+checkpoint. Broker channel pipe names must match `mftlib-broker-` plus 32 ASCII hex digits, and scan section names must
+match `mftlib-block-<volume>-` plus 32 ASCII hex digits for the channel's volume.
 
-**Reason:** an elevated broker serves any same-user client process; without a volume-relative and absolute cap, a
-client request could ask `FSCTL_CREATE_USN_JOURNAL` to reserve an arbitrary journal maximum on the volume, and without
-strict prefix-and-hex validation the broker would connect to or map caller-supplied kernel object names outside MFTLib's
-own naming scheme.
+**Reason:** the consumer could not see the cap before elevating, and silent clamping would leave the tools recommending
+an impossible size. Furthermore, 8 GiB proved too small for a real consumer volume (a 4 TB system drive needed 10.8 GB to
+retain one checkpoint gap), any fixed cap can be too small for a busy drive, UAC is not a security boundary so an
+in-request guard protects little, and the owner's standing position is that the tool gives the user the information and
+the levers and the user decides the size. Strict prefix-and-hex validation on pipe and section names remains so the
+broker does not connect to or map caller-supplied kernel object names outside MFTLib's own naming scheme.
 
-**Revisit only if:** a consumer workload on large volumes requires a journal maximum above 8 GiB or 5% of the volume.
+**Revisit only if:** Windows introduces a native volume query for a USN journal size limit or consumers need another
+growth outcome classification.
 
 ## One root per FileIndex, and FileIndexSet for multi-index queries
 

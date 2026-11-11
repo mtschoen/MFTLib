@@ -13,11 +13,16 @@ static partial class BrokerProtocol
     {
         readonly ArrayBufferWriter<byte> _payload = new();
 
-        public PayloadWriter Boolean(bool value)
+        public PayloadWriter Byte(byte value)
         {
-            _payload.GetSpan(1)[0] = value ? (byte)1 : (byte)0;
+            _payload.GetSpan(1)[0] = value;
             _payload.Advance(1);
             return this;
+        }
+
+        public PayloadWriter Boolean(bool value)
+        {
+            return Byte(value ? (byte)1 : (byte)0);
         }
 
         public PayloadWriter UInt32(uint value)
@@ -110,9 +115,14 @@ static partial class BrokerProtocol
         readonly ReadOnlySpan<byte> _payload = payload;
         int _offset;
 
+        public byte Byte()
+        {
+            return Take(1)[0];
+        }
+
         public bool Boolean()
         {
-            var raw = Take(1)[0];
+            var raw = Byte();
             return raw switch
             {
                 0 => false,

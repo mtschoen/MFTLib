@@ -64,9 +64,13 @@ first needed.
 See [session ownership](broker-lifetime.md#session-ownership) for shared launch,
 cancellation, subscriber exceptions, `Ended` and disposal rules.
 
-`BrokerSession.GrowUsnJournalAsync(loss.Volume, target, cancellationToken)`
-launches the broker if no use has yet, grows the journal, and returns the settings read back
-from the volume. `target` is a `UsnJournalSettings` carrying the requested maximum size and allocation delta.
+`BrokerSession.GrowUsnJournalAsync(loss.Volume, target, cancellationToken, allowAboveMaximumRecommendedSize)`
+launches the broker if no use has yet, grows the journal (clamping to
+`UsnJournalSettings.QueryMaximumRecommendedSize(loss.Volume)` unless
+`allowAboveMaximumRecommendedSize` is true), and returns a `UsnJournalGrowthResult` with the
+classified `UsnJournalGrowthOutcome`, the requested and maximum recommended sizes, and the
+settings read back from the volume. `target` is a `UsnJournalSettings` carrying the
+requested maximum size and allocation delta.
 
 Consumers create index sources only through `BrokerSession.CreateIndexSource(scanOptions)`.
 Application code owns a `BrokerSession`; test sessions use

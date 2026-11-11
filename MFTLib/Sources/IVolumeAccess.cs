@@ -21,5 +21,9 @@ interface IVolumeAccess
         VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
         CancellationToken cancellationToken);
     NtfsVolumeInformation QueryVolumeInformation(VolumeKey volume);
-    UsnJournalSettings GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta);
+    UsnJournalGrowthResult GrowUsnJournal(
+        VolumeKey volume,
+        long maximumSize,
+        long allocationDelta,
+        bool allowAboveMaximumRecommendedSize = false);
 }

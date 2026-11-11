@@ -196,16 +196,23 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void TryParse_Journal_ReadsBothSizes()
+    public void TryParse_Journal_ReadsBothSizesAndFlags()
     {
         Assert.IsTrue(WatchArguments.TryParse(["journal", "C", "--maximum-size", "9000", "--allocation-delta", "4096"], out var parsed, out _));
+        Assert.AreEqual((9000L, 4096L, false, false), (parsed!.MaximumSize, parsed.AllocationDelta, parsed.AllowAboveMaximumRecommendedSize, parsed.MaximumRecommended));
 
-        Assert.AreEqual((9000L, 4096L), (parsed!.MaximumSize, parsed.AllocationDelta));
+        Assert.IsTrue(WatchArguments.TryParse(["journal", "C", "--maximum-size", "9000", "--allocation-delta", "4096", "--allow-above-maximum"], out var withOverride, out _));
+        Assert.IsTrue(withOverride!.AllowAboveMaximumRecommendedSize);
+
+        Assert.IsTrue(WatchArguments.TryParse(["journal", "C", "--maximum-recommended"], out var queryCap, out _));
+        Assert.IsTrue(queryCap!.MaximumRecommended);
     }
 
     [TestMethod]
     [DataRow(new[] { "journal", "C", "--maximum-size", "9000" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "journal", "C", "--allocation-delta", "1" }, "journal needs --maximum-size and --allocation-delta together.")]
+    [DataRow(new[] { "journal", "C", "--allow-above-maximum" }, "journal --allow-above-maximum needs --maximum-size and --allocation-delta.")]
+    [DataRow(new[] { "journal", "C", "--maximum-size", "9000", "--allocation-delta", "4096", "--maximum-recommended" }, "journal --maximum-recommended cannot be combined with --maximum-size.")]
     [DataRow(new[] { "watch", "C", "--clear" }, "Option --clear does not apply to watch.")]
     [DataRow(new[] { "watch", "C", "--profile", "sparse" }, "Unknown option --profile.")]
     [DataRow(new[] { "watch", "C", "--seconds", "soon" }, "Option --seconds needs a whole number, not 'soon'.")]

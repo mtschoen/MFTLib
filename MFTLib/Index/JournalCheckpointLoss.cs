@@ -175,8 +175,8 @@ public sealed record JournalCheckpointLoss
 
     /// <summary>
     ///     Projects the recorded retention size and allocation delta into a journal growth target.
-    ///     No sizing is recomputed, no volume is queried and no journal is changed.
-    ///     The library reports the size that would have retained the checkpoint; the consumer decides whether to grow.
+    ///     No sizing is recomputed, no volume is queried, no cap is applied and no journal is changed.
+    ///     The library reports the raw size that would have retained the checkpoint; the consumer decides whether to grow.
     /// </summary>
     /// <param name="target">
     ///     The recorded retention size as the maximum size, with the recorded allocation delta;
@@ -188,8 +188,11 @@ public sealed record JournalCheckpointLoss
     ///     <see cref="GrowthTargetRefusalReason" /> explains why; it is null on success.
     /// </returns>
     /// <remarks>
-    ///     Query fresh journal settings and compare the target maximum with the current maximum
-    ///     immediately before requesting growth. This report describes sizing at detection time.
+    ///     This report describes sizing at detection time and can exceed <see cref="UsnJournalSettings.QueryMaximumRecommendedSize" />.
+    ///     Call <see cref="UsnJournalSettings.QueryMaximumRecommendedSize" /> before elevation to inspect the volume's recommended cap,
+    ///     and pass <paramref name="target" /> to <see cref="BrokerSession.GrowUsnJournalAsync" />, which returns a
+    ///     <see cref="UsnJournalGrowthResult" /> classifying whether the journal grew as requested, clamped to the cap,
+    ///     grew above the cap by explicit override, or was already at or above the target.
     /// </remarks>
     public bool TryGetGrowthTarget(out UsnJournalSettings target)
     {

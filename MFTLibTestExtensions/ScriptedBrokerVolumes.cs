@@ -36,6 +36,10 @@ public sealed record ScriptedBrokerVolumes
     /// <summary>Answers volume sizing queries. Null answers a small fixed volume (256 KiB of 1024-byte records).</summary>
     internal Func<VolumeKey, NtfsVolumeInformation>? QueryVolume { get; init; }
 
-    /// <summary>Grows a volume's journal to the requested settings. Null refuses every grow request.</summary>
-    public Func<VolumeKey, UsnJournalSettings, UsnJournalSettings>? GrowUsnJournal { get; init; }
+    /// <summary>
+    ///     Grows a volume's journal to the requested settings, receiving the volume, requested settings,
+    ///     and whether the caller overrode the maximum recommended size, and returning the resulting
+    ///     <see cref="UsnJournalGrowthResult" />. Null refuses every grow request.
+    /// </summary>
+    public Func<VolumeKey, UsnJournalSettings, bool, UsnJournalGrowthResult>? GrowUsnJournal { get; init; }
 }

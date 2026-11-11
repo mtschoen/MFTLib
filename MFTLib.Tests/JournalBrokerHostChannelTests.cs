@@ -45,10 +45,17 @@ public partial class JournalBrokerHostChannelTests
         {
             ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
-            GrowUsnJournal = (volume, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize) =>
             {
                 Assert.AreEqual(new VolumeKey('D'), volume);
-                return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
+                Assert.IsFalse(allowAboveMaximumRecommendedSize);
+                return new UsnJournalGrowthResult
+                {
+                    Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                    RequestedMaximumSize = maximumSize,
+                    MaximumRecommendedSize = 8L * 1024 * 1024 * 1024,
+                    JournalSettings = new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta }
+                };
             }
         });
         await using var harness = new HostChannelHarness(host);
@@ -56,8 +63,11 @@ public partial class JournalBrokerHostChannelTests
         await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(9, 'D', 65536, 4096)));
         var reply = await harness.ReadControlAsync();
 
-        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, reply.Kind);
+        Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, reply.Kind);
         Assert.AreEqual(9u, reply.RequestId);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, reply.JournalGrowthOutcome);
+        Assert.AreEqual(65536L, reply.JournalRequestedMaximumSize);
+        Assert.AreEqual(8L * 1024 * 1024 * 1024, reply.JournalMaximumRecommendedSize);
         Assert.AreEqual(65536L, reply.JournalMaximumSize);
         Assert.AreEqual(4096L, reply.JournalAllocationDelta);
     }

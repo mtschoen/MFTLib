@@ -11,27 +11,37 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     [TestMethod]
     public async Task GrowUsnJournalAsync_Success_SendsRequestAndReturnsSettings()
     {
-        var received = new List<(VolumeKey Volume, long MaximumSize, long AllocationDelta)>();
+        var received = new List<(VolumeKey Volume, long MaximumSize, long AllocationDelta, bool AllowAboveMaximumRecommendedSize)>();
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            GrowUsnJournal = (volume, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize) =>
             {
-                received.Add((volume, maximumSize, allocationDelta));
-                return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
+                received.Add((volume, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize));
+                return new UsnJournalGrowthResult
+                {
+                    Outcome = UsnJournalGrowthOutcome.GrewAsRequested,
+                    RequestedMaximumSize = maximumSize,
+                    MaximumRecommendedSize = 0x10000000L,
+                    JournalSettings = new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta }
+                };
             }
         }));
 
-        var settings = await broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
+        var growth = await broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(0x08000000L, settings.MaximumSize);
-        Assert.AreEqual(0x01000000L, settings.AllocationDelta);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, growth.Outcome);
+        Assert.AreEqual(0x08000000L, growth.RequestedMaximumSize);
+        Assert.AreEqual(0x10000000L, growth.MaximumRecommendedSize);
+        Assert.AreEqual(0x08000000L, growth.JournalSettings.MaximumSize);
+        Assert.AreEqual(0x01000000L, growth.JournalSettings.AllocationDelta);
         Assert.HasCount(1, received);
         Assert.AreEqual(new VolumeKey('C'), received[0].Volume);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
+        Assert.IsFalse(received[0].AllowAboveMaximumRecommendedSize);
     }
 
     [TestMethod]
@@ -49,15 +59,14 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            GrowUsnJournal = (_, _, _) =>
-                throw new InvalidOperationException("Refusing to resize the USN journal to 32 bytes: the current maximum " +
-                                                    "is 64 bytes, and only growth is permitted.")
+            GrowUsnJournal = (_, _, _, _) =>
+                throw new InvalidOperationException("Unusable volume geometry.")
         }));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 32, AllocationDelta = 16 }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        Assert.Contains("only growth", exception.Message);
+        Assert.Contains("Unusable volume geometry", exception.Message);
     }
 
     [TestMethod]
@@ -74,6 +83,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         Assert.AreEqual(new VolumeKey('C'), sent.RequireVolume());
         Assert.AreEqual(0x08000000L, sent.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, sent.JournalAllocationDelta);
+        Assert.IsFalse(sent.JournalAllowAboveMaximumRecommendedSize);
         Assert.IsNull(exception.Volume);
         Assert.IsFalse(string.IsNullOrEmpty(exception.Message));
     }
@@ -88,7 +98,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            GrowUsnJournal = (_, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (_, maximumSize, allocationDelta, _) =>
             {
                 received.Add((maximumSize, allocationDelta));
                 throw new ArgumentException("positive sizes are required");
@@ -106,31 +116,55 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task GrowUsnJournalAsync_OverCapRefusal_SurfacesTheCapMessageThroughBrokerSession()
+    [DataRow(false, UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended, 8L * 1024 * 1024 * 1024)]
+    [DataRow(true, UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, (8L * 1024 * 1024 * 1024) + 1)]
+    public async Task GrowUsnJournalAsync_OverCap_ForwardsOverrideAndSurfacesOutcomeThroughBrokerSession(
+        bool allowAboveMaximumRecommendedSize,
+        UsnJournalGrowthOutcome expectedOutcome,
+        long expectedAppliedMaximum)
     {
         const long requested = (8L * 1024 * 1024 * 1024) + 1;
-        const long allowed = 8L * 1024 * 1024 * 1024;
+        const long recommended = 8L * 1024 * 1024 * 1024;
+        var capturedOverrides = new List<bool>();
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            GrowUsnJournal = (_, maximumSize, _) =>
-                throw new ArgumentOutOfRangeException(
-                    nameof(maximumSize),
-                    maximumSize,
-                    $"Requested USN journal maximum size of {maximumSize} bytes exceeds the allowed cap of {allowed} bytes.")
+            GrowUsnJournal = (_, maximumSize, allocationDelta, overrideCap) =>
+            {
+                capturedOverrides.Add(overrideCap);
+                var applied = overrideCap ? maximumSize : Math.Min(maximumSize, recommended);
+                return new UsnJournalGrowthResult
+                {
+                    Outcome = overrideCap
+                        ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
+                        : UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended,
+                    RequestedMaximumSize = maximumSize,
+                    MaximumRecommendedSize = recommended,
+                    JournalSettings = new UsnJournalSettings
+                    {
+                        MaximumSize = applied,
+                        AllocationDelta = allocationDelta
+                    }
+                };
+            }
         }));
         var handle = broker.Handle;
         await using var session = BrokerTestHarness.CreateSession(_ => Task.FromResult(handle));
-        var pendingGrowth = session.GrowUsnJournalAsync('C',
+
+        var result = await session.GrowUsnJournalAsync(
+                'C',
                 new UsnJournalSettings { MaximumSize = requested, AllocationDelta = 0x100000 },
-                CancellationToken.None)
+                CancellationToken.None,
+                allowAboveMaximumRecommendedSize)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => pendingGrowth);
-
-        Assert.Contains(requested.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
-        Assert.Contains(allowed.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
+        Assert.AreSequenceEqual([allowAboveMaximumRecommendedSize], capturedOverrides);
+        Assert.AreEqual(expectedOutcome, result.Outcome);
+        Assert.AreEqual(requested, result.RequestedMaximumSize);
+        Assert.AreEqual(recommended, result.MaximumRecommendedSize);
+        Assert.AreEqual(expectedAppliedMaximum, result.JournalSettings.MaximumSize);
+        Assert.AreEqual(0x100000L, result.JournalSettings.AllocationDelta);
     }
 
     public TestContext TestContext { get; set; } = null!;

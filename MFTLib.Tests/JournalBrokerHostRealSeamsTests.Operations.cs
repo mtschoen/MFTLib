@@ -230,8 +230,11 @@ public partial class JournalBrokerHostRealSeamsTests
             BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(6, 'C', 0x400000, 0x200000)));
         var frame = await harness.ReadControlAsync();
 
-        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
+        Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, frame.Kind);
         Assert.AreEqual(6u, frame.RequestId);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, frame.JournalGrowthOutcome);
+        Assert.AreEqual(0x400000L, frame.JournalRequestedMaximumSize);
+        Assert.AreEqual(5L * 1024 * 1024 * 1024, frame.JournalMaximumRecommendedSize);
         Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
         Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
@@ -241,7 +244,7 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
-    public async Task ServeAsync_GrowUsnJournal_OverCap_RepliesErrorWithoutIoctlAndSessionContinues()
+    public async Task ServeAsync_GrowUsnJournal_OverCap_ClampsWithoutOverrideAndAppliesFullSizeWithOverride()
     {
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
@@ -254,44 +257,70 @@ public partial class JournalBrokerHostRealSeamsTests
             };
             return 0;
         };
-        var journalIoctls = 0;
-        var validGrowth = JournalQueryFake.Create(() => ++journalIoctls == 1
-            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
-            : JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x100000));
+        const long fiveGiB = 5L * 1024 * 1024 * 1024;
+        const long clampedRequest = fiveGiB + 1;
+        const long overrideRequest = fiveGiB + 0x100000;
+        var currentMaximum = 0x200000L;
+        var createMaxima = new List<long>();
+        var query = JournalQueryFake.Create(() =>
+            JournalQueryFake.Describe(7, 200, maximumSize: (ulong)currentMaximum, allocationDelta: 0x100000));
         Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
             inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
         {
             if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
             {
-                return validGrowth(device, ioControlCode, inBuffer, inBufferSize,
+                return query(device, ioControlCode, inBuffer, inBufferSize,
                     outBuffer, outBufferSize, out bytesReturned, overlapped);
             }
 
-            Interlocked.Increment(ref journalIoctls);
+            Assert.AreEqual(0x000900E7u, ioControlCode);
+            var target = Marshal.ReadInt64(inBuffer, 0);
+            createMaxima.Add(target);
+            currentMaximum = target;
             bytesReturned = 0;
             return true;
         };
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
-        const long fiveGiB = 5L * 1024 * 1024 * 1024;
-        const long overCapRequest = fiveGiB + 1;
 
+        // 1. Over cap without override: clamps to 5 GiB and reports GrewClampedToMaximumRecommended.
         await harness.SendControlAsync(writer =>
-            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(15, 'C', overCapRequest, 0x100000)));
-        var errorReply = await harness.ReadControlAsync();
+            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(15, 'C', clampedRequest, 0x100000)));
+        var clampedReply = await harness.ReadControlAsync();
 
-        Assert.AreEqual(BrokerFrameKind.Error, errorReply.Kind);
-        Assert.AreEqual(15u, errorReply.RequestId);
-        Assert.Contains(overCapRequest.ToString(System.Globalization.CultureInfo.InvariantCulture), errorReply.Message!);
-        Assert.Contains(fiveGiB.ToString(System.Globalization.CultureInfo.InvariantCulture), errorReply.Message!);
-        Assert.AreEqual(0, journalIoctls, "Refusal above the cap must not issue any journal IOCTL.");
+        Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, clampedReply.Kind);
+        Assert.AreEqual(15u, clampedReply.RequestId);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended, clampedReply.JournalGrowthOutcome);
+        Assert.AreEqual(clampedRequest, clampedReply.JournalRequestedMaximumSize);
+        Assert.AreEqual(fiveGiB, clampedReply.JournalMaximumRecommendedSize);
+        Assert.AreEqual(fiveGiB, clampedReply.JournalMaximumSize);
+        Assert.AreSequenceEqual([fiveGiB], createMaxima);
 
+        // 2. Over cap again without override when already at the 5 GiB cap: no create IOCTL and AlreadyAtOrAboveTarget.
         await harness.SendControlAsync(writer =>
-            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(16, 'C', 0x400000, 0x100000)));
-        var nextReply = await harness.ReadControlAsync();
+            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(16, 'C', overrideRequest, 0x100000)));
+        var alreadyAtCapReply = await harness.ReadControlAsync();
 
-        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, nextReply.Kind);
-        Assert.AreEqual(16u, nextReply.RequestId);
-        Assert.AreEqual(0x400000L, nextReply.JournalMaximumSize);
+        Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, alreadyAtCapReply.Kind);
+        Assert.AreEqual(16u, alreadyAtCapReply.RequestId);
+        Assert.AreEqual(UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget, alreadyAtCapReply.JournalGrowthOutcome);
+        Assert.AreEqual(overrideRequest, alreadyAtCapReply.JournalRequestedMaximumSize);
+        Assert.AreEqual(fiveGiB, alreadyAtCapReply.JournalMaximumRecommendedSize);
+        Assert.AreEqual(fiveGiB, alreadyAtCapReply.JournalMaximumSize);
+        Assert.AreSequenceEqual([fiveGiB], createMaxima, "Already-at-cap clamped request must not issue FSCTL_CREATE_USN_JOURNAL.");
+
+        // 3. Over cap with explicit override: applies the full requested size above 5 GiB.
+        await harness.SendControlAsync(writer =>
+            BrokerProtocol.WriteGrowUsnJournal(writer,
+                BrokerFrame.GrowUsnJournal(17, 'C', overrideRequest, 0x100000, allowAboveMaximumRecommendedSize: true)));
+        var overrideReply = await harness.ReadControlAsync();
+
+        Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, overrideReply.Kind);
+        Assert.AreEqual(17u, overrideReply.RequestId);
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, overrideReply.JournalGrowthOutcome);
+        Assert.AreEqual(overrideRequest, overrideReply.JournalRequestedMaximumSize);
+        Assert.AreEqual(fiveGiB, overrideReply.JournalMaximumRecommendedSize);
+        Assert.AreEqual(overrideRequest, overrideReply.JournalMaximumSize);
+        Assert.AreSequenceEqual([fiveGiB, overrideRequest], createMaxima);
     }
 
     [TestMethod]

@@ -34,18 +34,27 @@ static partial class BrokerProtocol
             .Int64(frame.MftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
     }
 
-    // payload: [requestId u32][volume UTF-16 character][maximumSize i64][allocationDelta i64]
+    // payload: [requestId u32][volume UTF-16 character][maximumSize i64][allocationDelta i64][allowAboveMaximumRecommendedSize byte, 0 or 1]
     public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, BrokerFrame frame)
     {
         new PayloadWriter().UInt32(frame.RequestId).Volume(frame.RequireVolume()).Int64(frame.JournalMaximumSize)
-            .Int64(frame.JournalAllocationDelta).WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
+            .Int64(frame.JournalAllocationDelta).Boolean(frame.JournalAllowAboveMaximumRecommendedSize)
+            .WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
     }
 
-    // payload: [requestId u32][maximumSize i64][allocationDelta i64]
-    public static void WriteUsnJournalSettings(IBufferWriter<byte> writer, BrokerFrame frame)
+    // payload: [requestId u32][outcome byte][requestedMaximumSize i64][maximumRecommendedSize i64][maximumSize i64][allocationDelta i64]
+    public static void WriteUsnJournalGrowthResult(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(frame.RequestId).Int64(frame.JournalMaximumSize)
-            .Int64(frame.JournalAllocationDelta).WriteTo(writer, BrokerFrameKind.UsnJournalSettings);
+        if ((byte)frame.JournalGrowthOutcome > (byte)UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget)
+        {
+            throw new ArgumentOutOfRangeException(nameof(frame), frame.JournalGrowthOutcome,
+                $"Unknown journal growth outcome: {frame.JournalGrowthOutcome}");
+        }
+
+        new PayloadWriter().UInt32(frame.RequestId).Byte((byte)frame.JournalGrowthOutcome)
+            .Int64(frame.JournalRequestedMaximumSize).Int64(frame.JournalMaximumRecommendedSize)
+            .Int64(frame.JournalMaximumSize).Int64(frame.JournalAllocationDelta)
+            .WriteTo(writer, BrokerFrameKind.UsnJournalGrowthResult);
     }
 
     // Any pipe

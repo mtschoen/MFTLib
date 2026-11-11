@@ -65,7 +65,7 @@ required; a null source refuses that operation as the real host does.
   from every cursor.
 - `WatchVolume` streams a volume's journal for a watch. Null refuses every watch.
 - Volume sizing is supplied by the harness (256 KiB of 1024-byte records).
-- `GrowUsnJournal` grows a volume's journal. Null refuses every grow request.
+- `GrowUsnJournal` receives the volume, target `UsnJournalSettings`, and `allowAboveMaximumRecommendedSize` flag and returns a `UsnJournalGrowthResult`. Null refuses every grow request.
 
 ```csharp
 await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes

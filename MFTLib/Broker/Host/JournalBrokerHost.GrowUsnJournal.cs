@@ -4,16 +4,19 @@ namespace MFTLib;
 /// <summary>Grows one volume's USN journal in place.</summary>
 sealed partial class JournalBrokerHost
 {
-    // Exactly one reply per request, carrying its id: UsnJournalSettings on success, Error
-    // carrying the refusal (grow only) or OS failure otherwise.
+    // Exactly one reply per request, carrying its id: UsnJournalGrowthResult with the classified
+    // growth result on success, Error carrying the argument or OS failure otherwise.
     async Task HandleGrowUsnJournalAsync(ControlSession session, BrokerFrame request)
     {
         var requestId = request.RequestId;
-        UsnJournalSettings settings;
+        UsnJournalGrowthResult growth;
         try
         {
-            settings = _volumeAccess.GrowUsnJournal(request.RequireVolume(),
-                request.JournalMaximumSize, request.JournalAllocationDelta);
+            growth = _volumeAccess.GrowUsnJournal(
+                request.RequireVolume(),
+                request.JournalMaximumSize,
+                request.JournalAllocationDelta,
+                request.JournalAllowAboveMaximumRecommendedSize);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -21,7 +24,8 @@ sealed partial class JournalBrokerHost
             return;
         }
 
-        await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteUsnJournalSettings(writer, BrokerFrame.UsnJournalSettings(requestId, settings.MaximumSize, settings.AllocationDelta))).ConfigureAwait(false);
-
+        await WriteControlFrameAsync(session,
+                writer => BrokerProtocol.WriteUsnJournalGrowthResult(writer, BrokerFrame.UsnJournalGrowthResult(requestId, growth)))
+            .ConfigureAwait(false);
     }
 }

@@ -39,27 +39,32 @@ sealed partial class BrokerProcess
     }
 
     /// <summary>
-    ///     Grows the volume's USN journal (never shrinks it) and returns the sizing the volume
-    ///     reports afterwards.
+    ///     Grows the volume's USN journal (never shrinks it) and returns the classified growth result.
     /// </summary>
     /// <param name="volume">The volume whose journal grows.</param>
-    /// <param name="target">The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the current.</param>
+    /// <param name="target">The requested maximum size and allocation delta in bytes.</param>
     /// <param name="cancellationToken">Stops waiting, as for <see cref="QueryVolumeAsync" />.</param>
-    /// <exception cref="InvalidOperationException">The broker refused or failed the change.</exception>
+    /// <param name="allowAboveMaximumRecommendedSize">
+    ///     When <see langword="true" />, requests the full <paramref name="target" />.<see cref="UsnJournalSettings.MaximumSize" />
+    ///     even when it exceeds the volume's maximum recommended size; when <see langword="false" />, clamps to the recommended cap.
+    /// </param>
+    /// <exception cref="InvalidOperationException">The broker reported an argument or OS failure.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey volume, UsnJournalSettings target,
-        CancellationToken cancellationToken)
+    internal async Task<UsnJournalGrowthResult> GrowUsnJournalAsync(
+        VolumeKey volume,
+        UsnJournalSettings target,
+        CancellationToken cancellationToken,
+        bool allowAboveMaximumRecommendedSize = false)
     {
         volume = volume.Validated();
         var reply = await RequestAsync((writer, requestId) =>
-                BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(requestId, volume, target.MaximumSize, target.AllocationDelta)),
-            BrokerFrameKind.UsnJournalSettings, cancellationToken).ConfigureAwait(false);
-        return new UsnJournalSettings
-        {
-            MaximumSize = reply.JournalMaximumSize,
-            AllocationDelta = reply.JournalAllocationDelta
-        };
+                BrokerProtocol.WriteGrowUsnJournal(
+                    writer,
+                    BrokerFrame.GrowUsnJournal(requestId, volume, target.MaximumSize, target.AllocationDelta,
+                        allowAboveMaximumRecommendedSize)),
+            BrokerFrameKind.UsnJournalGrowthResult, cancellationToken).ConfigureAwait(false);
+        return reply.ToJournalGrowthResult();
     }
 
     // Sends one control request and returns its reply. An Error reply throws
@@ -250,7 +255,7 @@ sealed partial class BrokerProcess
         {
             switch (frame.Kind)
             {
-                case BrokerFrameKind.ChannelOpened or BrokerFrameKind.VolumeInfo or BrokerFrameKind.UsnJournalSettings
+                case BrokerFrameKind.ChannelOpened or BrokerFrameKind.VolumeInfo or BrokerFrameKind.UsnJournalGrowthResult
                     or BrokerFrameKind.Error:
                     CompleteRequest(frame);
                     break;
