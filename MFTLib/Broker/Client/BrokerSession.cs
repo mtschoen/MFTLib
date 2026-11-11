@@ -141,7 +141,8 @@ public sealed class BrokerSession : IAsyncDisposable
     ///     is <see langword="true" />, a requested maximum above <see cref="UsnJournalSettings.QueryMaximumRecommendedSize" />
     ///     is clamped to that recommended cap and reported as <see cref="UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended" />.
     ///     When the live journal maximum is already at or above the effective target, no control request is sent to
-    ///     Windows and <see cref="UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget" /> is returned.
+    ///     Windows and <see cref="UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget" /> is returned; when Windows accepts
+    ///     the request without increasing the read-back maximum, <see cref="UsnJournalGrowthOutcome.Unchanged" /> is returned.
     /// </param>
     /// <param name="cancellationToken">Ends this call's wait; it does not abort a launch other callers share.</param>
     /// <param name="allowAboveMaximumRecommendedSize">

@@ -142,7 +142,7 @@ static partial class BrokerProtocol
     static UsnJournalGrowthOutcome ReadJournalGrowthOutcome(ref PayloadReader payload)
     {
         var raw = payload.Byte();
-        if (raw > (byte)UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget)
+        if (raw > (byte)UsnJournalGrowthOutcome.Unchanged)
         {
             throw new InvalidDataException($"Unknown journal growth outcome: {raw}");
         }

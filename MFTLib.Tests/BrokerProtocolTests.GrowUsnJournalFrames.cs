@@ -33,6 +33,7 @@ public partial class BrokerProtocolTests
     [DataRow(UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended)]
     [DataRow(UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride)]
     [DataRow(UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget)]
+    [DataRow(UsnJournalGrowthOutcome.Unchanged)]
     public void UsnJournalGrowthResultFrame_RoundTrips_RequestIdOutcomeAndSizes(UsnJournalGrowthOutcome outcome)
     {
         var expected = new UsnJournalGrowthResult

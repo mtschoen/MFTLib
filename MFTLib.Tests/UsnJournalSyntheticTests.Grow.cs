@@ -3,19 +3,56 @@ using System.Runtime.InteropServices;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
 public partial class UsnJournalSyntheticTests
 {
+    static void UseQueryAndCreate(
+        Func<UsnJournalVolumeInterop.UsnJournalDataV0> queryPayload,
+        Action<long, long>? onCreate = null,
+        bool createResult = true)
+    {
+        var query = JournalQueryFake.Create(queryPayload);
+        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
+            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+
+            Assert.AreEqual(0x000900E7u, ioControlCode);
+            onCreate?.Invoke(Marshal.ReadInt64(inBuffer, 0), Marshal.ReadInt64(inBuffer, 8));
+            bytesReturned = 0;
+            return createResult;
+        };
+    }
+
+    static void UseTwoQueriesAndCreate(
+        ulong firstMaximum,
+        ulong secondMaximum,
+        Action<long, long>? onCreate = null,
+        ulong allocationDelta = 0x1000)
+    {
+        var queryCount = 0;
+        UseQueryAndCreate(
+            () => ++queryCount == 1
+                ? JournalQueryFake.Describe(7, 200, maximumSize: firstMaximum, allocationDelta: allocationDelta)
+                : JournalQueryFake.Describe(7, 200, maximumSize: secondMaximum, allocationDelta: allocationDelta),
+            onCreate);
+    }
+
     [TestMethod]
     [DataRow(40UL * 1024 * 1024 * 1024, 2L * 1024 * 1024 * 1024)]
     [DataRow(100UL * 1024 * 1024 * 1024, 5L * 1024 * 1024 * 1024)]
     [DataRow(160UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024)]
     [DataRow(1024UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024)]
     [DataRow(4096UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024)]
-    [DataRow(20_000_039UL, 1_000_001L)]
+    [DataRow(20UL * 1024 * 1024, 1024L * 1024)]
+    [DataRow((40UL * 1024 * 1024) - 1, 1024L * 1024)]
+    [DataRow(4_292_866_048UL, 204L * 1024 * 1024)]
     public void QueryMaximumRecommendedSize_MatchesPolicyOnSmallAndLargeVolumes(ulong volumeBytes, long expectedCapBytes)
     {
         UseDiskSpace(volumeBytes);
@@ -51,25 +88,11 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         UseDiskSpace(100UL * 1024 * 1024 * 1024);
-        var query = JournalQueryFake.Create(() =>
-            JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000));
         var createCalled = false;
-        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
-            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
+        UseQueryAndCreate(
+            () => JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000),
+            (_, _) => createCalled = true);
 
-            Assert.AreEqual(0x000900E7u, ioControlCode);
-            createCalled = true;
-            bytesReturned = 0;
-            return true;
-        }
-
-        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x100000, allowAboveMaximumRecommendedSize);
 
@@ -89,34 +112,24 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         UseDiskSpace(100UL * 1024 * 1024 * 1024);
         var queryCount = 0;
-        var query = JournalQueryFake.Create(() => ++queryCount == 1
-            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
-            : JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000));
-        uint? capturedCode = null;
+        var createCalls = 0;
         long capturedMaximum = 0;
         long capturedDelta = 0;
-        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
-            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+        UseQueryAndCreate(
+            () => ++queryCount == 1
+                ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
+                : JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000),
+            (maximum, delta) =>
             {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
+                createCalls++;
+                capturedMaximum = maximum;
+                capturedDelta = delta;
+            });
 
-            Assert.AreEqual(0x000900E7u, ioControlCode);
-            capturedCode = ioControlCode;
-            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
-            capturedDelta = Marshal.ReadInt64(inBuffer, 8);
-            bytesReturned = 0;
-            return true;
-        }
-
-        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(0x400000, 0x200000, allowAboveMaximumRecommendedSize);
 
-        Assert.AreEqual(0x000900E7u, capturedCode);
+        Assert.AreEqual(1, createCalls);
         Assert.AreEqual(0x400000L, capturedMaximum);
         Assert.AreEqual(0x200000L, capturedDelta);
         Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, result.Outcome);
@@ -131,23 +144,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         UseDiskSpace(100UL * 1024 * 1024 * 1024);
-        var query = JournalQueryFake.Create(() =>
-            JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000));
-        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
-            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
+        UseQueryAndCreate(
+            () => JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000),
+            createResult: false);
 
-            Assert.AreEqual(0x000900E7u, ioControlCode);
-            bytesReturned = 0;
-            return false;
-        }
-
-        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
         using var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         Assert.ThrowsExactly<Win32Exception>(() => journal.GrowUsnJournal(0x400000, 0x100000));
@@ -168,7 +168,8 @@ public partial class UsnJournalSyntheticTests
     [DataRow(100UL * 1024 * 1024 * 1024, 5L * 1024 * 1024 * 1024, true)]
     [DataRow(160UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, false)]
     [DataRow(1024UL * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, false)]
-    [DataRow(20_000_039UL, 1_000_001L, false)]
+    [DataRow((40UL * 1024 * 1024) - 1, 1024L * 1024, false)]
+    [DataRow(4_292_866_048UL, 204L * 1024 * 1024, false)]
     public void GrowUsnJournal_AtExactCap_IssuesCreateAndReturnsSettings(
         ulong volumeBytes,
         long exactCapBytes,
@@ -176,25 +177,8 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         UseDiskSpace(volumeBytes);
-        var queryCount = 0;
-        var query = JournalQueryFake.Create(() => ++queryCount == 1
-            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x1000, allocationDelta: 0x1000)
-            : JournalQueryFake.Describe(7, 200, maximumSize: (ulong)exactCapBytes, allocationDelta: 0x1000));
         long capturedMaximum = 0;
-        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
-            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
-
-            Assert.AreEqual(0x000900E7u, ioControlCode);
-            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
-            bytesReturned = 0;
-            return true;
-        };
+        UseTwoQueriesAndCreate(0x1000, (ulong)exactCapBytes, (maximum, _) => capturedMaximum = maximum);
 
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(exactCapBytes, 0x1000, allowAboveMaximumRecommendedSize);
@@ -210,7 +194,8 @@ public partial class UsnJournalSyntheticTests
     [DataRow(100UL * 1024 * 1024 * 1024, (5L * 1024 * 1024 * 1024) + 1, 5L * 1024 * 1024 * 1024)]
     [DataRow(160UL * 1024 * 1024 * 1024, (8L * 1024 * 1024 * 1024) + 1, 8L * 1024 * 1024 * 1024)]
     [DataRow(1024UL * 1024 * 1024 * 1024, (8L * 1024 * 1024 * 1024) + 1, 8L * 1024 * 1024 * 1024)]
-    [DataRow(20_000_039UL, 1_000_002L, 1_000_001L)]
+    [DataRow((40UL * 1024 * 1024) - 1, (1024L * 1024) + 1, 1024L * 1024)]
+    [DataRow(4_292_866_048UL, (204L * 1024 * 1024) + 1, 204L * 1024 * 1024)]
     [DataRow(1024UL * 1024 * 1024 * 1024, long.MaxValue, 8L * 1024 * 1024 * 1024)]
     public void GrowUsnJournal_AboveCapWithoutOverride_ClampsToCapAndReportsClampedOutcome(
         ulong volumeBytes,
@@ -219,27 +204,13 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         UseDiskSpace(volumeBytes);
-        var queryCount = 0;
-        var query = JournalQueryFake.Create(() => ++queryCount == 1
-            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x1000, allocationDelta: 0x1000)
-            : JournalQueryFake.Describe(7, 200, maximumSize: (ulong)expectedRecommendedBytes, allocationDelta: 0x1000));
         long capturedMaximum = 0;
         var createCalls = 0;
-        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
-            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        UseTwoQueriesAndCreate(0x1000, (ulong)expectedRecommendedBytes, (maximum, _) =>
         {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
-
-            Assert.AreEqual(0x000900E7u, ioControlCode);
             Interlocked.Increment(ref createCalls);
-            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
-            bytesReturned = 0;
-            return true;
-        };
+            capturedMaximum = maximum;
+        });
 
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x1000);
@@ -262,22 +233,10 @@ public partial class UsnJournalSyntheticTests
         UseDiskSpace(100UL * 1024 * 1024 * 1024); // 5 GiB cap
         const long expectedRecommendedBytes = 5L * 1024 * 1024 * 1024;
         const long requestedMaximumSize = expectedRecommendedBytes + (2L * 1024 * 1024 * 1024);
-        var query = JournalQueryFake.Create(() =>
-            JournalQueryFake.Describe(7, 200, maximumSize: (ulong)currentMaximumBytes, allocationDelta: 0x100000));
         var createCalls = 0;
-        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
-            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
-
-            Interlocked.Increment(ref createCalls);
-            bytesReturned = 0;
-            return true;
-        };
+        UseQueryAndCreate(
+            () => JournalQueryFake.Describe(7, 200, maximumSize: (ulong)currentMaximumBytes, allocationDelta: 0x100000),
+            (_, _) => Interlocked.Increment(ref createCalls));
 
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x100000);
@@ -292,7 +251,8 @@ public partial class UsnJournalSyntheticTests
     [TestMethod]
     [DataRow(100UL * 1024 * 1024 * 1024, (5L * 1024 * 1024 * 1024) + 1, 5L * 1024 * 1024 * 1024)]
     [DataRow(4096UL * 1024 * 1024 * 1024, 11L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024)]
-    [DataRow(20_000_039UL, 1_000_002L, 1_000_001L)]
+    [DataRow((40UL * 1024 * 1024) - 1, (1024L * 1024) + 1, 1024L * 1024)]
+    [DataRow(4_292_866_048UL, (204L * 1024 * 1024) + 1, 204L * 1024 * 1024)]
     public void GrowUsnJournal_AboveCapWithOverride_AppliesFullSizeAndReportsOverrideOutcome(
         ulong volumeBytes,
         long requestedMaximumSize,
@@ -300,27 +260,13 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         UseDiskSpace(volumeBytes);
-        var queryCount = 0;
-        var query = JournalQueryFake.Create(() => ++queryCount == 1
-            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x1000, allocationDelta: 0x1000)
-            : JournalQueryFake.Describe(7, 200, maximumSize: (ulong)requestedMaximumSize, allocationDelta: 0x1000));
         long capturedMaximum = 0;
         var createCalls = 0;
-        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
-            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
+        UseTwoQueriesAndCreate(0x1000, (ulong)requestedMaximumSize, (maximum, _) =>
         {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
-
-            Assert.AreEqual(0x000900E7u, ioControlCode);
             Interlocked.Increment(ref createCalls);
-            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
-            bytesReturned = 0;
-            return true;
-        };
+            capturedMaximum = maximum;
+        });
 
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x1000, allowAboveMaximumRecommendedSize: true);
@@ -331,6 +277,66 @@ public partial class UsnJournalSyntheticTests
         Assert.AreEqual(requestedMaximumSize, result.RequestedMaximumSize);
         Assert.AreEqual(expectedRecommendedBytes, result.MaximumRecommendedSize);
         Assert.AreEqual(requestedMaximumSize, result.JournalSettings.MaximumSize);
+    }
+
+    [TestMethod]
+    [DataRow(72L * 1024 * 1024, false, UsnJournalGrowthOutcome.GrewAsRequested)]
+    [DataRow(240L * 1024 * 1024, false, UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended)]
+    [DataRow(240L * 1024 * 1024, true, UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride)]
+    public void GrowUsnJournal_ReadBackRoundedDownButLargerThanBefore_KeepsGrewOutcomeAndStoredSize(
+        long requestedMaximumSize,
+        bool allowAboveMaximumRecommendedSize,
+        UsnJournalGrowthOutcome expectedOutcome)
+    {
+        UseFakeHandle();
+        UseDiskSpace(4_292_866_048UL); // 204 MiB recommended cap
+        const long recommendedBytes = 204L * 1024 * 1024;
+        const ulong preCallMaximumBytes = 64UL * 1024 * 1024;
+        var effectiveTarget = allowAboveMaximumRecommendedSize
+            ? requestedMaximumSize
+            : Math.Min(requestedMaximumSize, recommendedBytes);
+        var roundedReadBackBytes = effectiveTarget - (512L * 1024);
+        long capturedMaximum = 0;
+        UseTwoQueriesAndCreate(preCallMaximumBytes, (ulong)roundedReadBackBytes, (maximum, _) => capturedMaximum = maximum, 0x800000);
+
+        using var volume = MftVolume.Open('C');
+        var result = volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x800000, allowAboveMaximumRecommendedSize);
+
+        Assert.AreEqual(effectiveTarget, capturedMaximum);
+        Assert.AreEqual(expectedOutcome, result.Outcome);
+        Assert.AreEqual(requestedMaximumSize, result.RequestedMaximumSize);
+        Assert.AreEqual(recommendedBytes, result.MaximumRecommendedSize);
+        Assert.AreEqual(roundedReadBackBytes, result.JournalSettings.MaximumSize);
+        Assert.AreEqual(0x800000L, result.JournalSettings.AllocationDelta);
+    }
+
+    [TestMethod]
+    [DataRow(0x100000L, 0x200000L, 0x100000L, false)]
+    [DataRow(0x200000L, 0x300000L, 0x100000L, false)]
+    [DataRow(0x100000L, (5L * 1024 * 1024 * 1024) + 1, 0x100000L, false)]
+    [DataRow(0x100000L, (5L * 1024 * 1024 * 1024) + 1, 0x100000L, true)]
+    [DataRow(0x200000L, 0x400000L, 0x100000L, false)]
+    public void GrowUsnJournal_ReadBackNotLargerThanBefore_ReturnsUnchangedAndKeptSettings(
+        long preCallMaximumBytes,
+        long requestedMaximumSize,
+        long postCallMaximumBytes,
+        bool allowAboveMaximumRecommendedSize)
+    {
+        UseFakeHandle();
+        UseDiskSpace(100UL * 1024 * 1024 * 1024); // 5 GiB cap
+        const long recommendedBytes = 5L * 1024 * 1024 * 1024;
+        var createCalls = 0;
+        UseTwoQueriesAndCreate((ulong)preCallMaximumBytes, (ulong)postCallMaximumBytes, (_, _) => Interlocked.Increment(ref createCalls), 0x40000);
+
+        using var volume = MftVolume.Open('C');
+        var result = volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x80000, allowAboveMaximumRecommendedSize);
+
+        Assert.AreEqual(1, createCalls);
+        Assert.AreEqual(UsnJournalGrowthOutcome.Unchanged, result.Outcome);
+        Assert.AreEqual(requestedMaximumSize, result.RequestedMaximumSize);
+        Assert.AreEqual(recommendedBytes, result.MaximumRecommendedSize);
+        Assert.AreEqual(postCallMaximumBytes, result.JournalSettings.MaximumSize);
+        Assert.AreEqual(0x40000L, result.JournalSettings.AllocationDelta);
     }
 
     [TestMethod]
@@ -354,24 +360,12 @@ public partial class UsnJournalSyntheticTests
         const long twoGiB = 2L * 1024 * 1024 * 1024;
         const long threeGiB = 3L * 1024 * 1024 * 1024;
         var queryCount = 0;
-        var query = JournalQueryFake.Create(() => ++queryCount switch
+        UseQueryAndCreate(() => ++queryCount switch
         {
             1 => JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000),
             2 or 3 => JournalQueryFake.Describe(7, 200, maximumSize: twoGiB, allocationDelta: 0x100000),
             _ => JournalQueryFake.Describe(7, 200, maximumSize: threeGiB, allocationDelta: 0x100000)
         });
-        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
-            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
-
-            bytesReturned = 0;
-            return true;
-        };
 
         using var volume = MftVolume.Open('C');
         var journal = volume.Journal;
@@ -399,28 +393,21 @@ public partial class UsnJournalSyntheticTests
             actualAvailableAllocationUnits: 1024,
             callerAvailableAllocationUnits: 1024);
         const long fiveGiB = 5L * 1024 * 1024 * 1024;
-        var queryCount = 0;
-        var query = JournalQueryFake.Create(() => ++queryCount == 1
-            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000)
-            : JournalQueryFake.Describe(7, 200, maximumSize: fiveGiB, allocationDelta: 0x100000));
-        Kernel32.Hooks._deviceIoControl = (device, ioControlCode, inBuffer,
-            inBufferSize, outBuffer, outBufferSize, out bytesReturned, overlapped) =>
-        {
-            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
-            {
-                return query(device, ioControlCode, inBuffer, inBufferSize,
-                    outBuffer, outBufferSize, out bytesReturned, overlapped);
-            }
-
-            bytesReturned = 0;
-            return true;
-        };
+        UseTwoQueriesAndCreate(0x200000, fiveGiB, allocationDelta: 0x100000);
 
         using var volume = MftVolume.Open('C');
         var result = volume.Journal.GrowUsnJournal(fiveGiB, 0x100000);
 
         Assert.AreEqual(fiveGiB, result.JournalSettings.MaximumSize);
     }
+
+    static DeviceIoControl CountedFailingIoctl(Action onCall) =>
+        (_, _, _, _, _, _, out bytesReturned, _) =>
+        {
+            onCall();
+            bytesReturned = 0;
+            return false;
+        };
 
     [TestMethod]
     public void GrowUsnJournal_DiskSpaceQueryFails_ThrowsWin32ExceptionBeforeAnyIoctl()
@@ -433,17 +420,11 @@ public partial class UsnJournalSyntheticTests
             diskSpaceInformation = default;
             return failedHresult;
         };
-        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
-        {
-            Interlocked.Increment(ref ioctlCalls);
-            bytesReturned = 0;
-            return false;
-        };
+        Kernel32.Hooks._deviceIoControl = CountedFailingIoctl(() => Interlocked.Increment(ref ioctlCalls));
 
         using var volume = MftVolume.Open('C');
         var journal = volume.Journal;
-        var exception = Assert.ThrowsExactly<Win32Exception>(() =>
-            journal.GrowUsnJournal(0x400000, 0x100000));
+        var exception = Assert.ThrowsExactly<Win32Exception>(() => journal.GrowUsnJournal(0x400000, 0x100000));
 
         Assert.AreEqual(failedHresult, exception.NativeErrorCode);
         Assert.AreEqual(0, ioctlCalls);
@@ -454,6 +435,7 @@ public partial class UsnJournalSyntheticTests
     [DataRow(1000UL, 0u, 512u)]
     [DataRow(1000UL, 8u, 0u)]
     [DataRow(19UL, 1u, 1u)]
+    [DataRow((20UL * 1024 * 1024) - 1, 1u, 1u)]
     [DataRow(ulong.MaxValue, 2u, 512u)]
     public void GrowUsnJournal_UnusableGeometryOrOverflow_ThrowsInvalidOperationBeforeAnyIoctl(
         ulong totalUnits, uint sectorsPerUnit, uint bytesPerSector)
@@ -470,18 +452,11 @@ public partial class UsnJournalSyntheticTests
             };
             return 0;
         };
-        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
-        {
-            Interlocked.Increment(ref ioctlCalls);
-            bytesReturned = 0;
-            return false;
-        };
+        Kernel32.Hooks._deviceIoControl = CountedFailingIoctl(() => Interlocked.Increment(ref ioctlCalls));
 
         using var volume = MftVolume.Open('C');
         var journal = volume.Journal;
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
-            journal.GrowUsnJournal(0x400000, 0x100000));
-
+        Assert.ThrowsExactly<InvalidOperationException>(() => journal.GrowUsnJournal(0x400000, 0x100000));
         Assert.AreEqual(0, ioctlCalls);
     }
 
@@ -502,18 +477,12 @@ public partial class UsnJournalSyntheticTests
             diskSpaceInformation = default;
             return 0;
         };
-        Kernel32.Hooks._deviceIoControl = (_, _, _, _, _, _, out bytesReturned, _) =>
-        {
-            Interlocked.Increment(ref ioctlCalls);
-            bytesReturned = 0;
-            return false;
-        };
+        Kernel32.Hooks._deviceIoControl = CountedFailingIoctl(() => Interlocked.Increment(ref ioctlCalls));
 
         using var handle = FakeVolumeHandle.Create();
         var journal = new UsnJournalVolume(handle, invalidVolumePath);
 
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
-            journal.GrowUsnJournal(0x400000, 0x100000));
+        Assert.ThrowsExactly<InvalidOperationException>(() => journal.GrowUsnJournal(0x400000, 0x100000));
         Assert.AreEqual(0, diskSpaceCalls);
         Assert.AreEqual(0, ioctlCalls);
     }

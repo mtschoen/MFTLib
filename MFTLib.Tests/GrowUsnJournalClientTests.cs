@@ -118,6 +118,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     [TestMethod]
     [DataRow(false, UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended, 8L * 1024 * 1024 * 1024)]
     [DataRow(true, UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, (8L * 1024 * 1024 * 1024) + 1)]
+    [DataRow(false, UsnJournalGrowthOutcome.Unchanged, 0x200000L)]
     public async Task GrowUsnJournalAsync_OverCap_ForwardsOverrideAndSurfacesOutcomeThroughBrokerSession(
         bool allowAboveMaximumRecommendedSize,
         UsnJournalGrowthOutcome expectedOutcome,
@@ -133,17 +134,14 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
             GrowUsnJournal = (_, maximumSize, allocationDelta, overrideCap) =>
             {
                 capturedOverrides.Add(overrideCap);
-                var applied = overrideCap ? maximumSize : Math.Min(maximumSize, recommended);
                 return new UsnJournalGrowthResult
                 {
-                    Outcome = overrideCap
-                        ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
-                        : UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended,
+                    Outcome = expectedOutcome,
                     RequestedMaximumSize = maximumSize,
                     MaximumRecommendedSize = recommended,
                     JournalSettings = new UsnJournalSettings
                     {
-                        MaximumSize = applied,
+                        MaximumSize = expectedAppliedMaximum,
                         AllocationDelta = allocationDelta
                     }
                 };

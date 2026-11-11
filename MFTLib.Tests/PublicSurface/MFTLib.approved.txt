@@ -37,6 +37,7 @@ MFTLib.UsnJournalGrowthOutcome :: field public const AlreadyAtOrAboveTarget : MF
 MFTLib.UsnJournalGrowthOutcome :: field public const GrewAboveMaximumRecommendedByOverride : MFTLib.UsnJournalGrowthOutcome = 2
 MFTLib.UsnJournalGrowthOutcome :: field public const GrewAsRequested : MFTLib.UsnJournalGrowthOutcome = 0
 MFTLib.UsnJournalGrowthOutcome :: field public const GrewClampedToMaximumRecommended : MFTLib.UsnJournalGrowthOutcome = 1
+MFTLib.UsnJournalGrowthOutcome :: field public const Unchanged : MFTLib.UsnJournalGrowthOutcome = 4
 MFTLib.UsnJournalGrowthOutcome :: type public enum : byte, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.UsnJournalGrowthResult :: method public Equals(MFTLib.UsnJournalGrowthResult other) : bool
 MFTLib.UsnJournalGrowthResult :: method public override Equals(object obj) : bool

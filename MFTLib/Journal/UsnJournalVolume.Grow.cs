@@ -10,6 +10,7 @@ namespace MFTLib;
 sealed partial class UsnJournalVolume
 {
     internal const long MaximumRecommendedGrowthBytes = 8L * 1024 * 1024 * 1024;
+    internal const long RecommendedGrowthAlignmentBytes = 1024L * 1024;
 
     /// <summary>
     ///     Grows this volume's USN change journal in place via
@@ -21,13 +22,14 @@ sealed partial class UsnJournalVolume
     ///     may still need. Without <paramref name="allowAboveMaximumRecommendedSize" />, a
     ///     requested <paramref name="maximumSize" /> above <see cref="QueryMaximumRecommendedSize" />
     ///     (the smaller of 8 GiB and 5 percent of the volume's total size queried at request
-    ///     time) is clamped to that recommended cap and reported as
-    ///     <see cref="UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended" />; with
+    ///     time, rounded down to a multiple of 1 MiB) is clamped to that recommended cap and
+    ///     reported as <see cref="UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended" />; with
     ///     <paramref name="allowAboveMaximumRecommendedSize" />, the full requested size is applied
     ///     and reported as <see cref="UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride" />.
-    ///     Requires an active journal and an elevated handle. Returns the post-change settings
-    ///     read back from the volume, which can round up past the request to an allocation-delta
-    ///     multiple.
+    ///     After <c>FSCTL_CREATE_USN_JOURNAL</c> succeeds, the volume's journal settings are read
+    ///     back: if the read-back <see cref="UsnJournalSettings.MaximumSize" /> is not greater than
+    ///     the pre-call maximum, returns <see cref="UsnJournalGrowthOutcome.Unchanged" /> with the
+    ///     settings the volume kept. Requires an active journal and an elevated handle.
     /// </summary>
     /// <param name="maximumSize">Requested maximum journal size in bytes. Must be positive.</param>
     /// <param name="allocationDelta">Journal allocation granularity in bytes. Must be positive.</param>
@@ -87,18 +89,21 @@ sealed partial class UsnJournalVolume
             Marshal.FreeHGlobal(inBuffer);
         }
 
-        var outcome = !exceedsMaximumRecommended
-            ? UsnJournalGrowthOutcome.GrewAsRequested
-            : allowAboveMaximumRecommendedSize
-                ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
-                : UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended;
+        var updated = QueryUsnJournalSettings();
+        var outcome = updated.MaximumSize <= current.MaximumSize
+            ? UsnJournalGrowthOutcome.Unchanged
+            : !exceedsMaximumRecommended
+                ? UsnJournalGrowthOutcome.GrewAsRequested
+                : allowAboveMaximumRecommendedSize
+                    ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
+                    : UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended;
 
         return new UsnJournalGrowthResult
         {
             Outcome = outcome,
             RequestedMaximumSize = maximumSize,
             MaximumRecommendedSize = maximumRecommended,
-            JournalSettings = QueryUsnJournalSettings()
+            JournalSettings = updated
         };
     }
 
@@ -136,13 +141,15 @@ sealed partial class UsnJournalVolume
         }
 
         var fivePercentBytes = totalBytes / 20UL;
-        if (fivePercentBytes == 0)
+        var unalignedCapBytes = Math.Min(MaximumRecommendedGrowthBytes, fivePercentBytes);
+        var alignedCapBytes = unalignedCapBytes - (unalignedCapBytes % RecommendedGrowthAlignmentBytes);
+        if (alignedCapBytes == 0)
         {
             throw new InvalidOperationException(
                 $"Volume '{rootPath}' total size ({totalBytes} bytes) is too small to compute a positive USN journal cap.");
         }
 
-        return (long)Math.Min(MaximumRecommendedGrowthBytes, fivePercentBytes);
+        return (long)alignedCapBytes;
     }
 
     static string VolumeRootPath(string volumePath)

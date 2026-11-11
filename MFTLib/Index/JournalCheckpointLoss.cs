@@ -192,7 +192,7 @@ public sealed record JournalCheckpointLoss
     ///     Call <see cref="UsnJournalSettings.QueryMaximumRecommendedSize" /> before elevation to inspect the volume's recommended cap,
     ///     and pass <paramref name="target" /> to <see cref="BrokerSession.GrowUsnJournalAsync" />, which returns a
     ///     <see cref="UsnJournalGrowthResult" /> classifying whether the journal grew as requested, clamped to the cap,
-    ///     grew above the cap by explicit override, or was already at or above the target.
+    ///     grew above the cap by explicit override, was already at or above the target, or kept its maximum unchanged.
     /// </remarks>
     public bool TryGetGrowthTarget(out UsnJournalSettings target)
     {

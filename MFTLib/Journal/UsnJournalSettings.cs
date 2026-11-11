@@ -23,7 +23,8 @@ public readonly record struct UsnJournalSettings
     /// <summary>
     ///     Queries the largest <see cref="MaximumSize" /> in bytes that MFTLib recommends by default
     ///     for <paramref name="volume" />: the smaller of 8 GiB and 5 percent of the volume's total size,
-    ///     read from Windows at request time without requiring administrator rights.
+    ///     rounded down to a multiple of 1 MiB, read from Windows at request time without requiring
+    ///     administrator rights.
     /// </summary>
     /// <param name="volume">The NTFS volume to query.</param>
     /// <returns>The maximum recommended journal size in bytes before clamping.</returns>

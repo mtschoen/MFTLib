@@ -12,20 +12,26 @@ namespace MFTLib.Tests;
 public class GrowUsnJournalHostTests
 {
     [TestMethod]
-    public async Task GrowUsnJournal_SeamReturnsGrowthResult_EmitsUsnJournalGrowthResult()
+    [DataRow(false, UsnJournalGrowthOutcome.GrewAsRequested)]
+    [DataRow(true, UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride)]
+    [DataRow(false, UsnJournalGrowthOutcome.Unchanged)]
+    public async Task GrowUsnJournal_SeamReturnsGrowthResult_EmitsUsnJournalGrowthResult(
+        bool allowAboveMaximumRecommendedSize,
+        UsnJournalGrowthOutcome expectedOutcome)
     {
+        var capturedOverride = false;
         await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => default,
             ScanVolume = (_, _, _, _, _, _) => [],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null,
-            GrowUsnJournal = (_, maximumSize, allocationDelta, allowAboveMaximumRecommendedSize) =>
-                new UsnJournalGrowthResult
+            GrowUsnJournal = (_, maximumSize, allocationDelta, overrideCap) =>
+            {
+                capturedOverride = overrideCap;
+                return new UsnJournalGrowthResult
                 {
-                    Outcome = allowAboveMaximumRecommendedSize
-                        ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
-                        : UsnJournalGrowthOutcome.GrewAsRequested,
+                    Outcome = expectedOutcome,
                     RequestedMaximumSize = maximumSize,
                     MaximumRecommendedSize = 0x10000000L,
                     JournalSettings = new UsnJournalSettings
@@ -33,15 +39,17 @@ public class GrowUsnJournalHostTests
                         MaximumSize = maximumSize,
                         AllocationDelta = allocationDelta
                     }
-                }
+                };
+            }
         }));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(31, 'C', 0x08000000, 0x01000000, allowAboveMaximumRecommendedSize: true)));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(31, 'C', 0x08000000, 0x01000000, allowAboveMaximumRecommendedSize)));
         var frame = await harness.ReadControlAsync();
 
+        Assert.AreEqual(allowAboveMaximumRecommendedSize, capturedOverride);
         Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, frame.Kind);
         Assert.AreEqual(31u, frame.RequestId);
-        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, frame.JournalGrowthOutcome);
+        Assert.AreEqual(expectedOutcome, frame.JournalGrowthOutcome);
         Assert.AreEqual(0x08000000L, frame.JournalRequestedMaximumSize);
         Assert.AreEqual(0x10000000L, frame.JournalMaximumRecommendedSize);
         Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);

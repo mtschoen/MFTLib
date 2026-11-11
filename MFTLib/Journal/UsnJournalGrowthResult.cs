@@ -15,7 +15,8 @@ public readonly record struct UsnJournalGrowthResult
 
     /// <summary>
     ///     Maximum recommended journal size in bytes under MFTLib's default policy for the volume
-    ///     at request time (the smaller of 8 GiB and 5 percent of the volume's total size).
+    ///     at request time (the smaller of 8 GiB and 5 percent of the volume's total size, rounded
+    ///     down to a multiple of 1 MiB).
     /// </summary>
     public required long MaximumRecommendedSize { get; init; }
 

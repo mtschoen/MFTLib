@@ -261,7 +261,7 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    [DataRow(4)]
+    [DataRow(5)]
     [DataRow(255)]
     public void ReadFrame_UsnJournalGrowthResultWithUnknownOutcomeByte_ThrowsInvalidDataException(int rawOutcomeByte)
     {

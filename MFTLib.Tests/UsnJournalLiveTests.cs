@@ -4,6 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class UsnJournalLiveTests
 {
     static bool IsAdmin()
@@ -130,9 +131,32 @@ public class UsnJournalLiveTests
             $"Should find {tempFileName} in watched entries");
     }
 
+    // Each grow test mounts a throwaway 4 GiB dynamically expanding NTFS VHDX (see
+    // TempNtfsVhdx for the sizing). Five percent of the volume rounded down to a multiple of
+    // 1 MiB gives a recommended maximum of 204 MiB; the journal is seeded at 64 MiB with an
+    // 8 MiB delta, so the below-cap grow targets 72 MiB and the above-cap request is the cap
+    // plus 32 MiB. No persistent host volume is touched.
+
+    static void AssertGrownSettings(
+        UsnJournalSettings before,
+        long effectiveTarget,
+        UsnJournalSettings grown,
+        UsnJournalSettings readBack)
+    {
+        const long oneMiB = 1024L * 1024;
+        Assert.IsGreaterThan(before.MaximumSize, grown.MaximumSize,
+            $"Grown journal size {grown.MaximumSize} should exceed pre-call size {before.MaximumSize}.");
+        Assert.IsLessThanOrEqualTo(effectiveTarget, grown.MaximumSize,
+            $"Grown journal size {grown.MaximumSize} should not exceed effective target {effectiveTarget}.");
+        Assert.IsGreaterThanOrEqualTo(effectiveTarget - oneMiB, grown.MaximumSize,
+            $"Grown journal size {grown.MaximumSize} should be at least effective target minus 1 MiB ({effectiveTarget - oneMiB}).");
+        Assert.AreEqual(before.AllocationDelta, grown.AllocationDelta);
+        Assert.AreEqual(grown, readBack);
+    }
+
     [TestMethod]
     [TestCategory("RequiresAdmin")]
-    public void GrowUsnJournal_OnRealVolume_GrowsAndReadsBack()
+    public void GrowUsnJournal_OnRealVolume_WithinMaximumRecommended_GrowsAsRequestedAndReadsBack()
     {
         if (!IsAdmin())
         {
@@ -140,37 +164,105 @@ public class UsnJournalLiveTests
             return;
         }
 
-        using var volume = MftVolume.Open('C');
+        using var vhdx = TempNtfsVhdx.Create();
+        using var volume = MftVolume.Open(vhdx.Volume);
         var before = volume.Journal.QueryUsnJournalSettings();
-        if (before.MaximumSize >= 1024L * 1024 * 1024)
-        {
-            // Bound the cumulative growth across repeated runs: this test mutates a
-            // persistent, shared OS resource and cannot restore the old size (shrink is
-            // refused by design), so it opts out once the journal is already large.
-            Assert.Inconclusive("Journal maximum is already at or above 1 GB");
-            return;
-        }
+        var maximumRecommended = UsnJournalSettings.QueryMaximumRecommendedSize(vhdx.Volume);
+        var requestedMaximum = before.MaximumSize + before.AllocationDelta;
 
-        var targetMaximum = before.MaximumSize + before.AllocationDelta;
-        var volumeRecommendedCap = UsnJournalSettings.QueryMaximumRecommendedSize('C');
-        if (targetMaximum > volumeRecommendedCap)
-        {
-            Assert.Inconclusive(
-                $"Target journal size {targetMaximum} bytes exceeds volume C: recommended cap {volumeRecommendedCap} bytes.");
-            return;
-        }
+        Assert.IsLessThan(maximumRecommended, requestedMaximum,
+            $"Target size {requestedMaximum} should sit below the 5 percent recommended cap {maximumRecommended}.");
 
-        var grown = volume.Journal.GrowUsnJournal(targetMaximum, before.AllocationDelta);
+        var grown = volume.Journal.GrowUsnJournal(requestedMaximum, before.AllocationDelta);
+        var readBack = volume.Journal.QueryUsnJournalSettings();
 
         Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, grown.Outcome);
-        Assert.IsGreaterThanOrEqualTo(targetMaximum, grown.JournalSettings.MaximumSize,
-            $"Expected at least {targetMaximum} bytes, got {grown.JournalSettings.MaximumSize}");
+        Assert.AreEqual(requestedMaximum, grown.RequestedMaximumSize);
+        Assert.AreEqual(maximumRecommended, grown.MaximumRecommendedSize);
+        AssertGrownSettings(before, requestedMaximum, grown.JournalSettings, readBack);
+    }
 
-        // Grow-only no-op outcome, using the just-grown size (no second mutation).
-        var unchanged = volume.Journal.GrowUsnJournal(grown.JournalSettings.MaximumSize, grown.JournalSettings.AllocationDelta);
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void GrowUsnJournal_OnRealVolume_AboveMaximumRecommendedWithoutOverride_ClampsAndReadsBack()
+    {
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
+
+        using var vhdx = TempNtfsVhdx.Create();
+        using var volume = MftVolume.Open(vhdx.Volume);
+        var before = volume.Journal.QueryUsnJournalSettings();
+        var maximumRecommended = UsnJournalSettings.QueryMaximumRecommendedSize(vhdx.Volume);
+        var requestedMaximum = maximumRecommended + (4 * before.AllocationDelta);
+
+        Assert.IsLessThan(maximumRecommended, before.MaximumSize,
+            $"Initial journal maximum {before.MaximumSize} should sit below the recommended cap {maximumRecommended}.");
+
+        var grown = volume.Journal.GrowUsnJournal(requestedMaximum, before.AllocationDelta);
+        var readBack = volume.Journal.QueryUsnJournalSettings();
+
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended, grown.Outcome);
+        Assert.AreEqual(requestedMaximum, grown.RequestedMaximumSize);
+        Assert.AreEqual(maximumRecommended, grown.MaximumRecommendedSize);
+        Assert.IsLessThan(requestedMaximum, grown.JournalSettings.MaximumSize,
+            $"Clamped journal size {grown.JournalSettings.MaximumSize} should remain below the unclamped request {requestedMaximum}.");
+        AssertGrownSettings(before, maximumRecommended, grown.JournalSettings, readBack);
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void GrowUsnJournal_OnRealVolume_AboveMaximumRecommendedWithOverride_GrowsToRequestedAndReadsBack()
+    {
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
+
+        using var vhdx = TempNtfsVhdx.Create();
+        using var volume = MftVolume.Open(vhdx.Volume);
+        var before = volume.Journal.QueryUsnJournalSettings();
+        var maximumRecommended = UsnJournalSettings.QueryMaximumRecommendedSize(vhdx.Volume);
+        var requestedMaximum = maximumRecommended + (4 * before.AllocationDelta);
+
+        var grown = volume.Journal.GrowUsnJournal(
+            requestedMaximum,
+            before.AllocationDelta,
+            allowAboveMaximumRecommendedSize: true);
+        var readBack = volume.Journal.QueryUsnJournalSettings();
+
+        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, grown.Outcome);
+        Assert.AreEqual(requestedMaximum, grown.RequestedMaximumSize);
+        Assert.AreEqual(maximumRecommended, grown.MaximumRecommendedSize);
+        AssertGrownSettings(before, requestedMaximum, grown.JournalSettings, readBack);
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void GrowUsnJournal_OnRealVolume_AtOrBelowCurrentMaximum_ReturnsAlreadyAtOrAboveTargetAndReadsBack()
+    {
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
+
+        using var vhdx = TempNtfsVhdx.Create();
+        using var volume = MftVolume.Open(vhdx.Volume);
+        var before = volume.Journal.QueryUsnJournalSettings();
+        var maximumRecommended = UsnJournalSettings.QueryMaximumRecommendedSize(vhdx.Volume);
+
+        var unchanged = volume.Journal.GrowUsnJournal(before.MaximumSize, before.AllocationDelta);
+        var readBack = volume.Journal.QueryUsnJournalSettings();
 
         Assert.AreEqual(UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget, unchanged.Outcome);
-        Assert.AreEqual(grown.JournalSettings, unchanged.JournalSettings);
+        Assert.AreEqual(before.MaximumSize, unchanged.RequestedMaximumSize);
+        Assert.AreEqual(maximumRecommended, unchanged.MaximumRecommendedSize);
+        Assert.AreEqual(before, unchanged.JournalSettings);
+        Assert.AreEqual(before, readBack);
     }
 
     public TestContext TestContext { get; set; } = null!;

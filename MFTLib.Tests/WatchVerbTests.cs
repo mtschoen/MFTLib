@@ -106,21 +106,25 @@ public sealed partial class WatchVerbTests : IDisposable
     [TestMethod]
     [DataRow(false, UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended, 8000L)]
     [DataRow(true, UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride, 9000L)]
+    [DataRow(false, UsnJournalGrowthOutcome.Unchanged, 4096L)]
     public async Task Run_JournalWithBothSizes_GrowsTheJournalThroughTheBroker(
         bool allowAboveMaximumRecommendedSize,
         UsnJournalGrowthOutcome expectedOutcome,
         long expectedMaximumSize)
     {
+        var capturedOverride = false;
         await using var handle = BrokerTestHarness.StartInProcess(Volumes() with
         {
-            GrowUsnJournal = (_, target, overrideCap) => new UsnJournalGrowthResult
+            GrowUsnJournal = (_, target, overrideCap) =>
             {
-                Outcome = overrideCap
-                    ? UsnJournalGrowthOutcome.GrewAboveMaximumRecommendedByOverride
-                    : UsnJournalGrowthOutcome.GrewClampedToMaximumRecommended,
-                RequestedMaximumSize = target.MaximumSize,
-                MaximumRecommendedSize = 8000,
-                JournalSettings = target with { MaximumSize = overrideCap ? target.MaximumSize : 8000 }
+                capturedOverride = overrideCap;
+                return new UsnJournalGrowthResult
+                {
+                    Outcome = expectedOutcome,
+                    RequestedMaximumSize = target.MaximumSize,
+                    MaximumRecommendedSize = 8000,
+                    JournalSettings = target with { MaximumSize = expectedMaximumSize }
+                };
             }
         });
         var lines = new List<string>();
@@ -142,6 +146,7 @@ public sealed partial class WatchVerbTests : IDisposable
             CancellationToken.None);
 
         Assert.AreEqual(0, result);
+        Assert.AreEqual(allowAboveMaximumRecommendedSize, capturedOverride);
         Assert.Contains(
             $"Journal X: {expectedOutcome}, requested 9000, maximum recommended 8000, maximum size {expectedMaximumSize}, allocation delta 4096",
             lines,

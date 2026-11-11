@@ -119,6 +119,7 @@ Query `UsnJournalSettings.QueryMaximumRecommendedSize(volume)` before elevation 
 the volume's recommended cap, and pass the target struct to
 `BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken, allowAboveMaximumRecommendedSize)`.
 Its `UsnJournalGrowthResult` classifies whether the journal grew as requested, clamped
-to the recommended cap, grew above the recommended cap by explicit override, or was already at or above the
-target (`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget`). Growing cannot recover lost
+to the recommended cap, grew above the recommended cap by explicit override, was already at or above the
+target (`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget`), or kept its maximum unchanged
+(`UsnJournalGrowthOutcome.Unchanged`). Growing cannot recover lost
 records; rescan afterward.

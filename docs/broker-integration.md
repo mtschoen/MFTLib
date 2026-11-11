@@ -68,7 +68,9 @@ cancellation, subscriber exceptions, `Ended` and disposal rules.
 launches the broker if no use has yet, grows the journal (clamping to
 `UsnJournalSettings.QueryMaximumRecommendedSize(loss.Volume)` unless
 `allowAboveMaximumRecommendedSize` is true), and returns a `UsnJournalGrowthResult` with the
-classified `UsnJournalGrowthOutcome`, the requested and maximum recommended sizes, and the
+classified `UsnJournalGrowthOutcome` (`GrewAsRequested`, `GrewClampedToMaximumRecommended`,
+`GrewAboveMaximumRecommendedByOverride`, `AlreadyAtOrAboveTarget`, or `Unchanged` when the
+read-back maximum did not increase), the requested and maximum recommended sizes, and the
 settings read back from the volume. `target` is a `UsnJournalSettings` carrying the
 requested maximum size and allocation delta.
 

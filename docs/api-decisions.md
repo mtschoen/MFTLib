@@ -1287,12 +1287,13 @@ is skipped and is not a failure (B2). `VolumeKey.TryParse(string? text, out Volu
 
 ## GrowUsnJournal exposes a soft 8 GiB / 5% recommended cap with clamping, override, and classified outcomes
 
-**Decision (owner rulings, 2026-11-10, [file-wizard issue 895](/schoen/file-wizard/issues/895); broker name validation from 2026-10-27, [issue 778](/schoen/MFTLib/issues/778)):**
+**Decision (owner rulings, 2026-11-10, [file-wizard issue 895](/schoen/file-wizard/issues/895) and [issue 936](/schoen/MFTLib/issues/936); broker name validation from 2026-10-27, [issue 778](/schoen/MFTLib/issues/778)):**
 `UsnJournalSettings.QueryMaximumRecommendedSize(VolumeKey volume)` queries the maximum recommended journal size for a volume without
 requiring elevation: the smaller of 8 GiB (`8,589,934,592` bytes) and 5% of the volume's total size (`totalBytes / 20`),
-read at request time through `GetDiskSpaceInformationW` (`ActualTotalAllocationUnits * SectorsPerAllocationUnit *
-BytesPerSector`) with no caching and ignoring caller quota or free-space fields. One policy implementation
-(`UsnJournalVolume.QueryMaximumRecommendedSize`) serves both the public query and `UsnJournalVolume.GrowUsnJournal`.
+rounded down to a multiple of 1 MiB (`1,048,576` bytes), read at request time through `GetDiskSpaceInformationW`
+(`ActualTotalAllocationUnits * SectorsPerAllocationUnit * BytesPerSector`) with no caching and ignoring caller quota or
+free-space fields. A volume whose 1 MiB-aligned cap rounds down to zero throws `InvalidOperationException`. One policy
+implementation (`UsnJournalVolume.QueryMaximumRecommendedSize`) serves both the public query and `UsnJournalVolume.GrowUsnJournal`.
 `BrokerSession.GrowUsnJournalAsync(volume, target, cancellationToken, allowAboveMaximumRecommendedSize = false)` carries the
 explicit `allowAboveMaximumRecommendedSize` override flag on the `GrowUsnJournal` control frame and returns a
 `UsnJournalGrowthResult` (`Outcome`, `RequestedMaximumSize`, `MaximumRecommendedSize`, `JournalSettings`) on the
@@ -1303,13 +1304,27 @@ is applied in full and reported as `UsnJournalGrowthOutcome.GrewAboveMaximumReco
 cap is applied as asked and reported as `UsnJournalGrowthOutcome.GrewAsRequested`. When the effective target maximum
 (after clamping when not overridden) is already at or below the volume's current `MaximumSize`, no
 `FSCTL_CREATE_USN_JOURNAL` control request is sent and the call returns
-`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget` with the current settings. Nonpositive sizes and Windows errors throw.
+`UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget` with the current settings. After `FSCTL_CREATE_USN_JOURNAL` succeeds,
+`GrowUsnJournal` reads the settings back: if the read-back `MaximumSize` is not greater than the pre-call `MaximumSize`,
+it returns `UsnJournalGrowthOutcome.Unchanged` and `JournalSettings` holds what the volume kept; otherwise it keeps the
+`GrewAsRequested`, `GrewClampedToMaximumRecommended`, or `GrewAboveMaximumRecommendedByOverride` classification and
+`JournalSettings` carries the stored (possibly NTFS-rounded) size. Nonpositive sizes and Windows errors throw.
 `JournalCheckpointLoss.TryGetGrowthTarget` continues to report the uncapped retention size that would have kept the
 checkpoint. Broker channel pipe names must match `mftlib-broker-` plus 32 ASCII hex digits, and scan section names must
 match `mftlib-block-<volume>-` plus 32 ASCII hex digits for the channel's volume.
 
-**Reason:** the consumer could not see the cap before elevating, and silent clamping would leave the tools recommending
-an impossible size. Furthermore, 8 GiB proved too small for a real consumer volume (a 4 TB system drive needed 10.8 GB to
+**Update (owner ruling 2026-11-10, issue 936):** elevated runs on a throwaway VHDX (Windows 11 build 26300) showed that
+NTFS stores `MaximumSize` rounded down to a multiple of 512 KiB on a 4 KiB-cluster volume (214,643,302 requested became
+214,433,792; 248,197,734 became 247,988,224, an undocumented granularity not hard-coded as a law), and that for 1 MiB and
+2 MiB journals `FSCTL_CREATE_USN_JOURNAL` (and `fsutil usn createjournal`) returned success while keeping the old maximum
+(64 MiB journals resized normally). Asked: "Fix it by classifying the outcome from the read-back (new outcome
+`UsnJournalGrowthOutcome.Unchanged` when the size did not increase) and aligning the recommended maximum down to 1 MiB?"
+The owner ruled: "Yes, both." Reporting a grow that did not happen is the same defect as silent clamping, and aligning the
+recommended cap down to 1 MiB ensures a journal clamped to the cap does not sit just below an unaligned byte count on a
+subsequent request.
+
+**Reason:** the consumer could not see the cap before elevating, and silent clamping or reporting a grow when Windows kept
+the old maximum would leave the tools misreporting the volume's journal state. Furthermore, 8 GiB proved too small for a real consumer volume (a 4 TB system drive needed 10.8 GB to
 retain one checkpoint gap), any fixed cap can be too small for a busy drive, UAC is not a security boundary so an
 in-request guard protects little, and the owner's standing position is that the tool gives the user the information and
 the levers and the user decides the size. Strict prefix-and-hex validation on pipe and section names remains so the

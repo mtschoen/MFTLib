@@ -45,7 +45,7 @@ static partial class BrokerProtocol
     // payload: [requestId u32][outcome byte][requestedMaximumSize i64][maximumRecommendedSize i64][maximumSize i64][allocationDelta i64]
     public static void WriteUsnJournalGrowthResult(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        if ((byte)frame.JournalGrowthOutcome > (byte)UsnJournalGrowthOutcome.AlreadyAtOrAboveTarget)
+        if ((byte)frame.JournalGrowthOutcome > (byte)UsnJournalGrowthOutcome.Unchanged)
         {
             throw new ArgumentOutOfRangeException(nameof(frame), frame.JournalGrowthOutcome,
                 $"Unknown journal growth outcome: {frame.JournalGrowthOutcome}");

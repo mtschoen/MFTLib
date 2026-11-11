@@ -183,7 +183,11 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
-    public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams()
+    [DataRow(0x400000L, UsnJournalGrowthOutcome.GrewAsRequested)]
+    [DataRow(0x200000L, UsnJournalGrowthOutcome.Unchanged)]
+    public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams(
+        long postChangeMaximumBytes,
+        UsnJournalGrowthOutcome expectedOutcome)
     {
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         Kernel32.Hooks._getDiskSpaceInformation = (_, out diskSpaceInformation) =>
@@ -198,9 +202,9 @@ public partial class JournalBrokerHostRealSeamsTests
         };
 
         // The pre-check reports the journal smaller than the request, so the grow is
-        // issued; the post-change read returns the grown sizing.
+        // issued; the post-change read classifies whether the volume grew or kept its maximum.
         var preChange = JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000);
-        var postChange = JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000);
+        var postChange = JournalQueryFake.Describe(7, 200, maximumSize: (ulong)postChangeMaximumBytes, allocationDelta: 0x200000);
         var queryCount = 0;
         var query = JournalQueryFake.Create(() => ++queryCount == 1 ? preChange : postChange);
         uint? capturedIoctl = null;
@@ -232,10 +236,10 @@ public partial class JournalBrokerHostRealSeamsTests
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalGrowthResult, frame.Kind);
         Assert.AreEqual(6u, frame.RequestId);
-        Assert.AreEqual(UsnJournalGrowthOutcome.GrewAsRequested, frame.JournalGrowthOutcome);
+        Assert.AreEqual(expectedOutcome, frame.JournalGrowthOutcome);
         Assert.AreEqual(0x400000L, frame.JournalRequestedMaximumSize);
         Assert.AreEqual(5L * 1024 * 1024 * 1024, frame.JournalMaximumRecommendedSize);
-        Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
+        Assert.AreEqual(postChangeMaximumBytes, frame.JournalMaximumSize);
         Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
         Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
         Assert.AreEqual(0x400000L, capturedMaximum);
