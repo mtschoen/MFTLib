@@ -13,6 +13,11 @@ sealed class LiveVolumeAccess : IVolumeAccess
         MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
         LiveVolumeSources.ScanVolumeRecordBatches(volume, parseThreads, reporting,
             scanOptions, recordsOmitted, cancellationToken);
+    public BlockWriteResult WriteVolumeRows(
+        BlockWriter writer, VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+        MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
+        LiveVolumeSources.WriteVolumeRows(writer, volume, parseThreads, reporting, scanOptions, recordsOmitted,
+            cancellationToken);
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads) =>
         LiveVolumeSources.ReadJournal(volume, since, maximumBufferReads);

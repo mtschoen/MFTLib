@@ -41,6 +41,31 @@ static class LiveVolumeSources
         }
     }
 
+    // Scans the volume into the writer's block. A scan of allocated records streams: the native parse
+    // runs on its own thread and each parsed slice is written while later chunks are still read. A scan
+    // that includes freed records writes materialized batches, since FreedRowTrust observes MftRecords.
+    internal static BlockWriteResult WriteVolumeRows(BlockWriter writer, VolumeKey volume,
+        ParseThreadAllowance parseThreads, BlockWriteReporting reporting, MftScanOptions scanOptions,
+        Action<long> recordsOmitted, CancellationToken cancellationToken)
+    {
+        if (scanOptions.IncludeFreed)
+        {
+            return MftBlockRowWriter.WriteBatches(writer,
+                ScanVolumeRecordBatches(volume, parseThreads, reporting, scanOptions, recordsOmitted,
+                    cancellationToken), scanOptions, reporting.Progress, cancellationToken);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        reporting.Operation?.WaitingOnVolume();
+        var bytesPerFileRecordSegment = QueryVolumeInfo(volume).BytesPerFileRecordSegment;
+        using var mftVolume = MftVolume.Open(volume, HostScanChunkRecords(bytesPerFileRecordSegment));
+        reporting.Operation?.Processing("MFT parse");
+        var mftProgress = MftBlockProgressAdapter.CreateParse(reporting.Progress, reporting.Operation);
+        using var stream = mftVolume.OpenSliceStream(mftProgress, parseThreads, cancellationToken);
+        return MftSliceWriter.Write(writer, stream, MftSliceValidation.None, recordsOmitted, reporting.Progress,
+            cancellationToken);
+    }
+
     // Open the volume, stream cursor-tagged batches until cancelled, and dispose the volume when
     // the watch ends. The native read blocks until the journal changes, so the source reports
     // waiting on the volume before each read and processing once a batch arrives.

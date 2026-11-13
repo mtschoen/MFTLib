@@ -15,6 +15,18 @@ interface IVolumeAccess
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    ///     Scans the volume straight into <paramref name="writer" />'s block. The default writes the record batches
+    ///     of <see cref="ScanVolumeRecordBatches" />; the live volume streams its parse into the block instead.
+    /// </summary>
+    BlockWriteResult WriteVolumeRows(
+        BlockWriter writer, VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+        MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
+        MftBlockRowWriter.WriteBatches(writer,
+            ScanVolumeRecordBatches(volume, parseThreads, reporting, scanOptions, recordsOmitted, cancellationToken),
+            scanOptions, reporting.Progress, cancellationToken);
+
     (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads);
     IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchVolume(

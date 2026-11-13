@@ -115,6 +115,20 @@ sealed class MftVolume : IDisposable
         return ParseRecordBatches(batchSize, progress, parseThreads, options, recordsOmitted, cancellationToken);
     }
 
+    /// <summary>
+    ///     A streaming parse of the volume's allocated base records, which starts when the caller starts the
+    ///     stream. Freed records are never streamed: a scan that includes them uses <see cref="ReadRecordBatches" />.
+    /// </summary>
+    internal MftSliceStream OpenSliceStream(IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new MftSliceStream(
+            (control, callback, sink) => MFTLibNative.NativeParseMFTRecordsStreaming(_volumeHandle, 0,
+                _bufferSizeRecords, control, callback.Function, callback.Context, sink),
+            "ParseMFTRecordsStreaming", progress, parseThreads, cancellationToken);
+    }
+
     IEnumerable<MftRecord[]> ParseRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
         ParseThreadAllowance? parseThreads, MftScanOptions? options, Action<long>? recordsOmitted,
         CancellationToken cancellationToken)
