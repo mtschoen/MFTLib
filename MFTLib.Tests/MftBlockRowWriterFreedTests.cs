@@ -276,6 +276,30 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         Assert.AreEqual(12u, block.Rows[13].ParentRow);
     }
 
+    [TestMethod]
+    public void TrustRule_RootThatGetsNoRowStillVerifiesTheFinalHopFromItsObservedFacts()
+    {
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
+        // A parent past 32 bits is skipped and counted, so record 5 gets no row; the rule asks it only for its kind
+        // and sequence, which the writer observed before skipping it.
+        var rowlessRoot = new MftRecord(5, 0x1_0000_0005, new MftRecordFields(3, FileAttributes.Directory, 0, 0,
+            RootSequence), ".");
+        MftRecord[] records =
+        [
+            rowlessRoot,
+            Freed(12, 5, "dir", 14, parentSequence: RootSequence, isDirectory: true),
+            Freed(13, 12, "file.txt", 14, parentSequence: 14)
+        ];
+
+        var result = RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
+
+        Assert.AreEqual(1L, result.SkippedRecordCount, "the root's out-of-range parent skips it");
+        Assert.IsFalse(block.Rows[5].IsInUse);
+        Assert.AreEqual(5u, block.Rows[12].ParentRow);
+        Assert.AreEqual(12u, block.Rows[13].ParentRow);
+    }
+
     // A nameless directory other than the root cannot be a path component, so a freed child under it is detached
     // and keeps only its bare name; the same chain through a named directory verifies.
     [TestMethod]
