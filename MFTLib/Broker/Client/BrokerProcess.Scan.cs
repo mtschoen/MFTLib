@@ -65,7 +65,7 @@ sealed partial class BrokerProcess
     async Task<BrokerVolumeScanResult> ScanOnChannelAsync(VolumeKey volume, VolumeBlockSection section,
         MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
-        var channel = await OpenChannelAsync(volume, writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(section.SectionName, options.IncludeFreed)), cancellationToken).ConfigureAwait(false);
+        var channel = await OpenChannelAsync(volume, writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(section.SectionName, options.IncludeFreed, section.Block.DeletesOnClose)), cancellationToken).ConfigureAwait(false);
 
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, progress);

@@ -192,7 +192,7 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     True for a block this process created delete-on-close: no open outlives it and every mapping of the file
     ///     shares the page cache, so its completion needs no flush to disk.
     /// </summary>
-    internal bool DeletesOnClose { get; private set; }
+    internal bool DeletesOnClose { get; set; }
 
     /// <summary>
     ///     Exposes the sequence number for every row slot, indexed by the same ordinal as
@@ -346,7 +346,7 @@ sealed unsafe partial class BlockFile : IDisposable
             _base = null;
         }
 
-        _view.Dispose();
+        ReleaseView();
         _mappedFile.Dispose();
         drained?.Dispose();
 

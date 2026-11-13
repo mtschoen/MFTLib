@@ -88,7 +88,7 @@ public partial class BrokerProtocolTests
                 BrokerProtocol.WriteStalled(buffer, BrokerFrame.Stalled("s"));
                 break;
             case BrokerFrameKind.ArmAndScan:
-                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true));
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true, deleteOnClose: false));
                 break;
             case BrokerFrameKind.Cursor:
                 BrokerProtocol.WriteCursor(buffer, BrokerFrame.ArmedCursor(new UsnJournalCursor(1, 2)));

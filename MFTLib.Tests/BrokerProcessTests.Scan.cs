@@ -399,6 +399,25 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ScanVolume_SendsTheBlocksDeleteOnCloseMode(bool deleteOnClose)
+    {
+        await using var broker = new ScriptedBroker();
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target() with { DeleteOnClose = deleteOnClose },
+            new MftScanOptions(), null, CancellationToken.None);
+        await broker.AnswerQueryVolumeAsync(Volume);
+        await using (var pipe = await broker.AcceptChannelAsync())
+        {
+            var request = await HostChannelHarness.ReadFrameAsync(pipe);
+            Assert.IsNotNull(request);
+            Assert.AreEqual(deleteOnClose, request.Value.DeleteOnClose);
+        }
+
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
+    }
+
+    [TestMethod]
     public async Task Producer_ConnectsExactlyOnce()
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create());

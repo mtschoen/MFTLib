@@ -109,7 +109,7 @@ sealed partial class JournalBrokerHost
             // The section is written while the volume is parsed; disposing the source waits for the parse to return.
             using var source = _volumeAccess.OpenVolumeScan(channel.Volume, parseThreads, reporting, scanOptions,
                 cancellationToken);
-            var result = blockSectionWriter.Write(request.RequireSectionName(channel.Volume), cursor, source,
+            var result = blockSectionWriter.Write(new BlockSectionTarget(request.RequireSectionName(channel.Volume), request.DeleteOnClose), cursor, source,
                 scanOptions, reporting, cancellationToken);
             return new ScanOutput(cursor, result);
         }

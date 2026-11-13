@@ -14,15 +14,18 @@ public partial class BrokerProtocolTests
         JournalCheckpointLossCause.CheckpointTrimmed, 1000, 5000, 9000, 4096, 32768, 4000, 12288);
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void ArmAndScan_RoundTripsSectionAndIncludeFreed(bool includeFreed)
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public void ArmAndScan_RoundTripsSectionAndFlags(bool includeFreed, bool deleteOnClose)
     {
-        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed), BrokerProtocol.WriteArmAndScan);
+        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed, deleteOnClose), BrokerProtocol.WriteArmAndScan);
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
+        Assert.AreEqual(deleteOnClose, frame.DeleteOnClose);
         Assert.IsNull(frame.Volume, "The volume pipe names no volume.");
         Assert.IsEmpty(frame.Entries);
     }
@@ -31,7 +34,7 @@ public partial class BrokerProtocolTests
     public void ReadFrame_ArmAndScan_UnknownIncludeFreedValue_ThrowsInvalidDataException()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true));
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true, deleteOnClose: false));
         var bytes = buffer.WrittenSpan.ToArray();
 
         // length prefix 4 + kind 1 + section (4 + 2) = the flag's offset.
@@ -234,16 +237,18 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    [DataRow(false, (byte)0)]
-    [DataRow(true, (byte)1)]
-    public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, byte expectedFlagByte)
+    [DataRow(false, false, (byte)0, (byte)0)]
+    [DataRow(true, false, (byte)1, (byte)0)]
+    [DataRow(false, true, (byte)0, (byte)1)]
+    public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, bool deleteOnClose, byte expectedFreedByte, byte expectedDeleteByte)
     {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed: includeFreed)),
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed, deleteOnClose)),
         [
-            0x08, 0x00, 0x00, 0x00, // totalLength = 8
+            0x09, 0x00, 0x00, 0x00, // totalLength = 9
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
-            expectedFlagByte // includeFreed
+            expectedFreedByte, // includeFreed
+            expectedDeleteByte // deleteOnClose
         ]);
     }
 

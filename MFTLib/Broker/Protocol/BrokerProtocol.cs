@@ -160,7 +160,8 @@ static partial class BrokerProtocol
     {
         var sectionName = payload.String();
         var includeFreed = payload.Boolean();
-        return BrokerFrame.ArmAndScan(sectionName, includeFreed);
+        var deleteOnClose = payload.Boolean();
+        return BrokerFrame.ArmAndScan(sectionName, includeFreed, deleteOnClose);
     }
 
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)

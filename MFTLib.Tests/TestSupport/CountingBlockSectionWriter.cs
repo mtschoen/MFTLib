@@ -6,7 +6,7 @@ namespace MFTLib.Tests.TestSupport;
 /// </summary>
 sealed class CountingBlockSectionWriter : IBlockSectionWriter
 {
-    public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
+    public BlockWriteResult Write(BlockSectionTarget target, UsnJournalCursor cursor,
         IMftSliceSource source, MftScanOptions scanOptions,
         BlockWriteReporting reporting, CancellationToken cancellationToken)
     {

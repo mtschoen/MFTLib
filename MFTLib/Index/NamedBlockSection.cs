@@ -79,7 +79,7 @@ static class NamedBlockSection
     /// </summary>
     /// <exception cref="InvalidDataException">The section's header does not describe a block that exactly fills it.</exception>
     [SupportedOSPlatform("windows")]
-    public static BlockFile OpenExisting(string sectionName)
+    public static BlockFile OpenExisting(string sectionName, bool deleteOnClose)
     {
         ArgumentException.ThrowIfNullOrEmpty(sectionName);
 
@@ -100,7 +100,7 @@ static class NamedBlockSection
                 throw RejectedSection(sectionName, validation);
             }
 
-            var block = new BlockFile(mappedFile, view, length, layout);
+            var block = new BlockFile(mappedFile, view, length, layout) { DeletesOnClose = deleteOnClose };
             mappedFile = null;
             view = null;
             return block;

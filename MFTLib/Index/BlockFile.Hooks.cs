@@ -9,6 +9,9 @@ sealed partial class BlockFile
     {
         internal Action<bool>? _disposeStarted;
 
+        // Receives whether the view release flushes the view first.
+        internal Action<bool>? _viewReleased;
+
         internal long _flushRangeBytes = FlushRangeBytes;
         internal Func<long, long, int> _flushViewRange = block.FlushViewRangeNatively;
         internal Func<long, long, int, int> _synchronizeViewRange = block.SynchronizeViewRangeNatively;

@@ -246,7 +246,7 @@ public class JournalBrokerHostScanTests
             writer =>
             {
                 var buffer = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false));
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false, deleteOnClose: false));
                 var bytes = buffer.WrittenSpan.ToArray();
                 bytes[23] = 99;
                 var destination = writer.GetSpan(bytes.Length);
@@ -334,7 +334,7 @@ public class JournalBrokerHostScanTests
             using var source = RowWriting.Source(
                 [[new MftRecord(5, 5, new MftRecordFields(3), "."),
                     new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]]);
-            var written = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, cursor, source,
+            var written = new RealBlockSectionWriter(TimeProvider.System).Write(new BlockSectionTarget(sectionName, DeleteOnClose: false), cursor, source,
                 new MftScanOptions(), default, CancellationToken.None);
 
             Assert.AreEqual(101L, written.RowCount);
@@ -687,6 +687,42 @@ public class JournalBrokerHostScanTests
     {
         var pipe = await harness.OpenScanChannelAsync(drive, sectionName);
         return await HostChannelHarness.ReadToEndAsync(pipe);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Scan_PassesTheRequestsDeleteOnCloseModeToTheBlockWriter(bool deleteOnClose)
+    {
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanVolume = (_, _, _, _, _, _) => [],
+            ReadJournal = (_, since, _) => ([], since),
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
+        var blockWriter = new ModeRecordingBlockSectionWriter();
+        await using var harness = new HostChannelHarness(host, blockWriter);
+        var pipe = await harness.OpenChannelAsync('C');
+
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteArmAndScan(writer,
+            BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'), includeFreed: false, deleteOnClose)));
+        await HostChannelHarness.ReadToEndAsync(pipe);
+
+        Assert.AreEqual(deleteOnClose, blockWriter.DeleteOnClose);
+    }
+
+    sealed class ModeRecordingBlockSectionWriter : IBlockSectionWriter
+    {
+        readonly CountingBlockSectionWriter _inner = new();
+
+        public bool? DeleteOnClose { get; private set; }
+
+        public BlockWriteResult Write(BlockSectionTarget target, UsnJournalCursor cursor, IMftSliceSource source,
+            MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
+        {
+            DeleteOnClose = target.DeleteOnClose;
+            return _inner.Write(target, cursor, source, scanOptions, reporting, cancellationToken);
+        }
     }
 
     static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter)

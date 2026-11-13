@@ -39,6 +39,25 @@ sealed partial class BlockFile
         }
     }
 
+    /// <summary>
+    ///     Unmaps the view. Disposing a writable <see cref="MemoryMappedViewAccessor" /> first calls
+    ///     <c>FlushViewOfFile</c> over the whole view, a synchronous write of every dirty page. A
+    ///     delete-on-close block is never read back from disk (every mapping of its file shares the
+    ///     page cache), so its view handle is disposed alone: that only unmaps, and the lazy writer
+    ///     owns the dirty pages. Every other block keeps the accessor's flushing disposal.
+    /// </summary>
+    void ReleaseView()
+    {
+        Hooks._viewReleased?.Invoke(!DeletesOnClose);
+        if (DeletesOnClose)
+        {
+            _view.SafeMemoryMappedViewHandle.Dispose();
+            return;
+        }
+
+        _view.Dispose();
+    }
+
     internal static void TryDeleteFailedCreate(string path, Action<string>? diagnostics = null,
         string reason = "block creation or header initialization failed")
     {
