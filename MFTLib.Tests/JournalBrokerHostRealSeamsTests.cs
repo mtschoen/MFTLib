@@ -133,7 +133,9 @@ public partial class JournalBrokerHostRealSeamsTests
 
     // Scans volume C through the default host over a raw ArmAndScan frame and returns every frame
     // the volume pipe carried. The default host reads the catch-up journal through the real seam.
-    static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer, long armedNextUsn)
+    // A test whose parse is parked on a gate passes whenParsing to read the pipe up to that point and release it.
+    static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer, long armedNextUsn,
+        Func<Stream, Task>? whenParsing = null)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -150,7 +152,13 @@ public partial class JournalBrokerHostRealSeamsTests
 
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault(), writer);
 
-        var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
+        var pipe = await harness.OpenScanChannelAsync('C');
+        if (whenParsing is not null)
+        {
+            await whenParsing(pipe);
+        }
+
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames,
             string.Join("; ", frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message)));

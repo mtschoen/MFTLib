@@ -45,27 +45,34 @@ public partial class JournalBrokerHostRealSeamsTests
 
         var parsePtr = BuildThreeNameRecordsResult();
         var freedRequests = new List<bool>();
+        var parsingReported = new TestGate();
         StreamedParse.Install((_, freed, _, _, callback) =>
         {
             freedRequests.Add(freed);
             callback.Invoke(200, 300, 42.0);
-            callback.Invoke(300, 300, 45.0);
+            // Progress is latest-wins, so the parse parks until the client has read the Scanning frame.
+            parsingReported.MarkEntered();
+            parsingReported.WaitForRelease();
             return parsePtr;
         });
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
-        var frames = await ServeDefaultScanAsync(writer, 100);
+        BrokerFrame? scanningFrame = null;
+        var frames = await ServeDefaultScanAsync(writer, 100, async pipe =>
+        {
+            Assert.AreEqual(BrokerFrameKind.Cursor, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
+            scanningFrame = await HostChannelHarness.ReadFrameAsync(pipe);
+            parsingReported.Release();
+        });
         var reports = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();
 
-        // Intermediate scanning reports may be coalesced before the pump reads them. The last scanning
-        // report must retain native totals, independent of the three written rows, and the one Indexing
-        // sample follows it as the last frame before ScanReady.
-        var scanning = reports.Where(report => report.Phase == BlockScanPhase.Scanning).ToArray();
-        Assert.AreEqual(300L, scanning[^1].RecordsProcessed);
-        Assert.AreEqual(300L, scanning[^1].TotalRecords);
-        Assert.AreEqual(BlockWriteProgress.Indexing, reports[^1]);
+        // The native totals reach the client, independent of the three written rows, and the one Indexing
+        // sample follows as the last progress frame before ScanReady.
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, scanningFrame?.Kind);
+        Assert.AreEqual(BlockWriteProgress.Scanning(200, 300), scanningFrame!.Value.Progress);
+        Assert.AreSequenceEqual([BlockWriteProgress.Indexing], reports);
         Assert.IsTrue(writer.Block.Header.IsComplete);
         Assert.AreSequenceEqual([false], freedRequests, "The default scan asks for no freed rows.");
     }
