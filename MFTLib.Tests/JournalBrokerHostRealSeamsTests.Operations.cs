@@ -59,12 +59,15 @@ public partial class JournalBrokerHostRealSeamsTests
         var reports = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();
 
-        // Intermediate scanning reports may be coalesced before the pump reads them. The last scanning
-        // report must retain native totals, independent of the three written rows, and the one Indexing
-        // sample follows it as the last frame before ScanReady.
+        // The bounded channel may coalesce every scanning report before the pump reads it. Any
+        // emitted scanning report retains native totals, independent of the three written rows;
+        // the mandatory Indexing sample is the last frame before ScanReady.
         var scanning = reports.Where(report => report.Phase == BlockScanPhase.Scanning).ToArray();
-        Assert.AreEqual(300L, scanning[^1].RecordsProcessed);
-        Assert.AreEqual(300L, scanning[^1].TotalRecords);
+        if (scanning.Length > 0)
+        {
+            Assert.AreEqual(300L, scanning[^1].RecordsProcessed);
+            Assert.AreEqual(300L, scanning[^1].TotalRecords);
+        }
         Assert.AreEqual(BlockWriteProgress.Indexing, reports[^1]);
         Assert.IsTrue(writer.Block.Header.IsComplete);
         Assert.AreSequenceEqual([false], freedRequests, "The default scan asks for no freed rows.");
