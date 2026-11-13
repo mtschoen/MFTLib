@@ -16,28 +16,27 @@ static class LiveVolumeSources
         return (uint)Math.Max(1, HostScanChunkBytes / bytesPerFileRecordSegment);
     }
 
-    // Supplies native record batches without path resolution for the block writer. The scan's
-    // allowance and token reach the native parse, so a rebalance takes effect at its next chunk
-    // and a closed pipe stops it.
-    internal static IEnumerable<IReadOnlyList<MftRecord>> ScanVolumeRecordBatches(VolumeKey volume,
-        ParseThreadAllowance parseThreads, BlockWriteReporting reporting, MftScanOptions scanOptions,
-        Action<long> recordsOmitted, CancellationToken cancellationToken)
+    // Opens the volume and prepares its streaming parse for the block writer, without resolving paths. The scan's
+    // allowance and token reach the native parse, so a rebalance takes effect at its next chunk and a closed pipe
+    // stops it. The returned source owns the volume.
+    internal static IMftSliceSource OpenVolumeScan(VolumeKey volume, ParseThreadAllowance parseThreads,
+        BlockWriteReporting reporting, MftScanOptions scanOptions, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         reporting.Operation?.WaitingOnVolume();
         var bytesPerFileRecordSegment = QueryVolumeInfo(volume).BytesPerFileRecordSegment;
-        using var mftVolume = MftVolume.Open(volume, HostScanChunkRecords(bytesPerFileRecordSegment));
-        reporting.Operation?.Processing("MFT parse");
-        var mftProgress = MftBlockProgressAdapter.CreateParse(reporting.Progress, reporting.Operation);
-        foreach (var batch in mftVolume.ReadRecordBatches(4096, mftProgress, parseThreads, cancellationToken,
-                     scanOptions, recordsOmitted))
+        // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to the returned stream, which closes it once the parse has returned
+        var mftVolume = MftVolume.Open(volume, HostScanChunkRecords(bytesPerFileRecordSegment));
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // The parser applies IncludeFreed before materializing these batches.
-            if (batch.Length > 0)
-            {
-                yield return batch;
-            }
+            reporting.Operation?.Processing("MFT parse");
+            var mftProgress = MftBlockProgressAdapter.CreateParse(reporting.Progress, reporting.Operation);
+            return mftVolume.OpenSliceStream(mftProgress, parseThreads, scanOptions, cancellationToken);
+        }
+        catch
+        {
+            mftVolume.Dispose();
+            throw;
         }
     }
 

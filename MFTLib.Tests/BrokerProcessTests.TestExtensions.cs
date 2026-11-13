@@ -321,7 +321,7 @@ public partial class BrokerProcessTests
         }));
         var progressSink = new SynchronousProgress<BlockWriteProgress>(report =>
         {
-            if (report.Phase == BlockScanPhase.Parsing)
+            if (report.Phase == BlockScanPhase.Scanning)
             {
                 parsedSeen.TrySetResult(report);
             }

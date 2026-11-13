@@ -57,6 +57,13 @@ readonly struct MftRecord
     ///     for them, have this value set to false.
     /// </summary>
     public bool InUse => (_flags & InUseFlag) != 0;
+
+    /// <summary>The native entry flags the record was read with, so packing it again keeps them exactly.</summary>
+    internal ushort Flags => _flags;
+
+    /// <summary>The raw FILETIME behind <see cref="ModifiedUtc" />, so packing the record again keeps it exactly.</summary>
+    internal long ModifiedFileTime => _modifiedFileTime;
+
     /// <summary>Whether the record header marks a directory.</summary>
     public bool IsDirectory => (_flags & DirectoryFlag) != 0;
 

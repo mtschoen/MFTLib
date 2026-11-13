@@ -114,14 +114,7 @@ public class BrokerProcessLivenessTests
         for (var report = 0; report < 4; report++)
         {
             clock.Advance(SendInterval);
-            var sample = new BrokerScanProgress
-            {
-                Phase = BrokerScanPhase.Parsing,
-                RecordsProcessed = report,
-                BytesProcessed = report,
-                TotalRecords = 100,
-                TotalBytes = 100
-            };
+            var sample = BlockWriteProgress.Scanning(report, 100);
             await scan.SendAsync(writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(sample)));
             await session.SendControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
             await scan.SettledAsync();

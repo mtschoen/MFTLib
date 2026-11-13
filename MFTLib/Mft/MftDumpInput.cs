@@ -140,6 +140,24 @@ BufferSizeRecords: 0, CancellationToken: cancellationToken));
         }
     }
 
+    /// <summary>
+    ///     A streaming parse of the opened file, which starts when its slices are enumerated. The file stays open
+    ///     until this input is disposed, after the stream.
+    /// </summary>
+    /// <param name="progress">Receives native parse progress on the parse thread.</param>
+    /// <param name="parseThreads">The admitted scan's allowance; null lets the native parser use every processor.</param>
+    /// <param name="cancellationToken">Stops the native parse.</param>
+    internal MftSliceStream OpenSliceStream(IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
+        var bufferSizeRecords = LiveVolumeSources.HostScanChunkRecords(RecordSize);
+        return new MftSliceStream(
+            new MftStreamingParse((control, callback, sink) => MFTLibNative.ParseMftDumpInputStreaming(_handle,
+                bufferSizeRecords, control, callback, sink), "ParseMftDumpInputStreaming"),
+            progress, parseThreads, null, MftRowValidation.Dump, cancellationToken);
+    }
+
     /// <summary>Closes the file. Safe to call more than once.</summary>
     public void Dispose()
     {

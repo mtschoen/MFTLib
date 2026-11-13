@@ -1,13 +1,13 @@
 namespace MFTLib;
 
-/// <summary>Writes record batches into a client-created block section and completes its header.</summary>
+/// <summary>Writes a scan's rows into a client-created block section and completes its header.</summary>
 interface IBlockSectionWriter
 {
-    /// <summary>Writes all batches, stamps the cursor armed before the scan, then completes the block.</summary>
+    /// <summary>Writes the source's rows as it parses, stamps the cursor armed before the scan, then completes the block.</summary>
     BlockWriteResult Write(
         string sectionName,
         UsnJournalCursor cursor,
-        IEnumerable<IReadOnlyList<MftRecord>> batches,
+        IMftSliceSource source,
         MftScanOptions scanOptions,
         BlockWriteReporting reporting,
         CancellationToken cancellationToken);

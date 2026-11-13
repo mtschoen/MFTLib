@@ -60,9 +60,9 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public void ScanPhases_ContainOnlyParsingAndTransferring()
+    public void ScanPhases_ContainOnlyScanningAndIndexing()
     {
-        Assert.AreSequenceEqual([BrokerScanPhase.Parsing, BrokerScanPhase.Transferring], Enum.GetValues<BrokerScanPhase>());
+        Assert.AreSequenceEqual([BlockScanPhase.Scanning, BlockScanPhase.Indexing], Enum.GetValues<BlockScanPhase>());
     }
 
     [TestMethod]

@@ -48,7 +48,7 @@ public partial class JournalBrokerHostTests
             {
                 Assert.AreSequenceEqual([19], [.. frames
                     .Where(frame => frame.Kind == BrokerFrameKind.ScanProgress &&
-                        frame.Progress!.Value.Phase == BrokerScanPhase.Parsing)
+                        frame.Progress!.Value.Phase == BlockScanPhase.Scanning)
                     .Select(frame => frame.Progress!.Value.RecordsProcessed)]);
                 Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
             }
@@ -65,12 +65,12 @@ public partial class JournalBrokerHostTests
             TimeProvider timeProvider) =>
             ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
             {
-                reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
+                reporting.Progress!.Report(BlockWriteProgress.Scanning(5, 20));
                 first.WaitForRelease();
-                reporting.Progress.Report(new BlockWriteProgress(10, 0, 20, null, BlockScanPhase.Parsing));
+                reporting.Progress.Report(BlockWriteProgress.Scanning(10, 20));
                 second.MarkEntered();
                 second.WaitForRelease();
-                reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BlockScanPhase.Parsing));
+                reporting.Progress.Report(BlockWriteProgress.Scanning(19, 20));
                 return [];
             }, timeProvider: timeProvider);
     }
@@ -81,10 +81,10 @@ public partial class JournalBrokerHostTests
         var afterFirstReport = new TestGate();
         var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
         {
-            reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
+            reporting.Progress!.Report(BlockWriteProgress.Scanning(5, 20));
             afterFirstReport.MarkEntered();
             afterFirstReport.WaitForRelease();
-            reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BlockScanPhase.Parsing));
+            reporting.Progress.Report(BlockWriteProgress.Scanning(19, 20));
             return [[ScanRecord(5, ".", 3)]];
         }, timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -125,7 +125,7 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task ScanProgress_WritePhase_PassesProgressToStreamingWriterAndReportsBytes()
+    public async Task ScanProgress_IndexingSampleFollowsScanningAndPrecedesScanReady()
     {
         var clock = new FakeTimeProvider();
         var parsingReported = new TestGate();
@@ -138,13 +138,14 @@ public partial class JournalBrokerHostTests
         {
             var pipe = await harness.OpenScanChannelAsync('C');
             var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
-            var parsing = await HostChannelHarness.ReadFrameAsync(pipe);
+            var scanning = await HostChannelHarness.ReadFrameAsync(pipe);
             Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
-            Assert.AreEqual(BrokerScanPhase.Parsing, parsing?.Progress?.Phase);
-            Assert.AreEqual(100L, parsing?.Progress?.RecordsProcessed);
+            Assert.AreEqual(BlockScanPhase.Scanning, scanning?.Progress?.Phase);
+            Assert.AreEqual(100L, scanning?.Progress?.RecordsProcessed);
+            Assert.AreEqual(1000L, scanning?.Progress?.TotalRecords);
             clock.Advance(TimeSpan.FromMilliseconds(250));
             parsingReported.Release();
-            frames = [cursor!.Value, parsing!.Value, .. await HostChannelHarness.ReadToEndAsync(pipe)];
+            frames = [cursor!.Value, scanning!.Value, .. await HostChannelHarness.ReadToEndAsync(pipe)];
         }
         finally
         {
@@ -153,38 +154,31 @@ public partial class JournalBrokerHostTests
 
         IEnumerable<IReadOnlyList<MftRecord>> Batches(BlockWriteReporting reporting)
         {
-            reporting.Progress!.Report(new BlockWriteProgress(100, 0, 1000, null, BlockScanPhase.Parsing));
+            reporting.Progress!.Report(BlockWriteProgress.Scanning(100, 1000));
             parsingReported.MarkEntered();
             parsingReported.WaitForRelease();
             yield return [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")];
             yield return [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")];
         }
 
-        var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-
-        Assert.IsGreaterThanOrEqualTo(2, progressFrames.Count, "Expected intermediate parse and write progress frames.");
-        Assert.Contains(f => f.Progress?.BytesProcessed > 0, progressFrames,
-            "At least one progress frame must report BytesProcessed > 0 from the write phase.");
-        var scanReadyPosition = frames.FindIndex(frame => frame.Kind == BrokerFrameKind.ScanReady);
-        Assert.Contains(frame => frame.Kind == BrokerFrameKind.ScanProgress &&
-            frame.Progress?.BytesProcessed > 0, frames.Take(scanReadyPosition - 1));
-        var finalProgress = progressFrames[^1].Progress!.Value;
-        Assert.AreEqual(1000L, finalProgress.TotalRecords);
-        Assert.IsGreaterThan(0, finalProgress.BytesProcessed);
-        Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
+        var scanReadyIndex = frames.FindIndex(frame => frame.Kind == BrokerFrameKind.ScanReady);
+        Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
+        Assert.AreEqual(BlockWriteProgress.Indexing, frames[scanReadyIndex - 1].Progress,
+            "The Indexing sample is the last frame before ScanReady.");
+        Assert.ContainsSingle(frame => frame.Progress?.Phase == BlockScanPhase.Indexing, frames);
     }
 
     [TestMethod]
-    public async Task ScanProgress_MonotonicAcrossParseAndWritePhases()
+    public async Task ScanProgress_PhasesArriveInOrderWithNonDecreasingCounts()
     {
-        // Time is frozen. The bounded channel may coalesce intermediate reports;
-        // validate every emitted frame and the mandatory final frame.
+        // Time is frozen. The bounded channel may coalesce intermediate reports; validate every
+        // emitted frame and the mandatory Indexing frame.
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
         {
             for (var i = 1; i <= 5; i++)
             {
-                reporting.Progress?.Report(new BlockWriteProgress(i * 1000, 0, 5000, null, BlockScanPhase.Parsing));
+                reporting.Progress?.Report(BlockWriteProgress.Scanning(i * 1000, 5000));
             }
 
             return
@@ -197,88 +191,26 @@ public partial class JournalBrokerHostTests
         await using var harness = new HostChannelHarness(host, blockWriter);
 
         var frames = await ScanFramesAsync(harness);
-        var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+        var samples = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).Select(f => f.Progress!.Value).ToList();
 
-        // Only the final frame is guaranteed. Intermediate frames flow through a bounded(1)
-        // DropOldest channel, so the pump silently loses any value it has not read before the
-        // next write. The invariants below hold for whatever does arrive.
-        Assert.IsGreaterThanOrEqualTo(1, progressFrames.Count, "The final progress frame is always emitted.");
+        // Intermediate frames flow through a bounded(1) DropOldest channel, so the pump silently loses
+        // any value it has not read before the next write. The invariants hold for whatever arrives.
+        Assert.IsGreaterThanOrEqualTo(1, samples.Count, "The Indexing sample is always emitted.");
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
-        Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The final progress frame immediately precedes ScanReady.");
+        Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The last progress frame immediately precedes ScanReady.");
+        Assert.AreEqual(BlockWriteProgress.Indexing, samples[^1]);
 
-        // Elapsed is not asserted: the host fills it from a real Stopwatch.
-        long previousParsingRecords = 0;
-        long previousTransferringRecords = 0;
-        foreach (var progress in progressFrames.Select(f => f.Progress!.Value))
+        var firstIndexing = samples.FindIndex(sample => sample.Phase == BlockScanPhase.Indexing);
+        Assert.AreEqual(samples.Count - 1, firstIndexing, "No Scanning sample follows the Indexing sample.");
+        long previousRecords = 0;
+        foreach (var scanning in samples.Take(firstIndexing))
         {
-            if (progress.Phase == BrokerScanPhase.Parsing)
-            {
-                Assert.IsGreaterThanOrEqualTo(previousParsingRecords, progress.RecordsProcessed,
-                    $"Parsing RecordsProcessed must not decrease: got {progress.RecordsProcessed}, previous {previousParsingRecords}");
-                Assert.AreEqual(5000L, progress.TotalRecords, "Parsing TotalRecords stays 5000 throughout.");
-                previousParsingRecords = progress.RecordsProcessed;
-            }
-            else
-            {
-                Assert.IsGreaterThanOrEqualTo(previousTransferringRecords, progress.RecordsProcessed,
-                    $"Transferring RecordsProcessed must not decrease: got {progress.RecordsProcessed}");
-                previousTransferringRecords = progress.RecordsProcessed;
-            }
+            Assert.IsGreaterThanOrEqualTo(previousRecords, scanning.RecordsProcessed,
+                $"Scanning RecordsProcessed must not decrease: got {scanning.RecordsProcessed}, previous {previousRecords}");
+            Assert.AreEqual(5000L, scanning.TotalRecords, "Scanning TotalRecords stays 5000 throughout.");
+            previousRecords = scanning.RecordsProcessed;
         }
-
-        var finalProgress = progressFrames[^1].Progress!.Value;
-        Assert.AreEqual(5000L, finalProgress.RecordsProcessed);
-        Assert.AreEqual(5000L, finalProgress.TotalRecords);
-        Assert.IsGreaterThan(0, finalProgress.BytesProcessed);
-        Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
-    }
-
-    [TestMethod]
-    public async Task ScanProgress_WritePhaseByteProgressFlowsThroughBeforeCompletion()
-    {
-        // The scan source reports no progress of its own (the production parse-phase adapter
-        // reports BytesProcessed = 0), so a frame with BytesProcessed > 0 can reach the wire
-        // before the completion frame only if the host wires the same reporter into the
-        // section writer, letting the write phase's per-batch byte progress flow through.
-        var firstBatchWritten = new TestGate();
-        using var blockWriter = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanVolume: (_, _, _, _, _, _) => Batches(),
-            timeProvider: new FakeTimeProvider());
-        await using var harness = new HostChannelHarness(host, blockWriter);
-        List<BrokerFrame> frames;
-        try
-        {
-            var pipe = await harness.OpenScanChannelAsync('C');
-            var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
-            await firstBatchWritten.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-            var transferring = await HostChannelHarness.ReadFrameAsync(pipe);
-            Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
-            Assert.AreEqual(BrokerFrameKind.ScanProgress, transferring?.Kind);
-            Assert.IsTrue(transferring?.Progress?.BytesProcessed > 0);
-            firstBatchWritten.Release();
-            frames = [cursor!.Value, transferring!.Value, .. await HostChannelHarness.ReadToEndAsync(pipe)];
-        }
-        finally
-        {
-            firstBatchWritten.Release();
-        }
-
-        IEnumerable<IReadOnlyList<MftRecord>> Batches()
-        {
-            yield return [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")];
-            firstBatchWritten.MarkEntered();
-            firstBatchWritten.WaitForRelease();
-            yield return [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")];
-        }
-
-        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
-        Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
-        var beforeCompletion = frames.Take(scanReadyIndex - 1).Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-        Assert.IsNotEmpty(beforeCompletion,
-            "Expected a write-phase ScanProgress frame before the completion frame.");
-        Assert.IsTrue(beforeCompletion.All(f => f.Progress!.Value.BytesProcessed > 0),
-            "Write-phase progress frames report nonzero bytes processed.");
     }
 
     [TestMethod]
@@ -306,32 +238,7 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task ScanProgress_MaximumRecordsProcessedExceedsReportedTotals_ClampsFinalCounts()
-    {
-        // More records processed than the (deliberately understated) TotalRecords, so the final
-        // frame has to bump both counts up to the processed maximum instead of trusting the
-        // last reported total.
-        var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
-        {
-            reporting.Progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BlockScanPhase.Parsing));
-            return [[new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")]];
-        });
-        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
-
-        var frames = await ScanFramesAsync(harness);
-
-        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
-        Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
-        var finalProgress = frames[scanReadyIndex - 1].Progress;
-        Assert.IsNotNull(finalProgress);
-        Assert.AreEqual(10L, finalProgress.Value.RecordsProcessed,
-            "The final count is clamped up to the processed maximum when the reported total undercounts it.");
-        Assert.AreEqual(10L, finalProgress.Value.TotalRecords,
-            "The final total is clamped up to the clamped count, not left at the stale reported total.");
-    }
-
-    [TestMethod]
-    public async Task ScanProgress_FinalFrameImmediatelyPrecedesScanReadyAndCatchUp()
+    public async Task ScanProgress_IndexingFrameImmediatelyPrecedesScanReadyAndCatchUp()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
@@ -351,18 +258,13 @@ public partial class JournalBrokerHostTests
         Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
         var finalProgressIndex = scanReadyIndex - 1;
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind,
-            "The final progress frame immediately precedes ScanReady.");
+            "The Indexing frame immediately precedes ScanReady.");
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[scanReadyIndex + 1].Kind);
-        var progress = frames[finalProgressIndex].Progress;
-        Assert.IsNotNull(progress);
-        Assert.AreEqual(3L, progress.Value.RecordsProcessed);
-        Assert.AreEqual(3L, progress.Value.TotalRecords);
-        Assert.IsGreaterThan(0, progress.Value.BytesProcessed);
-        Assert.AreEqual(progress.Value.BytesProcessed, progress.Value.TotalBytes);
+        Assert.AreEqual(BlockWriteProgress.Indexing, frames[finalProgressIndex].Progress);
     }
 
     [TestMethod]
-    public async Task ScanProgress_ThrottlesNonFinalFrames()
+    public async Task ScanProgress_ThrottlesScanningFramesAndEmitsIndexingImmediately()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
@@ -372,7 +274,7 @@ public partial class JournalBrokerHostTests
                 var batches = new List<IReadOnlyList<MftRecord>>();
                 for (var i = 0; i < 20; i++)
                 {
-                    reporting.Progress?.Report(new BlockWriteProgress(i, i * 100, 20, 2000));
+                    reporting.Progress?.Report(BlockWriteProgress.Scanning(i, 20));
                     batches.Add([new MftRecord((ulong)i, 0, new MftRecordFields(1, FileAttributes.Archive, 100), $"r{i}.txt")]);
                 }
 
@@ -383,14 +285,14 @@ public partial class JournalBrokerHostTests
 
         var frames = await ScanFramesAsync(harness);
 
-        var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-        // Frozen time admits the first report, at most one completion flush of the
-        // newest throttled report, and the mandatory final frame before ScanReady.
-        Assert.IsGreaterThanOrEqualTo(1, progressFrames.Count, "At least one progress frame must be emitted.");
-        Assert.IsLessThanOrEqualTo(3, progressFrames.Count,
-            $"Expected at most 3 progress frames due to throttling, but got {progressFrames.Count}");
+        var samples = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).Select(f => f.Progress!.Value).ToList();
+        // Frozen time admits at most the first Scanning sample: the rest are held and dropped when the
+        // Indexing sample, a new phase, is written at once.
+        Assert.IsLessThanOrEqualTo(1, samples.Count(sample => sample.Phase == BlockScanPhase.Scanning),
+            "Frozen time admits at most one Scanning frame.");
+        Assert.AreEqual(BlockWriteProgress.Indexing, samples[^1]);
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
-        Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The final progress frame immediately precedes ScanReady.");
+        Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The Indexing frame immediately precedes ScanReady.");
     }
 }

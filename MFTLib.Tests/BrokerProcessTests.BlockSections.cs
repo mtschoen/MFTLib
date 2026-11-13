@@ -88,23 +88,9 @@ public partial class BrokerProcessTests
         broker.WriteSection(broker.Sections.Single().SectionName, Armed);
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed)));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(
-            new BrokerScanProgress
-            {
-                Phase = BrokerScanPhase.Parsing,
-                RecordsProcessed = 50,
-                BytesProcessed = 1000,
-                TotalRecords = 100,
-                TotalBytes = 2000
-            })));
+            BlockWriteProgress.Scanning(50, 100))));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(
-            new BrokerScanProgress
-            {
-                Phase = BrokerScanPhase.Parsing,
-                RecordsProcessed = 100,
-                BytesProcessed = 2000,
-                TotalRecords = 100,
-                TotalBytes = 2000
-            })));
+            BlockWriteProgress.Scanning(100, 100))));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await channel.DisposeAsync();
@@ -113,11 +99,9 @@ public partial class BrokerProcessTests
 
         Assert.HasCount(2, reports);
         Assert.AreEqual(50, reports[0].RecordsProcessed);
-        Assert.AreEqual(1000, reports[0].BytesProcessed);
         Assert.AreEqual(100, reports[1].RecordsProcessed);
-        Assert.AreEqual(2000, reports[1].BytesProcessed);
-        Assert.IsTrue(reports.All(report => report.TotalRecords == 100 && report.TotalBytes == 2000));
-        Assert.IsTrue(reports.All(report => report.Phase == BlockScanPhase.Parsing));
+        Assert.IsTrue(reports.All(report => report.TotalRecords == 100));
+        Assert.IsTrue(reports.All(report => report.Phase == BlockScanPhase.Scanning));
     }
 
     [TestMethod]
@@ -138,14 +122,7 @@ public partial class BrokerProcessTests
         var section = broker.Sections.Single();
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed)));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(
-            new BrokerScanProgress
-            {
-                Phase = BrokerScanPhase.Parsing,
-                RecordsProcessed = 10,
-                BytesProcessed = 200,
-                TotalRecords = 100,
-                TotalBytes = 2000
-            })));
+            BlockWriteProgress.Scanning(10, 100))));
         await progressReceived.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the volume");

@@ -21,11 +21,12 @@ static class ScriptedScanSteps
         public void WriteSection(string sectionName, UsnJournalCursor cursor)
         {
             using var writer = new RecordingBlockSectionWriter(broker.Sections.Resolve);
-            writer.Write(sectionName, cursor,
-                [
-                    [new MftRecord(5, 5, new MftRecordFields(3), ".")],
-                    [new MftRecord(20, 5, new MftRecordFields(1), "file.txt")]
-                ],
+            using var source = RowWriting.Source(
+            [
+                [new MftRecord(5, 5, new MftRecordFields(3), ".")],
+                [new MftRecord(20, 5, new MftRecordFields(1), "file.txt")]
+            ]);
+            writer.Write(sectionName, cursor, source,
                 new MftScanOptions(), default, CancellationToken.None);
         }
     }

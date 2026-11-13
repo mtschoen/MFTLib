@@ -7,14 +7,12 @@ static class MftBlockProgressAdapter
     internal static DirectProgress<BlockWriteProgress>? Create(MftBlockProduceRequest request)
     {
         return request.Progress is { } destination
-            ? new DirectProgress<BlockWriteProgress>(sample => destination.Report(
-                new IndexScanProgress(request.Volume,
-                    sample.Phase == BlockScanPhase.Parsing
-                        ? IndexScanPhase.ParsingMft : IndexScanPhase.Transferring,
-                    ClampRows(sample.RecordsProcessed))
+            ? new DirectProgress<BlockWriteProgress>(sample => destination.Report(sample.Phase == BlockScanPhase.Scanning
+                ? new IndexScanProgress(request.Volume, IndexScanPhase.Scanning, ClampRows(sample.RecordsProcessed))
                 {
                     ExpectedRowCount = sample.TotalRecords is { } total ? ClampRows(total) : null
-                }))
+                }
+                : new IndexScanProgress(request.Volume, IndexScanPhase.Indexing, 0)))
             : null;
     }
 
@@ -28,8 +26,7 @@ static class MftBlockProgressAdapter
         return new DirectProgress<MftScanProgress>(sample =>
         {
             operation?.Processing("MFT parse");
-            destination?.Report(new BlockWriteProgress(sample.RecordsScanned, 0,
-                sample.TotalRecords, null, BlockScanPhase.Parsing));
+            destination?.Report(BlockWriteProgress.Scanning(sample.RecordsScanned, sample.TotalRecords));
         });
     }
 

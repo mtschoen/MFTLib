@@ -35,27 +35,27 @@ sealed class FreedRowTrust
     ///     Remembers record 5 even when it gets no row, because the rule asks the root only for its kind and sequence,
     ///     never for a name.
     /// </summary>
-    public void Observe(in MftRecord record)
+    public void Observe(MftPackedEntry entry)
     {
-        if (record.RecordNumber == RootRecord)
+        if (entry.RecordNumber == RootRecord)
         {
-            _rootRecord = new RecordFacts(record.IsDirectory, !record.InUse, record.SequenceNumber);
+            _rootRecord = new RecordFacts(entry.IsDirectory, !entry.InUse, entry.SequenceNumber);
         }
     }
 
     /// <summary>Records what the rule needs of a record that was written as a row.</summary>
-    public void Wrote(in MftRecord record)
+    public void Wrote(MftPackedEntry entry)
     {
-        var row = (uint)record.RecordNumber;
-        _parentSequences[row] = record.ParentSequenceNumber;
-        if (!record.InUse)
+        var row = (uint)entry.RecordNumber;
+        _parentSequences[row] = entry.ParentSequenceNumber;
+        if (!entry.InUse)
         {
             _freedRows.Add(row);
         }
     }
 
     /// <summary>
-    ///     Applies the rule to every freed row once the last batch is written, since a parent can arrive after its
+    ///     Applies the rule to every freed row once the last slice is written, since a parent can arrive after its
     ///     child. Every decision is made on the rows as scanned, then the untrusted rows are detached together.
     /// </summary>
     public void DetachUntrusted(BlockWriter writer, CancellationToken cancellationToken)

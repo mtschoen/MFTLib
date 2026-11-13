@@ -6,8 +6,7 @@ namespace MFTLib;
 /// <summary>Serves one volume's block scan and its journal catch-up on that volume's channel.</summary>
 sealed partial class JournalBrokerHost
 {
-    // The processing steps a scan publishes, which a Stalled message names.
-    const string RecordBatchStep = "block write";
+    // The processing step catch-up publishes, which a Stalled message names.
     const string CatchUpStep = "journal catch-up";
 
     // At most 256 journal buffers (64 KB each, 16 MB) per catch-up read, so each read can report progress.
@@ -16,9 +15,10 @@ sealed partial class JournalBrokerHost
     // Frames, in order: Cursor, ScanProgress*, ScanReady, then one terminal frame - ScanCompleted
     // with no payload when catch-up held, or CatchUpLost when it failed and the live
     // journal proves the armed cursor lost - or Error at any point. A cancelled scan (its pipe closed, or the session
-    // ended) writes nothing more. The pipe publishes Queued while admission waits, WaitingOnVolume
-    // around the cursor's volume open, and Processing per record batch, per flushed block range
-    // and per bounded catch-up read, so a long scan keeps restarting its progress clock.
+    // ended) writes nothing more. The progress frames are Scanning samples, then one Indexing sample once every row
+    // is written. The pipe publishes Queued while admission waits, WaitingOnVolume around the cursor's volume open,
+    // and Processing per parse chunk, per written slice, per flushed block range and per bounded catch-up read, so a
+    // long scan keeps restarting its progress clock.
     async Task RunScanAsync(VolumeChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
         CancellationToken cancellationToken)
     {
@@ -60,7 +60,7 @@ sealed partial class JournalBrokerHost
         IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
         CancellationToken cancellationToken)
     {
-        var progressChannel = Channel.CreateBounded<BrokerScanProgress>(
+        var progressChannel = Channel.CreateBounded<BlockWriteProgress>(
             new BoundedChannelOptions(1)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
@@ -91,13 +91,11 @@ sealed partial class JournalBrokerHost
 
     async Task<ScanOutput> WriteBlockAsync(VolumeChannel channel, BrokerFrame request,
         IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
-        ChannelWriter<BrokerScanProgress> progressWriter, CancellationToken cancellationToken)
+        ChannelWriter<BlockWriteProgress> progressWriter, CancellationToken cancellationToken)
     {
         try
         {
-            var progressState = new ScanProgressState();
-            var progressReporter = new DirectProgress<BlockWriteProgress>(value =>
-                progressState.Report(value, progressWriter));
+            var progressReporter = new DirectProgress<BlockWriteProgress>(value => progressWriter.TryWrite(value));
 
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
             Hooks.ScanStarting?.Invoke(channel.Volume);
@@ -108,15 +106,12 @@ sealed partial class JournalBrokerHost
 
             var scanOptions = new MftScanOptions { IncludeFreed = request.IncludeFreed };
             var reporting = new BlockWriteReporting(progressReporter, channel.Pipe);
-            long recordsOmitted = 0;
-            var batches = PublishEachBatch(
-                _volumeAccess.ScanVolumeRecordBatches(channel.Volume, parseThreads, reporting, scanOptions,
-                    count => recordsOmitted += count, cancellationToken),
-                channel.Pipe);
-            var result = blockSectionWriter.Write(request.RequireSectionName(channel.Volume), cursor, batches,
+            // The section is written while the volume is parsed; disposing the source waits for the parse to return.
+            using var source = _volumeAccess.OpenVolumeScan(channel.Volume, parseThreads, reporting, scanOptions,
+                cancellationToken);
+            var result = blockSectionWriter.Write(request.RequireSectionName(channel.Volume), cursor, source,
                 scanOptions, reporting, cancellationToken);
-            return progressState.Complete(cursor,
-                result with { SkippedRecordCount = result.SkippedRecordCount + recordsOmitted });
+            return new ScanOutput(cursor, result);
         }
         finally
         {
@@ -124,24 +119,14 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    // Each record batch the source hands the block writer is a processing step of its own.
-    static IEnumerable<IReadOnlyList<MftRecord>> PublishEachBatch(IEnumerable<IReadOnlyList<MftRecord>> batches,
-        HostPipeWriter pipe)
-    {
-        foreach (var batch in batches)
-        {
-            pipe.Processing(RecordBatchStep);
-            yield return batch;
-        }
-    }
-
-    static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BrokerScanProgress> reader,
+    // A sample in a new phase is written at once; within a phase, at most one per throttle interval.
+    static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BlockWriteProgress> reader,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetTimestamp();
         var lastEmit = TimeSpan.Zero;
-        var first = true;
-        BrokerScanProgress? throttled = null;
+        BlockScanPhase? lastPhase = null;
+        BlockWriteProgress? throttled = null;
 
         try
         {
@@ -150,9 +135,9 @@ sealed partial class JournalBrokerHost
                 while (reader.TryRead(out var progress))
                 {
                     var now = timeProvider.GetElapsedTime(started);
-                    if (first || now - lastEmit >= BrokerLiveness.ProgressThrottleInterval)
+                    if (progress.Phase != lastPhase || now - lastEmit >= BrokerLiveness.ProgressThrottleInterval)
                     {
-                        first = false;
+                        lastPhase = progress.Phase;
                         lastEmit = now;
                         throttled = null;
                         var progressToEmit = progress;
@@ -168,9 +153,8 @@ sealed partial class JournalBrokerHost
             }
 
             // The channel completed normally: flush the newest report the throttle window held
-            // back (typically the parse phase's records == total report), so the last
-            // pre-completion value reaches the client instead of being dropped. Cancellation must
-            // not reach this flush - a cancelled scan emits no partial final frame.
+            // back, so the last pre-completion value reaches the client instead of being dropped.
+            // Cancellation must not reach this flush - a cancelled scan emits no partial final frame.
             if (throttled is { } pending)
             {
                 await channel.Pipe.WriteFrameAsync(
@@ -184,34 +168,12 @@ sealed partial class JournalBrokerHost
         }
     }
 
+    // What a finished block scan hands to its completion frames.
+    readonly record struct ScanOutput(UsnJournalCursor Cursor, BlockWriteResult WriteResult);
+
     async Task EmitScanCompletionFramesAsync(VolumeChannel channel, ScanOutput output,
         CancellationToken cancellationToken)
     {
-        var finalRecords = output.TotalRecords ?? output.WriteResult.RowCount;
-        if (finalRecords < output.MaximumRecordsProcessed)
-        {
-            finalRecords = output.MaximumRecordsProcessed;
-        }
-
-        long? finalTotalRecords = output.TotalRecords ?? output.WriteResult.RowCount;
-        if (finalTotalRecords.Value < finalRecords)
-        {
-            finalTotalRecords = finalRecords;
-        }
-
-        var finalProgress = new BrokerScanProgress
-        {
-            Phase = BrokerScanPhase.Transferring,
-            RecordsProcessed = finalRecords,
-            BytesProcessed = output.WriteResult.NamePoolUsedBytes,
-            TotalRecords = finalTotalRecords,
-            TotalBytes = output.WriteResult.NamePoolUsedBytes
-        };
-
-        await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(finalProgress)),
-            cancellationToken).ConfigureAwait(false);
-
         await channel.Pipe.WriteFrameAsync(
             writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(output.WriteResult.SkippedRecordCount)),
             cancellationToken).ConfigureAwait(false);

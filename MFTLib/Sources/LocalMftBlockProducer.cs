@@ -33,8 +33,8 @@ sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? sc
         var plan = new MftBlockProducerPipeline.WritePlan(information, new BlockStamp(cursor, timeProvider), options);
         // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
         return MftBlockProducerPipeline.Write(request, plan,
-            (_, recordsOmitted) => _volumeAccess.ScanVolumeRecordBatches(volume, allowance,
-                new BlockWriteReporting(progress, null), options, recordsOmitted, cancellationToken),
+            () => _volumeAccess.OpenVolumeScan(volume, allowance, new BlockWriteReporting(progress, null), options,
+                cancellationToken),
             progress, cancellationToken);
     }
 }

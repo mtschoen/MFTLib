@@ -290,17 +290,17 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         var samples = new List<IndexScanProgress>();
         var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, reporting, _, _, _) =>
         {
-            reporting.Progress!.Report(new BlockWriteProgress(count, 0, count, null, BlockScanPhase.Parsing));
+            reporting.Progress!.Report(BlockWriteProgress.Scanning(count, count));
             return Batches();
         }));
         using var block = (await ProducerOf(producer)(
             Request(progress: new DirectProgress<IndexScanProgress>(samples.Add)),
             TestContext.CancellationToken)).Block;
-        var parsing = samples.Single(sample => sample.Phase == IndexScanPhase.ParsingMft);
-        Assert.AreEqual(expected, parsing.WrittenRowCount);
-        Assert.AreEqual(expected, parsing.ExpectedRowCount);
+        var scanning = samples.Single(sample => sample.Phase == IndexScanPhase.Scanning);
+        Assert.AreEqual(expected, scanning.WrittenRowCount);
+        Assert.AreEqual(expected, scanning.ExpectedRowCount);
         Assert.IsTrue(samples.All(sample => sample.Root == new VolumeKey('T')));
-        Assert.AreEqual(IndexScanPhase.Transferring, samples[^1].Phase);
+        Assert.AreEqual(IndexScanPhase.Indexing, samples[^1].Phase);
         Assert.IsNull(samples[^1].ExpectedRowCount);
     }
 

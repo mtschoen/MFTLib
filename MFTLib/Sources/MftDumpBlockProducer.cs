@@ -3,8 +3,8 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Reads the records of one opened dump in materialized batches. The producer's own source
-///     parses the input; a test substitutes batches no file can hold.
+///     Reads the records of one opened dump in materialized batches, in place of its streaming parse: a test
+///     substitutes batches no file can hold.
 /// </summary>
 delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftDumpInput input,
     IProgress<MftScanProgress>? progress, CancellationToken cancellationToken);
@@ -20,8 +20,6 @@ delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftDumpInput 
 /// </summary>
 sealed class MftDumpBlockProducer
 {
-    const int RecordBatchSize = 4096;
-
     readonly string _dumpFilePath;
     readonly TimeProvider _timeProvider;
     readonly MftDumpRecordSource? _readRecords;
@@ -54,33 +52,22 @@ sealed class MftDumpBlockProducer
     {
         using var input = MftDumpInput.Open(_dumpFilePath);
 
-        // The first batch is read before the block exists: reading it runs the whole parse, so a
-        // dump the parser rejects costs no block, whose size follows the dump's length.
+        // The block is created before the parse starts, so its rows are written while later chunks are parsed; a
+        // dump the parser rejects leaves the block as that failed scan's scratch space.
         var blockProgress = MftBlockProgressAdapter.Create(request);
         var progress = MftBlockProgressAdapter.CreateParse(blockProgress, null);
-        var source = _readRecords is { } readRecords
-            ? readRecords(input, progress, cancellationToken)
-            : input.ReadRecordBatches(RecordBatchSize, progress, cancellationToken, allowance);
-        using var batches = source.GetEnumerator();
-        var hasBatch = batches.MoveNext();
-
         // A dump has no journal: the zero cursor says nothing can be resumed from this block.
         var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
             new BlockStamp(default, _timeProvider), new MftScanOptions());
         return MftBlockProducerPipeline.Write(request, plan,
             // ReSharper disable once AccessToDisposedClosure
-            (block, _) => new MftDumpRecordValidation(block).Validate(Remaining(batches, hasBatch)),
+            () => OpenSource(input, progress, allowance, cancellationToken),
             blockProgress, cancellationToken);
     }
 
-    // The batch already read, then the rest.
-    static IEnumerable<IReadOnlyList<MftRecord>> Remaining(IEnumerator<IReadOnlyList<MftRecord>> batches,
-        bool hasBatch)
-    {
-        while (hasBatch)
-        {
-            yield return batches.Current;
-            hasBatch = batches.MoveNext();
-        }
-    }
+    IMftSliceSource OpenSource(MftDumpInput input, IProgress<MftScanProgress>? progress,
+        ParseThreadAllowance allowance, CancellationToken cancellationToken) =>
+        _readRecords is { } readRecords
+            ? new MftRecordSliceSource(_ => readRecords(input, progress, cancellationToken), MftRowValidation.Dump)
+            : input.OpenSliceStream(progress, allowance, cancellationToken);
 }

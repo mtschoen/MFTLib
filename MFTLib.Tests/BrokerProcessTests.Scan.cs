@@ -70,7 +70,7 @@ public partial class BrokerProcessTests
         {
             ScanVolume = (_, _, reporting, _, _, _) =>
             {
-                reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
+                reporting.Progress?.Report(BlockWriteProgress.Scanning(2, 2));
                 return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
             }
         }));
@@ -87,7 +87,7 @@ public partial class BrokerProcessTests
         result.Block.Block.Dispose();
 
         Assert.IsNotEmpty(reports);
-        Assert.AreEqual(BlockScanPhase.Transferring, reports[^1].Phase);
+        Assert.AreEqual(BlockScanPhase.Indexing, reports[^1].Phase);
     }
 
     [TestMethod]
@@ -330,8 +330,8 @@ public partial class BrokerProcessTests
         Assert.IsNull(produced.CatchUpLoss);
         Assert.IsNotEmpty(indexReports);
         Assert.IsTrue(indexReports.All(report => report.Root == new VolumeKey('C')));
-        Assert.AreEqual(IndexScanPhase.Transferring, indexReports[^1].Phase);
-        Assert.IsTrue(indexReports[^1].ExpectedRowCount > 0);
+        Assert.AreEqual(IndexScanPhase.Indexing, indexReports[^1].Phase);
+        Assert.IsNull(indexReports[^1].ExpectedRowCount);
     }
 
     [TestMethod]

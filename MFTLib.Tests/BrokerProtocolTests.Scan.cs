@@ -67,44 +67,36 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void ScanProgressFrame_RoundTrips_AllFields()
     {
-        var progress = new BrokerScanProgress
-        {
-            Phase = BrokerScanPhase.Parsing,
-            RecordsProcessed = 1000,
-            BytesProcessed = 20480,
-            TotalRecords = 5000,
-            TotalBytes = 102400
-        };
+        var progress = BlockWriteProgress.Scanning(1000, 5000);
         var frame = RoundTrip(BrokerFrame.ScanProgress(progress), BrokerProtocol.WriteScanProgress);
 
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
         Assert.IsNotNull(frame.Progress);
         Assert.AreEqual(progress, frame.Progress.Value);
-        Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress.Value.Phase);
+        Assert.AreEqual(BlockScanPhase.Scanning, frame.Progress.Value.Phase);
     }
 
     [TestMethod]
-    [DataRow(null, null)]
-    [DataRow(0L, 0L)]
-    [DataRow(-1L, -1L)]
-    [DataRow(500L, null)]
-    [DataRow(null, 1024L)]
-    [DataRow(-1L, 0L)]
-    public void ScanProgressFrame_RoundTrips_NullableFields(long? totalRecords, long? totalBytes)
+    [DataRow(null)]
+    [DataRow(0L)]
+    [DataRow(-1L)]
+    [DataRow(500L)]
+    public void ScanProgressFrame_RoundTrips_NullableTotal(long? totalRecords)
     {
-        var progress = new BrokerScanProgress
-        {
-            Phase = BrokerScanPhase.Transferring,
-            RecordsProcessed = 500,
-            BytesProcessed = 10240,
-            TotalRecords = totalRecords,
-            TotalBytes = totalBytes
-        };
+        var progress = BlockWriteProgress.Scanning(500, totalRecords);
         var frame = RoundTrip(BrokerFrame.ScanProgress(progress), BrokerProtocol.WriteScanProgress);
 
-        Assert.AreEqual(BrokerScanPhase.Transferring, frame.Progress!.Value.Phase);
+        Assert.AreEqual(BlockScanPhase.Scanning, frame.Progress!.Value.Phase);
         Assert.AreEqual(totalRecords, frame.Progress.Value.TotalRecords);
-        Assert.AreEqual(totalBytes, frame.Progress.Value.TotalBytes);
+        Assert.AreEqual(500L, frame.Progress.Value.RecordsProcessed);
+    }
+
+    [TestMethod]
+    public void ScanProgressFrame_RoundTrips_IndexingSample()
+    {
+        var frame = RoundTrip(BrokerFrame.ScanProgress(BlockWriteProgress.Indexing), BrokerProtocol.WriteScanProgress);
+
+        Assert.AreEqual(BlockWriteProgress.Indexing, frame.Progress!.Value);
     }
 
     [TestMethod]
@@ -114,13 +106,11 @@ public partial class BrokerProtocolTests
     {
         byte[] payload =
         [
-            0x27, 0x00, 0x00, 0x00, // totalLength = 39
+            0x16, 0x00, 0x00, 0x00, // totalLength = 22
             0x0C, // kind = ScanProgress
             0x00, 0x00, 0x00, 0x00, // phase, written below
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = absent
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // totalBytes = absent
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // totalRecords = absent
         ];
         BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(5), phase);
 
@@ -272,46 +262,28 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_ScanProgressFrame()
     {
-        var progress = new BrokerScanProgress
-        {
-            Phase = BrokerScanPhase.Parsing,
-            RecordsProcessed = 100,
-            BytesProcessed = 200,
-            TotalRecords = 300,
-            TotalBytes = 400
-        };
-        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, BrokerFrame.ScanProgress(progress)),
+        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, BrokerFrame.ScanProgress(
+                BlockWriteProgress.Scanning(100, 300))),
         [
-            0x27, 0x00, 0x00, 0x00, // totalLength = 39
+            0x16, 0x00, 0x00, 0x00, // totalLength = 22
             0x0C, // kind = ScanProgress
-            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
+            0x00, 0x00, 0x00, 0x00, // phase = Scanning (0)
             0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 100
-            0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 200
-            0x01, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = present, 300
-            0x01, 0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // totalBytes = present, 400
+            0x01, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // totalRecords = present, 300
         ]);
     }
 
     [TestMethod]
-    public void WireBytes_Golden_ScanProgressFrame_NullTotals()
+    public void WireBytes_Golden_ScanProgressFrame_IndexingSample()
     {
-        var progress = new BrokerScanProgress
-        {
-            Phase = BrokerScanPhase.Parsing,
-            RecordsProcessed = 1,
-            BytesProcessed = 2,
-            TotalRecords = null,
-            TotalBytes = null
-        };
-        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, BrokerFrame.ScanProgress(progress)),
+        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, BrokerFrame.ScanProgress(
+                BlockWriteProgress.Indexing)),
         [
-            0x27, 0x00, 0x00, 0x00, // totalLength = 39
+            0x16, 0x00, 0x00, 0x00, // totalLength = 22
             0x0C, // kind = ScanProgress
-            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = absent
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // totalBytes = absent
+            0x01, 0x00, 0x00, 0x00, // phase = Indexing (1)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 0
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // totalRecords = absent
         ]);
     }
 
@@ -406,20 +378,13 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_ScanProgress_PopulatesProgress()
     {
-        var progress = new BrokerScanProgress
-        {
-            Phase = BrokerScanPhase.Parsing,
-            RecordsProcessed = 10,
-            BytesProcessed = 20,
-            TotalRecords = 30,
-            TotalBytes = 40
-        };
+        var progress = BlockWriteProgress.Scanning(10, 30);
 
         var frame = BrokerFrame.ScanProgress(progress);
 
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
         Assert.AreEqual(progress, frame.Progress);
-        Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress!.Value.Phase);
+        Assert.AreEqual(BlockScanPhase.Scanning, frame.Progress!.Value.Phase);
         Assert.IsEmpty(frame.Entries);
     }
 }

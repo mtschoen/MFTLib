@@ -254,9 +254,9 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateIndexScanProgress_WithoutOptionalValues_LeavesThemNull()
     {
-        var progress = SyntheticNotifications.CreateIndexScanProgress(new VolumeKey('T'), IndexScanPhase.ParsingMft, 1);
+        var progress = SyntheticNotifications.CreateIndexScanProgress(new VolumeKey('T'), IndexScanPhase.Scanning, 1);
 
-        Assert.AreEqual(new IndexScanProgress(new VolumeKey('T'), IndexScanPhase.ParsingMft, 1), progress);
+        Assert.AreEqual(new IndexScanProgress(new VolumeKey('T'), IndexScanPhase.Scanning, 1), progress);
         Assert.IsNull(progress.ExpectedRowCount);
         Assert.IsNull(progress.CurrentDirectory);
         Assert.IsNull(progress.Outcome);

@@ -143,6 +143,8 @@ public sealed class MftDumpValidationTests : IDisposable
         JournalQueryFake.Serve(() => throw new AssertFailedException("A dump queried a live journal."));
         MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, _) =>
             throw new AssertFailedException("A dump parsed a live volume.");
+        MFTLibNative.Hooks._parseMftRecordsStreaming = (_, _, _, _, _, _) =>
+            throw new AssertFailedException("A dump parsed a live volume.");
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
 
         await using var index = await FileIndex.OpenAsync(
@@ -175,7 +177,7 @@ public sealed class MftDumpValidationTests : IDisposable
     }
 
     [TestMethod]
-    public async Task Produce_ReportsTheParseTotalThenTheTransferredRows()
+    public async Task Produce_ReportsTheScanTotalThenIndexing()
     {
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         var samples = new List<IndexScanProgress>();
@@ -183,16 +185,16 @@ public sealed class MftDumpValidationTests : IDisposable
 
         using var block = (await new MftDumpBlockProducer(path, TimeProvider.System).ProduceAsync(request, CancellationToken.None)).Block;
 
-        var parsing = samples.Where(sample => sample.Phase == IndexScanPhase.ParsingMft).ToArray();
-        var transferring = samples.Where(sample => sample.Phase == IndexScanPhase.Transferring).ToArray();
-        Assert.IsNotEmpty(parsing);
-        Assert.AreEqual(16u, parsing[^1].WrittenRowCount);
-        Assert.AreEqual(16u, parsing[^1].ExpectedRowCount);
-        Assert.AreEqual(7u, transferring[^1].WrittenRowCount);
-        Assert.IsNull(transferring[^1].ExpectedRowCount);
+        var scanning = samples.Where(sample => sample.Phase == IndexScanPhase.Scanning).ToArray();
+        var indexing = samples.Where(sample => sample.Phase == IndexScanPhase.Indexing).ToArray();
+        Assert.IsNotEmpty(scanning);
+        Assert.AreEqual(16u, scanning[^1].WrittenRowCount);
+        Assert.AreEqual(16u, scanning[^1].ExpectedRowCount);
+        Assert.HasCount(1, indexing);
+        Assert.AreEqual(0u, indexing[0].WrittenRowCount);
+        Assert.IsNull(indexing[0].ExpectedRowCount);
         Assert.IsTrue(samples.All(sample => sample.Root == new VolumeKey('D') && sample.Outcome is null));
-        Assert.IsLessThan(samples.IndexOf(transferring[0]), samples.IndexOf(parsing[^1]),
-            "the parse total is reported before the first transfer sample");
+        Assert.AreEqual(samples.Count - 1, samples.IndexOf(indexing[0]), "the one Indexing sample is the last");
     }
 
     [TestMethod]
@@ -227,18 +229,19 @@ public sealed class MftDumpValidationTests : IDisposable
     }
 
     [TestMethod]
-    public async Task Produce_DumpTheParserRejects_FailsBeforeAnyBlockIsCreated()
+    public async Task Produce_DumpTheParserRejects_SurfacesTheRejectionAndLeavesNoBlockFile()
     {
-        // The block path names a directory that does not exist, so creating the block would fail
-        // with another exception: the parser's rejection arriving proves the parse ran first.
+        // The parse streams into a block created first, so a rejected dump leaves only scratch space
+        // that is disposed with its delete-on-close handle.
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[(7 * 1024) + 510] ^= 0xFF));
-        var request = Request() with { BlockPath = Path.Combine(TemporaryDirectoryPath, "absent", "block.mlix") };
+        var blockPath = Path.Combine(TemporaryDirectoryPath, "rejected-block.mlix");
+        var request = Request() with { BlockPath = blockPath };
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(
             () => new MftDumpBlockProducer(path, TimeProvider.System).ProduceAsync(request, CancellationToken.None));
 
         Assert.AreEqual("The dump contains an invalid MFT record fixup.", failure.Message);
-        Assert.IsFalse(Directory.Exists(Path.Combine(TemporaryDirectoryPath, "absent")));
+        Assert.IsFalse(File.Exists(blockPath));
     }
 
     [TestMethod]
@@ -381,10 +384,7 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         using var block = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "validation.mlix"), ProducerKind.Mft, 64, 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
-        var validation = new MftDumpRecordValidation(block);
-
         Assert.ThrowsExactly<ArgumentNullException>(() => new MftDumpRecordValidation(null!));
-        Assert.ThrowsExactly<ArgumentNullException>(() => validation.Validate(null!));
     }
 
     static MftDumpRecordSource CancellingSource(CancellationTokenSource cancellation) =>

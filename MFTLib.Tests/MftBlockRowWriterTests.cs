@@ -31,17 +31,21 @@ public sealed class MftBlockRowWriterTests : IDisposable
         var writer = new BlockWriter(block);
         var options = new MftScanOptions();
         // Warm the mapping and interning paths before measuring the allocation contract.
-        MftBlockRowWriter.WriteBatches(writer, [[Record(5, "same")]], options, null, CancellationToken.None);
+        RowWriting.WriteBatches(writer, [[Record(5, "same")]], options, CancellationToken.None);
         const int smallRowCount = 1024;
         const int largeRowCount = 4096;
-        IReadOnlyList<MftRecord>[] smallBatches = [Records(6, smallRowCount)];
-        IReadOnlyList<MftRecord>[] largeBatches = [Records(6 + smallRowCount, largeRowCount)];
+        // Packing the records into slices is the source's work, so it happens before the writer is measured.
+        using var smallSource = new PackedSliceSource([MftParsedSlice.Pack(Records(6, smallRowCount))]);
+        using var largeSource = new PackedSliceSource([MftParsedSlice.Pack(Records(6 + smallRowCount, largeRowCount))]);
 
         var smallAllocated = MeasureAllocatedBytes(() =>
-            MftBlockRowWriter.WriteBatches(writer, smallBatches, options, null, CancellationToken.None));
+            // ReSharper disable once AccessToDisposedClosure -- measured before the source is disposed
+            MftBlockRowWriter.Write(writer, smallSource, options, null, CancellationToken.None));
         var result = default(BlockWriteResult);
         var largeAllocated = MeasureAllocatedBytes(() =>
-            result = MftBlockRowWriter.WriteBatches(writer, largeBatches, options, null, CancellationToken.None));
+            // ReSharper disable once AccessToDisposedClosure -- measured before the source is disposed
+            result = MftBlockRowWriter.Write(writer, largeSource, options, null,
+                CancellationToken.None));
 
         // One-off allocations (tiered JIT, lazy initialization, coverage instrumentation) land in either
         // call and cancel in the difference; a per-row scope object of at least 24 bytes cannot, so the
@@ -77,8 +81,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
             new(21, 20, new MftRecordFields(0x8001), "unknown")
         ];
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            new MftScanOptions(), null, CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block), [records],
+            new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(5u, block.Rows[20].ParentRow);
         Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.Hidden), block.Rows[20].Attributes);
@@ -108,8 +112,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var record = new MftRecord(20, 5, new MftRecordFields(1, sequenceNumber: 37), "record");
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[record]],
-            new MftScanOptions(), null, CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [[record]],
+            new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual((ushort)37, block.SequenceNumbers[20]);
     }
@@ -120,8 +124,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
         // The pool is roomy, so only rows ran out and the scan keeps reading: a larger block is never retried for rows.
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 4096, volumeSerial: 123, rootRow: 5);
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Record(32, "overflow"), Record(31, "last")]], new MftScanOptions(), null, CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block),
+            [[Record(32, "overflow"), Record(31, "last")]], new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(32L, result.RowCount);
@@ -134,9 +138,9 @@ public sealed class MftBlockRowWriterTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
+        var result = RowWriting.WriteBatches(new BlockWriter(block),
             [[Record((ulong)uint.MaxValue + 1, "overflow"), Record(6, ""), Record(7, "kept")]],
-            new MftScanOptions(), null, CancellationToken.None);
+            new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(2L, result.SkippedRecordCount);
         Assert.AreEqual(8L, result.RowCount);
@@ -154,9 +158,9 @@ public sealed class MftBlockRowWriterTests : IDisposable
         // it out of the block.
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
+        var result = RowWriting.WriteBatches(new BlockWriter(block),
             [[RecordWithParent(8, (ulong)uint.MaxValue + 1, "orphan"), Record(9, "kept")]],
-            new MftScanOptions(), null, CancellationToken.None);
+            new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(RowFlags.None, block.Rows[8].Flags);
@@ -178,8 +182,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
             yield return [Record(8, "y")];
         }
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            Batches(), new MftScanOptions(), null, CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block),
+            Batches(), new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(1, batchesRequested);
         Assert.AreEqual(1L, result.SkippedRecordCount);
@@ -204,8 +208,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
             yield return [Record(8, "d")];
         }
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            Batches(), new MftScanOptions(), null, CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block),
+            Batches(), new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(1, requested);
         Assert.AreEqual(1L, result.SkippedRecordCount);
@@ -213,11 +217,11 @@ public sealed class MftBlockRowWriterTests : IDisposable
     }
 
     [TestMethod]
-    public void WriteBatches_WritesEachBatchBeforeRequestingTheNextAndReportsTransferCounts()
+    public void WriteBatches_WritesEachBatchBeforeRequestingTheNextAndPublishesOneStepPerSlice()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
-        var reports = new List<BlockWriteProgress>();
+        var steps = new List<string>();
         var writer = new BlockWriter(block);
 
         IEnumerable<IReadOnlyList<MftRecord>> Batches()
@@ -227,12 +231,10 @@ public sealed class MftBlockRowWriterTests : IDisposable
             yield return [Record(20, "file"), Record(21, "")];
         }
 
-        MftBlockRowWriter.WriteBatches(writer, Batches(), new MftScanOptions(),
-            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
+        RowWriting.WriteBatches(writer, Batches(), new MftScanOptions(), MftRowValidation.None,
+            new RecordingOperation(steps), CancellationToken.None);
 
-        Assert.HasCount(2, reports);
-        Assert.AreEqual(new BlockWriteProgress(1, 1, null, null), reports[0]);
-        Assert.AreEqual(new BlockWriteProgress(2, 5, null, null), reports[1]);
+        Assert.AreSequenceEqual([MftBlockRowWriter.WriteStep, MftBlockRowWriter.WriteStep], steps);
     }
 
     [TestMethod]
@@ -252,7 +254,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
         }
 
         Assert.ThrowsExactly<OperationCanceledException>(() =>
-            MftBlockRowWriter.WriteBatches(writer, Batches(), new MftScanOptions(), null, cancellationToken));
+            RowWriting.WriteBatches(writer, Batches(), new MftScanOptions(), cancellationToken));
         Assert.AreEqual(0u, block.Header.RowCount);
         Assert.IsFalse(block.Header.IsComplete);
     }
@@ -264,11 +266,17 @@ public sealed class MftBlockRowWriterTests : IDisposable
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         using var cancellation = new CancellationTokenSource();
         var writer = new BlockWriter(block);
-        var progress = new CancellingProgress(cancellation);
         var cancellationToken = cancellation.Token;
 
-        Assert.ThrowsExactly<OperationCanceledException>(() => MftBlockRowWriter.WriteBatches(
-            writer, [[Record(5, ".")], [Record(6, "file")]], new MftScanOptions(), progress, cancellationToken));
+        IEnumerable<IReadOnlyList<MftRecord>> Batches()
+        {
+            yield return [Record(5, ".")];
+            cancellation.Cancel();
+            yield return [Record(6, "file")];
+        }
+
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
+            RowWriting.WriteBatches(writer, Batches(), new MftScanOptions(), cancellationToken));
 
         Assert.AreEqual(6u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
@@ -284,7 +292,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
         Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
         writer.MarkCapacityExhausted();
 
-        var result = MftBlockRowWriter.WriteBatches(writer, [], new MftScanOptions(), null, CancellationToken.None);
+        var result = RowWriting.WriteBatches(writer, [], new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(new BlockWriteResult(6, 1, 0), result);
         Assert.IsTrue(block.Header.IsCapacityExhausted);
@@ -303,9 +311,8 @@ public sealed class MftBlockRowWriterTests : IDisposable
             new(12, 5, new MftRecordFields(1, FileAttributes.Normal, 300), "HEAD")
         ];
 
-        var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions(),
-            null, CancellationToken.None);
+        var result = RowWriting.WriteBatches(
+            new BlockWriter(block), [records], new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.InUse, block.Rows[10].Flags);
@@ -325,12 +332,25 @@ public sealed class MftBlockRowWriterTests : IDisposable
         return new MftRecord(recordNumber, parentRecordNumber, new MftRecordFields(1), name);
     }
 
-    sealed class CancellingProgress(CancellationTokenSource cancellation) : IProgress<BlockWriteProgress>
+    sealed class PackedSliceSource(IReadOnlyList<MftParsedSlice> slices) : IMftSliceSource
     {
-        public void Report(BlockWriteProgress value)
+        public MftRowValidation Validation => MftRowValidation.None;
+
+        public IEnumerable<MftParsedSlice> Slices() => slices;
+
+        public MftSliceCompletion Finish() => new(0, []);
+
+        public void Dispose()
         {
-            cancellation.Cancel();
         }
     }
 
+    sealed class RecordingOperation(List<string> steps) : ISourceOperationReporter
+    {
+        public void WaitingOnVolume()
+        {
+        }
+
+        public void Processing(string stepName) => steps.Add(stepName);
+    }
 }

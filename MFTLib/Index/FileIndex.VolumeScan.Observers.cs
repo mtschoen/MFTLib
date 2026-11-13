@@ -45,8 +45,15 @@ public sealed partial class FileIndex
             }
         }
 
+        readonly ScanProgressOrder _scanProgressOrder = new();
+
         void IProgress<IndexScanProgress>.Report(IndexScanProgress value)
         {
+            if (!_scanProgressOrder.Admit(value))
+            {
+                return;
+            }
+
             List<Exception>? failures = null;
             foreach (var view in ViewsSnapshot())
             {

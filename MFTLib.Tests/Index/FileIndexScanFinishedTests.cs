@@ -52,7 +52,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
 
     static Task<MftBlockProduceResult> ProduceBlock(MftBlockProduceRequest request)
     {
-        request.Progress?.Report(new IndexScanProgress(request.Volume, IndexScanPhase.ParsingMft, 1));
+        request.Progress?.Report(new IndexScanProgress(request.Volume, IndexScanPhase.Scanning, 1));
         return Task.FromResult(new MftBlockProduceResult(
             SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment),
             SkippedRecordCount: 0));
@@ -103,7 +103,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
 
         var finished = FinishedOf(samples, 'T');
         Assert.AreEqual(IndexScanOutcome.Succeeded, finished.Outcome);
-        Assert.Contains(sample => sample.Phase == IndexScanPhase.ParsingMft, samples);
+        Assert.Contains(sample => sample.Phase == IndexScanPhase.Scanning, samples);
     }
 
     [TestMethod]

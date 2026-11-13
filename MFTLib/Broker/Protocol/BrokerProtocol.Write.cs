@@ -105,15 +105,13 @@ static partial class BrokerProtocol
         new PayloadWriter().Cursor(frame.Cursor).WriteTo(writer, BrokerFrameKind.Cursor);
     }
 
-    // payload: [phase i32][recordsProcessed i64][bytesProcessed i64][totalRecords nullable i64]
-    //          [totalBytes nullable i64]
+    // payload: [phase i32][recordsProcessed i64][totalRecords nullable i64]
     // The volume is the channel's, so the progress sample's drive letter is not written.
     public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerFrame frame)
     {
         var progress = frame.Progress.GetValueOrDefault();
         new PayloadWriter().Int32((int)progress.Phase).Int64(progress.RecordsProcessed)
-            .Int64(progress.BytesProcessed).NullableInt64(progress.TotalRecords)
-            .NullableInt64(progress.TotalBytes).WriteTo(writer, BrokerFrameKind.ScanProgress);
+            .NullableInt64(progress.TotalRecords).WriteTo(writer, BrokerFrameKind.ScanProgress);
     }
 
     // payload: [cause i32][checkpointUsn i64][firstUsn i64][nextUsn i64][allocationDelta i64]

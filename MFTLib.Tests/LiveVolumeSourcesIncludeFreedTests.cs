@@ -39,7 +39,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void ScanVolumeRecordBatches_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)
+    public void OpenVolumeScan_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)
     {
         if (WindowsOnlyLiveScan.Skip())
         {
@@ -48,26 +48,24 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
 
         var (imagePath, freedRecord) = WriteImageWithOneFreedRecord();
         ServeImageAsVolume(imagePath);
+        using var block = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "freed-option.mlix"), ProducerKind.Mft, 128, 16 * 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
         var requests = new List<bool>();
-        var parse = MFTLibNative.Hooks._parseMftRecordsWithProgress;
-        MFTLibNative.Hooks._parseMftRecordsWithProgress = (handle, freed, bufferSize, control, callback) =>
+        var parse = MFTLibNative.Hooks._parseMftRecordsStreaming;
+        MFTLibNative.Hooks._parseMftRecordsStreaming = (handle, freed, bufferSize, control, callback, sink) =>
         {
             requests.Add(freed);
-            return parse(handle, freed, bufferSize, control, callback);
+            return parse(handle, freed, bufferSize, control, callback, sink);
         };
 
-        var records = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
-                new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = includeFreed }, _ => { }, CancellationToken.None)
-            .SelectMany(batch => batch).ToArray();
+        var options = new MftScanOptions { IncludeFreed = includeFreed };
+        using var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(2),
+            new BlockWriteReporting(null, new QuietReporter()), options, CancellationToken.None);
+        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source, options,
+            new BlockWriteReporting(null, null), CancellationToken.None);
 
         Assert.AreSequenceEqual([includeFreed], requests);
-        var freed = records.Where(record => !record.InUse).ToArray();
-        Assert.HasCount(includeFreed ? 1 : 0, freed);
-        if (includeFreed)
-        {
-            Assert.AreEqual(freedRecord, freed[0].RecordNumber);
-            Assert.Contains(record => record.InUse, records, "Live records still arrive with the option on.");
-        }
+        Assert.AreEqual(includeFreed, block.Rows[(int)freedRecord].IsDeleted);
+        Assert.IsTrue(block.Rows[(int)freedRecord + 1].IsInUse, "Live records still arrive with the option on.");
     }
 
     [TestMethod]
@@ -82,14 +80,57 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         ServeImageAsVolume(imagePath);
         using var block = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "freed.mlix"), ProducerKind.Mft, 128, 16 * 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
-        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
-            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, _ => { }, CancellationToken.None);
-        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
+        using var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(2),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, CancellationToken.None);
+        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
             new MftScanOptions { IncludeFreed = true }, new BlockWriteReporting(null, null),
             CancellationToken.None);
 
         Assert.IsTrue(block.Rows[(int)freedRecord].IsDeleted);
         Assert.IsFalse(block.Rows[(int)freedRecord + 1].IsDeleted);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void StreamedScan_WritesTheBlockAWholeResultParseWrites(bool includeFreed)
+    {
+        if (WindowsOnlyLiveScan.Skip())
+        {
+            return;
+        }
+
+        var (imagePath, _) = WriteImageWithOneFreedRecord();
+        ServeImageAsVolume(imagePath);
+        var options = new MftScanOptions { IncludeFreed = includeFreed };
+        using var streamed = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "streamed.mlix"), ProducerKind.Mft, 128, 16 * 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
+        using var whole = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "whole.mlix"), ProducerKind.Mft, 128, 16 * 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
+
+        using (var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(2),
+                   new BlockWriteReporting(null, new QuietReporter()), options, CancellationToken.None))
+        {
+            MftBlockScan.WriteToBlock(streamed, new BlockStamp(default, TimeProvider.System), source, options,
+                new BlockWriteReporting(null, null), CancellationToken.None);
+        }
+
+        using (var volume = MftVolume.Open('C', 64))
+        // ReSharper disable once AccessToDisposedClosure -- the batches are enumerated inside the using
+        using (var source = new MftRecordSliceSource(omitted =>
+                   volume.ReadRecordBatches(16, null, null, CancellationToken.None, options, omitted)))
+        {
+            MftBlockScan.WriteToBlock(whole, new BlockStamp(default, TimeProvider.System), source, options,
+                new BlockWriteReporting(null, null), CancellationToken.None);
+        }
+
+        Assert.AreEqual(whole.Header.RowCount, streamed.Header.RowCount);
+        Assert.IsTrue(MemoryMarshal.AsBytes(whole.Rows).SequenceEqual(MemoryMarshal.AsBytes(streamed.Rows)),
+            "the rows are identical");
+        Assert.IsTrue(whole.SequenceNumbers.SequenceEqual(streamed.SequenceNumbers), "the sequences are identical");
+        for (uint row = 0; row < whole.Header.RowCount; row++)
+        {
+            Assert.AreEqual(NamePool.ReadRowName(whole, row).ToString(), NamePool.ReadRowName(streamed, row).ToString(),
+                $"row {row} name");
+        }
     }
 
     // A 64-record synthetic volume in which one imported record, whose next neighbour is imported too, is freed.

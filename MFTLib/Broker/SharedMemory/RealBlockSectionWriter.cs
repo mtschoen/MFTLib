@@ -9,11 +9,11 @@ sealed class RealBlockSectionWriter(TimeProvider? timeProvider = null) : IBlockS
     /// <summary>Opens the named section, which only Windows supports, and writes the scan into it.</summary>
     [SupportedOSPlatform("windows")]
     public BlockWriteResult Write(
-        string sectionName, UsnJournalCursor cursor, IEnumerable<IReadOnlyList<MftRecord>> batches,
+        string sectionName, UsnJournalCursor cursor, IMftSliceSource source,
         MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
         using var block = NamedBlockSection.OpenExisting(sectionName);
-        return MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, timeProvider ?? TimeProvider.System), batches, scanOptions,
-            reporting, cancellationToken);
+        return MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, timeProvider ?? TimeProvider.System), source,
+            scanOptions, reporting, cancellationToken);
     }
 }

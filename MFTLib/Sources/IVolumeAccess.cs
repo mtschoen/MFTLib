@@ -11,10 +11,15 @@ namespace MFTLib;
 interface IVolumeAccess
 {
     UsnJournalCursor QueryCursor(VolumeKey volume);
-    IEnumerable<IReadOnlyList<MftRecord>> ScanVolumeRecordBatches(
+
+    /// <summary>
+    ///     Opens the volume for a scan whose slices <see cref="MftBlockRowWriter" /> writes while it parses. The scan
+    ///     starts when its slices are enumerated; disposing the source waits for it to end and closes the volume.
+    /// </summary>
+    IMftSliceSource OpenVolumeScan(
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
-        MftScanOptions scanOptions, Action<long> recordsOmitted,
-        CancellationToken cancellationToken);
+        MftScanOptions scanOptions, CancellationToken cancellationToken);
+
     (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads);
     IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchVolume(

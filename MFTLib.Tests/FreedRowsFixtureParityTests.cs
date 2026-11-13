@@ -45,8 +45,8 @@ public sealed class FreedRowsFixtureParityTests : IDisposable
         var freedRecords = scanned.ToRecords().Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
         using var block = TestBlocks.Create(Path.Combine(Path.GetDirectoryName(_fixturePath)!, "parity.bin"),
             ProducerKind.Mft, 32, 4096, volumeSerial: 1, rootRow: 5, deleteOnClose: true);
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToRecords()],
-            new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [scanned.ToRecords()],
+            new MftScanOptions { IncludeFreed = true }, CancellationToken.None);
 
         Assert.AreSequenceEqual([.. TrustedFreedRecords, .. UntrustedFreedRecords], freedRecords, SequenceOrder.InAnyOrder);
         foreach (var recordNumber in freedRecords)

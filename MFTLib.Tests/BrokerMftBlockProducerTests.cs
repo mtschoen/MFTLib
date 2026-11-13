@@ -201,7 +201,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
 
         Assert.IsNotEmpty(samples, "the broker reported no progress to the index channel");
         Assert.IsTrue(samples.All(sample => sample.Root == new VolumeKey('C')));
-        Assert.Contains(sample => sample.Phase == IndexScanPhase.Transferring, samples);
+        Assert.Contains(sample => sample.Phase == IndexScanPhase.Indexing, samples);
         Assert.IsTrue(samples.All(sample => sample.ExpectedRowCount is null || sample.ExpectedRowCount.Value >= sample.WrittenRowCount),
             "when present, total rows should not be less than rows written");
     }

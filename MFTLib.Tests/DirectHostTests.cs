@@ -65,8 +65,8 @@ public sealed class DirectHostTests : IDisposable
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.AreSequenceEqual(
             [
-                "  D: ParsingMft: 16 rows of 16",
-                "  D: Transferring: 7 rows",
+                "  D: Scanning: 16 records of 16",
+                "  D: Indexing",
                 "  D: Finished: 11 rows (Succeeded)",
                 $"{DumpRoot}/documents/Notes.txt  11",
                 "1 entries"

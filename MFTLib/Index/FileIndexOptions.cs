@@ -69,11 +69,13 @@ public sealed record FileIndexOptions
     ///     says whether it succeeded, failed or was cancelled. A handler that throws on the Finished sample is
     ///     contained and reported to <see cref="Diagnostics" />, so it never replaces the scan's own
     ///     exception or result. A throw on any other sample fails that scan like any producer fault,
-    ///     except a <see cref="IndexScanPhase.ParsingMft" /> sample of an in-process scan, local-volume
-    ///     or dump alike: the native parse callback that carries it catches every exception from
-    ///     reporting, drops it and continues the scan. Broker-delivered samples and the managed
-    ///     transfer phase carry no such catch, so a throw from either fails the scan. Marshalling
-    ///     belongs to the <see cref="IProgress{T}" /> implementation.
+    ///     except a <see cref="IndexScanPhase.Scanning" /> sample of an in-process scan, local-volume
+    ///     or dump alike: the native parse callback that carries it, on the parse thread, catches every
+    ///     exception from reporting, drops it and continues the scan. Broker-delivered samples and the
+    ///     <see cref="IndexScanPhase.Indexing" /> sample carry no such catch, so a throw from either fails
+    ///     the scan. A sample that would move the root back to an earlier phase, or lower the count within
+    ///     a phase, is dropped before it reaches the handler. Marshalling belongs to the
+    ///     <see cref="IProgress{T}" /> implementation.
     /// </summary>
     public IProgress<IndexScanProgress>? ScanProgress { get; init; }
 

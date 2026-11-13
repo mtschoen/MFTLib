@@ -72,14 +72,12 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             ProducerKind.Mft, slotCapacity: 128, namePoolCapacity: 16 * 1024,
             volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
-        long omitted = 0;
-        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
-            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
-        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
+        using var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(2),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), CancellationToken.None);
+        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
             new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
-        Assert.AreEqual(1L, omitted);
-        Assert.AreEqual(0L, written.SkippedRecordCount, "the source reports the record; the producer adds it");
+        Assert.AreEqual(1L, written.SkippedRecordCount, "the source's omitted record is part of the written count");
         Assert.IsFalse(block.Rows[(int)corruptRecord].IsInUse, "the corrupt record has no row");
         Assert.IsTrue(block.Rows[(int)corruptRecord - 1].IsInUse, "the record before it is imported");
         Assert.IsTrue(block.Rows[(int)corruptRecord + 1].IsInUse, "the record after it is imported");
@@ -127,13 +125,11 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             ProducerKind.Mft, slotCapacity: 128, namePoolCapacity: 16 * 1024,
             volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
-        long omitted = 0;
-        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(1),
-            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
-        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
+        using var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(1),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), CancellationToken.None);
+        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
             new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
-        Assert.AreEqual(0L, omitted);
         Assert.AreEqual(0L, written.SkippedRecordCount);
         Assert.IsGreaterThan(5u, block.Header.RowCount);
     }

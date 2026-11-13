@@ -112,8 +112,9 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         using (lifetime)
         using (creator)
         {
+            using var source = RowWriting.Source(BatchesRewritingBetween(creator));
             var result = new RealBlockSectionWriter(TimeProvider.System).Write(_sectionName,
-                new UsnJournalCursor(7, 100), BatchesRewritingBetween(creator),
+                new UsnJournalCursor(7, 100), source,
                 new MftScanOptions(), default, CancellationToken.None);
 
             using var raw = MemoryMappedFile.OpenExisting(_sectionName, MemoryMappedFileRights.Read);

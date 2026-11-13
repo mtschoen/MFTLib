@@ -189,22 +189,15 @@ static partial class BrokerProtocol
         return BrokerFrame.CatchUpLost(loss);
     }
 
-    static BrokerScanProgress ReadScanProgress(ref PayloadReader payload)
+    static BlockWriteProgress ReadScanProgress(ref PayloadReader payload)
     {
         var phaseRaw = payload.Int32();
-        var phase = (BrokerScanPhase)phaseRaw;
+        var phase = (BlockScanPhase)phaseRaw;
         if (phaseRaw < byte.MinValue || phaseRaw > byte.MaxValue || !Enum.IsDefined(phase))
         {
             throw new InvalidDataException($"Unknown broker scan phase: {phaseRaw}");
         }
 
-        return new BrokerScanProgress
-        {
-            Phase = phase,
-            RecordsProcessed = payload.Int64(),
-            BytesProcessed = payload.Int64(),
-            TotalRecords = payload.NullableInt64(),
-            TotalBytes = payload.NullableInt64()
-        };
+        return new BlockWriteProgress(phase, payload.Int64(), payload.NullableInt64());
     }
 }
