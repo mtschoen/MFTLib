@@ -26,31 +26,30 @@ first touch) and the owner approves MFTLib deciding when to clear its own cache.
 
 ## Release benchmark baselines are committed reports
 
-**Decision (owner ruling 2026-10-26, B13):** Keep one small, hand-captured
-release report in `Benchmark/baselines/<date>-<short sha>.txt`, measured on a
-quiet machine and committed beside the code as input to `Benchmark.exe compare`.
-These reports are the deliberate exception to the no-measurement-dumps rule;
-logs and raw captures remain excluded. Keep baselines for scenarios the current
-runner emits. The newest committed release report, by its `<date>-<short sha>`
-filename, is the reference that `compare` runs against.
+**Decision (owner ruling 2026-11-13, refining the 2026-10-26 ruling B13):** Exactly one hand-captured release report
+is committed, as `Benchmark/baselines/<date>-<short sha>.txt`, measured on a quiet machine. A new report replaces the
+previous one in the same change. It is the deliberate exception to the no-measurement-dumps rule (logs and raw captures
+remain excluded), and it is the reference that `Benchmark.exe compare` runs against. Keep only scenarios the current
+runner emits.
 
-**Reason:** Benchmark numbers need a quiet machine, so release baselines are
-captured by hand rather than CI. CI artifacts expire, and CI runners share load,
-making their timing numbers noisy. A small text file beside the code is the
-easiest input for `compare`.
+**Reason:** people browsing the code can see the results beside it. Benchmark numbers need a quiet machine, so the
+report is captured by hand rather than by CI; CI runners share load, which makes their timing numbers noisy.
 
-**Revisit only if:** an explicitly approved replacement provides durable,
-quiet-machine measurements with equally straightforward comparison inputs.
+**Freshness:** the report should track main, but that is relaxed for now. It is refreshed at release time, and a stale
+report is not a defect, until an automated refresh exists that captures it on a clean machine on every push to main.
+
+**Revisit only if:** that automated refresh exists (the freshness relaxation then ends), or the owner approves a
+different home for the report.
 
 ## Release baselines include MFT enumeration throughput
 
 **Decision (owner ruling 2026-11-05):** `Benchmark.exe mft-enumeration` measures records per second through the
-production dump-source `FileIndex` scan and its row and name-matching passes, and ships in 0.3.0. Every release report
+production dump-source `FileIndex` scan and its row and name-matching passes, and ships in 0.3.0. The committed release report
 under `Benchmark/baselines/` includes its four `mft-enumeration-*` blocks beside the index and enumeration-walk blocks.
 A pull request that claims or risks a performance change pastes `compare` output for the affected scenarios, as
 [quality gates](quality-gates.md#performance-claims-in-pull-requests) describe. The 0.3.0 release waits for the first
 quiet-machine report that contains these blocks. This ruling also changes B13's reference: instead of a fixed retained
-file, the newest committed release report is the reference for both the release checklist and pull requests, and a
+file, the one committed release report is the reference for both the release checklist and pull requests, and a
 scenario that report lacks has no reference rather than a failed comparison.
 
 **Reason:** performance work was unmeasurable without an enumeration baseline. The owner could not tell whether a

@@ -220,20 +220,16 @@ regression. These measurements are attended release work, not a CI timing gate.
 This recipe saves the three compact `--out` reports outside the checkout, combines
 their report sections into one candidate, compares all eight scenarios, and
 copies only the accepted small report into the release convention without
-capturing console logs. The reference is the newest committed release report:
-the last `Benchmark/baselines/*.txt` in ordinal filename order, so the
-`<date>-<short sha>` name decides and the result is deterministic (commit at most
-one report per date, since same-date names order by their short sha). A scenario
-the reference does not contain yet (the four `mft-enumeration-*` blocks until the
-first report that includes them is committed) is reported as having no reference
-rather than compared; the release report then becomes its first reference:
+capturing console logs. The reference is the one committed release report in
+`Benchmark/baselines/`; the release report replaces it in the same change. A scenario
+the reference does not contain is reported as having no reference rather than
+compared; the release report then becomes its first reference:
 
 ```powershell
 $benchmark = './Benchmark/bin/x64/Release/net10.0/Benchmark.exe'
-$baselineNames = [string[]] @(Get-ChildItem -LiteralPath 'Benchmark/baselines' -Filter '*.txt' -File | ForEach-Object Name)
-if ($baselineNames.Count -eq 0) { throw 'No committed release report to compare against.' }
-[Array]::Sort($baselineNames, [StringComparer]::Ordinal)
-$reference = Join-Path 'Benchmark/baselines' $baselineNames[-1]
+$baselineFiles = @(Get-ChildItem -LiteralPath 'Benchmark/baselines' -Filter '*.txt' -File)
+if ($baselineFiles.Count -ne 1) { throw 'Expected exactly one committed release report to compare against.' }
+$reference = $baselineFiles[0].FullName
 $reportDirectory = Join-Path ([IO.Path]::GetTempPath()) ('mftlib-release-benchmark-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $reportDirectory | Out-Null
 $indexReport = Join-Path $reportDirectory 'index.txt'
@@ -266,11 +262,12 @@ Copy-Item -LiteralPath $candidateReport -Destination $releaseReport
 ```
 
 Pick the reference before copying the new report into `Benchmark/baselines/`, as the
-recipe does, so a release never compares against itself.
+recipe does, so a release never compares against itself. After the copy, delete the
+previous report so exactly one remains.
 
 The filename identifies the measured code revision. Review and commit the report
 before the clean-tree release dry run, then validate the resulting release
-commit using the existing ordered release steps. Subsequent releases select it
-automatically as the newest report.
+commit using the existing ordered release steps. Subsequent releases compare against
+it as the one committed report.
 Retain temporary files only as local scratch, never as
 committed logs or captures.

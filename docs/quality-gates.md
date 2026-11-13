@@ -316,7 +316,7 @@ To move the global binary to a different commit or tag of the fork:
 
 A pull request that claims or risks a performance change in MFT enumeration, record parsing, name matching, or index
 writes or queries pastes `Benchmark.exe compare` output for each affected scenario into its body. Compare against the
-reference, the newest committed report in `Benchmark/baselines/` by its `<date>-<short sha>` filename (a scenario it
+reference, the one committed report in `Benchmark/baselines/` (a scenario it
 lacks has no reference yet: say so), measured on a quiet machine (no other builds,
 tests or agent lanes running) with the same inputs and iteration count as that report. Scenarios by area:
 `mft-enumeration-*` for enumeration, parsing and name matching (from `Benchmark.exe mft-enumeration`);
