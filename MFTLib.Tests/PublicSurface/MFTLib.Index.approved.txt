@@ -221,8 +221,8 @@ MFTLib.Index.IndexScanOutcome :: field public const Succeeded : MFTLib.Index.Ind
 MFTLib.Index.IndexScanOutcome :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.IndexScanPhase :: field public const Enumerating : MFTLib.Index.IndexScanPhase = 0
 MFTLib.Index.IndexScanPhase :: field public const Finished : MFTLib.Index.IndexScanPhase = 3
-MFTLib.Index.IndexScanPhase :: field public const ParsingMft : MFTLib.Index.IndexScanPhase = 1
-MFTLib.Index.IndexScanPhase :: field public const Transferring : MFTLib.Index.IndexScanPhase = 2
+MFTLib.Index.IndexScanPhase :: field public const Indexing : MFTLib.Index.IndexScanPhase = 2
+MFTLib.Index.IndexScanPhase :: field public const Scanning : MFTLib.Index.IndexScanPhase = 1
 MFTLib.Index.IndexScanPhase :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.IndexScanProgress :: method public <Clone>$() : MFTLib.Index.IndexScanProgress
 MFTLib.Index.IndexScanProgress :: method public Equals(MFTLib.Index.IndexScanProgress? other) : bool

@@ -41,8 +41,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(22, 5, "freed-dir", sequence: 9, parentSequence: RootSequence, isDirectory: true)
         ];
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone, block.Rows[21].Flags);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone | RowFlags.Directory, block.Rows[22].Flags);
@@ -60,8 +59,8 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[Root(), Live(20, 5, "a.txt", 1, RootSequence)]],
-            IncludingFreed, null, CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [[Root(), Live(20, 5, "a.txt", 1, RootSequence)]],
+            IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.InUse, block.Rows[20].Flags);
@@ -75,8 +74,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
         MftRecord[] records = [Root(), Freed(21, 5, "freed.txt", 4, RootSequence)];
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], new MftScanOptions(), null,
-            CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block), [records], new MftScanOptions(), CancellationToken.None);
 
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
         Assert.AreEqual(6L, result.RowCount);
@@ -99,8 +97,8 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(14, 12, "KEEP.txt", 14, 14)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            new MftScanOptions { IncludeFreed = includeFreed }, null, CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records],
+            new MftScanOptions { IncludeFreed = includeFreed }, CancellationToken.None);
 
         Assert.AreEqual(includeFreed, block.Rows[12].IsDeleted);
         Assert.AreEqual(includeFreed, block.Rows[13].IsDeleted);
@@ -124,8 +122,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(14, 12, "stale.txt", 15, parentSequence: 5)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(12u, block.Rows[13].ParentRow);
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[14].ParentRow);
@@ -141,8 +138,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         var freedFile = Freed(13, 12, "early.txt", 14, parentSequence: 6);
         var directory = Live(12, 5, "dir", 6, RootSequence, isDirectory: true);
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[freedFile], [directory], [Root()]], IncludingFreed,
-            null, CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [[freedFile], [directory], [Root()]], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(12u, block.Rows[13].ParentRow);
     }
@@ -167,9 +163,8 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             ? Live(12, 5, "dir", storedSequence, RootSequence, isDirectory: true)
             : Freed(12, 5, "dir", storedSequence, RootSequence, isDirectory: true);
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Root(), directory, Freed(13, 12, "file.txt", 20, referencedSequence)]], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block),
+            [[Root(), directory, Freed(13, 12, "file.txt", 20, referencedSequence)]], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(trusted ? 12u : BlockLayout.DetachedParentRow, block.Rows[13].ParentRow);
     }
@@ -186,8 +181,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(13, 12, "file.txt", 14, parentSequence: 14)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[13].ParentRow,
@@ -208,8 +202,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(15, 31, "beyond-the-rows.txt", 14, 0)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[13].ParentRow);
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[14].ParentRow);
@@ -229,8 +222,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(14, 12, "leaf.txt", 14, parentSequence: 14)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[13].ParentRow);
@@ -243,9 +235,8 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Root(), Freed(12, 12, "loop", 14, parentSequence: 14, isDirectory: true)]], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block),
+            [[Root(), Freed(12, 12, "loop", 14, parentSequence: 14, isDirectory: true)]], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
     }
@@ -258,14 +249,13 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         var freedRoot = new MftRecord(5, 5, new MftRecordFields(2, FileAttributes.Directory, 0, 0, RootSequence,
             RootSequence), ".");
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[freedRoot]], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [[freedRoot]], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[5].ParentRow);
     }
 
     [TestMethod]
-    public void TrustRule_RootWithoutAStoredNameStillVerifiesTheFinalHop()
+    public void TrustRule_RootWithoutAStoredNameIsNamedDotAndStillVerifiesTheFinalHop()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
@@ -278,10 +268,34 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(13, 12, "file.txt", 14, parentSequence: 14)
         ];
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        var result = RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
-        Assert.AreEqual(1L, result.SkippedRecordCount, "The nameless root gets no row.");
+        Assert.AreEqual(0L, result.SkippedRecordCount, "The writer names a root with no stored name \".\".");
+        Assert.AreEqual(".", NamePool.ReadRowName(block, 5).ToString());
+        Assert.AreEqual(5u, block.Rows[12].ParentRow);
+        Assert.AreEqual(12u, block.Rows[13].ParentRow);
+    }
+
+    [TestMethod]
+    public void TrustRule_RootThatGetsNoRowStillVerifiesTheFinalHopFromItsObservedFacts()
+    {
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
+            slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
+        // A parent past 32 bits is skipped and counted, so record 5 gets no row; the rule asks it only for its kind
+        // and sequence, which the writer observed before skipping it.
+        var rowlessRoot = new MftRecord(5, 0x1_0000_0005, new MftRecordFields(3, FileAttributes.Directory, 0, 0,
+            RootSequence), ".");
+        MftRecord[] records =
+        [
+            rowlessRoot,
+            Freed(12, 5, "dir", 14, parentSequence: RootSequence, isDirectory: true),
+            Freed(13, 12, "file.txt", 14, parentSequence: 14)
+        ];
+
+        var result = RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
+
+        Assert.AreEqual(1L, result.SkippedRecordCount, "the root's out-of-range parent skips it");
+        Assert.IsFalse(block.Rows[5].IsInUse);
         Assert.AreEqual(5u, block.Rows[12].ParentRow);
         Assert.AreEqual(12u, block.Rows[13].ParentRow);
     }
@@ -302,8 +316,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(15, 14, "kept.txt", 16, parentSequence: 7)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[13].ParentRow);
         Assert.IsTrue(block.Rows[13].IsDeleted);
@@ -317,9 +330,8 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 1024, volumeSerial: 123, rootRow: 5);
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Freed(12, 5, "dir", 14, parentSequence: RootSequence, isDirectory: true)]], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block),
+            [[Freed(12, 5, "dir", 14, parentSequence: RootSequence, isDirectory: true)]], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
     }
@@ -343,8 +355,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
 
         records.Add(Freed(13, (ulong)(19 + directoryCount), "f", 14, parentSequence: 14));
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(trusted ? (uint)(19 + directoryCount) : BlockLayout.DetachedParentRow,
             block.Rows[13].ParentRow);
@@ -369,8 +380,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
 
         records.Add(Freed(13, (ulong)(19 + componentCount - 1), longName, 14, parentSequence: 14));
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         var expectedUnits = (300L * componentCount) + (componentCount - 1);
         Assert.AreEqual(expectedUnits <= BlockLayout.MaximumPathUnits, trusted,
@@ -392,8 +402,7 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
             Freed(14, 13, "good.txt", 14, parentSequence: 14)
         ];
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
-            CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, CancellationToken.None);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
         Assert.AreEqual(5u, block.Rows[13].ParentRow);

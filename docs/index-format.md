@@ -234,7 +234,9 @@ The path length limit follows from the page: `RootKey.FromDirectory` throws `Arg
 directory path longer than 1963 UTF-16 code units, so no walked root can produce a block whose key does not fit.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
-without it, which a reader rejects.
+without it, which a reader rejects. Completion then flushes the block to its file, except for a block created
+delete-on-close (`BlockFile.DeletesOnClose`): no open outlives it and every mapping shares the page cache, so nothing
+ever reads it back from disk. A cached block, and a section the broker opened by name, flush as before.
 
 The root row is a row index, not a producer-independent constant. Enumeration
 blocks assign the configured starting directory, which can be any directory and not
@@ -457,10 +459,9 @@ itself), and scans again with minima of `E = S` (or `E` doubled when `E >= S`) f
 exhausted pool; one retry always fits the entries, because every row interns at most one name. This covers the local, dump and
 broker producers; for a broker the client creates a new section and sends a new ArmAndScan, so the retry arms a fresh journal
 cursor. The attempt that exhausts entries or pool
-stops consuming record batches at once (the row writer breaks out of the batch enumeration, which releases the record
-source and its parsed native table). The native parse of that attempt has already read the whole MFT before the first batch
-is yielded, so the saving is the remaining managed batch copies, block writes and posting construction, not volume I/O; the stopped block is discarded, skips its freed-row trust
-pass, and a pool that still cannot hold the names takes further doubled retries. Row exhaustion alone never stops a scan early:
+stops consuming slices at once (the row writer stops, and disposing the slice source stops the streaming parse at its
+next slice and waits for it), so the saving includes the rest of that attempt's volume or dump reads, row writes and
+posting construction; the stopped block is discarded, skips its freed-row trust and extension-size passes, and a pool that still cannot hold the names takes further doubled retries. Row exhaustion alone never stops a scan early:
 the scan reads on, counts the skipped records and publishes the flagged block. A scan therefore publishes an incomplete
 block only for row exhaustion or at the clamps. A custom `MftBlockProducer` that returns a flagged block is not retried: its flag stays and a rescan grows it as above. USN journal exhaustion keeps
 the flag-and-rescan remedy.

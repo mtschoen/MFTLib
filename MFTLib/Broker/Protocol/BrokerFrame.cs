@@ -66,7 +66,7 @@ readonly record struct BrokerFrame
     /// <summary>
     ///     A scan's progress. The volume belongs to the channel, so the progress sample carries no volume identity.
     /// </summary>
-    public BrokerScanProgress? Progress { get; private init; }
+    public BlockWriteProgress? Progress { get; private init; }
 
     public uint BytesPerFileRecordSegment { get; private init; }
     public long MftValidDataLength { get; private init; }
@@ -250,7 +250,7 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.Cursor, 0) with { Cursor = cursor };
     }
 
-    public static BrokerFrame ScanProgress(BrokerScanProgress progress)
+    public static BrokerFrame ScanProgress(BlockWriteProgress progress)
     {
         return Empty(BrokerFrameKind.ScanProgress, 0) with { Progress = progress };
     }

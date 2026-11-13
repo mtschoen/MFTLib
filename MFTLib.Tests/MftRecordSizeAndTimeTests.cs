@@ -16,9 +16,9 @@ public class MftRecordSizeAndTimeTests
 
     [TestMethod]
     [TestCategory("Smoke")]
-    public void NativeLibrary_ReportsAbiVersionEleven()
+    public void NativeLibrary_ReportsAbiVersionTwelve()
     {
-        Assert.AreEqual(11u, MFTLibNative.Hooks._getMftNativeAbiVersion());
+        Assert.AreEqual(12u, MFTLibNative.Hooks._getMftNativeAbiVersion());
     }
 
     [TestMethod]

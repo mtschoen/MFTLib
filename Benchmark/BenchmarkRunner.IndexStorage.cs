@@ -71,8 +71,8 @@ public partial class BenchmarkRunner
                 attempt.MinimumCapacities));
             var writer = new BlockWriter(attemptBlock);
             var started = _timeProvider.GetTimestamp();
-            var attemptResult = MftBlockRowWriter.WriteBatches(writer, StorageBatches(records), new MftScanOptions(),
-                null, CancellationToken.None);
+            using var source = new MftRecordSliceSource(_ => StorageBatches(records));
+            var attemptResult = MftBlockRowWriter.Write(writer, source, new MftScanOptions(), null, CancellationToken.None);
             elapsed = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
             var completeStarted = _timeProvider.GetTimestamp();
             writer.Complete(DateTime.UtcNow, null);

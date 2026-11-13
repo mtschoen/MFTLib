@@ -1,23 +1,30 @@
 namespace MFTLib.Index;
 
-/// <summary>High-level phase values used by scan progress consumers.</summary>
+/// <summary>
+///     The stage of one root scan, in order. A root's samples never move back to an earlier phase within a scan; a
+///     phase can be skipped (an enumeration walk is never <see cref="Scanning" />, and a failed scan can end before
+///     <see cref="Indexing" />).
+/// </summary>
 public enum IndexScanPhase
 {
     /// <summary>
-    ///     Emitted by the enumeration producer while walking managed filesystem directories.
+    ///     Emitted by the enumeration producer while walking managed filesystem directories, with the rows written so
+    ///     far in <see cref="IndexScanProgress.WrittenRowCount" />.
     /// </summary>
     Enumerating,
 
     /// <summary>
-    ///     Emitted by the broker-backed producer while parsing raw MFT records.
+    ///     Emitted by an MFT producer, in process or through the broker, while it reads, parses and writes the volume's
+    ///     records. <see cref="IndexScanProgress.WrittenRowCount" /> is the records processed, which never decreases,
+    ///     out of <see cref="IndexScanProgress.ExpectedRowCount" />, the volume's MFT slot count.
     /// </summary>
-    ParsingMft,
+    Scanning,
 
     /// <summary>
-    ///     Emitted by the broker-backed producer while transferring parsed records into
-    ///     the shared block format.
+    ///     Emitted once every row is written, while the block's name postings are built and the block is flushed. It
+    ///     carries no count.
     /// </summary>
-    Transferring,
+    Indexing,
 
     /// <summary>
     ///     Emitted by <see cref="FileIndex" /> exactly once per root scan, after the producer's

@@ -90,7 +90,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
             QueryVolumeInformation = _ => VolumeInformation,
             ScanVolume = (_, _, reporting, _, _, cancellationToken) =>
             {
-                reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BlockScanPhase.Parsing));
+                reporting.Progress?.Report(BlockWriteProgress.Scanning(6, 6));
                 parsingReceived.Task.Wait(HangGuard, cancellationToken);
                 return Records();
             }
@@ -101,7 +101,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
             ScanProgress = new SynchronousProgress<IndexScanProgress>(value =>
             {
                 progress.Add(value);
-                if (value.Phase == IndexScanPhase.ParsingMft)
+                if (value.Phase == IndexScanPhase.Scanning)
                 {
                     parsingReceived.TrySetResult();
                 }
@@ -110,14 +110,14 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         AssertReady(index);
-        Assert.Contains(value => value.Phase == IndexScanPhase.ParsingMft, progress);
-        Assert.Contains(value => value.Phase == IndexScanPhase.Transferring, progress);
+        var scanning = progress.FindLast(value => value.Phase == IndexScanPhase.Scanning);
+        Assert.IsNotNull(scanning);
+        Assert.AreEqual(6u, scanning.WrittenRowCount);
+        Assert.AreEqual(6u, scanning.ExpectedRowCount);
         Assert.IsTrue(progress.All(value => value.Root == new VolumeKey('C')));
-        var transferring = progress.FindLast(value => value.Phase == IndexScanPhase.Transferring);
-        Assert.IsNotNull(transferring);
-        Assert.IsNotNull(transferring.ExpectedRowCount);
-        Assert.IsTrue(transferring.ExpectedRowCount > 0);
-        Assert.IsGreaterThan(0u, progress[^1].WrittenRowCount);
+        Assert.Contains(value => value.Phase == IndexScanPhase.Indexing && value.ExpectedRowCount is null, progress);
+        Assert.IsLessThan(progress.FindIndex(value => value.Phase == IndexScanPhase.Indexing),
+            progress.FindLastIndex(value => value.Phase == IndexScanPhase.Scanning), "Indexing follows every Scanning sample");
         Assert.IsTrue(index.Find(At("documents"), TestContext.CancellationToken)!.Value.IsDirectory);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt"), TestContext.CancellationToken));
         Assert.IsNotNull(index.Find(At("notes.txt"), TestContext.CancellationToken));

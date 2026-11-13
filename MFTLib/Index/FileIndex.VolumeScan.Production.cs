@@ -152,6 +152,7 @@ public sealed partial class FileIndex
 
             producer.Produce(new BlockWriter(growth.Block), this, walkLease, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
+            ((IProgress<IndexScanProgress>)this).Report(new IndexScanProgress(Root, IndexScanPhase.Indexing, 0));
             new BlockWriter(growth.Block).Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null, cancellationToken: cancellationToken);
             return growth.Release();
         }

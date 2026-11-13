@@ -65,8 +65,11 @@ public partial class BenchmarkRunner
         using (var block = CreateWriteBlock(directory, records, uniqueNames))
         {
             var writer = new BlockWriter(block);
+            // Packed before the clock starts, as a native parse hands the writer its slices already packed.
+            using var source = new PackedSliceSource(batches.Select(MftParsedSlice.Pack).ToArray());
             var started = _timeProvider.GetTimestamp();
-            var written = MftBlockRowWriter.WriteBatches(writer, batches, new MftScanOptions(), null, CancellationToken.None);
+            var written = MftBlockRowWriter.Write(writer, source, new MftScanOptions(), null,
+                CancellationToken.None);
             result[0] = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
             if (written.SkippedRecordCount != 0 || block.Header.LiveRowCount != records || block.NameEntryCount != uniqueNames)
             {

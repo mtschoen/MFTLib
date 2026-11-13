@@ -31,9 +31,9 @@ partial class SampleHost
             : $"Catch-up held; watch supported: {status.Watch.IsSupported}");
     }
 
-    // Reports each scan phase when it starts and again each time another ProgressRowInterval rows were written within it,
-    // tracked per drive so one drive's progress never hides another's phase change or completion. The interval counts rows,
-    // never time. Reports from several drives can overlap, so the state and the write are serialized.
+    // Reports each scan phase when it starts and again each time its count advanced another ProgressRowInterval within it,
+    // tracked per drive so one drive's progress never hides another's phase change or completion. The interval counts rows
+    // or scanned records, never time. Reports from several drives can overlap, so the state and the write are serialized.
     internal sealed class PhaseReporter(TextWriter output) : IProgress<IndexScanProgress>
     {
         internal const uint ProgressRowInterval = 250_000;
@@ -53,8 +53,17 @@ partial class SampleHost
                 }
 
                 _lastReportByRoot[value.Root] = (value.Phase, value.WrittenRowCount);
-                output.WriteLine($"  {value.Root}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+                output.WriteLine($"  {value.Root}: {value.Phase}{Describe(value)}");
             }
         }
+
+        // Scanning counts records against the volume's slot count, Indexing carries no count, and the other phases count rows.
+        static string Describe(IndexScanProgress value) => value.Phase switch
+        {
+            IndexScanPhase.Indexing => string.Empty,
+            IndexScanPhase.Scanning =>
+                $": {value.WrittenRowCount} records{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}",
+            _ => $": {value.WrittenRowCount} rows{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}"
+        };
     }
 }

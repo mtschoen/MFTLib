@@ -43,10 +43,11 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
     }
 
     public UsnJournalCursor QueryCursor(VolumeKey volume) => CursorQuery(volume);
-    public IEnumerable<IReadOnlyList<MftRecord>> ScanVolumeRecordBatches(
+    public IMftSliceSource OpenVolumeScan(
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
-        MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
-        RecordBatches(volume, parseThreads, reporting, scanOptions, recordsOmitted, cancellationToken);
+        MftScanOptions scanOptions, CancellationToken cancellationToken) =>
+        new MftRecordSliceSource(recordsOmitted =>
+            RecordBatches(volume, parseThreads, reporting, scanOptions, recordsOmitted, cancellationToken));
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads) =>
         JournalRead(volume, since, maximumBufferReads);

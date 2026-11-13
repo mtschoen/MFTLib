@@ -8,11 +8,10 @@ sealed class LiveVolumeAccess : IVolumeAccess
     LiveVolumeAccess() { }
 
     public UsnJournalCursor QueryCursor(VolumeKey volume) => LiveVolumeSources.QueryCursor(volume);
-    public IEnumerable<IReadOnlyList<MftRecord>> ScanVolumeRecordBatches(
+    public IMftSliceSource OpenVolumeScan(
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
-        MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
-        LiveVolumeSources.ScanVolumeRecordBatches(volume, parseThreads, reporting,
-            scanOptions, recordsOmitted, cancellationToken);
+        MftScanOptions scanOptions, CancellationToken cancellationToken) =>
+        LiveVolumeSources.OpenVolumeScan(volume, parseThreads, reporting, scanOptions, cancellationToken);
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads) =>
         LiveVolumeSources.ReadJournal(volume, since, maximumBufferReads);

@@ -317,9 +317,11 @@ public sealed class PostingBuildTests : IDisposable
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft, slotCapacity: 128, namePoolCapacity: 16 * 1024,
             rootRow: 5);
         var reporter = new RecordingReporter();
+        using var source = RowWriting.Source([]);
 
-        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), [],
-            new MftScanOptions(), new BlockWriteReporting(null, reporter), TestContext.CancellationToken);
+        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
+            new MftScanOptions(), new BlockWriteReporting(null, reporter),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(reporter.Steps.Count >= 2);
         Assert.AreEqual(MftBlockScan.PostingBuildStep, reporter.Steps[0]);
@@ -339,8 +341,11 @@ public sealed class PostingBuildTests : IDisposable
             new(7, 5, new MftRecordFields(1, FileAttributes.Archive), "c")
         ];
 
-        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), [records],
-            new MftScanOptions(), new BlockWriteReporting(null, reporter), TestContext.CancellationToken);
+        using var source = RowWriting.Source([records]);
+
+        MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
+            new MftScanOptions(), new BlockWriteReporting(null, reporter),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(block.Header.IsCapacityExhausted);
         CollectionAssert.DoesNotContain(reporter.Steps, MftBlockScan.PostingBuildStep);
@@ -354,9 +359,10 @@ public sealed class PostingBuildTests : IDisposable
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
 
+        using var source = RowWriting.Source([]);
+
         Assert.ThrowsExactly<OperationCanceledException>(() => MftBlockScan.WriteToBlock(block,
-            new BlockStamp(default, TimeProvider.System), [], new MftScanOptions(), new BlockWriteReporting(null, null),
-            cancelled.Token));
+            new BlockStamp(default, TimeProvider.System), source, new MftScanOptions(), new BlockWriteReporting(null, null), cancelled.Token));
 
         Assert.IsFalse(block.Header.IsComplete);
     }

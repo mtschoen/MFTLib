@@ -135,7 +135,26 @@ sealed class MftVolume : IDisposable
         }
     }
 
-    // The one place a streaming parse is assembled, for a volume or a dump alike: the
+    /// <summary>
+    ///     A streaming parse of the volume's base records, which starts when its slices are enumerated. The stream
+    ///     owns this volume and closes it once the parse has returned.
+    /// </summary>
+    /// <param name="progress">Receives native parse progress on the parse thread, under the contract of <see cref="ReadRecordBatches" />.</param>
+    /// <param name="parseThreads">The thread count the parse reads at every chunk; null uses every processor.</param>
+    /// <param name="options">Whether the parse also streams the base records NTFS has freed.</param>
+    /// <param name="cancellationToken">Stops the native parse between chunks and between 4096-record sub-slices.</param>
+    internal MftSliceStream OpenSliceStream(IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads,
+        MftScanOptions options, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var includeFreed = options.IncludeFreed;
+        return new MftSliceStream(
+            new MftStreamingParse((control, callback, sink) => MFTLibNative.Hooks._parseMftRecordsStreaming(
+                _volumeHandle, includeFreed, _bufferSizeRecords, control, callback, sink), "ParseMFTRecordsStreaming"),
+            progress, parseThreads, this, MftRowValidation.None, cancellationToken);
+    }
+
+    // The one place a native parse is assembled, for a volume or a dump alike: the
     // progress adapter, the control block and its allowance and cancellation hooks, the null
     // check and the result wrapper. Only the native call differs.
     internal static MftResult ParseToResult(

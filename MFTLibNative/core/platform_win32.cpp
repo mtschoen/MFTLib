@@ -43,6 +43,19 @@ File* open_read(const char* path_utf8) {
     return file;
 }
 
+File* reopen_read(const File* file) {
+    const HANDLE handle = ReOpenFile(file->handle, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                     FILE_FLAG_SEQUENTIAL_SCAN);
+    if (handle == INVALID_HANDLE_VALUE) {
+        return nullptr;
+    }
+    auto* reopened = new (std::nothrow) File{handle};
+    if (reopened == nullptr) {
+        CloseHandle(handle);
+    }
+    return reopened;
+}
+
 File* open_write(const char* path_utf8) {
     const auto wide = utf8_to_wide(path_utf8);
     const HANDLE handle = CreateFileW(wide.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,

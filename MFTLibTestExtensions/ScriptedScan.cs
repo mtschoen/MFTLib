@@ -27,14 +27,15 @@ public sealed class ScriptedScan
     public CancellationToken CancellationToken { get; }
 
     /// <summary>
-    ///     Emits one parsing-phase progress frame, which the client reports as
-    ///     <see cref="MFTLib.Index.IndexScanPhase.ParsingMft" />.
+    ///     Emits one scanning progress frame, which the client reports as
+    ///     <see cref="MFTLib.Index.IndexScanPhase.Scanning" />. A root's scanning count never decreases, so a
+    ///     count below one already reported reaches no handler.
     /// </summary>
     /// <param name="recordsProcessed">Records parsed so far.</param>
     /// <param name="totalRecords">The expected total, or null when unknown.</param>
     public void ReportParsed(long recordsProcessed, long? totalRecords)
     {
         _reporting.Operation?.Processing("MFT parse");
-        _reporting.Progress?.Report(new BlockWriteProgress(recordsProcessed, 0, totalRecords, null, BlockScanPhase.Parsing));
+        _reporting.Progress?.Report(BlockWriteProgress.Scanning(recordsProcessed, totalRecords));
     }
 }

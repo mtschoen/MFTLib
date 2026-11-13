@@ -27,9 +27,13 @@ static class MftBlockProducerPipeline
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    ///     Creates the block, then opens the source and writes its rows while it parses. A block that exists when the
+    ///     scan fails is that scan's scratch space: it is disposed, and a delete-on-close block deletes itself.
+    /// </summary>
     internal static MftBlockProduceResult Write(MftBlockProduceRequest request,
         WritePlan plan,
-        Func<BlockFile, Action<long>, IEnumerable<IReadOnlyList<MftRecord>>> batches,
+        Func<IMftSliceSource> openSource,
         IProgress<BlockWriteProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -40,15 +44,18 @@ static class MftBlockProducerPipeline
             new BlockContentIdentity(request.CacheTag, request.ScanShape), request.MinimumCapacities));
         try
         {
-            long recordsOmitted = 0;
-            var written = MftBlockScan.WriteToBlock(block, plan.Stamp,
-                batches(block, count => recordsOmitted += count), plan.ScanOptions,
-                new BlockWriteReporting(progress, null), cancellationToken);
+            BlockWriteResult written;
+            using (var source = openSource())
+            {
+                written = MftBlockScan.WriteToBlock(block, plan.Stamp, source, plan.ScanOptions,
+                    new BlockWriteReporting(progress, null), cancellationToken);
+            }
+
             // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to Finish, which disposes it on validation failure or returns it
             var completed = block;
             block = null;
             return MftBlockValidation.Finish(request, completed, plan.Stamp.Cursor,
-                MftBlockScan.SaturateSkippedRecordCount(written.SkippedRecordCount + recordsOmitted), null);
+                MftBlockScan.SaturateSkippedRecordCount(written.SkippedRecordCount), null);
         }
         finally
         {

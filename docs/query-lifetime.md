@@ -169,8 +169,7 @@
       Disposal waits for that scope too; nested writer calls after disposal begins can still
       throw `ObjectDisposedException`, returning the batch scope as application unwinds.
 
-      MFT transfer takes one access scope per supplied record batch and validates that live scope against the
+      The MFT row writer takes one access scope per parsed slice and validates that live scope against the
       target block before each row write. Its rows use the same name and descriptor publication path as a
-      single-row write. Disposal drains the admitted batch before unmapping; returned scopes and scopes for
-      another block cannot authorize a write. The scope ends before transfer progress callbacks and before
-      requesting the next batch. Cancellation, capacity exhaustion and exceptions unwind the scope normally.
+      single-row write. Disposal drains the admitted slice before unmapping; returned scopes and scopes for
+      another block cannot authorize a write. The scope ends before the next slice is requested. Cancellation, capacity exhaustion and exceptions unwind the scope normally.

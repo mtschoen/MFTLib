@@ -94,14 +94,7 @@ public partial class BrokerProtocolTests
                 BrokerProtocol.WriteCursor(buffer, BrokerFrame.ArmedCursor(new UsnJournalCursor(1, 2)));
                 break;
             case BrokerFrameKind.ScanProgress:
-                BrokerProtocol.WriteScanProgress(buffer, BrokerFrame.ScanProgress(new BrokerScanProgress
-                {
-                    Phase = BrokerScanPhase.Parsing,
-                    RecordsProcessed = 1,
-                    BytesProcessed = 2,
-                    TotalRecords = 3,
-                    TotalBytes = 4
-                }));
+                BrokerProtocol.WriteScanProgress(buffer, BrokerFrame.ScanProgress(BlockWriteProgress.Scanning(1, 3)));
                 break;
             case BrokerFrameKind.CatchUpLost:
                 BrokerProtocol.WriteCatchUpLost(buffer, BrokerFrame.CatchUpLost(FullLoss));

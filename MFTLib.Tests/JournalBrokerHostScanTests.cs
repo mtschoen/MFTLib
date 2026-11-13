@@ -42,7 +42,7 @@ public class JournalBrokerHostScanTests
                 Assert.IsTrue(cursorArmed);
                 Assert.AreEqual(new VolumeKey('C'), volume);
                 reporting.Operation!.Processing("MFT parse");
-                reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
+                reporting.Progress?.Report(BlockWriteProgress.Scanning(2, 2));
                 return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
             },
             ReadJournal = (_, since, maximumBufferReads) =>
@@ -64,15 +64,14 @@ public class JournalBrokerHostScanTests
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(Armed, frames[0].Cursor);
         Assert.IsTrue(frames.Skip(1).Take(frames.Count - 3).All(frame => frame.Kind == BrokerFrameKind.ScanProgress));
-        Assert.IsGreaterThan(3, frames.Count, "At least the final progress sample precedes ScanReady.");
+        Assert.IsGreaterThan(3, frames.Count, "At least the Indexing sample precedes ScanReady.");
         var finalProgress = frames[^3].Progress!.Value;
-        Assert.AreEqual(BrokerScanPhase.Transferring, finalProgress.Phase);
+        Assert.AreEqual(BlockWriteProgress.Indexing, finalProgress);
         Assert.ContainsSingle(frame => frame.Kind == BrokerFrameKind.ScanReady, frames);
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(21u, sectionWriter.Block.Header.RowCount);
         Assert.AreEqual(2, InUseRowCount(sectionWriter));
         Assert.AreEqual(9u, sectionWriter.Block.Header.NamePoolUsed);
-        Assert.AreEqual(sectionWriter.Block.Header.NamePoolUsed, finalProgress.BytesProcessed);
         Assert.IsTrue(sectionWriter.Block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, sectionWriter.Block.Header.ProducerKind);
         Assert.AreEqual(5u, sectionWriter.Block.Header.RootRow);
@@ -332,9 +331,10 @@ public class JournalBrokerHostScanTests
         using (lifetime)
         {
             var cursor = new UsnJournalCursor(7, 100);
-            var written = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, cursor,
+            using var source = RowWriting.Source(
                 [[new MftRecord(5, 5, new MftRecordFields(3), "."),
-                    new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]],
+                    new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]]);
+            var written = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, cursor, source,
                 new MftScanOptions(), default, CancellationToken.None);
 
             Assert.AreEqual(101L, written.RowCount);
@@ -470,7 +470,7 @@ public class JournalBrokerHostScanTests
     }
 
     [TestMethod]
-    public async Task ScanChannel_BlockProgressReportsParsingThenTransferring()
+    public async Task ScanChannel_BlockProgressReportsScanningThenIndexing()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var parsingReported = new TestGate();
@@ -479,7 +479,7 @@ public class JournalBrokerHostScanTests
             QueryCursor = _ => ArmedCursor,
             ScanVolume = (_, _, reporting, _, _, _) =>
             {
-                reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BlockScanPhase.Parsing));
+                reporting.Progress!.Report(BlockWriteProgress.Scanning(500, 1000));
                 parsingReported.MarkEntered();
                 parsingReported.WaitForRelease();
                 return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
@@ -492,18 +492,15 @@ public class JournalBrokerHostScanTests
 
         await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
         var firstProgress = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
-        Assert.AreEqual(BrokerScanPhase.Parsing, firstProgress.Progress?.Phase);
+        Assert.AreEqual(BlockScanPhase.Scanning, firstProgress.Progress?.Phase);
         Assert.AreEqual(500L, firstProgress.Progress?.RecordsProcessed);
         Assert.AreEqual(1000L, firstProgress.Progress?.TotalRecords);
         parsingReported.Release();
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        var transfers = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress).ToArray();
-        Assert.IsNotEmpty(transfers);
-        Assert.IsTrue(transfers.All(frame => frame.Progress?.Phase == BrokerScanPhase.Transferring));
-        Assert.AreEqual(9L, transfers[^1].Progress?.BytesProcessed);
-        Assert.AreEqual(transfers[^1].Progress?.BytesProcessed, transfers[^1].Progress?.TotalBytes);
-        Assert.AreEqual(1000L, transfers[^1].Progress?.TotalRecords);
+        var remaining = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
+            .Select(frame => frame.Progress!.Value).ToArray();
+        Assert.AreSequenceEqual([BlockWriteProgress.Indexing], remaining);
     }
 
     [TestMethod]
@@ -646,7 +643,8 @@ public class JournalBrokerHostScanTests
         using var blockDirectory = new TempDirectory("mftlib-broker-block");
         using var directBlock = TestBlocks.Create(Path.Combine(blockDirectory.Path, "block.bin"),
             ProducerKind.Mft, 256, 4096, volumeSerial: 123, rootRow: 5, deleteOnClose: true);
-        var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), batches,
+        using var directSource = RowWriting.Source(batches);
+        var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), directSource,
             new MftScanOptions(), default, CancellationToken.None);
 
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);

@@ -18,7 +18,7 @@ public partial class JournalBrokerHostRealSeamsTests
         JournalQueryFake.Serve(journalIdentifier: 0xABCD, nextUsn: 5000);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
+        StreamedParse.Install((_, _, _, _, _) => parsePtr);
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
@@ -45,13 +45,13 @@ public partial class JournalBrokerHostRealSeamsTests
 
         var parsePtr = BuildThreeNameRecordsResult();
         var freedRequests = new List<bool>();
-        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, freed, _, _, callback) =>
+        StreamedParse.Install((_, freed, _, _, callback) =>
         {
             freedRequests.Add(freed);
             callback.Invoke(200, 300, 42.0);
             callback.Invoke(300, 300, 45.0);
             return parsePtr;
-        };
+        });
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
@@ -59,11 +59,13 @@ public partial class JournalBrokerHostRealSeamsTests
         var reports = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();
 
-        // Intermediate parsing reports may be coalesced before the pump reads them. The final
-        // report must retain native totals, independent of the three written rows.
-        Assert.AreEqual(300L, reports[^1].RecordsProcessed);
-        Assert.AreEqual(300L, reports[^1].TotalRecords);
-        Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
+        // Intermediate scanning reports may be coalesced before the pump reads them. The last scanning
+        // report must retain native totals, independent of the three written rows, and the one Indexing
+        // sample follows it as the last frame before ScanReady.
+        var scanning = reports.Where(report => report.Phase == BlockScanPhase.Scanning).ToArray();
+        Assert.AreEqual(300L, scanning[^1].RecordsProcessed);
+        Assert.AreEqual(300L, scanning[^1].TotalRecords);
+        Assert.AreEqual(BlockWriteProgress.Indexing, reports[^1]);
         Assert.IsTrue(writer.Block.Header.IsComplete);
         Assert.AreSequenceEqual([false], freedRequests, "The default scan asks for no freed rows.");
     }
@@ -168,7 +170,7 @@ public partial class JournalBrokerHostRealSeamsTests
             var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-            MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
+            StreamedParse.Install((_, _, _, _, _) => parsePtr);
             MockFreeMftResult();
         }
 

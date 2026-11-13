@@ -14,7 +14,7 @@ sealed partial class BrokerProcess
     /// <param name="volume">The volume to scan.</param>
     /// <param name="target">Where the block file is created, and the identity it carries.</param>
     /// <param name="options">Freed-record inclusion for the scan.</param>
-    /// <param name="progress">Destination for transfer and parse progress notifications; null reports none.</param>
+    /// <param name="progress">Destination for scanning and indexing progress; null reports none.</param>
     /// <param name="cancellationToken">Closes the channel and releases the section.</param>
     /// <exception cref="InvalidOperationException">The broker reported the scan failed.</exception>
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
@@ -123,9 +123,7 @@ sealed partial class BrokerProcess
                     case BrokerFrameKind.ScanProgress:
                         if (frame.Progress is { } sample)
                         {
-                            progress?.Report(new BlockWriteProgress(sample.RecordsProcessed, sample.BytesProcessed,
-                                sample.TotalRecords, sample.TotalBytes,
-                                sample.Phase == BrokerScanPhase.Parsing ? BlockScanPhase.Parsing : BlockScanPhase.Transferring));
+                            progress?.Report(sample);
                         }
 
                         break;

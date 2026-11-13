@@ -323,7 +323,7 @@ sealed partial class BlockWriter
     /// <summary>
     ///     Builds the posting base from every row, stamps the scan timestamp and sets the complete flag last, then
     ///     flushes, reporting cumulative bytes flushed to <paramref name="rangeFlushed" /> after each range when it is
-    ///     not null. A producer that dies, or a build that is cancelled, before the flag is set leaves a block that
+    ///     not null. A block created delete-on-close is not flushed: nothing reads it back from disk. A producer that dies, or a build that is cancelled, before the flag is set leaves a block that
     ///     validation rejects.
     /// </summary>
     /// <param name="scanTimestampUtc">UTC time at which production completed.</param>
@@ -351,7 +351,11 @@ sealed partial class BlockWriter
         }
 
         header.Flags |= BlockFlags.Complete;
-        Block.FlushUnderHeldAccess(rangeFlushed);
+        // A delete-on-close block is never read back from disk: every mapping of its file shares the page cache.
+        if (!Block.DeletesOnClose)
+        {
+            Block.FlushUnderHeldAccess(rangeFlushed);
+        }
     }
 
     /// <summary>

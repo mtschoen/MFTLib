@@ -166,9 +166,10 @@ public partial class JournalBrokerHostLivenessTests
                     flush.Release();
                 }
                 var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
+                // The wrapper hides the writer's progress, so no Indexing sample is sent.
                 Assert.AreSequenceEqual(
                 [
-                    BrokerFrameKind.ScanProgress, BrokerFrameKind.ScanReady, BrokerFrameKind.ScanCompleted
+                    BrokerFrameKind.ScanReady, BrokerFrameKind.ScanCompleted
                 ], [.. frames.Select(frame => frame.Kind)]);
                 Assert.IsTrue(block.Header.IsComplete);
                 GC.KeepAlive(block);
@@ -189,13 +190,13 @@ public partial class JournalBrokerHostLivenessTests
         readonly RealBlockSectionWriter _inner = new(clock);
 
         public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
-            IEnumerable<IReadOnlyList<MftRecord>> batches, MftScanOptions scanOptions,
+            IMftSliceSource source, MftScanOptions scanOptions,
             BlockWriteReporting reporting, CancellationToken cancellationToken)
         {
             Assert.IsNotNull(reporting.Operation);
             // Deliberately omit intermediate progress frames: only operation progress
             // may keep this scenario alive while the real block is flushed.
-            return _inner.Write(sectionName, cursor, batches, scanOptions,
+            return _inner.Write(sectionName, cursor, source, scanOptions,
                 new BlockWriteReporting(null, new GatedFlushReporter(reporting.Operation, ranges)),
                 cancellationToken);
         }

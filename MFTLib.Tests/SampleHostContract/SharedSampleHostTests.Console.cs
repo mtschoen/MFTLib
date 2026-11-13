@@ -56,11 +56,11 @@ partial class SharedSampleHostTests
 
         reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Enumerating, 7) { CurrentDirectory = @"D:\data" });
         reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Enumerating, 9) { CurrentDirectory = @"D:\other" });
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, 9));
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, 9));
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.AreSequenceEqual(
-            [@"  D: Enumerating: 7 rows in D:\data", "  D: ParsingMft: 9 rows"], lines);
+            [@"  D: Enumerating: 7 rows in D:\data", "  D: Scanning: 9 records"], lines);
     }
 
     [TestMethod]
@@ -71,18 +71,18 @@ partial class SharedSampleHostTests
         var reporter = probe.CreateReporter(output);
         var interval = probe.ProgressRowInterval;
 
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, 0) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, interval - 1) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, interval) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, interval + 5) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, 2 * interval) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, 0) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, interval - 1) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, interval) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, interval + 5) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, 2 * interval) { ExpectedRowCount = 3 * interval });
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.AreSequenceEqual(
             [
-                $"  D: ParsingMft: 0 rows of {3 * interval}",
-                $"  D: ParsingMft: {interval} rows of {3 * interval}",
-                $"  D: ParsingMft: {2 * interval} rows of {3 * interval}"
+                $"  D: Scanning: 0 records of {3 * interval}",
+                $"  D: Scanning: {interval} records of {3 * interval}",
+                $"  D: Scanning: {2 * interval} records of {3 * interval}"
             ], lines);
     }
 
@@ -92,8 +92,8 @@ partial class SharedSampleHostTests
         using var output = new StringWriter();
         var reporter = Probe.CreateReporter(output);
 
-        reporter.Report(new IndexScanProgress(new VolumeKey('C'), IndexScanPhase.ParsingMft, 5));
-        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.ParsingMft, 5));
+        reporter.Report(new IndexScanProgress(new VolumeKey('C'), IndexScanPhase.Scanning, 5));
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, 5));
         reporter.Report(new IndexScanProgress(new VolumeKey('C'), IndexScanPhase.Enumerating, 5));
         reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Enumerating, 5));
         reporter.Report(new IndexScanProgress(new VolumeKey('C'), IndexScanPhase.Finished, 5));
@@ -102,9 +102,22 @@ partial class SharedSampleHostTests
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.AreSequenceEqual(
             [
-                "  C: ParsingMft: 5 rows", "  D: ParsingMft: 5 rows",
+                "  C: Scanning: 5 records", "  D: Scanning: 5 records",
                 "  C: Enumerating: 5 rows", "  D: Enumerating: 5 rows",
                 "  C: Finished: 5 rows", "  D: Finished: 5 rows"
             ], lines);
+    }
+
+    [TestMethod]
+    public void PhaseReporter_PrintsRecordsWithoutATotalAndIndexingWithoutACount()
+    {
+        using var output = new StringWriter();
+        var reporter = Probe.CreateReporter(output);
+
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Scanning, 4));
+        reporter.Report(new IndexScanProgress(new VolumeKey('D'), IndexScanPhase.Indexing, 0));
+
+        var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Assert.AreSequenceEqual(["  D: Scanning: 4 records", "  D: Indexing"], lines);
     }
 }

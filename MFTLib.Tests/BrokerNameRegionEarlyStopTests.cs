@@ -45,7 +45,8 @@ public sealed class BrokerNameRegionEarlyStopTests : IDisposable
         using (lifetime)
         using (creator)
         {
-            var result = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, default, Batches(),
+            using var source = RowWriting.Source(Batches());
+            var result = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, default, source,
                 new MftScanOptions(), default, CancellationToken.None);
 
             Assert.AreEqual(1, batchesRequested);

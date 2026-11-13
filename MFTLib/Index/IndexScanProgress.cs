@@ -1,23 +1,17 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One progress sample from whichever producer is building a root's block.
-///     <see cref="ExpectedRowCount" /> is null while the producer does not yet know the total, which
-///     an enumeration walk never does. <see cref="CurrentDirectory" /> is null for an MFT scan,
-///     which has no notion of a current directory. The <see cref="IndexScanPhase.Finished" />
-///     sample ends a root's scan: <see cref="Outcome" /> is non-null only on it, and
-///     <see cref="WrittenRowCount" /> is then the finished block's row count on success and 0 otherwise.
+///     One progress sample from whichever producer is building a root's block. A root's samples move through
+///     <see cref="IndexScanPhase" /> in order and never back within a scan; the
+///     <see cref="IndexScanPhase.Finished" /> sample ends the scan, and <see cref="Outcome" /> is non-null only on it.
+///     <see cref="CurrentDirectory" /> is null for an MFT scan, which has no notion of a current directory.
 /// </summary>
 public sealed record IndexScanProgress
 {
     /// <summary>Creates one progress sample.</summary>
     /// <param name="root">The root whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>
-    /// <param name="rowsWritten">
-    ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
-    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
-    ///     Finished samples carry the final block row count on success, otherwise zero.
-    /// </param>
+    /// <param name="rowsWritten">The phase's count, as <see cref="WrittenRowCount" /> describes it.</param>
     internal IndexScanProgress(RootKey root, IndexScanPhase phase, uint rowsWritten)
     {
         Root = root;
@@ -32,15 +26,17 @@ public sealed record IndexScanProgress
     public IndexScanPhase Phase { get; init; }
 
     /// <summary>
-    ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
-    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
-    ///     A successful finished sample carries the final block row count; other finished samples carry zero.
+    ///     The phase's count: rows written while <see cref="IndexScanPhase.Enumerating" />; records processed, which
+    ///     never decreases, while <see cref="IndexScanPhase.Scanning" />; zero while
+    ///     <see cref="IndexScanPhase.Indexing" />; and on <see cref="IndexScanPhase.Finished" />, the finished block's
+    ///     row count on success and zero otherwise.
     /// </summary>
     public uint WrittenRowCount { get; init; }
 
     /// <summary>
-    ///     Expected total scanned records during parsing or transferred rows during intermediate transfer samples, when known; otherwise, null.
-    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
+    ///     While <see cref="IndexScanPhase.Scanning" />, the records the scan expects to process (the volume's MFT slot
+    ///     count), or null when the producer does not know it. Null in every other phase: an enumeration walk never
+    ///     knows its total.
     /// </summary>
     public uint? ExpectedRowCount { get; init; }
 

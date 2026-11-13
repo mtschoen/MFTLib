@@ -1,3 +1,4 @@
+using MFTLib.Tests.TestSupport;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -199,9 +200,9 @@ public class JournalMutatorFreedRowTests
         var deeperChild = new MftRecord(DeeperChildRow, DirectChildRow,
             new MftRecordFields(0, FileAttributes.Archive, 10, 0, 14, 13), "deeper.txt");
 
-        MftBlockRowWriter.WriteBatches(new BlockWriter(fixture.Block),
+        RowWriting.WriteBatches(new BlockWriter(fixture.Block),
             [[freedDirectory, directChild, deeperChild]],
-            new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
+            new MftScanOptions { IncludeFreed = true }, CancellationToken.None);
     }
 
     // The freed record hangs under "documents" (row 6) and verifies against it unless parentSequence says otherwise.
@@ -209,8 +210,8 @@ public class JournalMutatorFreedRowTests
     {
         var freed = new MftRecord(FreedRow, 6, new MftRecordFields(0, FileAttributes.Archive, 10, 0, 4,
             parentSequence), "freed.txt");
-        MftBlockRowWriter.WriteBatches(new BlockWriter(fixture.Block), [[freed]],
-            new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
+        RowWriting.WriteBatches(new BlockWriter(fixture.Block), [[freed]],
+            new MftScanOptions { IncludeFreed = true }, CancellationToken.None);
     }
 
     static UsnJournalEntry Entry(UsnReason reason, string name, ulong parent, ushort sequence = 4,

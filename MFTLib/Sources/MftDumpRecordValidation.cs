@@ -3,11 +3,11 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Checks the records of one dump import before its block is completed. A dump is untrusted, so
-///     what the index needs to navigate must hold or the import fails: the root is an allocated
-///     directory at row 5 whose parent is itself, no base record number is emitted twice, and every
-///     parent a record names fits the block. A record whose own number does not fit is not checked
-///     here: the row writer skips and counts it, as it does for a live scan.
+///     Checks the allocated records of one dump import as they are written, and the root row before the block is
+///     completed. A dump is untrusted, so what the index needs to navigate must hold or the import fails: the root is
+///     an allocated directory at row 5 whose parent is itself, no base record number is emitted twice, and every
+///     parent a record names fits the block. A record whose own number does not fit is not checked here: the row
+///     writer skips and counts it, as it does for a live scan.
 /// </summary>
 sealed class MftDumpRecordValidation
 {
@@ -38,59 +38,31 @@ sealed class MftDumpRecordValidation
         _seenRows = new ulong[((ulong)_slotCapacity + 63) / 64];
     }
 
-    /// <summary>
-    ///     Passes the allocated records of each batch through, checking each one as it goes. Once the
-    ///     batches end, and so before the caller completes the block, it checks the root row that
-    ///     was written.
-    /// </summary>
-    /// <param name="batches">The parsed records; a record that is not in use is dropped.</param>
-    /// <returns>The allocated records, batch by batch; an empty batch is not yielded.</returns>
-    /// <exception cref="InvalidDataException">
-    ///     Thrown from the enumeration: a record number repeats, a parent does not fit the block, or
-    ///     the block has no valid root row once every batch is written.
-    /// </exception>
-    internal IEnumerable<IReadOnlyList<MftRecord>> Validate(IEnumerable<IReadOnlyList<MftRecord>> batches)
+    /// <summary>Checks one allocated record before it is written.</summary>
+    /// <exception cref="InvalidDataException">The record number repeats, or its parent does not fit the block.</exception>
+    internal void Check(ulong recordNumber, ulong parentRecordNumber)
     {
-        ArgumentNullException.ThrowIfNull(batches);
-        return ValidateBatches(batches);
-    }
-
-    IEnumerable<IReadOnlyList<MftRecord>> ValidateBatches(IEnumerable<IReadOnlyList<MftRecord>> batches)
-    {
-        foreach (var batch in batches)
-        {
-            var allocated = new List<MftRecord>(batch.Count);
-            foreach (var record in batch)
-            {
-                if (!record.InUse)
-                {
-                    continue;
-                }
-
-                Check(record);
-                allocated.Add(record);
-            }
-
-            if (allocated.Count > 0)
-            {
-                yield return allocated;
-            }
-        }
-
-        ThrowUnlessRootRowIsValid();
-    }
-
-    void Check(in MftRecord record)
-    {
-        if (!MarkSeen(record.RecordNumber))
+        if (!MarkSeen(recordNumber))
         {
             throw new InvalidDataException(DuplicateRecordMessage);
         }
 
         // A parent is required: the rows that name it are navigated through it.
-        if (record.ParentRecordNumber >= _slotCapacity)
+        if (parentRecordNumber >= _slotCapacity)
         {
             throw new InvalidDataException(RecordOutsideIndexMessage);
+        }
+    }
+
+    /// <summary>Checks the written root row once every record is written.</summary>
+    /// <exception cref="InvalidDataException">The block has no valid root row.</exception>
+    internal void ThrowUnlessRootRowIsValid()
+    {
+        using var access = _block.TakeAccess();
+        var root = _block.Rows[(int)RootRow];
+        if (!root.IsInUse || root.IsDeleted || !root.IsDirectory || root.ParentRow != RootRow)
+        {
+            throw new InvalidDataException(NoRootMessage);
         }
     }
 
@@ -110,15 +82,5 @@ sealed class MftDumpRecordValidation
 
         word |= bit;
         return true;
-    }
-
-    void ThrowUnlessRootRowIsValid()
-    {
-        using var access = _block.TakeAccess();
-        var root = _block.Rows[(int)RootRow];
-        if (!root.IsInUse || root.IsDeleted || !root.IsDirectory || root.ParentRow != RootRow)
-        {
-            throw new InvalidDataException(NoRootMessage);
-        }
     }
 }
