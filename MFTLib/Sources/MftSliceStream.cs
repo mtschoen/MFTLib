@@ -2,7 +2,6 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MFTLib.Index;
 using MFTLib.NativeInterop;
 
 namespace MFTLib;
@@ -11,9 +10,9 @@ namespace MFTLib;
 ///     One parsed slice copied out of the native parser: packed <c>MftCompactEntry</c> rows and the UTF-16
 ///     units their string offsets count from. The arrays are pooled; <see cref="Return" /> gives them back.
 /// </summary>
-sealed class MftDumpSlice
+sealed class MftParsedSlice
 {
-    internal MftDumpSlice(int entryCount, int stringUnits)
+    internal MftParsedSlice(int entryCount, int stringUnits)
     {
         EntryCount = entryCount;
         StringUnits = stringUnits;
@@ -37,20 +36,21 @@ sealed class MftDumpSlice
 }
 
 /// <summary>
-///     Runs a streaming dump parse on its own thread and hands its slices to the consuming thread through a
+///     Runs a streaming native parse (of a dump or a live volume) on its own thread and hands its slices to the consuming thread through a
 ///     bounded queue, so the consumer writes rows while later chunks are still being parsed and a slow consumer
 ///     holds the parser back instead of growing memory. The native callbacks never throw: a failure in them is
 ///     captured, stops the parse, and is rethrown by <see cref="Finish" />.
 /// </summary>
-sealed unsafe class MftDumpSliceStream : IDisposable
+sealed unsafe class MftSliceStream : IDisposable
 {
     const int QueueCapacity = 64;
 
-    readonly MftDumpInput _input;
+    readonly Func<IntPtr, NativeProgressCallback, IntPtr, IntPtr> _nativeParse;
+    readonly string _nativeName;
     readonly IProgress<MftScanProgress>? _progress;
     readonly ParseThreadAllowance? _allowance;
     readonly CancellationToken _cancellationToken;
-    readonly BlockingCollection<MftDumpSlice> _queue = new(QueueCapacity);
+    readonly BlockingCollection<MftParsedSlice> _queue = new(QueueCapacity);
 
     GCHandle _self;
     Thread? _parseThread;
@@ -60,10 +60,20 @@ sealed unsafe class MftDumpSliceStream : IDisposable
     volatile bool _stop;
     bool _finished;
 
-    internal MftDumpSliceStream(MftDumpInput input, IProgress<MftScanProgress>? progress,
-        ParseThreadAllowance? allowance, CancellationToken cancellationToken)
+    /// <summary>Prepares the stream; <see cref="Start" /> runs the parse.</summary>
+    /// <param name="nativeParse">
+    ///     The streaming native call: given the control block, the progress callback and the sink, it parses and
+    ///     returns the native result.
+    /// </param>
+    /// <param name="nativeName">The native entry point, named when it returns null.</param>
+    /// <param name="progress">Receives native parse progress.</param>
+    /// <param name="allowance">The thread count the parse reads at every chunk; null uses every processor.</param>
+    /// <param name="cancellationToken">Stops the native parse.</param>
+    internal MftSliceStream(Func<IntPtr, NativeProgressCallback, IntPtr, IntPtr> nativeParse, string nativeName,
+        IProgress<MftScanProgress>? progress, ParseThreadAllowance? allowance, CancellationToken cancellationToken)
     {
-        _input = input;
+        _nativeParse = nativeParse;
+        _nativeName = nativeName;
         _progress = progress;
         _allowance = allowance;
         _cancellationToken = cancellationToken;
@@ -77,20 +87,21 @@ sealed unsafe class MftDumpSliceStream : IDisposable
     {
         MFTLibNative.EnsureCompatibleNativeAbi();
         _self = GCHandle.Alloc(this);
-        _parseThread = new Thread(ParseOnThread) { IsBackground = true, Name = "MFT dump streaming parse" };
+        _parseThread = new Thread(ParseOnThread) { IsBackground = true, Name = "MFT streaming parse" };
         _parseThread.Start();
     }
 
     /// <summary>The parsed slices in record order, ending when the parse returns. Return each slice once consumed.</summary>
-    internal IEnumerable<MftDumpSlice> Slices() => _queue.GetConsumingEnumerable();
+    internal IEnumerable<MftParsedSlice> Slices() => _queue.GetConsumingEnumerable();
 
     /// <summary>
     ///     Waits for the parse to return, then throws what stopped it: a callback failure, or the result's own
     ///     cancellation, rejection or failure, with the same exception types a whole-result parse throws.
     /// </summary>
-    internal void Finish()
+    /// <returns>The allocated records the parse passed over because their fixup was invalid.</returns>
+    internal long Finish()
     {
-        _parseThread!.Join();
+        (_parseThread ?? throw new InvalidOperationException("The stream was never started.")).Join();
         _finished = true;
         if (_failure is { } failure)
         {
@@ -101,11 +112,12 @@ sealed unsafe class MftDumpSliceStream : IDisposable
         _result = IntPtr.Zero;
         if (result == IntPtr.Zero)
         {
-            throw new InvalidOperationException("ParseMftDumpInputStreaming returned null");
+            throw new InvalidOperationException($"{_nativeName} returned null");
         }
 
         // The constructor frees a failed result and throws its classified exception.
         using var parsed = new MftResult(result, _cancellationToken);
+        return checked((long)parsed.InvalidFixupRecordCount);
     }
 
     /// <summary>Stops a parse the consumer abandoned and drains its queue so the parser is never left blocked.</summary>
@@ -163,10 +175,11 @@ sealed unsafe class MftDumpSliceStream : IDisposable
                 delegate* unmanaged[Cdecl]<IntPtr, MftExtensionDataSize*, ulong, int> extensions = &OnExtensions;
                 var sink = new MftParseSink
                 {
-                    Slice = (IntPtr)slice, Extensions = (IntPtr)extensions, Context = GCHandle.ToIntPtr(_self)
+                    Slice = (IntPtr)slice,
+                    Extensions = (IntPtr)extensions,
+                    Context = GCHandle.ToIntPtr(_self)
                 };
-                _result = MFTLibNative.NativeParseMftDumpInputStreaming(_input.Handle, _input.ChunkRecords,
-                    controlAddress, registration.Callback.Function, registration.Callback.Context, (IntPtr)(&sink));
+                _result = _nativeParse(controlAddress, registration.Callback, (IntPtr)(&sink));
             }
             finally
             {
@@ -192,7 +205,12 @@ sealed unsafe class MftDumpSliceStream : IDisposable
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     static int OnSlice(IntPtr context, byte* entries, ulong entryCount, ushort* strings, ulong stringUnits)
     {
-        var stream = (MftDumpSliceStream)GCHandle.FromIntPtr(context).Target!;
+        // The context is the handle Start allocated, which outlives the parse.
+        if (GCHandle.FromIntPtr(context).Target is not MftSliceStream stream)
+        {
+            return 1;
+        }
+
         try
         {
             if (stream._stop)
@@ -200,7 +218,7 @@ sealed unsafe class MftDumpSliceStream : IDisposable
                 return 1;
             }
 
-            var slice = new MftDumpSlice(checked((int)entryCount), checked((int)stringUnits));
+            var slice = new MftParsedSlice(checked((int)entryCount), checked((int)stringUnits));
             new ReadOnlySpan<byte>(entries, checked((int)(entryCount * MFTLibNative.NativeCompactEntrySize)))
                 .CopyTo(slice.Entries);
             new ReadOnlySpan<char>(strings, (int)stringUnits).CopyTo(slice.Strings);
@@ -217,7 +235,12 @@ sealed unsafe class MftDumpSliceStream : IDisposable
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     static int OnExtensions(IntPtr context, MftExtensionDataSize* sizes, ulong count)
     {
-        var stream = (MftDumpSliceStream)GCHandle.FromIntPtr(context).Target!;
+        // The context is the handle Start allocated, which outlives the parse.
+        if (GCHandle.FromIntPtr(context).Target is not MftSliceStream stream)
+        {
+            return 1;
+        }
+
         try
         {
             stream._extensionDataSizes = new ReadOnlySpan<MftExtensionDataSize>(sizes, checked((int)count)).ToArray();
@@ -247,69 +270,4 @@ struct MftParseSink
     public IntPtr Slice;
     public IntPtr Extensions;
     public IntPtr Context;
-}
-
-/// <summary>Step-one consumer: materializes each streamed slice as an <see cref="MftRecord" /> batch.</summary>
-static class MftDumpSliceRecords
-{
-    /// <summary>
-    ///     Starts the parse, yields one record batch per slice while the parse continues, then applies the
-    ///     extension data sizes to the rows already written into <paramref name="block" />.
-    /// </summary>
-    internal static IEnumerable<IReadOnlyList<MftRecord>> Read(MftDumpSliceStream stream, BlockFile block)
-    {
-        stream.Start();
-        try
-        {
-            foreach (var slice in stream.Slices())
-            {
-                MftRecord[] batch;
-                try
-                {
-                    batch = Materialize(slice);
-                }
-                finally
-                {
-                    slice.Return();
-                }
-
-                yield return batch;
-            }
-
-            stream.Finish();
-            ApplyExtensionDataSizes(new BlockWriter(block), stream.ExtensionDataSizes);
-        }
-        finally
-        {
-            stream.Stop();
-        }
-    }
-
-    internal static void ApplyExtensionDataSizes(BlockWriter writer, ReadOnlySpan<MftExtensionDataSize> sizes)
-    {
-        foreach (ref readonly var extension in sizes)
-        {
-            if (extension.BaseRecordNumber <= uint.MaxValue)
-            {
-                writer.TryApplyScannedDataSize((uint)extension.BaseRecordNumber, extension.BaseSequenceNumber,
-                    extension.Size);
-            }
-        }
-    }
-
-    static unsafe MftRecord[] Materialize(MftDumpSlice slice)
-    {
-        var batch = new MftRecord[slice.EntryCount];
-        fixed (byte* table = slice.Entries)
-        fixed (char* pool = slice.Strings)
-        {
-            for (var index = 0; index < batch.Length; index++)
-            {
-                batch[index] = MftResult.GetCompactEntry(table, (ushort*)pool, (ulong)slice.StringUnits,
-                    (ulong)index);
-            }
-        }
-
-        return batch;
-    }
 }

@@ -140,18 +140,17 @@ BufferSizeRecords: 0, CancellationToken: cancellationToken));
         }
     }
 
-    /// <summary>The native input a streaming parse reads.</summary>
-    internal MftDumpInputHandle Handle
+    /// <summary>A streaming parse of the opened file, which starts when the caller starts the stream.</summary>
+    internal MftSliceStream OpenSliceStream(IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads,
+        CancellationToken cancellationToken)
     {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
-            return _handle;
-        }
+        ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
+        var bufferSizeRecords = LiveVolumeSources.HostScanChunkRecords(RecordSize);
+        return new MftSliceStream(
+            (control, callback, sink) => MFTLibNative.NativeParseMftDumpInputStreaming(_handle, bufferSizeRecords,
+                control, callback.Function, callback.Context, sink),
+            "ParseMftDumpInputStreaming", progress, parseThreads, cancellationToken);
     }
-
-    /// <summary>Records the native parser reads per chunk.</summary>
-    internal uint ChunkRecords => LiveVolumeSources.HostScanChunkRecords(RecordSize);
 
     /// <summary>Closes the file. Safe to call more than once.</summary>
     public void Dispose()

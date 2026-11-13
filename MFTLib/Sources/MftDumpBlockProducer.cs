@@ -83,12 +83,13 @@ sealed class MftDumpBlockProducer
     {
         var blockProgress = MftBlockProgressAdapter.Create(request);
         var progress = MftBlockProgressAdapter.CreateParse(blockProgress, null);
-        using var stream = new MftDumpSliceStream(input, progress, allowance, cancellationToken);
+        using var stream = input.OpenSliceStream(progress, allowance, cancellationToken);
         var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
             new BlockStamp(default, _timeProvider), new MftScanOptions());
         return MftBlockProducerPipeline.WriteRows(request, plan,
             // ReSharper disable once AccessToDisposedClosure
-            (_, _) => writer => MftDumpSliceWriter.Write(writer, stream, blockProgress, cancellationToken),
+            (_, _) => writer => MftSliceWriter.Write(writer, stream, MftSliceValidation.Dump, null, blockProgress,
+                cancellationToken),
             blockProgress, cancellationToken);
     }
 

@@ -4,14 +4,27 @@ using MFTLib.NativeInterop;
 
 namespace MFTLib;
 
+/// <summary>Which checks a streamed scan applies beyond the row writer's own skip rules.</summary>
+enum MftSliceValidation
+{
+    /// <summary>A live volume's parse: the rows are written as the volume reports them.</summary>
+    None,
+
+    /// <summary>
+    ///     A dump's parse, with the checks of <see cref="MftDumpRecordValidation" />: a repeated base record number or
+    ///     a parent outside the block fails the import, and the root row is checked last.
+    /// </summary>
+    Dump,
+}
+
 /// <summary>
-///     Step-two consumer: writes each streamed slice straight from its packed <c>MftCompactEntry</c> rows into the
-///     block, with no <see cref="MftRecord" />, no per-record string and no batch list. It keeps the semantics of
-///     <see cref="MftDumpRecordValidation" /> and <see cref="MftBlockRowWriter" /> for a dump scan: a record not in
-///     use is dropped, a repeated base record number or a parent outside the block fails the import, a record or
-///     parent number past 32 bits and an empty name are skipped and counted, and the root row is checked last.
+///     Writes each streamed slice straight from its packed <c>MftCompactEntry</c> rows into the block, with no
+///     <see cref="MftRecord" />, no per-record string and no batch list. It keeps the semantics of
+///     <see cref="MftBlockRowWriter" /> for a scan of allocated records: a record not in use is dropped, a record or
+///     parent number past 32 bits and an empty name are skipped and counted. A scan that includes freed records
+///     needs <see cref="FreedRowTrust" /> and goes through <see cref="MftBlockRowWriter" /> instead.
 /// </summary>
-static class MftDumpSliceWriter
+static class MftSliceWriter
 {
     const string NoRootMessage = "The dump has no valid allocated root record.";
     const string DuplicateRecordMessage = "The dump contains duplicate base record numbers.";
@@ -26,25 +39,28 @@ static class MftDumpSliceWriter
     static readonly long MaximumFileTime = DateTime.MaxValue.ToFileTimeUtc();
     static readonly long FileTimeEpochTicks = new DateTime(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
 
-    sealed class State(uint slotCapacity)
+    sealed class State(uint slotCapacity, MftSliceValidation validation)
     {
         internal readonly uint SlotCapacity = slotCapacity;
-        internal readonly ulong[] SeenRows = new ulong[((ulong)slotCapacity + 63) / 64];
+        internal readonly bool ValidatesDump = validation == MftSliceValidation.Dump;
+        internal readonly ulong[] SeenRows =
+            validation == MftSliceValidation.Dump ? new ulong[((ulong)slotCapacity + 63) / 64] : [];
         internal HashSet<ulong>? SeenPastBlock;
         internal long RecordsWritten;
         internal long SkippedRecordCount;
     }
 
     /// <summary>
-    ///     Starts the parse, writes every slice as it arrives, then applies the extension data sizes and checks the
-    ///     root row. Stops early, without those last steps, when the name regions need a larger block.
+    ///     Starts the parse, writes every slice as it arrives, then applies the extension data sizes and, for a dump,
+    ///     checks the root row. Stops early, without those last steps, when the name regions need a larger block.
+    ///     Once the parse ends, <c>recordsOmitted</c> is told how many records it passed over for an invalid fixup.
     /// </summary>
-    internal static BlockWriteResult Write(BlockWriter writer, MftDumpSliceStream stream,
-        IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
+    internal static BlockWriteResult Write(BlockWriter writer, MftSliceStream stream, MftSliceValidation validation,
+        Action<long>? recordsOmitted, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var block = writer.Block;
-        var state = new State(block.SlotCapacity);
+        var state = new State(block.SlotCapacity, validation);
         var stoppedForGrowth = false;
         stream.Start();
         try
@@ -72,9 +88,12 @@ static class MftDumpSliceWriter
 
             if (!stoppedForGrowth)
             {
-                stream.Finish();
-                MftDumpSliceRecords.ApplyExtensionDataSizes(writer, stream.ExtensionDataSizes);
-                ThrowUnlessRootRowIsValid(block);
+                recordsOmitted?.Invoke(stream.Finish());
+                ApplyExtensionDataSizes(writer, stream.ExtensionDataSizes);
+                if (state.ValidatesDump)
+                {
+                    ThrowUnlessRootRowIsValid(block);
+                }
             }
         }
         finally
@@ -85,8 +104,21 @@ static class MftDumpSliceWriter
         return new BlockWriteResult(writer.RowCount, block.NamePoolUsed, state.SkippedRecordCount);
     }
 
+    // The parse's extension data sizes, applied to the rows they name once every row is written.
+    static void ApplyExtensionDataSizes(BlockWriter writer, ReadOnlySpan<MftExtensionDataSize> sizes)
+    {
+        foreach (ref readonly var extension in sizes)
+        {
+            if (extension.BaseRecordNumber <= uint.MaxValue)
+            {
+                writer.TryApplyScannedDataSize((uint)extension.BaseRecordNumber, extension.BaseSequenceNumber,
+                    extension.Size);
+            }
+        }
+    }
+
     // True when a failed write left the name regions needing a larger block, so the scan stops.
-    static unsafe bool WriteSlice(BlockWriter writer, BlockAccessScope access, MftDumpSlice slice, State state)
+    static unsafe bool WriteSlice(BlockWriter writer, BlockAccessScope access, MftParsedSlice slice, State state)
     {
         var poolUnits = (ulong)slice.StringUnits;
         fixed (byte* table = slice.Entries)
@@ -110,14 +142,9 @@ static class MftDumpSliceWriter
                     continue;
                 }
 
-                if (!MarkSeen(state, recordNumber))
+                if (state.ValidatesDump)
                 {
-                    throw new InvalidDataException(DuplicateRecordMessage);
-                }
-
-                if (parentRecordNumber >= state.SlotCapacity)
-                {
-                    throw new InvalidDataException(RecordOutsideIndexMessage);
+                    ThrowIfDumpRecordIsInvalid(state, recordNumber, parentRecordNumber);
                 }
 
                 if (TryWriteEntry(writer, access, row, recordNumber, parentRecordNumber, flags,
@@ -170,6 +197,19 @@ static class MftDumpSliceWriter
     // MftRecord.ModifiedUtc.Ticks: zero, negative and past-DateTime.MaxValue FILETIMEs read as DateTime.MinValue.
     static long ModifiedTicks(long fileTime) =>
         fileTime <= 0 || fileTime > MaximumFileTime ? DateTime.MinValue.Ticks : fileTime + FileTimeEpochTicks;
+
+    static void ThrowIfDumpRecordIsInvalid(State state, ulong recordNumber, ulong parentRecordNumber)
+    {
+        if (!MarkSeen(state, recordNumber))
+        {
+            throw new InvalidDataException(DuplicateRecordMessage);
+        }
+
+        if (parentRecordNumber >= state.SlotCapacity)
+        {
+            throw new InvalidDataException(RecordOutsideIndexMessage);
+        }
+    }
 
     static bool MarkSeen(State state, ulong recordNumber)
     {
