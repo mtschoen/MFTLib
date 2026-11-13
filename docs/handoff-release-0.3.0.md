@@ -221,7 +221,10 @@ This recipe saves the three compact `--out` reports outside the checkout, combin
 their report sections into one candidate, and compares all eight scenarios without
 capturing console logs. Download the previous release report from its release
 checklist attachment to `$reportDirectory/reference.txt` before running the
-recipe; subsequent releases use the newest attached report as their reference. A
+recipe; subsequent releases use the newest attached report as their reference.
+Before measurements, require at least one recognized scenario and self-compare
+every recognized reference block to validate its fields. Self-comparison validates
+the download only; it is not performance evidence. A
 scenario the reference does not contain yet is reported as having no reference
 rather than compared, and the new report becomes its first reference:
 
@@ -231,6 +234,15 @@ $reportDirectory = Join-Path ([IO.Path]::GetTempPath()) ('mftlib-release-benchma
 New-Item -ItemType Directory -Path $reportDirectory | Out-Null
 $reference = Join-Path $reportDirectory 'reference.txt'
 # Download the previous report to $reference before continuing.
+$scenarios = @('exact-search', 'substring-search', 'enumeration-walk-sequential', 'enumeration-walk-parallel',
+    'mft-enumeration-scan', 'mft-enumeration-rows', 'mft-enumeration-exact-name', 'mft-enumeration-substring-name')
+$referenceText = Get-Content -LiteralPath $reference -Raw -ErrorAction Stop
+$referenceScenarios = @($scenarios | Where-Object { $referenceText -and $referenceText.Contains("--- $_ ---") })
+if ($referenceScenarios.Count -eq 0) { throw 'Reference contains no recognized benchmark scenarios.' }
+foreach ($scenario in $referenceScenarios) {
+    & $benchmark compare $reference $reference $scenario
+    if ($LASTEXITCODE -ne 0) { throw "Invalid release reference: $scenario" }
+}
 $indexReport = Join-Path $reportDirectory 'index.txt'
 $walkReport = Join-Path $reportDirectory 'walk.txt'
 $mftReport = Join-Path $reportDirectory 'mft.txt'
@@ -243,10 +255,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Enumeration benchmark failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'MFT enumeration benchmark failed.' }
 $reportText = (@($indexReport, $walkReport, $mftReport) | ForEach-Object { (Get-Content -LiteralPath $_ -Raw).TrimEnd() }) -join [Environment]::NewLine
 Set-Content -LiteralPath $candidateReport -Value $reportText -Encoding utf8
-$referenceText = Get-Content -LiteralPath $reference -Raw
-foreach ($scenario in @('exact-search', 'substring-search', 'enumeration-walk-sequential', 'enumeration-walk-parallel',
-        'mft-enumeration-scan', 'mft-enumeration-rows', 'mft-enumeration-exact-name', 'mft-enumeration-substring-name')) {
-    if (-not $referenceText.Contains("--- $scenario ---")) {
+foreach ($scenario in $scenarios) {
+    if ($scenario -notin $referenceScenarios) {
         Write-Output "$scenario has no reference in $reference; this release report becomes its first."
         continue
     }
