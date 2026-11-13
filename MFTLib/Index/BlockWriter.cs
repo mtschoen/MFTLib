@@ -351,7 +351,11 @@ sealed partial class BlockWriter
         }
 
         header.Flags |= BlockFlags.Complete;
-        Block.FlushUnderHeldAccess(rangeFlushed);
+        // A delete-on-close block is never read back from disk: every mapping of the file shares the page cache.
+        if (!Block.DeletesOnClose)
+        {
+            Block.FlushUnderHeldAccess(rangeFlushed);
+        }
     }
 
     /// <summary>

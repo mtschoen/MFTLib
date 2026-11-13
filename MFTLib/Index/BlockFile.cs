@@ -188,6 +188,9 @@ sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
+    /// <summary>True for a block created delete-on-close: no other open outlives it, so its completion needs no flush.</summary>
+    internal bool DeletesOnClose { get; private set; }
+
     /// <summary>
     ///     Exposes the sequence number for every row slot, indexed by the same ordinal as
     ///     <see cref="Rows" />.
@@ -248,6 +251,7 @@ sealed unsafe partial class BlockFile : IDisposable
         }
 
         block.Header = header;
+        block.DeletesOnClose = options.DeleteOnClose;
         block.WriteRootKey(options.Root);
         return block;
     }
