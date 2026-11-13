@@ -31,6 +31,17 @@ static class MftBlockProducerPipeline
         WritePlan plan,
         Func<BlockFile, Action<long>, IEnumerable<IReadOnlyList<MftRecord>>> batches,
         IProgress<BlockWriteProgress>? progress,
+        CancellationToken cancellationToken) =>
+        WriteRows(request, plan,
+            (block, omitted) => writer => MftBlockRowWriter.WriteBatches(writer, batches(block, omitted),
+                plan.ScanOptions, progress, cancellationToken),
+            progress, cancellationToken);
+
+    /// <summary>Creates the block, writes its rows through the writer the caller supplies, then finishes it.</summary>
+    internal static MftBlockProduceResult WriteRows(MftBlockProduceRequest request,
+        WritePlan plan,
+        Func<BlockFile, Action<long>, Func<BlockWriter, BlockWriteResult>> rows,
+        IProgress<BlockWriteProgress>? progress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -42,7 +53,7 @@ static class MftBlockProducerPipeline
         {
             long recordsOmitted = 0;
             var written = MftBlockScan.WriteToBlock(block, plan.Stamp,
-                batches(block, count => recordsOmitted += count), plan.ScanOptions,
+                rows(block, count => recordsOmitted += count),
                 new BlockWriteReporting(progress, null), cancellationToken);
             // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to Finish, which disposes it on validation failure or returns it
             var completed = block;

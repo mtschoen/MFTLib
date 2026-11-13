@@ -86,9 +86,9 @@ sealed class MftDumpBlockProducer
         using var stream = new MftDumpSliceStream(input, progress, allowance, cancellationToken);
         var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
             new BlockStamp(default, _timeProvider), new MftScanOptions());
-        return MftBlockProducerPipeline.Write(request, plan,
+        return MftBlockProducerPipeline.WriteRows(request, plan,
             // ReSharper disable once AccessToDisposedClosure
-            (block, _) => new MftDumpRecordValidation(block).Validate(MftDumpSliceRecords.Read(stream, block)),
+            (_, _) => writer => MftDumpSliceWriter.Write(writer, stream, blockProgress, cancellationToken),
             blockProgress, cancellationToken);
     }
 

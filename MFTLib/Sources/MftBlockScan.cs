@@ -30,9 +30,18 @@ static class MftBlockScan
         BlockFile block, BlockStamp stamp, IEnumerable<IReadOnlyList<MftRecord>> batches,
         MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
+        return WriteToBlock(block, stamp,
+            writer => MftBlockRowWriter.WriteBatches(writer, batches, scanOptions, reporting.Progress,
+                cancellationToken), reporting, cancellationToken);
+    }
+
+    /// <summary>Writes every row through <paramref name="writeRows" />, stamps the journal cursor, then completes the block.</summary>
+    internal static BlockWriteResult WriteToBlock(
+        BlockFile block, BlockStamp stamp, Func<BlockWriter, BlockWriteResult> writeRows,
+        BlockWriteReporting reporting, CancellationToken cancellationToken)
+    {
         var writer = new BlockWriter(block);
-        var result = MftBlockRowWriter.WriteBatches(writer, batches, scanOptions, reporting.Progress,
-            cancellationToken);
+        var result = writeRows(writer);
         writer.SetJournalCursor(stamp.Cursor.JournalIdentifier, stamp.Cursor.NextUsn);
         var operation = reporting.Operation;
         writer.Complete(stamp.TimeProvider.GetUtcNow().UtcDateTime,
