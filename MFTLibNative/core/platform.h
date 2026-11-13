@@ -18,6 +18,8 @@ struct FileOffset {
 
 // Open for reading. Returns nullptr on failure. Path is UTF-8.
 File* open_read(const char* path_utf8);
+// A second read handle on the file an open handle names, never on whatever its path names now. Null on failure.
+File* reopen_read(const File* file);
 
 // Open for writing (creates/truncates). Returns nullptr on failure. Path is UTF-8.
 File* open_write(const char* path_utf8);

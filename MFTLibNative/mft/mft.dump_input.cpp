@@ -11,6 +11,8 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <thread>
+#include <vector>
 
 #include "../framework.h"
 #include "../ntfs.h"
@@ -78,6 +80,9 @@ struct DumpReadContext {
     uint32_t bufferSizeRecords = 0;
     int64_t fileOffset = 0;
     bool readFailed = false;
+    // Extra handles on the same file, so the parts of one chunk read concurrently: a synchronous
+    // handle serializes the reads issued through it.
+    std::vector<mftlib::platform::File*> partFiles;
 };
 
 // Reads exactly byteCount bytes at offset, in calls small enough for every platform read.
@@ -97,6 +102,41 @@ bool ReadExactly(const mftlib::platform::File* file, uint8_t* target, const size
     return true;
 }
 
+constexpr int kDumpReadParts = 8;
+
+// Splits a large read into parts read at once, so a chunk the page cache holds is copied by several
+// threads instead of one. Each part is a whole number of 64 KiB units except the last.
+bool ReadExactlyParallel(const mftlib::platform::File* file, const std::vector<mftlib::platform::File*>& partFiles,
+                         uint8_t* target, const size_t byteCount, const int64_t offset) {
+    constexpr size_t kMinimumPartBytes = size_t{8} << 20;
+    constexpr size_t kPartAlignment = size_t{64} << 10;
+    const size_t partCount = (std::min)(partFiles.size() + 1, byteCount / kMinimumPartBytes);
+    if (partCount <= 1) {
+        return ReadExactly(file, target, byteCount, offset);
+    }
+    const size_t partBytes = ((byteCount / partCount) + kPartAlignment - 1) / kPartAlignment * kPartAlignment;
+    std::vector<std::thread> readers;
+    std::vector<uint8_t> succeeded(partCount, 0);
+    readers.reserve(partCount);
+    for (size_t part = 0; part < partCount; part++) {
+        const size_t start = part * partBytes;
+        if (start >= byteCount) {
+            succeeded[part] = 1;
+            continue;
+        }
+        const size_t length = (std::min)(partBytes, byteCount - start);
+        const auto* partFile = part == 0 ? file : partFiles[part - 1];
+        readers.emplace_back([=, &succeeded] {
+            succeeded[part] =
+                ReadExactly(partFile, target + start, length, offset + static_cast<int64_t>(start)) ? 1 : 0;
+        });
+    }
+    for (auto& reader : readers) {
+        reader.join();
+    }
+    return std::all_of(succeeded.begin(), succeeded.end(), [](uint8_t value) { return value != 0; });
+}
+
 // Loads the next chunk of whole records. A failed or short read ends the input and is
 // remembered, so the parse reports it instead of taking it for the end of the file.
 uint64_t ReadDumpChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
@@ -107,7 +147,7 @@ uint64_t ReadDumpChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
     const uint64_t recordsToLoad = (std::min)(dump->recordsRemaining, static_cast<uint64_t>(dump->bufferSizeRecords));
     const auto byteCount = recordsToLoad * dump->input->geometry.recordSize;
     const auto ioStart = SteadyClock::now();
-    if (ShouldFailRead() || !ReadExactly(dump->input->file, targetBuffer, byteCount, dump->fileOffset)) {
+    if (ShouldFailRead() || !ReadExactlyParallel(dump->input->file, dump->partFiles, targetBuffer, byteCount, dump->fileOffset)) {
         dump->readFailed = true;
         return 0;
     }
@@ -130,6 +170,16 @@ MftParseResult* ParseDump(const MftDumpInput& input, ParseRequest request) {
     const uint64_t largestChunk = (std::min)(totalRecords, uint64_t{(std::numeric_limits<uint32_t>::max)()});
     request.bufferSizeRecords = static_cast<uint32_t>(std::clamp<uint64_t>(request.bufferSizeRecords, 1, largestChunk));
     DumpReadContext context{&input, totalRecords, request.bufferSizeRecords};
+    const NativeScopeExit closeParts([&] {
+        for (auto* partFile : context.partFiles) {
+            mftlib::platform::close_file(partFile);
+        }
+    });
+    for (int part = 0; part < kDumpReadParts - 1; part++) {
+        if (auto* partFile = mftlib::platform::reopen_read(input.file); partFile != nullptr) {
+            context.partFiles.push_back(partFile);
+        }
+    }
     const ParseSource source{ReadDumpChunk,      &context, totalRecords,           input.geometry,
                              DumpReadIncomplete, true,     kIncompleteReadMessage, true};
     return ParseMFTImpl(source, request);

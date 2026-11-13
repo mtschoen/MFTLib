@@ -32,6 +32,18 @@ File* open_read(const char* path_utf8) {
     return file;
 }
 
+File* reopen_read(const File* file) {
+    const int fileDescriptor = ::dup(file->fileDescriptor);
+    if (fileDescriptor < 0) {
+        return nullptr;
+    }
+    auto* reopened = new (std::nothrow) File{fileDescriptor};
+    if (reopened == nullptr) {
+        ::close(fileDescriptor);
+    }
+    return reopened;
+}
+
 File* open_write(const char* path_utf8) {
     if (path_utf8 == nullptr) {
         return nullptr;
