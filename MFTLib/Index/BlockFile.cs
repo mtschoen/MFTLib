@@ -189,8 +189,9 @@ sealed unsafe partial class BlockFile : IDisposable
     }
 
     /// <summary>
-    ///     True for a block this process created delete-on-close: no open outlives it and every mapping of the file
-    ///     shares the page cache, so its completion needs no flush to disk.
+    ///     True for a block created delete-on-close, by this process or by the client whose named section the broker
+    ///     opened: no open outlives it and every mapping of the file shares the page cache, so its completion needs no
+    ///     flush to disk.
     /// </summary>
     internal bool DeletesOnClose { get; private set; }
 
@@ -266,9 +267,10 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     <see cref="BlockHeader.ValidateSection" /> accepted.
     /// </summary>
     internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length,
-        BlockHeader layout)
+        BlockHeader layout, bool deletesOnClose)
         : this(string.Empty, length, mappedFile, view, layout, root: default)
     {
+        DeletesOnClose = deletesOnClose;
     }
 
     /// <summary>

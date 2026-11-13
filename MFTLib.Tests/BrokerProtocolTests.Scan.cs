@@ -14,28 +14,34 @@ public partial class BrokerProtocolTests
         JournalCheckpointLossCause.CheckpointTrimmed, 1000, 5000, 9000, 4096, 32768, 4000, 12288);
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void ArmAndScan_RoundTripsSectionAndIncludeFreed(bool includeFreed)
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public void ArmAndScan_RoundTripsSectionIncludeFreedAndDeleteOnClose(bool includeFreed, bool blockDeletesOnClose)
     {
-        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed), BrokerProtocol.WriteArmAndScan);
+        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed, blockDeletesOnClose),
+            BrokerProtocol.WriteArmAndScan);
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
+        Assert.AreEqual(blockDeletesOnClose, frame.BlockDeletesOnClose);
         Assert.IsNull(frame.Volume, "The volume pipe names no volume.");
         Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
-    public void ReadFrame_ArmAndScan_UnknownIncludeFreedValue_ThrowsInvalidDataException()
+    [DataRow(11, DisplayName = "include-freed flag")]
+    [DataRow(12, DisplayName = "delete-on-close flag")]
+    public void ReadFrame_ArmAndScan_UnknownFlagValue_ThrowsInvalidDataException(int flagOffset)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true));
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true, blockDeletesOnClose: true));
         var bytes = buffer.WrittenSpan.ToArray();
 
-        // length prefix 4 + kind 1 + section (4 + 2) = the flag's offset.
-        bytes[11] = 2;
+        // length prefix 4 + kind 1 + section (4 + 2) = the first flag's offset; the second follows it.
+        bytes[flagOffset] = 2;
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
 
         Assert.Contains("2", exception.Message);
@@ -234,16 +240,19 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    [DataRow(false, (byte)0)]
-    [DataRow(true, (byte)1)]
-    public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, byte expectedFlagByte)
+    [DataRow(false, (byte)0, false, (byte)0)]
+    [DataRow(true, (byte)1, false, (byte)0)]
+    [DataRow(false, (byte)0, true, (byte)1)]
+    public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, byte expectedIncludeFreedByte,
+        bool blockDeletesOnClose, byte expectedDeleteOnCloseByte)
     {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed: includeFreed)),
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed, blockDeletesOnClose)),
         [
-            0x08, 0x00, 0x00, 0x00, // totalLength = 8
+            0x09, 0x00, 0x00, 0x00, // totalLength = 9
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
-            expectedFlagByte // includeFreed
+            expectedIncludeFreedByte, // includeFreed
+            expectedDeleteOnCloseByte // blockDeletesOnClose
         ]);
     }
 

@@ -11,7 +11,7 @@ static class BrokerFrameStream
     // read; a wire entry (46 fixed bytes plus its UTF-16 name) is smaller than the native
     // USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte aligned), so such a
     // batch is under 64 KiB plus its 21-byte header. ArmAndScan carries only a length-prefixed
-    // UTF-16 section name and a one-byte include-freed flag, far below the limit. Error and
+    // UTF-16 section name and two one-byte flags, far below the limit. Error and
     // Stalled text is cut to 32,768 units. A custom journal source's batch over the limit ends
     // that watch with an Error frame. 16 MiB also bounds a garbled prefix to a modest allocation.
     internal const int MaximumFrameLength = 1 << 24;

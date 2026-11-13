@@ -125,7 +125,7 @@ public class NamespaceBoundaryTests
     static GivenTypesConjunction BrokerTypes() => OwnedTypes(
         "Broker", "IBroker", "JournalBrokerHost", "HostPipeWriter",
         "ChannelOperationKind", "ChannelOperationState", "ClientDisconnectedException",
-        "RealBlockSectionWriter", "IBlockSectionWriter", "BlockScanOutcome", "BlockScanTarget",
+        "RealBlockSectionWriter", "IBlockSectionWriter", "BlockSectionRequest", "BlockScanOutcome", "BlockScanTarget",
         "DefaultElevatedEntryRunner", "ElevatedEntryPoint",
         "NamedPipeBrokerPipeFactory");
 

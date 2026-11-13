@@ -101,7 +101,7 @@ sealed class HostChannelHarness : IAsyncDisposable
         var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(volume);
         var pipe = await OpenChannelAsync(volume);
         await WriteFrameAsync(pipe,
-            writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(targetSectionName, includeFreed: false)));
+            writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(targetSectionName, includeFreed: false, blockDeletesOnClose: false)));
         return pipe;
     }
 

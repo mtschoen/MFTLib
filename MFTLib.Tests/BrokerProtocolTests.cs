@@ -38,6 +38,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(expected.PipeName, actual.PipeName);
         Assert.AreEqual(expected.SectionName, actual.SectionName);
         Assert.AreEqual(expected.IncludeFreed, actual.IncludeFreed);
+        Assert.AreEqual(expected.BlockDeletesOnClose, actual.BlockDeletesOnClose);
         Assert.AreEqual(expected.Cursor, actual.Cursor);
         Assert.AreEqual(expected.SkippedRecordCount, actual.SkippedRecordCount);
         Assert.AreEqual(expected.Message, actual.Message);

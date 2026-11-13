@@ -77,9 +77,14 @@ static class NamedBlockSection
     ///     copy alone: a process that rewrites the shared header afterwards cannot move the regions
     ///     the block writes into.
     /// </summary>
+    /// <param name="sectionName">The section the client created and published.</param>
+    /// <param name="deletesOnClose">
+    ///     Whether the client created the section's file delete-on-close, which the client states on its scan request.
+    ///     Completing such a block skips the flush to disk; a cached block still flushes.
+    /// </param>
     /// <exception cref="InvalidDataException">The section's header does not describe a block that exactly fills it.</exception>
     [SupportedOSPlatform("windows")]
-    public static BlockFile OpenExisting(string sectionName)
+    public static BlockFile OpenExisting(string sectionName, bool deletesOnClose)
     {
         ArgumentException.ThrowIfNullOrEmpty(sectionName);
 
@@ -100,7 +105,7 @@ static class NamedBlockSection
                 throw RejectedSection(sectionName, validation);
             }
 
-            var block = new BlockFile(mappedFile, view, length, layout);
+            var block = new BlockFile(mappedFile, view, length, layout, deletesOnClose);
             mappedFile = null;
             view = null;
             return block;

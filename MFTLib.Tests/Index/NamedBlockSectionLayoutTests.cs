@@ -63,7 +63,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         {
             RewriteBeforeOpen(ref creator.Header, field);
 
-            var exception = Assert.ThrowsExactly<InvalidDataException>(() => NamedBlockSection.OpenExisting(_sectionName));
+            var exception = Assert.ThrowsExactly<InvalidDataException>(() => NamedBlockSection.OpenExisting(_sectionName, deletesOnClose: false));
 
             Assert.Contains(reason, exception.Message);
         }
@@ -76,7 +76,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         using (lifetime)
         using (creator)
         {
-            using var opened = NamedBlockSection.OpenExisting(_sectionName);
+            using var opened = NamedBlockSection.OpenExisting(_sectionName, deletesOnClose: false);
 
             Assert.AreEqual(creator.Length, opened.Length);
             Assert.AreEqual(SlotCapacity, opened.SlotCapacity);
@@ -98,7 +98,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         using (lifetime)
         using (creator)
         {
-            using var opened = NamedBlockSection.OpenExisting(_sectionName);
+            using var opened = NamedBlockSection.OpenExisting(_sectionName, deletesOnClose: false);
             Assert.AreEqual(BlockLayout.TotalBlockBytes(SlotCapacity, 3 * SlotCapacity, BlockLayout.ComputeDeltaCapacity(SlotCapacity), NamePoolCapacity), creator.Length);
             Assert.AreEqual(creator.Length, opened.Length);
             Assert.AreEqual(3 * SlotCapacity, opened.NameEntryCapacity);
@@ -113,7 +113,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
         using (creator)
         {
             using var source = RowWriting.Source(BatchesRewritingBetween(creator));
-            var result = new RealBlockSectionWriter(TimeProvider.System).Write(_sectionName,
+            var result = new RealBlockSectionWriter(TimeProvider.System).Write(new BlockSectionRequest(_sectionName, DeletesOnClose: false),
                 new UsnJournalCursor(7, 100), source,
                 new MftScanOptions(), default, CancellationToken.None);
 

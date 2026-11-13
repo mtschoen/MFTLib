@@ -246,7 +246,7 @@ public class JournalBrokerHostScanTests
             writer =>
             {
                 var buffer = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false));
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false, blockDeletesOnClose: false));
                 var bytes = buffer.WrittenSpan.ToArray();
                 bytes[23] = 99;
                 var destination = writer.GetSpan(bytes.Length);
@@ -334,7 +334,7 @@ public class JournalBrokerHostScanTests
             using var source = RowWriting.Source(
                 [[new MftRecord(5, 5, new MftRecordFields(3), "."),
                     new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]]);
-            var written = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, cursor, source,
+            var written = new RealBlockSectionWriter(TimeProvider.System).Write(new BlockSectionRequest(sectionName, DeletesOnClose: false), cursor, source,
                 new MftScanOptions(), default, CancellationToken.None);
 
             Assert.AreEqual(101L, written.RowCount);

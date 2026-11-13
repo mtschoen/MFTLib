@@ -58,6 +58,9 @@ readonly record struct BrokerFrame
     public string? PipeName { get; private init; }
     public string? SectionName { get; private init; }
     public bool IncludeFreed { get; private init; }
+
+    /// <summary>On ArmAndScan: the client created the section's file delete-on-close, so the broker skips the completion flush.</summary>
+    public bool BlockDeletesOnClose { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
     public long SkippedRecordCount { get; private init; }
@@ -235,12 +238,13 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.Stalled, 0) with { Message = message };
     }
 
-    public static BrokerFrame ArmAndScan(string sectionName, bool includeFreed)
+    public static BrokerFrame ArmAndScan(string sectionName, bool includeFreed, bool blockDeletesOnClose)
     {
         return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
             SectionName = sectionName,
-            IncludeFreed = includeFreed
+            IncludeFreed = includeFreed,
+            BlockDeletesOnClose = blockDeletesOnClose
         };
     }
 
