@@ -194,6 +194,21 @@ EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, const uint32
         [](const wchar_t*) -> MftParseResult* { return nullptr; });
 }
 
+// As ParseMftDumpInput, but hands each parsed slice to sink as soon as its chunk is parsed and
+// returns a result with no entries; usedRecords counts the entries delivered.
+EXPORT MftParseResult* ParseMftDumpInputStreaming(const MftDumpInput* input, const uint32_t bufferSizeRecords,
+                                                  const MftParseControl* control, const MftProgressCallback callback,
+                                                  void* const callbackContext, const MftParseSink* sink) {
+    return NativeBoundary(
+        [&] {
+            if (input == nullptr || sink == nullptr || sink->slice == nullptr || sink->extensions == nullptr) {
+                return CreateParseResult(L"Dump input or sink is invalid");
+            }
+            return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, callbackContext, sink});
+        },
+        [](const wchar_t*) -> MftParseResult* { return nullptr; });
+}
+
 // Closes the file and frees the input. Safe with null.
 EXPORT void CloseMftDumpInput(MftDumpInput* input) {
     if (const std::unique_ptr<MftDumpInput> owned(input); owned) {

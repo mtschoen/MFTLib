@@ -140,6 +140,19 @@ BufferSizeRecords: 0, CancellationToken: cancellationToken));
         }
     }
 
+    /// <summary>The native input a streaming parse reads.</summary>
+    internal MftDumpInputHandle Handle
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
+            return _handle;
+        }
+    }
+
+    /// <summary>Records the native parser reads per chunk.</summary>
+    internal uint ChunkRecords => LiveVolumeSources.HostScanChunkRecords(RecordSize);
+
     /// <summary>Closes the file. Safe to call more than once.</summary>
     public void Dispose()
     {

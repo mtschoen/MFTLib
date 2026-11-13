@@ -53,6 +53,10 @@ sealed class MftDumpBlockProducer
         CancellationToken cancellationToken)
     {
         using var input = MftDumpInput.Open(_dumpFilePath);
+        if (_readRecords is null)
+        {
+            return ProduceStreaming(input, request, allowance, cancellationToken);
+        }
 
         // The first batch is read before the block exists: reading it runs the whole parse, so a
         // dump the parser rejects costs no block, whose size follows the dump's length.
@@ -70,6 +74,21 @@ sealed class MftDumpBlockProducer
         return MftBlockProducerPipeline.Write(request, plan,
             // ReSharper disable once AccessToDisposedClosure
             (block, _) => new MftDumpRecordValidation(block).Validate(Remaining(batches, hasBatch)),
+            blockProgress, cancellationToken);
+    }
+
+    // The block is created first; the parse then runs on its own thread while its slices are written.
+    MftBlockProduceResult ProduceStreaming(MftDumpInput input, MftBlockProduceRequest request,
+        ParseThreadAllowance allowance, CancellationToken cancellationToken)
+    {
+        var blockProgress = MftBlockProgressAdapter.Create(request);
+        var progress = MftBlockProgressAdapter.CreateParse(blockProgress, null);
+        using var stream = new MftDumpSliceStream(input, progress, allowance, cancellationToken);
+        var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
+            new BlockStamp(default, _timeProvider), new MftScanOptions());
+        return MftBlockProducerPipeline.Write(request, plan,
+            // ReSharper disable once AccessToDisposedClosure
+            (block, _) => new MftDumpRecordValidation(block).Validate(MftDumpSliceRecords.Read(stream, block)),
             blockProgress, cancellationToken);
     }
 

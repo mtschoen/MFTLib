@@ -227,6 +227,9 @@ struct ParseRequest {
     const MftParseControl* control = nullptr;
     MftProgressCallback callback = nullptr;
     void* callbackContext = nullptr;
+    // When set, each chunk's slices go to the sink as soon as the chunk is parsed and the result
+    // carries no entries; the extension data sizes follow the last chunk.
+    const MftParseSink* sink = nullptr;
 };
 
 // A zeroed result carrying the entry stride, and message when one is given.

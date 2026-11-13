@@ -144,7 +144,7 @@ sealed class MftResult : IDisposable
         return GetCompactEntry((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, index);
     }
 
-    static unsafe MftRecord GetCompactEntry(byte* table, ushort* pool, ulong poolUnits, ulong index)
+    internal static unsafe MftRecord GetCompactEntry(byte* table, ushort* pool, ulong poolUnits, ulong index)
     {
         var row = table + checked((nuint)index * MFTLibNative.NativeCompactEntrySize);
         var recordNumber = Unsafe.ReadUnaligned<ulong>(row);

@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 11;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 12;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -95,6 +95,32 @@ struct MftParseResult {
     uint64_t invalidFixupRecords;
 };
 
+// The $DATA size an allocated extension record carries for its base record. A streaming parse
+// delivers these after its last slice; the consumer applies one to the base row only when the
+// row exists, its sequence number matches, it is not a directory and its size is still unknown.
+struct MftExtensionDataSize {
+    uint64_t baseRecordNumber;
+    int64_t size;
+    uint16_t baseSequenceNumber;
+};
+
+static_assert(sizeof(MftExtensionDataSize) == 18, "MftExtensionDataSize is the 18-byte packed size record");
+
+// A streaming parse hands each parsed slice to slice, in record order, instead of collecting it
+// into the result. entries and strings are valid only for the duration of the call; a string
+// offset counts UTF-16 units from strings. Once every chunk is parsed, extensions receives the
+// extension data sizes. Either function returns nonzero to stop the parse, which then reports
+// cancelled. Both run on the thread that called the parse.
+using MftSliceSinkFunction = int32_t (*)(void* context, const MftCompactEntry* entries, uint64_t entryCount,
+                                         const uint16_t* strings, uint64_t stringUnits);
+using MftExtensionSinkFunction = int32_t (*)(void* context, const MftExtensionDataSize* sizes, uint64_t count);
+
+struct MftParseSink {
+    MftSliceSinkFunction slice;
+    MftExtensionSinkFunction extensions;
+    void* context;
+};
+
 // An opened MFT dump file: created by OpenMftDumpInput, read by ParseMftDumpInput, released by
 // CloseMftDumpInput. Opaque to the caller.
 struct MftDumpInput;
@@ -154,6 +180,9 @@ EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo
 EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
                                          const MftParseControl* control, MftProgressCallback callback,
                                          void* callbackContext);
+EXPORT MftParseResult* ParseMftDumpInputStreaming(const MftDumpInput* input, uint32_t bufferSizeRecords,
+                                                  const MftParseControl* control, MftProgressCallback callback,
+                                                  void* callbackContext, const MftParseSink* sink);
 EXPORT void CloseMftDumpInput(MftDumpInput* input);
 EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                           uint32_t recordSize);

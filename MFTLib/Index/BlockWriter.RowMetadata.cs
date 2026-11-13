@@ -129,6 +129,35 @@ sealed partial class BlockWriter
     }
 
     /// <summary>
+    ///     Applies the data size an extension record carries to its already-written base row, with the rule the
+    ///     native whole-result parse applies: the row is live, its sequence number matches, it is not a directory
+    ///     and its size is still unknown. The size is stored before the descriptor word clears the unknown flag.
+    /// </summary>
+    /// <returns>true when the size was applied.</returns>
+    internal bool TryApplyScannedDataSize(uint rowIndex, ushort sequenceNumber, long size)
+    {
+        using var access = Block.TakeAccess();
+        if (rowIndex >= Block.RowCount)
+        {
+            return false;
+        }
+
+        ref var row = ref Block.Rows[(int)rowIndex];
+        var descriptor = FileRow.ReadDescriptorWord(in row);
+        var flags = FileRow.DescriptorFlags(descriptor);
+        if ((flags & RowFlags.InUse) == 0 || (flags & FileRow.DeletedFlags) != 0 ||
+            (flags & (RowFlags.Directory | RowFlags.SizeUnknown)) != RowFlags.SizeUnknown ||
+            Block.SequenceNumbers[(int)rowIndex] != sequenceNumber)
+        {
+            return false;
+        }
+
+        row.Size = size;
+        FileRow.WriteDescriptorWord(ref row, FileRow.DescriptorNameId(descriptor), flags & ~RowFlags.SizeUnknown);
+        return true;
+    }
+
+    /// <summary>
     ///     Sets flag bits on a live row by rewriting the whole descriptor word. Touching the
     ///     flags field on its own would be a second independent store into the same word that a
     ///     rename publishes atomically, which is exactly the tear this layout exists to prevent.
