@@ -88,7 +88,9 @@ static class MftSliceWriter
 
             if (!stoppedForGrowth)
             {
-                recordsOmitted?.Invoke(stream.Finish());
+                // Finish runs whether or not anyone counts the omitted records: it throws what stopped the parse.
+                var omitted = stream.Finish();
+                recordsOmitted?.Invoke(omitted);
                 ApplyExtensionDataSizes(writer, stream.ExtensionDataSizes);
                 if (state.ValidatesDump)
                 {
@@ -147,7 +149,7 @@ static class MftSliceWriter
                     ThrowIfDumpRecordIsInvalid(state, recordNumber, parentRecordNumber);
                 }
 
-                if (TryWriteEntry(writer, access, row, recordNumber, parentRecordNumber, flags,
+                if (TryWriteEntry(writer, access, row,
                         stringLength == 0
                             ? recordNumber == RootRow ? "." : ReadOnlySpan<char>.Empty
                             : new ReadOnlySpan<char>(pool + stringOffset, stringLength)))
@@ -168,9 +170,12 @@ static class MftSliceWriter
         return false;
     }
 
-    static unsafe bool TryWriteEntry(BlockWriter writer, BlockAccessScope access, byte* row, ulong recordNumber,
-        ulong parentRecordNumber, ushort flags, ReadOnlySpan<char> name)
+    // Writes one packed entry under its name; false when it is skipped and counted.
+    static unsafe bool TryWriteEntry(BlockWriter writer, BlockAccessScope access, byte* row, ReadOnlySpan<char> name)
     {
+        var recordNumber = Unsafe.ReadUnaligned<ulong>(row);
+        var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(row + 8);
+        var flags = Unsafe.ReadUnaligned<ushort>(row + 28);
         if (recordNumber > uint.MaxValue || parentRecordNumber > uint.MaxValue || name.Length == 0)
         {
             return false;

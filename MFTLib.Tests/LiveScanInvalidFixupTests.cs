@@ -140,6 +140,50 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
 
 
     [TestMethod]
+    public void LiveScan_StreamedRows_MatchTheBatchedRowsByteForByte()
+    {
+        if (WindowsOnlyLiveScan.Skip())
+        {
+            return;
+        }
+
+        var (imagePath, _) = WriteImageWithOneCorruptFixup();
+        ServeImageAsVolume(imagePath);
+        using var batched = CreateLiveBlock();
+        using var streamed = CreateLiveBlock();
+
+        long batchedOmitted = 0;
+        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(),
+            count => batchedOmitted += count, CancellationToken.None);
+        var batchedResult = MftBlockScan.WriteToBlock(batched, new BlockStamp(default, TimeProvider.System),
+            batches, new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
+        long streamedOmitted = 0;
+        var streamedResult = MftBlockScan.WriteToBlock(streamed, new BlockStamp(default, TimeProvider.System),
+            writer => LiveVolumeSources.WriteVolumeRows(writer, 'C', new ParseThreadAllowance(2),
+                new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(),
+                count => streamedOmitted += count, CancellationToken.None),
+            new BlockWriteReporting(null, null), CancellationToken.None);
+
+        Assert.AreEqual(1L, streamedOmitted);
+        Assert.AreEqual(batchedOmitted, streamedOmitted);
+        Assert.AreEqual(batchedResult, streamedResult);
+        Assert.IsTrue(MemoryMarshal.AsBytes(batched.Rows).SequenceEqual(MemoryMarshal.AsBytes(streamed.Rows)),
+            "the rows are identical");
+        Assert.IsTrue(batched.SequenceNumbers.SequenceEqual(streamed.SequenceNumbers), "the sequences are identical");
+        for (uint row = 0; row < (uint)batched.Rows.Length; row++)
+        {
+            Assert.AreEqual(NamePool.ReadRowName(batched, row).ToString(),
+                NamePool.ReadRowName(streamed, row).ToString(), $"row {row} name");
+        }
+    }
+
+    BlockFile CreateLiveBlock() => TestBlocks.Create(
+        Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
+        ProducerKind.Mft, slotCapacity: 128, namePoolCapacity: 16 * 1024,
+        volumeSerial: 0, rootRow: 5, deleteOnClose: true);
+
+    [TestMethod]
     [DataRow("F1-1", false)]
     [DataRow("F2-1", true)]
     public void VolumeParse_BootstrapRecordWithAnInvalidFixup_FailsWithoutReturningRecords(string caseId,

@@ -36,9 +36,9 @@ sealed class MftParsedSlice
 }
 
 /// <summary>
-///     Runs a streaming native parse (of a dump or a live volume) on its own thread and hands its slices to the consuming thread through a
-///     bounded queue, so the consumer writes rows while later chunks are still being parsed and a slow consumer
-///     holds the parser back instead of growing memory. The native callbacks never throw: a failure in them is
+///     Runs a streaming native parse (of a dump or a live volume) on its own thread and hands its slices to the
+///     consuming thread through a bounded queue, so the consumer writes rows while later chunks are still being
+///     parsed and a slow consumer holds the parser back instead of growing memory. The native callbacks never throw: a failure in them is
 ///     captured, stops the parse, and is rethrown by <see cref="Finish" />.
 /// </summary>
 sealed unsafe class MftSliceStream : IDisposable
