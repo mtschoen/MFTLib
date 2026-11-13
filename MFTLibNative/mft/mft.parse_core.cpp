@@ -21,6 +21,19 @@ using namespace mftlib::ntfs::detail;
 
 namespace {
 
+// PROTOTYPE: pre-first-chunk step timing. Stamps are milliseconds since the live parse entry;
+// slots 13 and later carry sizes. Read back through GetMftPreParseTimings.
+constexpr size_t kPreParseSlots = 16;
+std::array<double, kPreParseSlots> g_preParseStamps = {};
+SteadyClock::time_point g_preParseOrigin = SteadyClock::now();
+
+void PreParseReset() {
+    g_preParseStamps.fill(0.0);
+    g_preParseOrigin = SteadyClock::now();
+}
+
+void PreParseStamp(size_t slot) { g_preParseStamps[slot] = ElapsedMs(g_preParseOrigin, SteadyClock::now()); }
+
 // Mutable state threaded through the parse pipeline, so the helpers take one
 // reference instead of a long list of same-typed in/out counters and timers.
 struct ParseState {
@@ -95,8 +108,10 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& chunkBuffers, size_t bufferSi
                           MftParseResult* result) {
     chunkBuffers[0] =
         ShouldFailAllocation() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_allocate(bufferSize));
+    PreParseStamp(7);
     chunkBuffers[1] =
         ShouldFailAllocation() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_allocate(bufferSize));
+    PreParseStamp(8);
     if ((chunkBuffers[0] == nullptr) || (chunkBuffers[1] == nullptr)) {
         mftlib::platform::big_free(chunkBuffers[0], bufferSize);
         mftlib::platform::big_free(chunkBuffers[1], bufferSize);
@@ -115,6 +130,7 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& chunkBuffers, size_t bufferSi
         return false;
     }
 
+    PreParseStamp(9);
     state.output.strings =
         ShouldFailAllocation()
             ? nullptr
@@ -127,6 +143,7 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& chunkBuffers, size_t bufferSi
         SetErrorMessage(result->errorMessage, L"Failed to allocate string pool");
         return false;
     }
+    PreParseStamp(10);
     return true;
 }
 
@@ -262,7 +279,9 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
     }
     uint64_t recordIndex = 0;
     uint64_t lastReportedRecords = 0;
+    PreParseStamp(11);
     uint64_t currentChunkSize = reader.read(0, state.ioMs);
+    PreParseStamp(12);
     int currentBufferIndex = 0;
 
     while (currentChunkSize > 0) {
@@ -371,6 +390,7 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     ParseThreadRecording threadRecording;
 
     auto* result = CreateParseResult();
+    PreParseStamp(6);
     if (result == nullptr) {
         return nullptr;
     }
@@ -384,6 +404,8 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
             const ParseGeometry geometry = source.geometry;
             const MftParseControl* control = request.control;
             result->totalRecords = totalRecords;
+            g_preParseStamps[13] = static_cast<double>(bufferSize);
+            g_preParseStamps[14] = static_cast<double>(state.sink != nullptr ? 1 : std::clamp<uint64_t>(totalRecords / 4, 1024, uint64_t{4} * 1024 * 1024));
 
             // The record total comes from an unvalidated length, so it only sizes the first allocation
             // up to a fixed ceiling; a larger result grows as records are actually parsed.
@@ -448,4 +470,15 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
             SetErrorMessage(result->errorMessage, message);
             return result;
         });
+}
+
+extern "C" {
+// PROTOTYPE: copies up to capacity pre-first-chunk stamps of the last live parse; returns the count copied.
+EXPORT uint32_t GetMftPreParseTimings(double* destination, uint32_t capacity) {
+    const uint32_t count = capacity < kPreParseSlots ? capacity : static_cast<uint32_t>(kPreParseSlots);
+    for (uint32_t index = 0; index < count; index++) {
+        destination[index] = g_preParseStamps[index];
+    }
+    return count;
+}
 }

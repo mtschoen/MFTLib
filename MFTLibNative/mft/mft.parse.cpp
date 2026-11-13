@@ -279,7 +279,9 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
         return result;
     }
 
+    PreParseReset();
     auto geometry = QueryVolumeRecordSize(volumeHandle);
+    PreParseStamp(1);
     if (!geometry.has_value()) {
         SetErrorMessage(result->errorMessage, L"Failed to query volume record size or unsupported record size");
         return result;
@@ -292,6 +294,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
                         static_cast<unsigned long>(mftlib::platform::last_error()));
         return result;
     }
+    PreParseStamp(2);
     if (bpb.name[0] != 'N' || bpb.name[1] != 'T' || bpb.name[2] != 'F' || bpb.name[3] != 'S') {
         SetErrorMessage(result->errorMessage, L"Volume is not NTFS");
         return result;
@@ -312,6 +315,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
         return result;
     }
 
+    PreParseStamp(3);
     const auto* fileRecord0 = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record0.data());
     if (fileRecord0->MultiSectorHeader.Magic != kFileRecordMagic) {
         SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
@@ -356,6 +360,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
             return result;
         }
     }
+    PreParseStamp(4);
     uint64_t totalRecords = totalMftBytes / geometry->recordSize;
 
     VolumeReadContext readContext;
@@ -368,6 +373,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
 
     free(result);
     result = nullptr;
+    PreParseStamp(5);
     const ParseSource source{VolumeReadChunk,
                              &readContext,
                              totalRecords,
