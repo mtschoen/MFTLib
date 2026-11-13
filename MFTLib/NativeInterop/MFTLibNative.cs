@@ -11,7 +11,7 @@ static partial class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 11;
+    internal const uint ExpectedMftNativeAbiVersion = 12;
     internal const uint NativeCompactEntrySize = 52;
 
     internal static readonly NativeHooks Hooks = new();
@@ -21,12 +21,15 @@ static partial class MFTLibNative
         internal Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
         internal Func<SafeHandle, bool, uint, IntPtr, NativeProgressCallback, IntPtr>
             _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+        internal Func<SafeHandle, bool, uint, IntPtr, NativeProgressCallback, IntPtr, IntPtr>
+            _parseMftRecordsStreaming = NativeParseMFTRecordsStreamingDefault;
         internal Action<IntPtr> _freeMftResult = NativeFreeMftResult;
 
         internal void ResetToDefaults()
         {
             _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
             _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+            _parseMftRecordsStreaming = NativeParseMFTRecordsStreamingDefault;
             _freeMftResult = NativeFreeMftResult;
         }
     }
@@ -39,10 +42,25 @@ static partial class MFTLibNative
             progress.Function, progress.Context);
     }
 
+    static IntPtr NativeParseMFTRecordsStreamingDefault(
+        SafeHandle volumeHandle, bool includeFreed, uint bufferSizeRecords, IntPtr control,
+        NativeProgressCallback progress, IntPtr sink)
+    {
+        return NativeParseMFTRecordsStreaming(volumeHandle, includeFreed ? 1u : 0u, bufferSizeRecords, control,
+            progress.Function, progress.Context, sink);
+    }
+
     internal static IntPtr ParseMftDumpInput(MftDumpInputHandle input, uint bufferSizeRecords, IntPtr control,
         NativeProgressCallback progress)
     {
         return NativeParseMftDumpInput(input, bufferSizeRecords, control, progress.Function, progress.Context);
+    }
+
+    internal static IntPtr ParseMftDumpInputStreaming(MftDumpInputHandle input, uint bufferSizeRecords, IntPtr control,
+        NativeProgressCallback progress, IntPtr sink)
+    {
+        return NativeParseMftDumpInputStreaming(input, bufferSizeRecords, control, progress.Function,
+            progress.Context, sink);
     }
 
     internal static bool GenerateSyntheticMftSized(string filePath, ulong recordCount, uint bufferSizeRecords,
@@ -68,6 +86,12 @@ static partial class MFTLibNative
     private static partial IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, uint includeFreed,
         uint bufferSizeRecords, IntPtr control, IntPtr callback, IntPtr callbackContext);
 
+    // sink points at an MftParseSink the caller keeps in place for the whole call.
+    [LibraryImport(LibraryName, EntryPoint = "ParseMFTRecordsStreaming")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial IntPtr NativeParseMFTRecordsStreaming(SafeHandle volumeHandle, uint includeFreed,
+        uint bufferSizeRecords, IntPtr control, IntPtr callback, IntPtr callbackContext, IntPtr sink);
+
     [LibraryImport(LibraryName, EntryPoint = "FreeMftResult")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial void NativeFreeMftResult(IntPtr result);
@@ -89,6 +113,12 @@ static partial class MFTLibNative
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial IntPtr NativeParseMftDumpInput(MftDumpInputHandle input, uint bufferSizeRecords,
         IntPtr control, IntPtr callback, IntPtr callbackContext);
+
+    // sink points at an MftParseSink the caller keeps in place for the whole call.
+    [LibraryImport(LibraryName, EntryPoint = "ParseMftDumpInputStreaming")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial IntPtr NativeParseMftDumpInputStreaming(MftDumpInputHandle input, uint bufferSizeRecords,
+        IntPtr control, IntPtr callback, IntPtr callbackContext, IntPtr sink);
 
     [LibraryImport(LibraryName, EntryPoint = "CloseMftDumpInput")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

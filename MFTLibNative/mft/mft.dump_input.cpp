@@ -11,6 +11,8 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <thread>
+#include <vector>
 
 #include "../framework.h"
 #include "../ntfs.h"
@@ -78,6 +80,9 @@ struct DumpReadContext {
     uint32_t bufferSizeRecords = 0;
     int64_t fileOffset = 0;
     bool readFailed = false;
+    // Extra handles on the same file, so the parts of one chunk read concurrently: a synchronous
+    // handle serializes the reads issued through it.
+    std::vector<mftlib::platform::File*> partFiles;
 };
 
 // Reads exactly byteCount bytes at offset, in calls small enough for every platform read.
@@ -97,6 +102,53 @@ bool ReadExactly(const mftlib::platform::File* file, uint8_t* target, const size
     return true;
 }
 
+constexpr size_t kDumpReadParts = 8;
+
+// Reads a chunk of at least two 8 MiB parts as concurrent reads, one per handle, so a chunk the
+// page cache holds is copied by several threads instead of one. The calling thread reads the first
+// part. Each part but the last is a whole number of 64 KiB units. False when a part's read fails or
+// the file ends first; a reader thread that cannot start throws, as any worker of the parse does.
+bool ReadChunk(const DumpReadContext& dump, uint8_t* target, const size_t byteCount, const int64_t offset) {
+    constexpr size_t kMinimumPartBytes = size_t{8} << 20;
+    constexpr size_t kPartAlignment = size_t{64} << 10;
+    const size_t partCount = (std::min)(dump.partFiles.size() + 1, byteCount / kMinimumPartBytes);
+    if (partCount <= 1) {
+        return ReadExactly(dump.input->file, target, byteCount, offset);
+    }
+    const size_t partBytes = ((byteCount / partCount) + kPartAlignment - 1) / kPartAlignment * kPartAlignment;
+    std::array<bool, kDumpReadParts> succeeded{};
+    std::array<NativeFailure, kDumpReadParts> failures{};
+    std::vector<std::thread> readers;
+    readers.reserve(partCount - 1);
+    const NativeScopeExit joined([&] {
+        for (auto& reader : readers) {
+            if (reader.joinable()) {
+                reader.join();
+            }
+        }
+    });
+    size_t partsRead = 1;
+    for (size_t part = 1; part < partCount && part * partBytes < byteCount; part++, partsRead++) {
+        const size_t start = part * partBytes;
+        const size_t length = (std::min)(partBytes, byteCount - start);
+        const auto* partFile = dump.partFiles[part - 1];
+        readers.push_back(StartNativeThread(
+            [&succeeded, part, partFile, target, start, length, offset] {
+                succeeded[part] = ReadExactly(partFile, target + start, length, offset + static_cast<int64_t>(start));
+            },
+            failures[part]));
+    }
+    succeeded[0] = ReadExactly(dump.input->file, target, partBytes, offset);
+    for (auto& reader : readers) {
+        reader.join();
+    }
+    for (const auto failure : failures) {
+        ThrowNativeFailure(failure);
+    }
+    return std::all_of(succeeded.begin(), succeeded.begin() + static_cast<std::ptrdiff_t>(partsRead),
+                       [](const bool value) { return value; });
+}
+
 // Loads the next chunk of whole records. A failed or short read ends the input and is
 // remembered, so the parse reports it instead of taking it for the end of the file.
 uint64_t ReadDumpChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
@@ -107,7 +159,7 @@ uint64_t ReadDumpChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
     const uint64_t recordsToLoad = (std::min)(dump->recordsRemaining, static_cast<uint64_t>(dump->bufferSizeRecords));
     const auto byteCount = recordsToLoad * dump->input->geometry.recordSize;
     const auto ioStart = SteadyClock::now();
-    if (ShouldFailRead() || !ReadExactly(dump->input->file, targetBuffer, byteCount, dump->fileOffset)) {
+    if (ShouldFailRead() || !ReadChunk(*dump, targetBuffer, byteCount, dump->fileOffset)) {
         dump->readFailed = true;
         return 0;
     }
@@ -130,6 +182,16 @@ MftParseResult* ParseDump(const MftDumpInput& input, ParseRequest request) {
     const uint64_t largestChunk = (std::min)(totalRecords, uint64_t{(std::numeric_limits<uint32_t>::max)()});
     request.bufferSizeRecords = static_cast<uint32_t>(std::clamp<uint64_t>(request.bufferSizeRecords, 1, largestChunk));
     DumpReadContext context{&input, totalRecords, request.bufferSizeRecords};
+    const NativeScopeExit closeParts([&] {
+        for (auto* partFile : context.partFiles) {
+            mftlib::platform::close_file(partFile);
+        }
+    });
+    for (size_t part = 1; part < kDumpReadParts; part++) {
+        if (auto* partFile = mftlib::platform::reopen_read(input.file); partFile != nullptr) {
+            context.partFiles.push_back(partFile);
+        }
+    }
     const ParseSource source{ReadDumpChunk,      &context, totalRecords,           input.geometry,
                              DumpReadIncomplete, true,     kIncompleteReadMessage, true};
     return ParseMFTImpl(source, request);
@@ -190,6 +252,21 @@ EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, const uint32
                 return CreateParseResult(L"Dump input is invalid");
             }
             return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, callbackContext});
+        },
+        [](const wchar_t*) -> MftParseResult* { return nullptr; });
+}
+
+// As ParseMftDumpInput, but hands each parsed slice to sink as soon as its chunk is parsed and
+// returns a result with no entries.
+EXPORT MftParseResult* ParseMftDumpInputStreaming(const MftDumpInput* input, const uint32_t bufferSizeRecords,
+                                                  const MftParseControl* control, const MftProgressCallback callback,
+                                                  void* const callbackContext, const MftParseSink* sink) {
+    return NativeBoundary(
+        [&] {
+            if (input == nullptr || sink == nullptr || sink->slice == nullptr || sink->extensions == nullptr) {
+                return CreateParseResult(L"Dump input or sink is invalid");
+            }
+            return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, callbackContext, sink});
         },
         [](const wchar_t*) -> MftParseResult* { return nullptr; });
 }

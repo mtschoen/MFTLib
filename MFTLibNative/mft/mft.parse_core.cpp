@@ -30,7 +30,43 @@ struct ParseState {
     double parseMs = 0.0;
     uint64_t invalidFixupRecords = 0;
     ParseThreadRecording* threadRecording = nullptr;
+    // Streaming: where slices go instead of output, and whether the sink asked the parse to stop.
+    const MftParseSink* sink = nullptr;
+    bool sinkStopped = false;
 };
+
+// Merge one slice into the output, or hand it to the sink of a streaming parse. False when the
+// merge ran out of memory (error set) or the sink asked to stop (sinkStopped set).
+bool DeliverSlice(ParseState& state, const SliceResult& slice, MftMessageChar* errorMessage) {
+    if (state.sink == nullptr) {
+        return AppendSlice(state.output, slice, errorMessage);
+    }
+    state.output.extensionDataSizes.insert(state.output.extensionDataSizes.end(), slice.extensionDataSizes.begin(),
+                                           slice.extensionDataSizes.end());
+    if (slice.entries.empty()) {
+        return true;
+    }
+    if (state.sink->slice(state.sink->context, slice.entries.data(), slice.entries.size(), slice.strings.data(),
+                          slice.strings.size()) != 0) {
+        state.sinkStopped = true;
+        return false;
+    }
+    return true;
+}
+
+// Hand the collected extension data sizes to the sink. False when the sink asked to stop.
+bool DeliverExtensionDataSizes(ParseState& state) {
+    std::vector<MftExtensionDataSize> sizes;
+    sizes.reserve(state.output.extensionDataSizes.size());
+    for (const auto& extension : state.output.extensionDataSizes) {
+        sizes.push_back(MftExtensionDataSize{extension.baseRecordNumber, extension.size, extension.baseSequenceNumber});
+    }
+    if (state.sink->extensions(state.sink->context, sizes.data(), sizes.size()) != 0) {
+        state.sinkStopped = true;
+        return false;
+    }
+    return true;
+}
 
 // One chunk's global record base plus its record count.
 struct ChunkSpan {
@@ -163,7 +199,7 @@ bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan,
         return RejectInvalidFixup(result);
     }
     state.invalidFixupRecords += batchSlice.invalidFixupRecords;
-    return AppendSlice(state.output, batchSlice, result->errorMessage);
+    return DeliverSlice(state, batchSlice, result->errorMessage);
 }
 
 // Fix up and parse one chunk across threadCount workers, then merge their slices.
@@ -197,7 +233,7 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned threadCount, 
     }
     state.invalidFixupRecords += invalidFixupRecords;
     for (unsigned threadIndex = 0; threadIndex < actualThreads; threadIndex++) {
-        if (!AppendSlice(state.output, slices[threadIndex], result->errorMessage)) {
+        if (!DeliverSlice(state, slices[threadIndex], result->errorMessage)) {
             return false;
         }
     }
@@ -254,7 +290,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
                                               : ParseChunkSerial(buffer, chunk, scan, state, result);
         if (!mergedOk) {
             ioThread.join();
-            return ParseOutcome::Failed;
+            return state.sinkStopped ? ParseOutcome::Cancelled : ParseOutcome::Failed;
         }
 
         recordIndex += currentChunkSize;
@@ -349,8 +385,12 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
             // The record total comes from an unvalidated length, so it only sizes the first allocation
             // up to a fixed ceiling; a larger result grows as records are actually parsed.
             constexpr uint64_t kMaximumInitialEntries = uint64_t{4} * 1024 * 1024;
-            state.output.entryCapacity = std::clamp<uint64_t>(totalRecords / 4, 1024, kMaximumInitialEntries);
-            state.output.stringCapacity = std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
+            state.sink = request.sink;
+            // A streaming parse never merges into the output, so it keeps only token arrays.
+            state.output.entryCapacity =
+                state.sink != nullptr ? 1 : std::clamp<uint64_t>(totalRecords / 4, 1024, kMaximumInitialEntries);
+            state.output.stringCapacity =
+                state.sink != nullptr ? 1 : std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
 
             if (!AllocateParseBuffers(chunkBuffers, bufferSize, state, result)) {
                 return result;
@@ -380,7 +420,14 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
             }
 
             auto fixupStart = SteadyClock::now();
-            ApplyExtensionDataSizes(state.output);
+            if (state.sink == nullptr) {
+                ApplyExtensionDataSizes(state.output);
+            } else if (!DeliverExtensionDataSizes(state)) {
+                return FinishCancelled(state, result);
+            } else {
+                // Every entry already went to the sink, so a streamed result carries none.
+                DiscardOutput(state);
+            }
             state.parseMs += ElapsedMs(fixupStart, SteadyClock::now());
 
             result->usedRecords = state.output.entryCount;
