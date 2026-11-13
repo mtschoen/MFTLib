@@ -24,34 +24,33 @@ the 5 percent query-time bound, and only the caller can tell a repeat query from
 **Revisit only if:** a policy exists that trims without slowing repeated queries (for example a trim on a measured cold
 first touch) and the owner approves MFTLib deciding when to clear its own cache.
 
-## Release benchmark baselines are committed reports
+## Release benchmark baselines are attached reports
 
-**Decision (owner ruling 2026-10-26, B13):** Keep one small, hand-captured
-release report in `Benchmark/baselines/<date>-<short sha>.txt`, measured on a
-quiet machine and committed beside the code as input to `Benchmark.exe compare`.
-These reports are the deliberate exception to the no-measurement-dumps rule;
-logs and raw captures remain excluded. Keep baselines for scenarios the current
-runner emits. The newest committed release report, by its `<date>-<short sha>`
-filename, is the reference that `compare` runs against.
+**Decision (2026-11-13, PR 947 review):** Keep one small, hand-captured release
+report as a release-checklist attachment named `<date>-<short sha>.txt`, measured
+on a quiet machine. Download it to a local path as input to `Benchmark.exe
+compare`; captured measurement reports are not committed. Keep baselines for
+scenarios the current runner emits. The newest attached release report is the
+reference that `compare` runs against.
 
 **Reason:** Benchmark numbers need a quiet machine, so release baselines are
 captured by hand rather than CI. CI artifacts expire, and CI runners share load,
-making their timing numbers noisy. A small text file beside the code is the
-easiest input for `compare`.
+making their timing numbers noisy. Release-checklist attachments preserve the
+complete measurement evidence without committing captured tool output, while the
+existing file-path comparison interface remains unchanged.
 
-**Revisit only if:** an explicitly approved replacement provides durable,
-quiet-machine measurements with equally straightforward comparison inputs.
+**Revisit only if:** release-checklist attachments no longer provide durable,
+quiet-machine measurements with straightforward comparison inputs.
 
 ## Release baselines include MFT enumeration throughput
 
 **Decision (owner ruling 2026-11-05):** `Benchmark.exe mft-enumeration` measures records per second through the
-production dump-source `FileIndex` scan and its row and name-matching passes, and ships in 0.3.0. Every release report
-under `Benchmark/baselines/` includes its four `mft-enumeration-*` blocks beside the index and enumeration-walk blocks.
+production dump-source `FileIndex` scan and its row and name-matching passes, and ships in 0.3.0. Every attached
+release report includes its four `mft-enumeration-*` blocks beside the index and enumeration-walk blocks.
 A pull request that claims or risks a performance change pastes `compare` output for the affected scenarios, as
 [quality gates](quality-gates.md#performance-claims-in-pull-requests) describe. The 0.3.0 release waits for the first
-quiet-machine report that contains these blocks. This ruling also changes B13's reference: instead of a fixed retained
-file, the newest committed release report is the reference for both the release checklist and pull requests, and a
-scenario that report lacks has no reference rather than a failed comparison.
+quiet-machine report that contains these blocks. The newest attached release report is the reference for both the
+release checklist and pull requests, and a scenario that report lacks has no reference rather than a failed comparison.
 
 **Reason:** performance work was unmeasurable without an enumeration baseline. The owner could not tell whether a
 name-filtering refactor moved enumeration speed, because no current scenario measured it; the remembered figure of about

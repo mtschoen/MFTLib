@@ -218,24 +218,19 @@ Investigate failed comparisons rather than replacing a reference to hide a
 regression. These measurements are attended release work, not a CI timing gate.
 
 This recipe saves the three compact `--out` reports outside the checkout, combines
-their report sections into one candidate, compares all eight scenarios, and
-copies only the accepted small report into the release convention without
-capturing console logs. The reference is the newest committed release report:
-the last `Benchmark/baselines/*.txt` in ordinal filename order, so the
-`<date>-<short sha>` name decides and the result is deterministic (commit at most
-one report per date, since same-date names order by their short sha). A scenario
-the reference does not contain yet (the four `mft-enumeration-*` blocks until the
-first report that includes them is committed) is reported as having no reference
-rather than compared; the release report then becomes its first reference:
+their report sections into one candidate, and compares all eight scenarios without
+capturing console logs. Download the previous release report from its release
+checklist attachment to `$reportDirectory/reference.txt` before running the
+recipe; subsequent releases use the newest attached report as their reference. A
+scenario the reference does not contain yet is reported as having no reference
+rather than compared, and the new report becomes its first reference:
 
 ```powershell
 $benchmark = './Benchmark/bin/x64/Release/net10.0/Benchmark.exe'
-$baselineNames = [string[]] @(Get-ChildItem -LiteralPath 'Benchmark/baselines' -Filter '*.txt' -File | ForEach-Object Name)
-if ($baselineNames.Count -eq 0) { throw 'No committed release report to compare against.' }
-[Array]::Sort($baselineNames, [StringComparer]::Ordinal)
-$reference = Join-Path 'Benchmark/baselines' $baselineNames[-1]
 $reportDirectory = Join-Path ([IO.Path]::GetTempPath()) ('mftlib-release-benchmark-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $reportDirectory | Out-Null
+$reference = Join-Path $reportDirectory 'reference.txt'
+# Download the previous report to $reference before continuing.
 $indexReport = Join-Path $reportDirectory 'index.txt'
 $walkReport = Join-Path $reportDirectory 'walk.txt'
 $mftReport = Join-Path $reportDirectory 'mft.txt'
@@ -260,17 +255,21 @@ foreach ($scenario in @('exact-search', 'substring-search', 'enumeration-walk-se
 }
 $measuredRevision = git rev-parse --short HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the measured revision.' }
-$releaseReport = "Benchmark/baselines/$(Get-Date -Format yyyy-MM-dd)-$measuredRevision.txt"
-if (Test-Path -LiteralPath $releaseReport) { throw 'Release report already exists; review it before replacing.' }
-Copy-Item -LiteralPath $candidateReport -Destination $releaseReport
+$releaseReport = Join-Path $reportDirectory "$(Get-Date -Format yyyy-MM-dd)-$measuredRevision.txt"
+Move-Item -LiteralPath $candidateReport -Destination $releaseReport
 ```
 
-Pick the reference before copying the new report into `Benchmark/baselines/`, as the
-recipe does, so a release never compares against itself.
+Attach the complete accepted report to the maintainer's release checklist under
+its `<date>-<short sha>` filename, which identifies the measured code revision.
+Record an authored summary, the measured revision, attachment link and these
+reproduction commands in the checklist before the clean-tree release dry run.
+Retain the report itself only as an attachment and temporary local scratch, never
+as committed logs or captures.
 
-The filename identifies the measured code revision. Review and commit the report
-before the clean-tree release dry run, then validate the resulting release
-commit using the existing ordered release steps. Subsequent releases select it
-automatically as the newest report.
-Retain temporary files only as local scratch, never as
-committed logs or captures.
+The 2026-11-13 capture at `a9ac5f3e` is PR 947 attachment
+`2026-11-13-a9ac5f3e.txt` (`a8d20062-2794-44f7-aed6-15f1abfcd5bc`).
+Against `2026-11-04-7ab8e705`, exact-search was 0.002 ms, substring-search grew
+1.0 percent, and sequential and parallel enumeration walks grew 19.8 and 16.3
+percent respectively, all within their limits. The first MFT enumeration
+references were scan 115.222 ms, rows 16.949 ms, exact-name 1.201 ms and
+substring-name 4.181 ms.
