@@ -236,9 +236,7 @@ directory path longer than 1963 UTF-16 code units, so no walked root can produce
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects. Completion then flushes the block to its file, except for a block created
 delete-on-close (`BlockFile.DeletesOnClose`): no open outlives it and every mapping shares the page cache, so nothing
-ever reads it back from disk. A section the broker opened by name carries the flag the client's `ArmAndScan`
-request states for its file ([broker scan protocol](broker-lifetime.md#scan-protocol)), so the broker skips the flush
-of an uncached client block too. A cached block always flushes.
+ever reads it back from disk. A cached block, and a section the broker opened by name, flush as before.
 
 The root row is a row index, not a producer-independent constant. Enumeration
 blocks assign the configured starting directory, which can be any directory and not

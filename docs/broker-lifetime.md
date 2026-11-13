@@ -107,8 +107,7 @@ a scan channel. The host captures the journal cursor, opens the section, validat
 a private copy of its header against the mapped length and fails the request with
 an `Error` frame when the layout disagrees ([MFT blocks](index-format.md#mft-blocks)
 lists the checks), scans MFT records into the shared block using only that copy's
-geometry, completes it, flushes it unless the request says the client created its file
-delete-on-close, then reads the journal from the armed cursor
+geometry, completes and flushes it, then reads the journal from the armed cursor
 to the tip in bounded chunks, retaining none of those entries. It reports successful
 catch-up or a proven catch-up loss. [Checkpoint loss](checkpoint-loss.md)
 defines proof and recovery; [scan sizing](broker-scan-tuning.md#sizing-the-block)
@@ -120,6 +119,16 @@ The broker-internal scan result carries the completed block, independently recei
 
 Frames are `Cursor`, zero or more `ScanProgress` (`Scanning` samples, then one `Indexing` sample once every row is written), `ScanReady` (skipped record count), then one terminal frame: payload-free `ScanCompleted` for successful catch-up or `CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the host. `Error` replaces any of these frames, including an unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails validation and fails its scan; a validated block transfers to the index.
 
+`Indexing` starts before posting construction. The host completes and explicitly flushes
+the block, disposes its view and releases its parse registration before `ScanReady`.
+The client then releases the section name and waits for catch-up, the terminal frame
+and channel EOF before returning the block. Cached blocks are therefore flushed
+before publication. Skipping the explicit flush alone does not remove flushing:
+.NET's writable `MemoryMappedViewAccessor.Dispose` flushes the view too, including
+an uncached client's section. Completion measurements must include that disposal.
+Temporary timing instrumentation must not throw into either endpoint's scan path;
+a process-local lock does not serialize two processes appending to the same file.
+
 `ScanProgress` carries a `BlockWriteProgress`: a 32-bit phase (Scanning = 0, Indexing = 1), the signed 64-bit records processed, and the nullable signed 64-bit expected total (a presence byte followed by an 8-byte signed integer). A `Scanning` sample counts the records the native parse has processed, which never decreases, out of the volume's MFT slot count; the `Indexing` sample carries zero and no total. The length field is 22 (kind plus payload), for 26 bytes including the four-byte prefix. The channel identifies the volume. Watchdog progress and progress throttling use their own clocks.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
@@ -130,11 +139,7 @@ declared frame length belong to subsequent frames in a combined input. A native-
 `Error` and `Stalled` text is truncated to 32,768 UTF-16 units. An oversized journal
 batch fails that watch with `Error`, like any source failure.
 
-`ArmAndScan` encodes the section name, then a 1-byte include-freed flag (0 or 1), then a
-1-byte block-deletes-on-close flag (0 or 1). The client sets the second flag when it created
-the section's file delete-on-close (an uncached scan): nothing reads that file back from disk,
-so the broker skips the completion flush. A cached block's flag is 0 and the broker flushes it
-before `ScanReady`, so the block is durable before the client publishes it.
+`ArmAndScan` encodes the section name, then a 1-byte include-freed flag (0 or 1).
 The section name must match `mftlib-block-<root>-` followed by 32 ASCII hex digits
 (`0-9`, `a-f`, `A-F`) for the scan channel's volume letter (47 UTF-16 units); any other
 section name, truncated fields, invalid flags and trailing data are malformed requests

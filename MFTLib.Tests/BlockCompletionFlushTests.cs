@@ -29,14 +29,13 @@ public sealed class BlockCompletionFlushTests : IDisposable
         Assert.AreEqual(expectFlush, flushedRanges > 0);
     }
 
-    // The broker opens the client's section by name, so only the client's request says whether the file is
-    // delete-on-close. A flushed range publishes the flush step through the operation reporter.
+    // Opening by name does not inherit the client's delete-on-close flag. Keep flushing cached blocks before publication.
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
-    [DataRow(true, false, DisplayName = "the broker skips the flush of a delete-on-close client block")]
-    [DataRow(false, true, DisplayName = "the broker flushes a cached client block")]
-    public void BrokerSectionWrite_FlushesOnlyACachedClientBlock(bool deleteOnClose, bool expectFlush)
+    [DataRow(true, DisplayName = "uncached client block")]
+    [DataRow(false, DisplayName = "cached client block")]
+    public void BrokerSectionWrite_FlushesBeforeReturning(bool deleteOnClose)
     {
         var sectionName = NamedBlockSection.BuildSectionName('C');
         var (block, lifetime) = NamedBlockSection.Create(
@@ -49,12 +48,12 @@ public sealed class BlockCompletionFlushTests : IDisposable
             var steps = new StepRecorder();
             using var source = RowWriting.Source([[new MftRecord(5, 5, new MftRecordFields(3), ".")]]);
 
-            new RealBlockSectionWriter(TimeProvider.System).Write(new BlockSectionRequest(sectionName, deleteOnClose),
+            new RealBlockSectionWriter(TimeProvider.System).Write(sectionName,
                 new UsnJournalCursor(7, 100), source, new MftScanOptions(), new BlockWriteReporting(null, steps),
                 CancellationToken.None);
 
             Assert.IsTrue(block.Header.IsComplete);
-            Assert.AreEqual(expectFlush, steps.Count(MftBlockScan.FlushStep) > 0);
+            Assert.IsGreaterThan(0, steps.Count(MftBlockScan.FlushStep));
         }
     }
 

@@ -26,11 +26,11 @@ sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSectio
 
     public string? LastSectionName { get; private set; }
 
-    public BlockWriteResult Write(BlockSectionRequest section, UsnJournalCursor cursor, IMftSliceSource source,
+    public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor, IMftSliceSource source,
         MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
-        LastSectionName = section.Name;
-        return MftBlockScan.WriteToBlock(resolveSection?.Invoke(section.Name) ?? Block,
+        LastSectionName = sectionName;
+        return MftBlockScan.WriteToBlock(resolveSection?.Invoke(sectionName) ?? Block,
             new BlockStamp(cursor, timeProvider ?? TimeProvider.System), source, scanOptions, reporting with { Operation = null }, cancellationToken);
     }
 

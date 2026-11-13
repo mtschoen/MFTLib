@@ -26,7 +26,7 @@ static class ScriptedScanSteps
                 [new MftRecord(5, 5, new MftRecordFields(3), ".")],
                 [new MftRecord(20, 5, new MftRecordFields(1), "file.txt")]
             ]);
-            writer.Write(new BlockSectionRequest(sectionName, DeletesOnClose: true), cursor, source,
+            writer.Write(sectionName, cursor, source,
                 new MftScanOptions(), default, CancellationToken.None);
         }
     }

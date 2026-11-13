@@ -378,28 +378,11 @@ public partial class BrokerProcessTests
         Assert.Contains("Truncated", lost.Message);
     }
 
-    // The broker opens the section by name and cannot see how the client created its file, so the request carries
-    // whether the block is delete-on-close: the broker skips the completion flush only for such a block.
     [TestMethod]
-    [DataRow(true, DisplayName = "uncached delete-on-close block")]
-    [DataRow(false, DisplayName = "cached block")]
-    public async Task ScanVolume_SendsSectionIncludeFreedAndTheBlockDeleteOnClose(bool deleteOnClose)
-    {
-        var target = TestBlockSections.Target() with { DeleteOnClose = deleteOnClose };
-        try
-        {
-            await ScanAndAssertRequestAsync(target, deleteOnClose);
-        }
-        finally
-        {
-            File.Delete(target.Path);
-        }
-    }
-
-    async Task ScanAndAssertRequestAsync(BlockScanTarget target, bool expectedDeletesOnClose)
+    public async Task ScanVolume_SendsSectionAndIncludeFreed()
     {
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanVolumeAsync('C', target,
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(),
             new MftScanOptions(), null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using (var pipe = await broker.AcceptChannelAsync())
@@ -409,7 +392,6 @@ public partial class BrokerProcessTests
             Assert.IsNotNull(request);
             Assert.IsNotNull(request.Value.SectionName);
             Assert.IsFalse(request.Value.IncludeFreed);
-            Assert.AreEqual(expectedDeletesOnClose, request.Value.BlockDeletesOnClose);
         }
 
         await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));

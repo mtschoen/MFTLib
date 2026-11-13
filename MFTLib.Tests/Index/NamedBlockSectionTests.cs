@@ -45,7 +45,7 @@ public sealed class NamedBlockSectionTests : IDisposable
         using (lifetime)
         using (creatorBlock)
         {
-            using var openedBlock = NamedBlockSection.OpenExisting(sectionName, deletesOnClose: false);
+            using var openedBlock = NamedBlockSection.OpenExisting(sectionName);
             var writer = new BlockWriter(openedBlock);
             Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse | RowFlags.Directory,
                 (uint)FileAttributes.Directory, 0, Moment.Ticks, 0)));
@@ -86,6 +86,6 @@ public sealed class NamedBlockSectionTests : IDisposable
     public void OpenExisting_UnknownSectionName_ThrowsFileNotFound()
     {
         Assert.ThrowsExactly<FileNotFoundException>(() =>
-            NamedBlockSection.OpenExisting(NamedBlockSection.BuildSectionName('Z'), deletesOnClose: false));
+            NamedBlockSection.OpenExisting(NamedBlockSection.BuildSectionName('Z')));
     }
 }

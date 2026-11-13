@@ -92,10 +92,10 @@ static partial class BrokerProtocol
 
     // Volume pipe
 
-    // payload: [sectionName string][includeFreed byte, 0 or 1][blockDeletesOnClose byte, 0 or 1]
+    // payload: [sectionName string][includeFreed byte, 0 or 1]
     public static void WriteArmAndScan(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().String(frame.SectionName).Boolean(frame.IncludeFreed).Boolean(frame.BlockDeletesOnClose)
+        new PayloadWriter().String(frame.SectionName).Boolean(frame.IncludeFreed)
             .WriteTo(writer, BrokerFrameKind.ArmAndScan);
     }
 
