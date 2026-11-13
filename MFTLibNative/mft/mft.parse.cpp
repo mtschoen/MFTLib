@@ -270,10 +270,9 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
     return failure;
 }
 
-// Parses every allocated base record of a volume; includeFreed nonzero also emits freed base records.
-MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t bufferSizeRecords,
-                            const MftParseControl* control, MftProgressCallback callback, void* callbackContext,
-                            MftParseResult*& result) {
+// Parses every allocated base record of a volume; request.includeFreed also emits freed base records,
+// and request.sink streams the slices instead of collecting them into the result.
+MftParseResult* ParseVolume(HANDLE volumeHandle, ParseRequest request, MftParseResult*& result) {
     if (volumeHandle == INVALID_HANDLE_VALUE) {
         SetErrorMessage(result->errorMessage, L"Volume handle is invalid");
         return result;
@@ -363,7 +362,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
     readContext.mftRuns = &mftRuns;
     readContext.bytesPerCluster = bytesPerCluster;
     readContext.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / geometry->recordSize;
-    readContext.bufferSizeRecords = ClampChunkRecords(bufferSizeRecords, totalRecords, geometry->recordSize);
+    readContext.bufferSizeRecords = ClampChunkRecords(request.bufferSizeRecords, totalRecords, geometry->recordSize);
     readContext.geometry = *geometry;
 
     free(result);
@@ -375,8 +374,23 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
                              VolumeReadIncomplete,
                              false,
                              kIncompleteVolumeReadMessage};
-    return ParseMFTImpl(
-        source, ParseRequest{includeFreed != 0, readContext.bufferSizeRecords, control, callback, callbackContext});
+    request.bufferSizeRecords = readContext.bufferSizeRecords;
+    return ParseMFTImpl(source, request);
+}
+
+// ParseVolume behind the native boundary: a thrown failure becomes the result's message.
+MftParseResult* ParseVolumeAtBoundary(HANDLE volumeHandle, const ParseRequest& request) {
+    auto* result = CreateParseResult();
+    if (result == nullptr) {
+        return nullptr;
+    }
+    return NativeBoundary([&]() { return ParseVolume(volumeHandle, request, result); },
+                          [&](const wchar_t* message) {
+                              if (result != nullptr) {
+                                  SetErrorMessage(result->errorMessage, message);
+                              }
+                              return result;
+                          });
 }
 
 }  // namespace
@@ -395,20 +409,19 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t includeFreed,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
                                                    MftProgressCallback callback, void* callbackContext) {
-    auto* result = CreateParseResult();
-    if (result == nullptr) {
-        return nullptr;
+    return ParseVolumeAtBoundary(
+        volumeHandle, ParseRequest{includeFreed != 0, bufferSizeRecords, control, callback, callbackContext});
+}
+
+// As ParseMFTRecordsWithProgress, but hands each parsed slice to sink as soon as its chunk is parsed
+// and returns a result with no entries; usedRecords counts the entries delivered.
+EXPORT MftParseResult* ParseMFTRecordsStreaming(HANDLE volumeHandle, uint32_t includeFreed, uint32_t bufferSizeRecords,
+                                                const MftParseControl* control, MftProgressCallback callback,
+                                                void* callbackContext, const MftParseSink* sink) {
+    if (sink == nullptr || sink->slice == nullptr || sink->extensions == nullptr) {
+        return CreateParseResult(L"Parse sink is invalid");
     }
-    return NativeBoundary(
-        [&]() {
-            return ParseVolume(volumeHandle, includeFreed, bufferSizeRecords, control, callback, callbackContext,
-                               result);
-        },
-        [&](const wchar_t* message) {
-            if (result != nullptr) {
-                SetErrorMessage(result->errorMessage, message);
-            }
-            return result;
-        });
+    return ParseVolumeAtBoundary(
+        volumeHandle, ParseRequest{includeFreed != 0, bufferSizeRecords, control, callback, callbackContext, sink});
 }
 }

@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 12;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 13;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -175,6 +175,9 @@ EXPORT uint32_t GetMftNativeAbiVersion();
 EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* volumeHandle, uint32_t includeFreed,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
                                                    MftProgressCallback callback, void* callbackContext);
+EXPORT MftParseResult* ParseMFTRecordsStreaming(void* volumeHandle, uint32_t includeFreed, uint32_t bufferSizeRecords,
+                                                const MftParseControl* control, MftProgressCallback callback,
+                                                void* callbackContext, const MftParseSink* sink);
 EXPORT void FreeMftResult(MftParseResult* result);
 EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
 EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,

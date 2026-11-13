@@ -11,7 +11,7 @@ static partial class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 12;
+    internal const uint ExpectedMftNativeAbiVersion = 13;
     internal const uint NativeCompactEntrySize = 52;
 
     internal static readonly NativeHooks Hooks = new();
@@ -67,6 +67,12 @@ static partial class MFTLibNative
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, uint includeFreed,
         uint bufferSizeRecords, IntPtr control, IntPtr callback, IntPtr callbackContext);
+
+    // sink points at an MftParseSink the caller keeps in place for the whole call.
+    [LibraryImport(LibraryName, EntryPoint = "ParseMFTRecordsStreaming")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial IntPtr NativeParseMFTRecordsStreaming(SafeHandle volumeHandle, uint includeFreed,
+        uint bufferSizeRecords, IntPtr control, IntPtr callback, IntPtr callbackContext, IntPtr sink);
 
     [LibraryImport(LibraryName, EntryPoint = "FreeMftResult")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
