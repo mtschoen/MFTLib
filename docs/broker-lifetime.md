@@ -57,7 +57,7 @@ formatting (`BrokerLiveness.FormatSeconds`):
 - `DiagnosticsFlushTimeout` (2 seconds): elevated `--broker` exit wait for diagnostic
   log flushing.
 - `ProgressThrottleInterval` (250 milliseconds): default minimum interval between
-  intermediate `ScanProgress` frames during a root block scan.
+  `ScanProgress` frames of one phase during a root block scan; the first sample of a new phase is written at once.
 
 ## Session ownership
 
@@ -117,9 +117,9 @@ The broker-internal scan result carries the completed block, independently recei
 
 `RootStatus` exposes the block's row and skipped counts and, after proven loss, `RootWatchStatus.CheckpointLoss`. Proven loss still returns the completed block. `BlockScanOutcome` carries the block and skipped record count; row count and name-pool size are in the header. The section writer returns row count, name-pool usage and skipped record count; capacity exhaustion is read from the block header. The watch replays the scan window and anything after it, provided those entries are still retained when watching starts. A loss after scanning is reported by the watch.
 
-Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count), then one terminal frame: payload-free `ScanCompleted` for successful catch-up or `CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the host. `Error` replaces any of these frames, including an unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails validation and fails its scan; a validated block transfers to the index.
+Frames are `Cursor`, zero or more `ScanProgress` (`Scanning` samples, then one `Indexing` sample once every row is written), `ScanReady` (skipped record count), then one terminal frame: payload-free `ScanCompleted` for successful catch-up or `CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the host. `Error` replaces any of these frames, including an unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails validation and fails its scan; a validated block transfers to the index.
 
-`ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), two signed 64-bit values (records processed and name-pool bytes processed), and two nullable signed 64-bit totals (total records and total name-pool bytes, each a presence byte followed by an 8-byte signed integer). The length field is 39 (kind plus payload), for 43 bytes including the four-byte prefix. The channel identifies the volume. Watchdog progress and progress throttling use their own clocks.
+`ScanProgress` carries a `BlockWriteProgress`: a 32-bit phase (Scanning = 0, Indexing = 1), the signed 64-bit records processed, and the nullable signed 64-bit expected total (a presence byte followed by an 8-byte signed integer). A `Scanning` sample counts the records the native parse has processed, which never decreases, out of the volume's MFT slot count; the `Indexing` sample carries zero and no total. The length field is 22 (kind plus payload), for 26 bytes including the four-byte prefix. The channel identifies the volume. Watchdog progress and progress throttling use their own clocks.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. Every frame kind must consume its declared payload completely; any

@@ -56,9 +56,9 @@ required; a null source refuses that operation as the real host does.
   backlog.
 - `ScanVolume` receives a `ScriptedScan` (the drive letter and cancellation token)
   and returns the scan's records in batches. `ScriptedScan.ReportParsed`
-  emits one parsing-phase progress frame, which the client reports as
-  `IndexScanPhase.ParsingMft`. A batch sequence that yields lazily is written as it is
-  enumerated, so a test can pause after the first batch, or call `InProcessBrokerHandle.Crash()`
+  emits one scanning progress frame, which the client reports as
+  `IndexScanPhase.Scanning`; the host reports `IndexScanPhase.Indexing` itself once every row is written. A batch
+  sequence that yields lazily is written as it is enumerated, so a test can pause after the first batch, or call `InProcessBrokerHandle.Crash()`
   from inside the scan. Null refuses every scan with the channel error "Broker has no scan
   source".
 - `ReadJournal` answers the bounded catch-up read after a scan. Null answers "nothing new"

@@ -1447,3 +1447,26 @@ so a single-index form has no consumer production caller. The three single-patte
 **Reason:** the name is gone from the namespace at the move, so consumers must drop the entry then; the later delete is real and must not be swallowed; the detector is a seam because the trigger set may grow.
 
 **Revisit only if:** NTFS or another supported rename-to-trash mechanism needs an additional default predicate arm behind the detector seam.
+
+## A scan streams: three ordered phases, one counter, scratch blocks and no fault order
+
+**Decision (owner ruling 2026-11-13, issue 939):** every MFT producer (local volume, dump and broker) writes rows
+while the volume or dump is still being parsed, in the ideal-API shape rather than interleaved phases.
+`IndexScanPhase` is `Enumerating`, `Scanning`, `Indexing`, `Finished`; `ParsingMft` and `Transferring` are deleted,
+and a root never moves back to an earlier phase within a scan. `Scanning` carries one counter that never decreases:
+`IndexScanProgress.WrittenRowCount` is the records processed, out of `ExpectedRowCount`, the native slot count.
+`Indexing` (posting build plus flush) carries no count, and `Finished` is unchanged. Among several faults in one scan
+there is no ordering promise; the exception types are unchanged. A block that already exists when the parse fails is
+that failed scan's scratch space: a dump the parser rejects now costs a created-then-discarded block. The native ABI
+is 12.
+
+**Reason:** writing rows from the parse's own slices removes the serial transfer stage (a 2,000,000-slot dump went
+from 668 ms to 221 ms in the prototype; a live 15.8 million-record volume from about 17.9 s to about 13 s, against a
+read floor of about 12.5 s), and an interleaved pair of phases would make a consumer that assumes parsing finishes
+before transfer starts see the phase flip back and forth. Neither consumer displays more than the phase and its count.
+
+**Consumer migration:** file-wizard `ScanProgressPresenter.cs`, `IndexSession.cs`, `DriveScanProgressBoard.cs`,
+`UpdateHandler.cs`; git-wizard `Program.WatchOutput.cs`, `LiveWatchViewModel.Readiness.cs`,
+`IndexVolumeChangeSource.ScanProgress.cs`.
+
+**Revisit only if:** a consumer needs a count during `Indexing`, or a fault order it can act on.

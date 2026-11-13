@@ -206,7 +206,10 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       [checkpoint loss](checkpoint-loss.md).
       `FileIndexOptions.ScanProgress` samples a scan while its producer runs, then `VolumeScan`
       emits one `IndexScanPhase.Finished` sample after the producer's last sample for each
-      scan, for MFT and enumeration producers, in opens and rescans.
+      scan, for MFT and enumeration producers, in opens and rescans. A scan moves through `Enumerating` or
+      `Scanning`, then `Indexing`, then `Finished`, and never back: `VolumeScan` (`ScanProgressOrder`) drops a sample
+      that would return to an earlier phase or lower the count within one, so a growth retry's restarted `Scanning`
+      count stays hidden until it passes what was already reported.
       Samples fan out with each receiving view's Root; diagnostics deduplicate equal sinks. The creating view supplies
       the scan's clock, directory-walk options and scan hooks. Query and disposal hooks remain per view.
       `IndexScanProgress.Outcome` is non-null only on that terminal sample: `Succeeded`,
