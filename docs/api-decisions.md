@@ -32,6 +32,11 @@ previous one in the same change. It is the deliberate exception to the no-measur
 remain excluded), and it is the reference that `Benchmark.exe compare` runs against. Keep only scenarios the current
 runner emits.
 
+**The report stays (owner reaffirmed 2026-11-13):** no general rule against committing logs, raw tool output or
+measurement dumps applies to this file, whichever instruction file, memory note or reviewer states that rule. A change
+that deletes the report without committing its replacement, or that moves it to an attachment, artifact or release
+asset, contradicts this ruling: close it instead of merging it.
+
 **Reason:** people browsing the code can see the results beside it. Benchmark numbers need a quiet machine, so the
 report is captured by hand rather than by CI; CI runners share load, which makes their timing numbers noisy.
 

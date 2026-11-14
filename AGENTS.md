@@ -86,6 +86,8 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 `TEST-REPORT.md` is generated on main by CI and never edited in a pull request.
 
+`Benchmark/baselines/` keeps its one committed report ([owner ruling](docs/api-decisions.md)); no house rule deletes it.
+
 [Maintained developer tools](docs/maintained-developer-tools.md): only redundant code is deleted. Lack of production or CI callers does not make a developer tool redundant; add CI exercise. Keep every script listed with its purpose, runner role and CI check. Syntax and inventory gates enforce the baseline.
 
 `AgentInstructionsTests` guards tracked-content portability. Stage additions/removals first; `.maintenance.json` and `.plan` are tracked.
