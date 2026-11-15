@@ -185,7 +185,7 @@ public static class SyntheticBlock
 
         var columns = new RowColumns(row.ParentRow, flags, (uint)row.Attributes, row.Size ?? 0,
             row.IsLastWriteTimeUnknown ? 0 : row.LastWriteTime.Ticks, row.SequenceNumber);
-        if (!writer.TryWriteRow(row.Row, row.Name, columns))
+        if (writer.TryWriteRow(row.Row, row.Name, columns) != WriteRefusal.None)
         {
             throw new InvalidOperationException(
                 $"Row {row.Row} ({row.Name}) does not fit the block's capacity.");

@@ -246,7 +246,7 @@ public class BlockFileTests
             Assert.AreEqual(4096u, block.Header.BucketCount);
             Assert.AreEqual(BlockLayout.TotalBlockBytes(4096, 10000, BlockLayout.ComputeDeltaCapacity(4096), 1048576), block.Length);
             var writer = new BlockWriter(block);
-            Assert.IsTrue(writer.TryWriteRow(0, string.Empty, columns));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, string.Empty, columns));
             writer.Complete(ScanMoment, null);
         }
 
@@ -255,11 +255,12 @@ public class BlockFileTests
         Assert.IsNotNull(reopened);
         for (var index = 0; index < 10000; index++)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(reopened, $"name-{index}", out _));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(reopened, $"name-{index}", out _));
         }
 
         var reopenedWriter = new BlockWriter(reopened);
-        Assert.IsFalse(reopenedWriter.TryWriteRow(1, "name-10000", columns));
+        Assert.AreNotEqual(WriteRefusal.None, reopenedWriter.TryWriteRow(1, "name-10000", columns));
+        reopenedWriter.MarkCapacityExhausted();
         Assert.AreEqual(10000u, reopened.NameEntryCount);
         Assert.IsTrue(reopened.Header.IsCapacityExhausted);
     }

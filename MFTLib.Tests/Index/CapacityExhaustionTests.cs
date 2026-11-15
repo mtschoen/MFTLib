@@ -105,12 +105,12 @@ public sealed class CapacityExhaustionTests : IDisposable
             namePoolCapacity: exhaustEntries ? 512u : 4u);
         try
         {
-            Assert.IsTrue(writer.TryWriteRow(1, "four", new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "four", new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
             if (exhaustEntries)
             {
-                Assert.IsTrue(writer.TryRenameRow(1, "second", 0));
-                Assert.IsTrue(writer.TryRenameRow(1, "third", 0));
-                Assert.IsTrue(writer.TryRenameRow(1, "fourth", 0));
+                Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "second", 0));
+                Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "third", 0));
+                Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "fourth", 0));
             }
             var changes = new JournalMutator(writer).Apply(snapshot[0],
                 [Create(2, "cannot-fit"), Create(3, "four")], journalIdentifier: 1, nextUsn: 10);

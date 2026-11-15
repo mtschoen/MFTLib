@@ -80,7 +80,7 @@ sealed class SyntheticBlockBuilder : IDisposable
             _nextRow = rowIndex + 1;
         }
 
-        if (!NamePool.TryGetOrAdd(_block, name, out var nameId))
+        if (NamePool.TryGetOrAdd(_block, name, out var nameId) != WriteRefusal.None)
         {
             throw new InvalidOperationException("The synthetic name does not fit in the block.");
         }

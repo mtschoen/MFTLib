@@ -118,7 +118,7 @@ static class PostingQueryTestSupport
                 default:
                     var name = $"Interned-Later-{random.Next(0, 40)}.Dat";
                     corpus.Names.Add(name);
-                    Assert.IsTrue(NamePool.TryGetOrAdd(block, name, out var interned));
+                    Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, name, out var interned));
                     RenameWithDelta(builder, row, interned);
                     break;
             }

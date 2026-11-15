@@ -286,7 +286,7 @@ public class JournalMutatorMetadataFreshnessTests
     }
 
     [TestMethod]
-    public async Task RenameWithAContentReason_WhenTheNamePoolIsFull_StillInvalidatesAndAdvancesGeneration()
+    public async Task RenameWithAContentReason_WhenTheNamePoolIsFull_LeavesTheRowAndGenerationUntouched()
     {
         await using var fixture = new MutatorFixture();
         fixture.Block.PublishNamePoolUsed(fixture.Block.NamePoolCapacity);
@@ -301,8 +301,8 @@ public class JournalMutatorMetadataFreshnessTests
         Assert.IsEmpty(changes);
         Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
         var row = fixture.Block.Rows[(int)FileRowIndex];
-        Assert.IsFalse(row.SizeKnown);
-        Assert.IsFalse(row.LastWriteTimeKnown);
-        Assert.AreEqual(generation + 1, fixture.Block.Header.Generation, "The metadata mutation must be recorded.");
+        Assert.IsTrue(row.SizeKnown, "A refused rename must not apply the record's metadata.");
+        Assert.IsTrue(row.LastWriteTimeKnown);
+        Assert.AreEqual(generation, fixture.Block.Header.Generation);
     }
 }

@@ -149,20 +149,22 @@ static class NamePool
 
     /// <summary>
     ///     Returns the identifier of the exact spelling, adding it when absent. A hit succeeds even when entries or
-    ///     the pool are full; a miss fails when either is full or the name is too long.
+    ///     the pool are full; a miss is refused with <see cref="WriteRefusal.NameEntries" /> when the entries are
+    ///     full or the name is too long, and with <see cref="WriteRefusal.NamePool" /> when the pool lacks room.
+    ///     A refusal writes nothing.
     /// </summary>
-    internal static bool TryGetOrAdd(BlockFile block, ReadOnlySpan<char> name, out uint nameId)
+    internal static WriteRefusal TryGetOrAdd(BlockFile block, ReadOnlySpan<char> name, out uint nameId)
     {
         ArgumentNullException.ThrowIfNull(block);
         var hash = NameHash.Compute(name);
         if (TryFindForWrite(block, name, hash, out nameId) || name.IsEmpty)
         {
-            return true;
+            return WriteRefusal.None;
         }
 
         if (name.Length > MaximumNameLengthUnits || block.NameEntryCount >= block.NameEntryCapacity)
         {
-            return false;
+            return WriteRefusal.NameEntries;
         }
 
         var isUtf16 = !Ascii.IsValid(name);
@@ -171,7 +173,7 @@ static class NamePool
         var byteCount = name.Length * (isUtf16 ? sizeof(char) : 1);
         if (offset + (uint)byteCount > block.NamePoolCapacity)
         {
-            return false;
+            return WriteRefusal.NamePool;
         }
 
         var destination = block.GetNamePoolBytes((uint)offset, byteCount);
@@ -189,7 +191,7 @@ static class NamePool
         var previous = Volatile.Read(ref buckets[bucket]);
         if (previous > block.NameEntryCount)
         {
-            return false;
+            return WriteRefusal.NameEntries;
         }
 
         nameId = block.NameEntryCount + 1;
@@ -211,7 +213,7 @@ static class NamePool
         block.PublishNameEntryCount(nameId);
         Volatile.Write(ref buckets[bucket], nameId);
         block.AddToOrdinalLookup(BucketOf(block, hash), name, nameId);
-        return true;
+        return WriteRefusal.None;
     }
 
     /// <summary>

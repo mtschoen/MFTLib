@@ -74,21 +74,24 @@ public class FileIndexWatchRescanFaultDuringProductionTests
     }
 
     /// <summary>
-    ///     Journal entries whose enumeration parks on a gate and then throws, so the pump is held
+    ///     Journal entries whose first read parks on a gate and then throws, so the pump is held
     ///     inside the apply of an item it has already accepted, and the apply then fails.
     /// </summary>
     sealed class GatedFailingEntries(TestGate gate, Exception failure) : IReadOnlyList<UsnJournalEntry>
     {
         public int Count => 1;
 
-        public UsnJournalEntry this[int index] => throw failure;
-
-        public IEnumerator<UsnJournalEntry> GetEnumerator()
+        public UsnJournalEntry this[int index]
         {
-            gate.MarkEntered();
-            gate.WaitForRelease();
-            throw failure;
+            get
+            {
+                gate.MarkEntered();
+                gate.WaitForRelease();
+                throw failure;
+            }
         }
+
+        public IEnumerator<UsnJournalEntry> GetEnumerator() => throw failure;
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }

@@ -41,8 +41,8 @@ public sealed partial class BlockWriterTests : IDisposable
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
-        Assert.IsTrue(writer.TryWriteRow(1, "report.pdf", FileColumns(0, size: 4096, attributes: 32)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "", RootColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "report.pdf", FileColumns(0, size: 4096, attributes: 32)));
 
         Assert.AreEqual(2u, writer.RowCount);
         Assert.AreEqual("report.pdf", NamePool.ReadRowName(block, 1).ToString());
@@ -58,8 +58,8 @@ public sealed partial class BlockWriterTests : IDisposable
         var writer = new BlockWriter(block);
         var columns = new RowColumns(0, RowFlags.InUse, 0, 10, 0, 0);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "a.txt", in columns));
-        Assert.IsTrue(writer.TryWriteRow(7, "b.txt", in columns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a.txt", in columns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(7, "b.txt", in columns));
 
         Assert.AreEqual(8u, block.Header.RowCount);
         Assert.AreEqual(2u, block.Header.LiveRowCount);
@@ -80,7 +80,7 @@ public sealed partial class BlockWriterTests : IDisposable
         writer.MarkTombstone(3);
         Assert.AreEqual(0u, block.Header.LiveRowCount);
 
-        Assert.IsTrue(writer.TryWriteRow(3, "reused.txt", in columns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "reused.txt", in columns));
         Assert.AreEqual(1u, block.Header.LiveRowCount);
     }
 
@@ -93,16 +93,16 @@ public sealed partial class BlockWriterTests : IDisposable
         var liveColumns = new RowColumns(0, RowFlags.InUse, 0, 10, 0, 0);
         var nonliveColumns = new RowColumns(0, RowFlags.InUse | RowFlags.Tombstone, 0, 10, 0, 0);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "live.txt", in liveColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "live.txt", in liveColumns));
         Assert.AreEqual(1u, block.Header.LiveRowCount);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "still-live.txt", in liveColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "still-live.txt", in liveColumns));
         Assert.AreEqual(1u, block.Header.LiveRowCount);
 
-        Assert.IsTrue(writer.TryWriteRow(1, "deleted.txt", in nonliveColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "deleted.txt", in nonliveColumns));
         Assert.AreEqual(1u, block.Header.LiveRowCount);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "now-deleted.txt", in nonliveColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "now-deleted.txt", in nonliveColumns));
         Assert.AreEqual(0u, block.Header.LiveRowCount);
     }
 
@@ -113,7 +113,7 @@ public sealed partial class BlockWriterTests : IDisposable
         using var block = builder.OpenForWriting();
         var writer = new BlockWriter(block);
         var columns = new RowColumns(0, RowFlags.None, 0, 10, 0, 0);
-        Assert.IsTrue(writer.TryWriteRow(0, "unused.txt", in columns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "unused.txt", in columns));
 
         writer.MarkSubtreeSkipped(0);
         writer.MarkTombstone(0);
@@ -122,27 +122,27 @@ public sealed partial class BlockWriterTests : IDisposable
     }
 
     [TestMethod]
-    public void TryWriteRow_PastSlotCapacity_SetsCapacityExhaustedAndReturnsFalse()
+    public void TryWriteRow_PastSlotCapacity_RefusesWithSlotsAndLeavesTheFlagToTheCaller()
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 4);
         var writer = new BlockWriter(block);
 
-        Assert.IsFalse(writer.TryWriteRow(4, "overflow.txt", FileColumns(0)));
-        Assert.IsTrue(writer.CapacityExhausted);
+        Assert.AreEqual(WriteRefusal.Slots, writer.TryWriteRow(4, "overflow.txt", FileColumns(0)));
+        Assert.IsFalse(writer.CapacityExhausted);
         Assert.AreEqual(0u, writer.RowCount);
         Assert.AreEqual(0u, block.Header.LiveRowCount);
     }
 
     [TestMethod]
-    public void TryWriteRow_WithAnExhaustedNamePool_SetsCapacityExhaustedAndLeavesTheRowUntouched()
+    public void TryWriteRow_WithAnExhaustedNamePool_RefusesWithNamePoolAndLeavesTheRowUntouched()
     {
         using var block = TestBlocks.Create(_blockPath, namePoolCapacity: 8);
         var writer = new BlockWriter(block);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "abcd", FileColumns(0)));
-        Assert.IsFalse(writer.TryWriteRow(1, "this name does not fit", FileColumns(0)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "abcd", FileColumns(0)));
+        Assert.AreEqual(WriteRefusal.NamePool, writer.TryWriteRow(1, "this name does not fit", FileColumns(0)));
 
-        Assert.IsTrue(writer.CapacityExhausted);
+        Assert.IsFalse(writer.CapacityExhausted);
         Assert.IsFalse(block.Rows[1].IsInUse);
         Assert.AreEqual(1u, block.Header.LiveRowCount);
     }
@@ -153,11 +153,11 @@ public sealed partial class BlockWriterTests : IDisposable
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 8);
         var writer = new BlockWriter(block);
 
-        Assert.IsFalse(writer.TryWriteRow(99, "far.txt", FileColumns(0)));
-        Assert.IsTrue(writer.TryWriteRow(1, "near.txt", FileColumns(0)));
+        Assert.AreEqual(WriteRefusal.Slots, writer.TryWriteRow(99, "far.txt", FileColumns(0)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "near.txt", FileColumns(0)));
 
         Assert.AreEqual("near.txt", NamePool.ReadRowName(block, 1).ToString());
-        Assert.IsTrue(writer.CapacityExhausted);
+        Assert.IsFalse(writer.CapacityExhausted);
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public sealed partial class BlockWriterTests : IDisposable
         // Row 1 is inside the published range (RowCount already covers it), so this create
         // reuses a live slot rather than filling a fresh one, exactly like a journal create
         // over a reused MFT record number.
-        Assert.IsTrue(writer.TryWriteRow(1, "reused.txt", FileColumns(0, size: 20, attributes: 32)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "reused.txt", FileColumns(0, size: 20, attributes: 32)));
 
         var descriptor = FileRow.ReadDescriptorWord(in block.Rows[1]);
         var nameId = FileRow.DescriptorNameId(descriptor);
@@ -191,7 +191,7 @@ public sealed partial class BlockWriterTests : IDisposable
         using var block = builder.OpenForWriting();
         var writer = new BlockWriter(block);
 
-        Assert.IsTrue(writer.TryWriteRow(5, "root", new RowColumns(
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, "root", new RowColumns(
             5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 42)));
 
         Assert.AreEqual((ushort)42, block.SequenceNumbers[5]);
@@ -205,7 +205,7 @@ public sealed partial class BlockWriterTests : IDisposable
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
-        Assert.IsTrue(writer.TryRenameRow(1, "after.txt", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "after.txt", parentRow: 0));
 
         writer.MarkTombstone(1);
 
@@ -232,14 +232,14 @@ public sealed partial class BlockWriterTests : IDisposable
     }
 
     [TestMethod]
-    public void MarkSubtreeSkipped_PastSlotCapacity_SetsCapacityExhausted()
+    public void MarkSubtreeSkipped_PastSlotCapacity_RefusesWithSlotsAndLeavesTheFlagToTheCaller()
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 4);
         var writer = new BlockWriter(block);
 
-        writer.MarkSubtreeSkipped(9);
+        Assert.AreEqual(WriteRefusal.Slots, writer.MarkSubtreeSkipped(9));
 
-        Assert.IsTrue(writer.CapacityExhausted);
+        Assert.IsFalse(writer.CapacityExhausted);
     }
 
     [TestMethod]

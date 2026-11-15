@@ -56,14 +56,14 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 64, namePoolCapacity: 4096);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
-        Assert.IsTrue(writer.TryWriteRow(1, "a.txt", FileColumns()));
-        Assert.IsTrue(writer.TryWriteRow(2, "b.txt", FileColumns()));
-        Assert.IsTrue(writer.TryWriteRow(3, "a.txt", FileColumns()));
-        Assert.IsTrue(writer.TryWriteRow(4, "b.txt", FileColumns(RowFlags.InUse | RowFlags.Tombstone)));
-        Assert.IsTrue(writer.TryWriteRow(5, "a.txt", FileColumns(RowFlags.None)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "", RootColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "a.txt", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(2, "b.txt", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "a.txt", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(4, "b.txt", FileColumns(RowFlags.InUse | RowFlags.Tombstone)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, "a.txt", FileColumns(RowFlags.None)));
         // Rows 6 to 8 are a gap with no descriptor at all.
-        Assert.IsTrue(writer.TryWriteRow(9, "c.txt", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(9, "c.txt", FileColumns()));
 
         writer.Complete(Moment, null);
 
@@ -89,7 +89,7 @@ public sealed class PostingBuildTests : IDisposable
         var writer = new BlockWriter(block);
         for (uint row = 0; row < rows; row++)
         {
-            Assert.IsTrue(writer.TryWriteRow(row, row % 10 == 0 ? "other" : "index.js", FileColumns()));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(row, row % 10 == 0 ? "other" : "index.js", FileColumns()));
         }
 
         writer.Complete(Moment, null);
@@ -107,10 +107,10 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 64, namePoolCapacity: 4096);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
-        Assert.IsTrue(writer.TryWriteRow(1, "old", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "", RootColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "old", FileColumns()));
         writer.Complete(Moment, null);
-        Assert.IsTrue(writer.TryRenameRow(1, "new", 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "new", 0));
         block.DeltaEntries[1] = new DeltaEntry { Row = 1, NameId = NameIdOf(block, 1), Next = 0 };
         block.DeltaHeads[(int)(NameIdOf(block, 1) & (block.BucketCount - 1))] = 1;
         block.PublishDeltaEntryCount(1);
@@ -129,7 +129,7 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "", RootColumns));
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
 
@@ -144,8 +144,8 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
-        Assert.IsTrue(writer.TryWriteRow(1, "a.txt", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "", RootColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "a.txt", FileColumns()));
         using var canceller = new SecondReportCanceller();
 
         Assert.ThrowsExactly<OperationCanceledException>(() => writer.Complete(Moment, null, canceller.Report,
@@ -164,7 +164,7 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "", RootColumns));
         var reports = 0;
 
         writer.Complete(Moment, null, () => reports++);
@@ -177,7 +177,7 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a", FileColumns()));
         FileRow.WriteDescriptorWord(ref block.Rows[0], block.NameEntryCount + 1, RowFlags.InUse);
 
         Assert.ThrowsExactly<InvalidDataException>(() => writer.Complete(Moment, null));
@@ -190,11 +190,11 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 64, namePoolCapacity: 4096);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
-        Assert.IsTrue(writer.TryWriteRow(1, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "a", FileColumns()));
         writer.Complete(Moment, null);
         // Rename row 1 behind the writer's back, so the new name gets no delta entry.
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "b", out var nameId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "b", out var nameId));
         FileRow.WriteDescriptorWord(ref block.Rows[1], nameId, RowFlags.InUse);
 
         var failure = PostingIntegrity.Check(block);
@@ -208,8 +208,8 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 64, namePoolCapacity: 4096);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
-        Assert.IsTrue(writer.TryWriteRow(1, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "a", FileColumns()));
         writer.Complete(Moment, null);
         (block.PostingRows[0], block.PostingRows[1]) = (block.PostingRows[1], block.PostingRows[0]);
 
@@ -221,7 +221,7 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 64, namePoolCapacity: 4096);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a", FileColumns()));
         writer.Complete(Moment, null);
         var nameId = NameIdOf(block, 0);
         block.DeltaEntries[1] = new DeltaEntry { Row = 0, NameId = nameId, Next = 0 };
@@ -236,7 +236,7 @@ public sealed class PostingBuildTests : IDisposable
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 64, namePoolCapacity: 4096);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a", FileColumns()));
         writer.Complete(Moment, null);
         block.PublishDeltaEntryCount(1);
 
@@ -248,7 +248,7 @@ public sealed class PostingBuildTests : IDisposable
     {
         using (var block = TestBlocks.Create(_blockPath, deleteOnClose: false))
         {
-            Assert.IsTrue(new BlockWriter(block).TryWriteRow(0, "a", FileColumns()));
+            Assert.AreEqual(WriteRefusal.None, new BlockWriter(block).TryWriteRow(0, "a", FileColumns()));
             Assert.IsFalse(block.PostingsBuilt);
             new BlockWriter(block).Complete(Moment, null);
         }
@@ -270,7 +270,7 @@ public sealed class PostingBuildTests : IDisposable
         using var source = TestBlocks.Create(Path.Combine(_directory.Path, "source.mlix"), slotCapacity: 64,
             namePoolCapacity: 4096);
         var writer = new BlockWriter(source);
-        Assert.IsTrue(writer.TryWriteRow(0, "a", FileColumns()));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, "a", FileColumns()));
         writer.Complete(Moment, null);
 
         Assert.IsTrue(target.TryAdoptPublishedCursors(source.Header));

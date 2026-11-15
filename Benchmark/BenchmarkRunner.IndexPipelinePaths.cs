@@ -33,7 +33,7 @@ public partial class BenchmarkRunner
             var name = string.Create(CultureInfo.InvariantCulture,
                 $"{(row % 3 == 0 ? "資料" : "node")}-{row:D8}");
             var flags = RowFlags.InUse | (slot <= 12 ? RowFlags.Directory : 0);
-            if (!writer.TryWriteRow(row, name, new RowColumns(parent, flags, 0, 1, 0, 0)))
+            if (writer.TryWriteRow(row, name, new RowColumns(parent, flags, 0, 1, 0, 0)) != WriteRefusal.None)
             {
                 throw new InvalidOperationException("Synthetic path input did not fit its block.");
             }

@@ -16,7 +16,7 @@ public partial class BlockWriterTests
         var originalNameId = block.Rows[1].NameId;
         var originalEntryCount = block.NameEntryCount;
 
-        Assert.IsTrue(writer.TryRenameRow(1, "README.md", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "README.md", parentRow: 0));
 
         Assert.AreNotEqual(originalNameId, block.Rows[1].NameId);
         Assert.AreEqual(originalEntryCount + 1, block.NameEntryCount);
@@ -35,7 +35,7 @@ public partial class BlockWriterTests
         var sharedNameId = block.Rows[11].NameId;
         Assert.AreEqual(block.Rows[10].NameId, sharedNameId);
 
-        Assert.IsTrue(writer.TryRenameRow(10, "Notes.txt", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(10, "Notes.txt", parentRow: 0));
 
         Assert.AreEqual("Notes.txt", NamePool.ReadRowName(block, 10).ToString());
         Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, 11).ToString());
@@ -53,7 +53,7 @@ public partial class BlockWriterTests
         writer.TryWriteRow(2, "unchanged.txt", FileColumns(0, size: 10, attributes: 32, parentRow: 0));
         var namePoolUsedBefore = block.Header.NamePoolUsed;
 
-        Assert.IsTrue(writer.TryRenameRow(2, "unchanged.txt", parentRow: 1));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(2, "unchanged.txt", parentRow: 1));
 
         Assert.AreEqual(namePoolUsedBefore, block.Header.NamePoolUsed);
         Assert.AreEqual(1u, block.Rows[2].ParentRow);
@@ -69,7 +69,7 @@ public partial class BlockWriterTests
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
         var originalNameId = block.Rows[1].NameId;
 
-        Assert.IsTrue(writer.TryRenameRow(1, "after.txt", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "after.txt", parentRow: 0));
 
         Assert.AreEqual("after.txt", NamePool.ReadRowName(block, 1).ToString());
         Assert.AreNotEqual(originalNameId, block.Rows[1].NameId);
@@ -85,7 +85,7 @@ public partial class BlockWriterTests
         writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
         var originalNameId = block.Rows[1].NameId;
 
-        Assert.IsTrue(writer.TryRenameRow(1, "considerably-longer-name.txt", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(1, "considerably-longer-name.txt", parentRow: 0));
 
         // The published descriptor identifies immutable name storage, including after a rename.
         var descriptor = FileRow.ReadDescriptorWord(in block.Rows[1]);
@@ -101,15 +101,15 @@ public partial class BlockWriterTests
     }
 
     [TestMethod]
-    public void TryRenameRow_RowIndexAtOrPastSlotCapacity_FlagsCapacityExhaustionAndFails()
+    public void TryRenameRow_RowIndexAtOrPastSlotCapacity_RefusesWithSlotsAndLeavesTheFlagToTheCaller()
     {
         using var block = TestBlocks.Create(_blockPath, slotCapacity: 4);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
 
-        Assert.IsFalse(writer.TryRenameRow(4, "overflow.txt", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.Slots, writer.TryRenameRow(4, "overflow.txt", parentRow: 0));
 
-        Assert.IsTrue(block.Header.IsCapacityExhausted);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]
@@ -122,7 +122,7 @@ public partial class BlockWriterTests
         writer.TryWriteRow(1, "twenty-characters-ok", FileColumns(0, size: 10, attributes: 32));
         var originalNameId = block.Rows[1].NameId;
 
-        Assert.IsFalse(writer.TryRenameRow(1, "this-new-name-does-not-fit", parentRow: 0));
+        Assert.AreEqual(WriteRefusal.NamePool, writer.TryRenameRow(1, "this-new-name-does-not-fit", parentRow: 0));
 
         Assert.AreEqual(originalNameId, block.Rows[1].NameId);
         Assert.AreEqual("twenty-characters-ok", NamePool.ReadRowName(block, 1).ToString());

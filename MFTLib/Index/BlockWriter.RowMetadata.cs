@@ -29,23 +29,26 @@ sealed partial class BlockWriter
     ///     stored pre-move path.
     /// </summary>
     /// <param name="rowIndex">Zero-based row slot to mark.</param>
-    public void MarkTombstone(uint rowIndex)
+    /// <returns>
+    ///     <see cref="WriteRefusal.None" /> when the row is marked; otherwise the refusal, with the row unchanged:
+    ///     a past-the-end index, or a delete-pending row whose restored bare name cannot be stored.
+    /// </returns>
+    public WriteRefusal MarkTombstone(uint rowIndex)
     {
         using var access = Block.TakeAccess();
-        AddRowFlags(rowIndex, RowFlags.Tombstone, ReadOnlySpan<char>.Empty);
+        return AddRowFlags(rowIndex, RowFlags.Tombstone, ReadOnlySpan<char>.Empty);
     }
 
     /// <summary>
     ///     Marks an allocated row delete-pending so it is hidden from queries like a tombstone while storing its
     ///     full pre-move path in the name column for the later delete record that completes the tombstone. A row
     ///     becomes delete-pending only when <paramref name="preMovePath" /> is interned into the name column;
-    ///     if interning fails, the block is marked capacity-exhausted and the transition is refused without
-    ///     changing the row.
+    ///     if interning fails, the transition is refused without changing the row.
     /// </summary>
     /// <param name="rowIndex">Zero-based row slot to mark.</param>
     /// <param name="preMovePath">The row's full path before the delete-pending rename.</param>
-    /// <returns>true when the pre-move path was interned and the row was marked delete-pending; otherwise, false.</returns>
-    public bool MarkDeletePending(uint rowIndex, ReadOnlySpan<char> preMovePath)
+    /// <returns><see cref="WriteRefusal.None" /> when the pre-move path was interned and the row was marked delete-pending; otherwise the refusal.</returns>
+    public WriteRefusal MarkDeletePending(uint rowIndex, ReadOnlySpan<char> preMovePath)
     {
         using var access = Block.TakeAccess();
         return AddRowFlags(rowIndex, RowFlags.DeletePending, preMovePath);
@@ -53,10 +56,11 @@ sealed partial class BlockWriter
 
     /// <summary>Marks a directory whose subtree enumeration was skipped after an access denial.</summary>
     /// <param name="rowIndex">Zero-based directory row slot to mark.</param>
-    public void MarkSubtreeSkipped(uint rowIndex)
+    /// <returns><see cref="WriteRefusal.Slots" /> when the index is past the slot capacity; otherwise <see cref="WriteRefusal.None" />.</returns>
+    public WriteRefusal MarkSubtreeSkipped(uint rowIndex)
     {
         using var access = Block.TakeAccess();
-        AddRowFlags(rowIndex, RowFlags.SubtreeSkipped, ReadOnlySpan<char>.Empty);
+        return AddRowFlags(rowIndex, RowFlags.SubtreeSkipped, ReadOnlySpan<char>.Empty);
     }
 
     /// <summary>
@@ -64,7 +68,8 @@ sealed partial class BlockWriter
     ///     the attribute word is replaced, and <paramref name="freshness" /> decides which scanned
     ///     observations survive. An invalidated observation is marked unknown through the descriptor
     ///     word before its column is zeroed, so a reader never sees a zero it was told to trust. A
-    ///     A row that is unused or deleted is left untouched.
+    ///     row that is unused or deleted, or whose index is past the slot capacity, is left untouched;
+    ///     callers range-check the index first, because this member never refuses.
     /// </summary>
     /// <param name="rowIndex">Zero-based row slot to update.</param>
     /// <param name="attributes">Raw NTFS file attributes the journal record captured.</param>
@@ -75,7 +80,6 @@ sealed partial class BlockWriter
         using var access = Block.TakeAccess();
         if (rowIndex >= Block.SlotCapacity)
         {
-            MarkCapacityExhaustedCore();
             return false;
         }
 
@@ -163,12 +167,11 @@ sealed partial class BlockWriter
     ///     rename publishes atomically, which is exactly the tear this layout exists to prevent.
     ///     Callers reach this only from members already holding an access scope.
     /// </summary>
-    bool AddRowFlags(uint rowIndex, RowFlags additionalFlags, ReadOnlySpan<char> replacementName)
+    WriteRefusal AddRowFlags(uint rowIndex, RowFlags additionalFlags, ReadOnlySpan<char> replacementName)
     {
         if (rowIndex >= Block.SlotCapacity)
         {
-            MarkCapacityExhaustedCore();
-            return false;
+            return WriteRefusal.Slots;
         }
 
         ref var row = ref Block.Rows[(int)rowIndex];
@@ -177,17 +180,22 @@ sealed partial class BlockWriter
         var nameId = FileRow.DescriptorNameId(descriptor);
         if ((additionalFlags & RowFlags.DeletePending) != 0)
         {
-            if (!TryInternName(replacementName, out nameId))
+            var internRefusal = NamePool.TryGetOrAdd(Block, replacementName, out nameId);
+            if (internRefusal != WriteRefusal.None)
             {
-                return false;
+                return internRefusal;
             }
         }
         else if ((additionalFlags & RowFlags.Tombstone) != 0 && (flags & RowFlags.DeletePending) != 0)
         {
             var lastSegment = IndexNavigation.LastPathSegmentString(NamePool.Read(Block, nameId));
-            if (lastSegment.Length > 0 && TryInternName(lastSegment, out var restoredNameId))
+            if (lastSegment.Length > 0)
             {
-                nameId = restoredNameId;
+                var restoreRefusal = NamePool.TryGetOrAdd(Block, lastSegment, out nameId);
+                if (restoreRefusal != WriteRefusal.None)
+                {
+                    return restoreRefusal;
+                }
             }
         }
 
@@ -207,6 +215,6 @@ sealed partial class BlockWriter
         FileRow.WriteDescriptorWord(ref row,
             nameId,
             updatedFlags);
-        return true;
+        return WriteRefusal.None;
     }
 }

@@ -35,9 +35,9 @@ public sealed class PostingDeltaAppendTests : IDisposable
             ProducerKind.Mft, slotCapacity, namePoolCapacity: 65536) with
         { DeltaCapacity = deltaCapacity });
         _writer = new BlockWriter(_block);
-        Assert.IsTrue(_writer.TryWriteRow(0, "", DirectoryColumns));
-        Assert.IsTrue(_writer.TryWriteRow(1, "base.txt", FileColumns));
-        Assert.IsTrue(_writer.TryWriteRow(2, "base.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(0, "", DirectoryColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(1, "base.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(2, "base.txt", FileColumns));
         if (complete)
         {
             _writer.Complete(Moment, null);
@@ -55,7 +55,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
     {
         CreateBlock();
 
-        Assert.IsTrue(_writer.TryWriteRow(5, "fresh.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(5, "fresh.txt", FileColumns));
 
         var nameId = NameIdOf("fresh.txt");
         Assert.AreEqual(1u, _block.DeltaEntryCount);
@@ -73,7 +73,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
     {
         CreateBlock(complete: false);
 
-        Assert.IsTrue(_writer.TryWriteRow(5, "fresh.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(5, "fresh.txt", FileColumns));
 
         Assert.AreEqual(0u, _block.DeltaEntryCount);
     }
@@ -84,7 +84,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
         CreateBlock();
         _writer.MarkTombstone(1);
 
-        Assert.IsTrue(_writer.TryWriteRow(1, "base.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(1, "base.txt", FileColumns));
 
         Assert.AreEqual(0u, _block.DeltaEntryCount);
         Assert.IsNull(SyntheticNamePool.CheckPostingIntegrity(_block));
@@ -96,7 +96,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
         CreateBlock();
         _writer.MarkTombstone(1);
 
-        Assert.IsTrue(_writer.TryWriteRow(1, "other.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(1, "other.txt", FileColumns));
 
         Assert.AreEqual(1u, _block.DeltaEntryCount);
         Assert.AreEqual(1u, _block.DeltaEntries[1].Row);
@@ -108,7 +108,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
     {
         CreateBlock();
 
-        Assert.IsTrue(_writer.TryWriteRow(1, "base.txt", FileColumns with { Size = 99 }));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(1, "base.txt", FileColumns with { Size = 99 }));
 
         Assert.AreEqual(0u, _block.DeltaEntryCount);
     }
@@ -118,7 +118,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
     {
         CreateBlock();
 
-        Assert.IsTrue(_writer.TryRenameRow(1, "renamed.txt", 0));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "renamed.txt", 0));
 
         Assert.AreEqual(1u, _block.DeltaEntryCount);
         Assert.AreEqual(1u, _block.DeltaEntries[1].Row);
@@ -131,7 +131,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
     {
         CreateBlock();
 
-        Assert.IsTrue(_writer.TryRenameRow(1, "BASE.TXT", 0));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "BASE.TXT", 0));
 
         Assert.AreEqual(1u, _block.DeltaEntryCount);
         Assert.AreEqual(NameIdOf("BASE.TXT"), _block.DeltaEntries[1].NameId);
@@ -143,8 +143,8 @@ public sealed class PostingDeltaAppendTests : IDisposable
         CreateBlock();
         var baseRowCount = _block.PostingBaseRowCount;
 
-        Assert.IsTrue(_writer.TryRenameRow(1, "away.txt", 0));
-        Assert.IsTrue(_writer.TryRenameRow(1, "base.txt", 0));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "away.txt", 0));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "base.txt", 0));
 
         Assert.AreEqual(2u, _block.DeltaEntryCount);
         Assert.AreEqual(NameIdOf("base.txt"), _block.DeltaEntries[2].NameId);
@@ -157,7 +157,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
     {
         CreateBlock();
 
-        Assert.IsTrue(_writer.TryRenameRow(1, "base.txt", 2));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "base.txt", 2));
 
         Assert.AreEqual(0u, _block.DeltaEntryCount);
     }
@@ -181,7 +181,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
         var row = 3u;
         for (var index = 0; index <= bucketCount + 1; index++, row++)
         {
-            Assert.IsTrue(_writer.TryWriteRow(row, $"name-{index}", FileColumns));
+            Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(row, $"name-{index}", FileColumns));
         }
 
         var entries = _block.DeltaEntries;
@@ -192,16 +192,19 @@ public sealed class PostingDeltaAppendTests : IDisposable
     }
 
     [TestMethod]
-    public void ExhaustedDelta_RefusesTheWriteSetsTheFlagAndKeepsTheRowUntouched()
+    public void ExhaustedDelta_RefusesTheWriteWithDeltaAndWritesNothing()
     {
         CreateBlock(deltaCapacity: 2);
-        Assert.IsTrue(_writer.TryWriteRow(5, "one.txt", FileColumns));
-        Assert.IsTrue(_writer.TryWriteRow(6, "two.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(5, "one.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(6, "two.txt", FileColumns));
         Assert.IsFalse(_block.Header.IsCapacityExhausted);
 
-        Assert.IsFalse(_writer.TryWriteRow(7, "three.txt", FileColumns));
+        var namesBefore = _block.NameEntryCount;
 
-        Assert.IsTrue(_block.Header.IsCapacityExhausted);
+        Assert.AreEqual(WriteRefusal.Delta, _writer.TryWriteRow(7, "three.txt", FileColumns));
+
+        Assert.IsFalse(_block.Header.IsCapacityExhausted);
+        Assert.AreEqual(namesBefore, _block.NameEntryCount, "the refused name was never interned");
         Assert.AreEqual(2u, _block.DeltaEntryCount);
         Assert.AreEqual(0u, FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in _block.Rows[7])));
         Assert.AreEqual(7u, _block.RowCount, "the refused row was never published");
@@ -212,11 +215,14 @@ public sealed class PostingDeltaAppendTests : IDisposable
     public void ExhaustedDelta_RefusesARenameAndKeepsTheOldName()
     {
         CreateBlock(deltaCapacity: 1);
-        Assert.IsTrue(_writer.TryRenameRow(1, "first.txt", 0));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "first.txt", 0));
 
-        Assert.IsFalse(_writer.TryRenameRow(2, "second.txt", 0));
+        var namesBefore = _block.NameEntryCount;
 
-        Assert.IsTrue(_block.Header.IsCapacityExhausted);
+        Assert.AreEqual(WriteRefusal.Delta, _writer.TryRenameRow(2, "second.txt", 0));
+
+        Assert.IsFalse(_block.Header.IsCapacityExhausted);
+        Assert.AreEqual(namesBefore, _block.NameEntryCount, "the refused name was never interned");
         Assert.AreEqual("base.txt", NamePool.ReadRowName(_block, 2).ToString());
         Assert.AreEqual(1u, _block.DeltaEntryCount);
     }
@@ -225,10 +231,10 @@ public sealed class PostingDeltaAppendTests : IDisposable
     public void ExhaustedDelta_StillAcceptsWritesThatNeedNoEntry()
     {
         CreateBlock(deltaCapacity: 1);
-        Assert.IsTrue(_writer.TryWriteRow(5, "one.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(5, "one.txt", FileColumns));
 
-        Assert.IsTrue(_writer.TryWriteRow(1, "base.txt", FileColumns with { Size = 7 }));
-        Assert.IsTrue(_writer.TryRenameRow(1, "base.txt", 2));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(1, "base.txt", FileColumns with { Size = 7 }));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryRenameRow(1, "base.txt", 2));
 
         Assert.IsFalse(_block.Header.IsCapacityExhausted);
     }
@@ -237,8 +243,9 @@ public sealed class PostingDeltaAppendTests : IDisposable
     public void GrowthMinimum_AfterDeltaExhaustionDoublesOnlyTheDeltaCapacity()
     {
         CreateBlock(deltaCapacity: 1);
-        Assert.IsTrue(_writer.TryWriteRow(5, "one.txt", FileColumns));
-        Assert.IsFalse(_writer.TryWriteRow(6, "two.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(5, "one.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.Delta, _writer.TryWriteRow(6, "two.txt", FileColumns));
+        _writer.MarkCapacityExhausted();
 
         var minimum = BlockLayout.GrowthMinimum(_block.Header);
 

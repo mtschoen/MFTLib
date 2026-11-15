@@ -16,9 +16,9 @@ public partial class BlockWriterTests
         using var builder = new SyntheticBlockBuilder();
         using var block = builder.OpenForWriting();
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(3, "first.txt", Columns(seeded)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "first.txt", Columns(seeded)));
 
-        Assert.IsTrue(writer.TryWriteRow(3, "second.txt", Columns(supplied)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "second.txt", Columns(supplied)));
 
         Assert.AreEqual(supplied, block.SequenceNumbers[3]);
     }
@@ -32,10 +32,10 @@ public partial class BlockWriterTests
         using var builder = new SyntheticBlockBuilder();
         using var block = builder.OpenForWriting();
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(3, "first.txt", Columns(seeded)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "first.txt", Columns(seeded)));
         writer.MarkTombstone(3);
 
-        Assert.IsTrue(writer.TryWriteRow(3, "second.txt", Columns(supplied)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "second.txt", Columns(supplied)));
 
         Assert.AreEqual(supplied, block.SequenceNumbers[3]);
     }

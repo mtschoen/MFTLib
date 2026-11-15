@@ -159,7 +159,7 @@ public class JournalMutatorFreedRowTests
         // A direct rename of a deleted row relinks it under its new parent...
         fixture.Apply([EntryAt(40, UsnReason.FileDelete, "fresh.txt", parent: 6, sequence: 9)]);
         var writer = new BlockWriter(fixture.Block);
-        Assert.IsTrue(writer.TryRenameRow(40, "moved.txt", parentRow: 5));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(40, "moved.txt", parentRow: 5));
 
         // ...so reusing the old parent does not detach it through a stale link either.
         fixture.Apply([EntryAt(DocumentsRow, UsnReason.FileDelete, "newdir", parent: 5, sequence: 10)]);

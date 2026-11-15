@@ -132,7 +132,8 @@ public sealed class MftBlockGrowthTests : IDisposable
                 writer.TryWriteRow(row, $"r{row}", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0));
             }
 
-            Assert.IsFalse(writer.TryWriteRow(100, "overflow", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
+            Assert.AreNotEqual(WriteRefusal.None, writer.TryWriteRow(100, "overflow", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
+            writer.MarkCapacityExhausted();
             writer.Complete(DateTime.UtcNow, null);
             return new MftBlockProduceResult(created, 0);
         }).Block;
@@ -148,7 +149,10 @@ public sealed class MftBlockGrowthTests : IDisposable
         var writer = new BlockWriter(block);
         for (uint row = 5; row < 5 + 40; row++)
         {
-            writer.TryWriteRow(row, $"name-{row}", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0));
+            if (writer.TryWriteRow(row, $"name-{row}", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)) != WriteRefusal.None)
+            {
+                writer.MarkCapacityExhausted();
+            }
         }
 
         writer.Complete(DateTime.UtcNow, null);

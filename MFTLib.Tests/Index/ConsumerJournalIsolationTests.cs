@@ -63,7 +63,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
             scanShape: request.ScanShape))
         {
             var writer = new BlockWriter(block);
-            Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, ".", new RowColumns(
                 ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory,
                 Attributes: 0, Size: 0, ModifiedTicks: 0, SequenceNumber: 0)));
             writer.SetJournalCursor(7, 1_000);

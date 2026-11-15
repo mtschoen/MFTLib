@@ -171,7 +171,15 @@ static class MftBlockRowWriter
 
         var columns = new RowColumns((uint)entry.ParentRecordNumber, flags, entry.FileAttributes,
             isDirectory ? 0 : entry.Size, ModifiedTicks(entry.ModifiedFileTime), entry.SequenceNumber);
-        return writer.TryWriteRowUnderAccess(access, (uint)entry.RecordNumber, name, in columns);
+        // A producer keeps what fits and records that something did not.
+        var refusal = writer.TryWriteRowUnderAccess(access, (uint)entry.RecordNumber, name, in columns);
+        if (refusal == WriteRefusal.None)
+        {
+            return true;
+        }
+
+        writer.MarkCapacityExhausted();
+        return false;
     }
 
     // MftRecord.ModifiedUtc.Ticks: zero, negative and past-DateTime.MaxValue FILETIMEs read as DateTime.MinValue.

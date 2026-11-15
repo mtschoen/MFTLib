@@ -47,7 +47,7 @@ public sealed class NamedBlockSectionTests : IDisposable
         {
             using var openedBlock = NamedBlockSection.OpenExisting(sectionName, deleteOnClose: false);
             var writer = new BlockWriter(openedBlock);
-            Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse | RowFlags.Directory,
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse | RowFlags.Directory,
                 (uint)FileAttributes.Directory, 0, Moment.Ticks, 0)));
 
             // The creator's mapping and the opener's mapping are the same pages, so the row

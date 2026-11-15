@@ -119,25 +119,29 @@ public sealed class FileIndexMftRescanGrowthTests : IndexTreeTestBase
                 case "Rows":
                     for (uint row = 6; row < 64; row++)
                     {
-                        Assert.IsTrue(writer.TryWriteRow(row, "file", Columns(row)));
+                        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(row, "file", Columns(row)));
                     }
 
-                    Assert.IsFalse(writer.TryWriteRow(64, "overflow", Columns(5)));
+                    Assert.AreNotEqual(WriteRefusal.None, writer.TryWriteRow(64, "overflow", Columns(5)));
+                    writer.MarkCapacityExhausted();
                     break;
                 case "Entries":
                     for (var index = 1; index < 64; index++)
                     {
-                        Assert.IsTrue(writer.TryRenameRow(5, $"name-{index}", 5));
+                        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(5, $"name-{index}", 5));
                     }
 
-                    Assert.IsFalse(writer.TryRenameRow(5, "name-overflow", 5));
+                    Assert.AreNotEqual(WriteRefusal.None, writer.TryRenameRow(5, "name-overflow", 5));
+                    writer.MarkCapacityExhausted();
                     break;
                 case "Pool":
-                    Assert.IsTrue(writer.TryRenameRow(5, new string('f', 3995), 5));
-                    Assert.IsFalse(writer.TryRenameRow(5, "é" + new string('a', 254), 5));
+                    Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(5, new string('f', 3995), 5));
+                    Assert.AreNotEqual(WriteRefusal.None, writer.TryRenameRow(5, "é" + new string('a', 254), 5));
+                    writer.MarkCapacityExhausted();
                     break;
                 case "RecordIndex":
-                    Assert.IsFalse(writer.TryWriteRow(1000, "overflow", Columns(5)));
+                    Assert.AreNotEqual(WriteRefusal.None, writer.TryWriteRow(1000, "overflow", Columns(5)));
+                    writer.MarkCapacityExhausted();
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown exhausted region '{exhaustedRegion}'.");
@@ -161,7 +165,7 @@ public sealed class FileIndexMftRescanGrowthTests : IndexTreeTestBase
 
         static void WriteRoot(BlockWriter writer)
         {
-            Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5,
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, ".", new RowColumns(5,
                 RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0)));
         }
 

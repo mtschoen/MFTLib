@@ -206,7 +206,11 @@ sealed class EnumerationProducer
 
         if (directory.SubtreeSkipped)
         {
-            writer.MarkSubtreeSkipped(directory.Directory.RowIndex);
+            if (writer.MarkSubtreeSkipped(directory.Directory.RowIndex) != WriteRefusal.None)
+            {
+                writer.MarkCapacityExhausted();
+            }
+
             skippedCount++;
         }
         else if (!writer.CapacityExhausted)
@@ -221,8 +225,9 @@ sealed class EnumerationProducer
     /// <summary>Writes one row, growing the block through <see cref="GrowWriter" /> for as long as it does not fit.</summary>
     bool TryWriteRowGrowing(ref BlockWriter writer, uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
-        while (!writer.TryWriteRow(rowIndex, name, columns))
+        while (writer.TryWriteRow(rowIndex, name, columns) != WriteRefusal.None)
         {
+            writer.MarkCapacityExhausted();
             if (GrowWriter?.Invoke(writer) is not { } grown)
             {
                 return false;

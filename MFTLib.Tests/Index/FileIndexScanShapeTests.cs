@@ -329,7 +329,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         try
         {
             var writer = new BlockWriter(block);
-            Assert.IsTrue(writer.TryWriteRow(5, ".",
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, ".",
                 new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, Moment.Ticks, 1)));
             writer.SetJournalCursor(7, 4096);
             writer.Complete(Moment, null, cancellationToken: CancellationToken.None);

@@ -1,8 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Writes rows and names; a row or name that cannot fit sets the capacity-exhausted flag and
-///     reports failure, allowing callers to keep what fits and report the need for a rescan.
+///     Writes rows and names; a row or name that cannot fit is refused with a <see cref="WriteRefusal" />
+///     that names the full region and writes nothing. The writer never sets the capacity-exhausted flag
+///     for a refusal: the caller decides between flagging the block (<see cref="MarkCapacityExhausted" />),
+///     growing it, and skipping the record.
 ///     Each public member holds a <see cref="BlockAccessScope" /> throughout: it either completes
 ///     before unmapping or throws <see cref="ObjectDisposedException" /> when disposal began first.
 /// </summary>
@@ -60,36 +62,48 @@ sealed partial class BlockWriter
         }
     }
 
-    /// <summary>Fills one slot, or sets the capacity-exhausted flag and returns false without writing a row when the slot or name cannot fit.</summary>
+    /// <summary>Fills one slot, or refuses without writing anything (no row, name entry or posting) when the slot, name or posting delta cannot fit.</summary>
     /// <param name="rowIndex">Zero-based row slot to populate.</param>
     /// <param name="name">File or directory name to intern in the block's name pool.</param>
     /// <param name="columns">Remaining row values, including parent, attributes, size, and flags.</param>
-    /// <returns>true when the row and name fit; otherwise, false after marking capacity exhausted.</returns>
-    public bool TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
+    /// <returns><see cref="WriteRefusal.None" /> when the row and name fit; otherwise the full region.</returns>
+    public WriteRefusal TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         using var access = Block.TakeAccess();
         return TryWriteRowCore(rowIndex, name, in columns);
     }
 
     /// <summary>Writes a row using the caller's live batch scope, preserving the single-row publication protocol.</summary>
-    internal bool TryWriteRowUnderAccess(BlockAccessScope access, uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
+    internal WriteRefusal TryWriteRowUnderAccess(BlockAccessScope access, uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         access.Validate(Block);
         return TryWriteRowCore(rowIndex, name, in columns);
     }
 
-    /// <summary>Shared publication path; callers hold either a single-row or a validated batch access scope.</summary>
-    bool TryWriteRowCore(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
+    /// <summary>
+    ///     Shared publication path; callers hold either a single-row or a validated batch access scope. Delta room is
+    ///     checked before the name is interned, so every refusal writes nothing.
+    /// </summary>
+    WriteRefusal TryWriteRowCore(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         if (rowIndex >= Block.SlotCapacity)
         {
-            MarkCapacityExhaustedCore();
-            return false;
+            return WriteRefusal.Slots;
         }
 
-        if (!TryInternName(name, out var nameId))
+        if (DeltaIsFull && !name.IsEmpty)
         {
-            return false;
+            var previousNameId = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in Block.Rows[(int)rowIndex]));
+            if (!NamePool.TryFindOrdinal(Block, name, out var existingNameId) || existingNameId != previousNameId)
+            {
+                return WriteRefusal.Delta;
+            }
+        }
+
+        var internRefusal = NamePool.TryGetOrAdd(Block, name, out var nameId);
+        if (internRefusal != WriteRefusal.None)
+        {
+            return internRefusal;
         }
 
         // A create can reuse the row index of a previously deleted record, which is inside
@@ -101,10 +115,7 @@ sealed partial class BlockWriter
         Hooks._rowCaptured?.Invoke();
         var previousDescriptor = FileRow.ReadDescriptorWord(in row);
         var previousFlags = FileRow.DescriptorFlags(previousDescriptor);
-        if (!TryPublishPosting(rowIndex, FileRow.DescriptorNameId(previousDescriptor), nameId))
-        {
-            return false;
-        }
+        PublishPosting(rowIndex, FileRow.DescriptorNameId(previousDescriptor), nameId);
 
         var previousParentRow = row.ParentRow;
         var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & FileRow.DeletedFlags) == 0;
@@ -148,7 +159,7 @@ sealed partial class BlockWriter
             }
         }
 
-        return true;
+        return WriteRefusal.None;
     }
 
     /// <summary>
@@ -162,14 +173,16 @@ sealed partial class BlockWriter
     /// <param name="rowIndex">Zero-based row slot to rename or move.</param>
     /// <param name="name">New name, or the current name for a parent-only move.</param>
     /// <param name="parentRow">New parent-row index.</param>
-    /// <returns>true when the update fits; otherwise, false after marking capacity exhausted.</returns>
-    public bool TryRenameRow(uint rowIndex, ReadOnlySpan<char> name, uint parentRow)
+    /// <returns>
+    ///     <see cref="WriteRefusal.None" /> when the update fits; otherwise the full region, with nothing written
+    ///     (delta room is checked before the new spelling is interned).
+    /// </returns>
+    public WriteRefusal TryRenameRow(uint rowIndex, ReadOnlySpan<char> name, uint parentRow)
     {
         using var access = Block.TakeAccess();
         if (rowIndex >= Block.SlotCapacity)
         {
-            MarkCapacityExhaustedCore();
-            return false;
+            return WriteRefusal.Slots;
         }
 
         var currentName = NamePool.ReadRowName(Block, rowIndex);
@@ -180,25 +193,29 @@ sealed partial class BlockWriter
         {
             row.ParentRow = parentRow;
             RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
-            return true;
+            return WriteRefusal.None;
         }
 
-        if (!TryInternName(name, out var nameId))
+        // A spelling that differs ordinally never shares the current identifier, so a nonempty one needs a delta entry.
+        if (DeltaIsFull && !name.IsEmpty)
         {
-            return false;
+            return WriteRefusal.Delta;
+        }
+
+        var internRefusal = NamePool.TryGetOrAdd(Block, name, out var nameId);
+        if (internRefusal != WriteRefusal.None)
+        {
+            return internRefusal;
         }
 
         var previousDescriptor = FileRow.ReadDescriptorWord(in row);
-        if (!TryPublishPosting(rowIndex, FileRow.DescriptorNameId(previousDescriptor), nameId))
-        {
-            return false;
-        }
+        PublishPosting(rowIndex, FileRow.DescriptorNameId(previousDescriptor), nameId);
 
         var flags = FileRow.DescriptorFlags(previousDescriptor);
         row.ParentRow = parentRow;
         RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
         FileRow.WriteDescriptorWord(ref row, nameId, flags);
-        return true;
+        return WriteRefusal.None;
     }
 
     /// <summary>
@@ -224,13 +241,13 @@ sealed partial class BlockWriter
     ///     is atomic by itself and leaves the descriptor word alone.
     /// </summary>
     /// <param name="rowIndex">Zero-based row slot to detach.</param>
-    public void DetachRow(uint rowIndex)
+    /// <returns><see cref="WriteRefusal.Slots" /> when the index is past the slot capacity; otherwise <see cref="WriteRefusal.None" />.</returns>
+    public WriteRefusal DetachRow(uint rowIndex)
     {
         using var access = Block.TakeAccess();
         if (rowIndex >= Block.SlotCapacity)
         {
-            MarkCapacityExhaustedCore();
-            return;
+            return WriteRefusal.Slots;
         }
 
         ref var row = ref Block.Rows[(int)rowIndex];
@@ -242,6 +259,8 @@ sealed partial class BlockWriter
             // find them. Only the link from its old parent is out of reach now.
             Block._deletedChildren?.RemoveDeletedRow(rowIndex, previousParentRow);
         }
+
+        return WriteRefusal.None;
     }
 
     /// <summary>
@@ -362,29 +381,23 @@ sealed partial class BlockWriter
     ///     Appends the posting for a row whose name identifier is about to change to a nonzero value, before the row's
     ///     descriptor word is stored, so a descriptor naming a name always has an association. Nothing is appended before
     ///     the posting base exists, because the base build covers every row, or when the name is unchanged, because the
-    ///     earlier association still holds. A full delta marks the block capacity-exhausted and refuses the write, as a
-    ///     name that does not fit does. Callers reach this only from members already holding an access scope.
+    ///     earlier association still holds. The caller has already checked <see cref="DeltaIsFull" />, so the append
+    ///     cannot fail; the single writer holds the root's write gate. Callers reach this only from members already
+    ///     holding an access scope.
     /// </summary>
-    bool TryPublishPosting(uint rowIndex, uint previousNameId, uint nameId)
+    void PublishPosting(uint rowIndex, uint previousNameId, uint nameId)
     {
-        if (nameId == 0 || nameId == previousNameId || !Block.PostingsBuilt || Block.TryAppendDelta(rowIndex, nameId))
+        if (nameId == 0 || nameId == previousNameId || !Block.PostingsBuilt)
         {
-            return true;
+            return;
         }
 
-        MarkCapacityExhaustedCore();
-        return false;
-    }
-
-    /// <summary>Callers reach this only from members already holding an access scope.</summary>
-    bool TryInternName(ReadOnlySpan<char> name, out uint nameId)
-    {
-        if (!NamePool.TryGetOrAdd(Block, name, out nameId))
+        if (!Block.TryAppendDelta(rowIndex, nameId))
         {
-            MarkCapacityExhaustedCore();
-            return false;
+            throw new InvalidOperationException("The posting delta filled after its room was checked.");
         }
-
-        return true;
     }
+
+    /// <summary>True when the posting base exists and every delta entry is used, so a name change cannot be recorded.</summary>
+    bool DeltaIsFull => Block.PostingsBuilt && Block.DeltaEntryCount >= Block.DeltaCapacity;
 }

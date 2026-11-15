@@ -31,7 +31,7 @@ public sealed class CacheTagStorageTests : IDisposable
         Assert.IsFalse(block.Header.IsComplete);
         Assert.AreEqual(tag, block.Header.CacheTag);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(0, _directory,
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, _directory,
             new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0)));
         writer.Complete(new DateTime(2026, 9, 22, 0, 0, 0, DateTimeKind.Utc), null);
     }

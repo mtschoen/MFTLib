@@ -240,7 +240,7 @@ public sealed class PostingDeltaJournalTests : IAsyncDisposable
 
     uint AddNameAndEntry(string name, uint row, bool publishCount, bool publishHead)
     {
-        Assert.IsTrue(SyntheticNamePool.TryGetOrAdd(_block, name, out var nameId));
+        Assert.AreEqual(WriteRefusal.None, SyntheticNamePool.TryGetOrAdd(_block, name, out var nameId));
         var heads = _block.DeltaHeads;
         var slot = (int)(nameId & (_block.BucketCount - 1));
         _block.DeltaEntries[1] = new DeltaEntry { Row = row, NameId = nameId, Next = heads[slot] };

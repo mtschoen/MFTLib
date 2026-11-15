@@ -63,7 +63,7 @@ public class BlockFileResidentPagesTests
             var writer = new BlockWriter(block);
             for (var row = 0u; row < rows; row++)
             {
-                Assert.IsTrue(writer.TryWriteRow(row, $"r{row}",
+                Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(row, $"r{row}",
                     new RowColumns(0, RowFlags.InUse, 0, row + 1, Moment.Ticks, 0)));
                 if (row % 512 == 511)
                 {

@@ -72,7 +72,11 @@ sealed class FreedRowTrust
 
         foreach (var row in untrusted)
         {
-            writer.DetachRow(row);
+            if (writer.DetachRow(row) != WriteRefusal.None)
+            {
+                writer.MarkCapacityExhausted();
+            }
+
         }
     }
 

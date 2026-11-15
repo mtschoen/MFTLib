@@ -88,10 +88,10 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     {
         await using var index = await _fixture.OpenAsync();
         var writer = new BlockWriter(index.CurrentBlock!.Block);
-        Assert.IsTrue(writer.TryRenameRow(0, original, 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(0, original, 0));
         using var enumerator = index.EnumerateRows(new SearchQuery(null)).GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());
-        Assert.IsTrue(writer.TryRenameRow(0, "replacement.txt", 0));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(0, "replacement.txt", 0));
         var row = enumerator.Current;
         Assert.AreEqual(original, row.Name.ToString(), "The first read uses the descriptor captured by MoveNext.");
         Assert.AreEqual(original, row.Name.ToString(), "Repeated reads share the same captured name.");

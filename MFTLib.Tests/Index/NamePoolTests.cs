@@ -32,8 +32,8 @@ public class NamePoolTests
 
         Assert.IsNotNull(first, "the fixed collision corpus must contain a bucket and tag collision");
         Assert.IsNotNull(second);
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, first, out var firstId));
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, second, out var secondId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, first, out var firstId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, second, out var secondId));
         Assert.AreNotEqual(firstId, secondId);
         Assert.AreEqual(block.NameEntries[(int)firstId].HashTag, block.NameEntries[(int)secondId].HashTag);
         Assert.IsTrue(NamePool.TryFindOrdinal(block, first, out var foundFirst));
@@ -50,8 +50,8 @@ public class NamePoolTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "Makefile", out var upperId));
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "makefile", out var lowerId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "Makefile", out var upperId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "makefile", out var lowerId));
         Assert.AreNotEqual(upperId, lowerId);
         Assert.AreEqual(2u, block.NameEntryCount);
         Assert.AreEqual(block.NameEntries[(int)upperId].HashTag, block.NameEntries[(int)lowerId].HashTag);
@@ -71,10 +71,10 @@ public class NamePoolTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "Alpha", out var firstId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "Alpha", out var firstId));
         var used = block.NamePoolUsed;
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "Alpha", out var sameId));
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "beta", out var distinctId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "Alpha", out var sameId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "beta", out var distinctId));
         Assert.AreEqual(firstId, sameId);
         Assert.AreNotEqual(firstId, distinctId);
         Assert.AreEqual(used + 4, block.NamePoolUsed);
@@ -88,7 +88,7 @@ public class NamePoolTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, [], out var nameId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, [], out var nameId));
         Assert.AreEqual(0u, nameId);
         Assert.AreEqual(0u, block.NamePoolUsed);
         Assert.AreEqual(0u, block.NameEntryCount);
@@ -100,10 +100,10 @@ public class NamePoolTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "a.txt", out var asciiId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "a.txt", out var asciiId));
         Assert.AreEqual(5u, block.NamePoolUsed);
         Assert.IsFalse(NamePool.Read(block, asciiId).IsUtf16);
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "café", out var wideId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "café", out var wideId));
         Assert.AreEqual(6u, block.NameEntries[(int)wideId].PoolOffsetBytes);
         Assert.AreEqual(14u, block.NamePoolUsed);
         Assert.IsTrue(NamePool.Read(block, wideId).IsUtf16);
@@ -117,7 +117,7 @@ public class NamePoolTests
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
         const string name = "\uD800x\uDC00";
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, name, out var nameId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, name, out var nameId));
         var view = NamePool.Read(block, nameId);
         Assert.IsTrue(view.IsUtf16);
         Assert.AreEqual(name, view.ToString());
@@ -165,10 +165,10 @@ public class NamePoolTests
         using var builder = new SyntheticBlockBuilder(slotCapacity: exhaustEntries ? 1u : 8u,
             namePoolCapacity: exhaustEntries ? 128u : 4u);
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "four", out var firstId));
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "four", out var reusedId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "four", out var firstId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "four", out var reusedId));
         Assert.AreEqual(firstId, reusedId);
-        Assert.IsFalse(NamePool.TryGetOrAdd(block, "FOUR", out _));
+        Assert.AreNotEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "FOUR", out _));
     }
 
     [TestMethod]
@@ -179,17 +179,19 @@ public class NamePoolTests
         using var builder = new SyntheticBlockBuilder(slotCapacity: exhaustEntries ? 1u : 8u,
             namePoolCapacity: exhaustEntries ? 128u : 4u);
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "four", out _));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "four", out _));
         var used = block.NamePoolUsed;
         var count = block.NameEntryCount;
-        Assert.IsFalse(NamePool.TryGetOrAdd(block, "another", out var rejectedId));
+        Assert.AreEqual(exhaustEntries ? WriteRefusal.NameEntries : WriteRefusal.NamePool,
+            NamePool.TryGetOrAdd(block, "another", out var rejectedId));
         Assert.AreEqual(0u, rejectedId);
         Assert.AreEqual(used, block.NamePoolUsed);
         Assert.AreEqual(count, block.NameEntryCount);
 
         var writer = new BlockWriter(block);
-        Assert.IsFalse(writer.TryWriteRow(1, "another", new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
-        Assert.IsTrue(block.Header.IsCapacityExhausted);
+        Assert.AreEqual(exhaustEntries ? WriteRefusal.NameEntries : WriteRefusal.NamePool,
+            writer.TryWriteRow(0, "another", new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
         Assert.IsNull(NamePool.CheckIntegrity(block));
     }
 
@@ -199,7 +201,7 @@ public class NamePoolTests
         using var builder = new SyntheticBlockBuilder(namePoolCapacity: 100_000);
         var block = builder.OpenForWriting();
         var oversized = new string('x', NamePool.MaximumNameLengthUnits + 1);
-        Assert.IsFalse(NamePool.TryGetOrAdd(block, oversized, out _));
+        Assert.AreNotEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, oversized, out _));
         Assert.AreEqual(0u, block.NamePoolUsed);
         Assert.AreEqual(0u, block.NameEntryCount);
     }
@@ -216,7 +218,7 @@ public class NamePoolTests
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
         block.Header.NamePoolUsed = usedBytes;
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "a", out var nameId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "a", out var nameId));
         Assert.AreEqual(1u, nameId);
         Assert.AreEqual(1u, block.NamePoolUsed);
         Assert.AreEqual("a", NamePool.Read(block, nameId).ToString());
@@ -254,8 +256,8 @@ public class NamePoolTests
         var filler = new string('f', (int)(poolCapacity - remaining));
         using var utf16Block = TestBlocks.Create(slotCapacity: 64, namePoolCapacity: poolCapacity,
             nameEntryCapacity: 64);
-        Assert.IsTrue(NamePool.TryGetOrAdd(utf16Block, filler, out _));
-        var utf16Added = NamePool.TryGetOrAdd(utf16Block, "é" + new string('a', 254), out _);
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(utf16Block, filler, out _));
+        var utf16Added = NamePool.TryGetOrAdd(utf16Block, "é" + new string('a', 254), out _) == WriteRefusal.None;
         if (!utf16Added)
         {
             Assert.IsTrue(remaining <= BlockLayout.NamePoolExhaustionMarginBytes);
@@ -269,8 +271,8 @@ public class NamePoolTests
 
         using var asciiBlock = TestBlocks.Create(slotCapacity: 64, namePoolCapacity: poolCapacity,
             nameEntryCapacity: 64);
-        Assert.IsTrue(NamePool.TryGetOrAdd(asciiBlock, filler, out _));
-        var asciiAdded = NamePool.TryGetOrAdd(asciiBlock, new string('b', 255), out _);
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(asciiBlock, filler, out _));
+        var asciiAdded = NamePool.TryGetOrAdd(asciiBlock, new string('b', 255), out _) == WriteRefusal.None;
         if (!asciiAdded)
         {
             Assert.IsTrue(remaining <= BlockLayout.NamePoolExhaustionMarginBytes);

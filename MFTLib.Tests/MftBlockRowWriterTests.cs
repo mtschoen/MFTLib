@@ -289,7 +289,7 @@ public sealed class MftBlockRowWriterTests : IDisposable
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
         writer.MarkCapacityExhausted();
 
         var result = RowWriting.WriteBatches(writer, [], new MftScanOptions(), CancellationToken.None);

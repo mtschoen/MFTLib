@@ -20,12 +20,12 @@ public sealed class BlockCopierTests
         var block = TestBlocks.Create(producer: ProducerKind.Mft, slotCapacity: SourceSlots, namePoolCapacity: 4096,
             rootRow: 5, cacheTag: new CacheTag("TEST", 7), scanShape: 0x1122334455667788);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, Moment.Ticks, 0)));
-        Assert.IsTrue(writer.TryWriteRow(6, "Makefile", FileColumns));
-        Assert.IsTrue(writer.TryWriteRow(7, "makefile", FileColumns));
-        Assert.IsTrue(writer.TryWriteRow(8, "caf\u00E9.txt", FileColumns));
-        Assert.IsTrue(writer.TryWriteRow(9, "gone.txt", FileColumns));
-        Assert.IsTrue(writer.TryWriteRow(10, "freed.txt", new RowColumns(0, RowFlags.None, 0, 0, 0, 0)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, ".", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, Moment.Ticks, 0)));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(6, "Makefile", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(7, "makefile", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(8, "caf\u00E9.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(9, "gone.txt", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(10, "freed.txt", new RowColumns(0, RowFlags.None, 0, 0, 0, 0)));
         writer.MarkTombstone(9);
         block.SequenceNumbers[6] = 3;
         block.SequenceNumbers[8] = 9;
@@ -34,7 +34,7 @@ public sealed class BlockCopierTests
         if (complete)
         {
             writer.Complete(Moment, null);
-            Assert.IsTrue(writer.TryWriteRow(20, "after.txt", FileColumns));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(20, "after.txt", FileColumns));
             writer.BumpGeneration();
         }
 
@@ -179,7 +179,7 @@ public sealed class BlockCopierTests
         using var source = CreateSource(complete: false);
         using var small = TestBlocks.Create(slotCapacity: 8, namePoolCapacity: 16384, nameEntryCapacity: 64);
         using var crowded = TestBlocks.Create(slotCapacity: 256, namePoolCapacity: 16384);
-        Assert.IsTrue(new BlockWriter(crowded).TryWriteRow(0, "x", FileColumns));
+        Assert.AreEqual(WriteRefusal.None, new BlockWriter(crowded).TryWriteRow(0, "x", FileColumns));
 
         Assert.Throws<ArgumentException>(() => BlockCopier.Copy(source, small, buildPostings: false, complete: false));
         Assert.Throws<ArgumentException>(() => BlockCopier.Copy(source, crowded, buildPostings: false, complete: false));

@@ -46,12 +46,12 @@ public class BlockWriterDisposalRaceTests
         {
             if (!batch)
             {
-                return writer.TryWriteRow(1, "report.pdf", FileColumns());
+                return writer.TryWriteRow(1, "report.pdf", FileColumns()) == WriteRefusal.None;
             }
 
             using var access = block.TakeAccess();
-            return writer.TryWriteRowUnderAccess(access, 1, "report.pdf", FileColumns()) &&
-                   writer.TryWriteRowUnderAccess(access, 2, "second.pdf", FileColumns());
+            return writer.TryWriteRowUnderAccess(access, 1, "report.pdf", FileColumns()) == WriteRefusal.None &&
+                   writer.TryWriteRowUnderAccess(access, 2, "second.pdf", FileColumns()) == WriteRefusal.None;
         });
         try
         {

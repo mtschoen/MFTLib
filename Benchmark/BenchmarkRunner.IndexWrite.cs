@@ -85,7 +85,7 @@ public partial class BenchmarkRunner
             {
                 foreach (var record in batch)
                 {
-                    if (!NamePool.TryGetOrAdd(block, record.FileName, out _))
+                    if (NamePool.TryGetOrAdd(block, record.FileName, out _) != WriteRefusal.None)
                     {
                         throw new InvalidOperationException("The name interning input did not fit.");
                     }
@@ -101,7 +101,7 @@ public partial class BenchmarkRunner
             var started = _timeProvider.GetTimestamp();
             for (uint row = 0; row < records; row++)
             {
-                if (!writer.TryWriteRow(row, default, in columns))
+                if (writer.TryWriteRow(row, default, in columns) != WriteRefusal.None)
                 {
                     throw new InvalidOperationException("The row input did not fit.");
                 }

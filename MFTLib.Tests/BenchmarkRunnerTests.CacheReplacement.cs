@@ -69,11 +69,11 @@ public partial class BenchmarkRunnerTests
             producer, 8, 4096, volumeSerial: 1, rootRow: rootRow,
             cacheTag: new CacheTag("TEST", drive), scanShape: scanShape);
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(rootRow, producer == ProducerKind.Mft ? "" : rootDirectory,
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(rootRow, producer == ProducerKind.Mft ? "" : rootDirectory,
             new RowColumns(rootRow, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0)));
         if (producer == ProducerKind.Enumeration)
         {
-            Assert.IsTrue(writer.TryWriteRow(1, "file-0000000001", new RowColumns(0, RowFlags.InUse, 0, 1, 0, 0)));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(1, "file-0000000001", new RowColumns(0, RowFlags.InUse, 0, 1, 0, 0)));
         }
         writer.Complete(DateTime.UtcNow, null);
     }

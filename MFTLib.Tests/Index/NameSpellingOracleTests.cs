@@ -225,7 +225,7 @@ public sealed class NameSpellingOracleTests
         var peer = fixture.Files.Single(item => item.Name == "readme.md").Row;
         var renamed = fixture.Files.Single(item => item.Name == "README.md").Row;
         var writer = new BlockWriter(fixture.Block);
-        Assert.IsTrue(writer.TryRenameRow(renamed, "readme.md", parentRow: fixture.Block.Rows[(int)renamed].ParentRow));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(renamed, "readme.md", parentRow: fixture.Block.Rows[(int)renamed].ParentRow));
 
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, renamed).Name);
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, peer).Name);
@@ -246,7 +246,7 @@ public sealed class NameSpellingOracleTests
         var peer = fixture.Files.Single(item => item.Name == "readme.md").Row;
         var renamed = fixture.Files.Single(item => item.Name == "README.md").Row;
         var writer = new BlockWriter(fixture.Block);
-        Assert.IsTrue(writer.TryRenameRow(renamed, "ReadMe.md", parentRow: fixture.Block.Rows[(int)renamed].ParentRow));
+        Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(renamed, "ReadMe.md", parentRow: fixture.Block.Rows[(int)renamed].ParentRow));
         fixture.Files[fixture.Files.FindIndex(item => item.Row == renamed)] = (renamed, "ReadMe.md");
 
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, peer).Name);

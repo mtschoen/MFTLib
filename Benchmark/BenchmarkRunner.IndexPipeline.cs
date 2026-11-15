@@ -34,7 +34,7 @@ public partial class BenchmarkRunner
                 {
                     var identifier = row < distinctNames ? row : (uint)((ulong)row * 2654435761 % distinctNames);
                     var name = string.Create(CultureInfo.InvariantCulture, $"file-{identifier:D8}");
-                    if (!writer.TryWriteRow(row, name, new RowColumns(0, RowFlags.InUse, 0, 1, 0, 0)))
+                    if (writer.TryWriteRow(row, name, new RowColumns(0, RowFlags.InUse, 0, 1, 0, 0)) != WriteRefusal.None)
                     {
                         throw new InvalidOperationException("Synthetic pipeline input did not fit its block.");
                     }

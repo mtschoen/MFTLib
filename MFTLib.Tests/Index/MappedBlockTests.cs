@@ -128,8 +128,8 @@ public class MappedBlockTests
         {
             Mapped = new MappedBlock(_block);
             var writer = new BlockWriter(_block);
-            Assert.IsTrue(writer.TryWriteRow(5, "root", new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 1)));
-            Assert.IsTrue(writer.TryWriteRow(31, "a.txt", new RowColumns(5, RowFlags.InUse, 1, 0, 0, 1)));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, "root", new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 1)));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(31, "a.txt", new RowColumns(5, RowFlags.InUse, 1, 0, 0, 1)));
             writer.Complete(new DateTime(2026, 10, 28, 0, 0, 0, DateTimeKind.Utc), null);
             First = new RootBlock(new VolumeKey('T'), Mapped, FirstBorrows, null, null, null);
             Second = new RootBlock(new VolumeKey('T'), Mapped, SecondBorrows, null, null, null);

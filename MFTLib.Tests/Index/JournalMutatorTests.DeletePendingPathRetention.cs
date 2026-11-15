@@ -210,7 +210,7 @@ public partial class JournalMutatorTests
         var writer = new BlockWriter(block);
         SeedExtendDeletedTree(writer);
         var remainingPoolBytes = (int)(block.NamePoolCapacity - block.NamePoolUsed);
-        Assert.IsTrue(writer.TryWriteRow(20, new string('f', remainingPoolBytes),
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(20, new string('f', remainingPoolBytes),
             new RowColumns(ParentRow: VolumeRootRow, RowFlags.InUse, Attributes: 32, Size: 1, Moment.Ticks,
                 SequenceNumber: 1)));
         writer.Complete(Moment, null);
@@ -223,18 +223,9 @@ public partial class JournalMutatorTests
         {
             var expectedPath = Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt");
             var liveRowCountBefore = block.Header.LiveRowCount;
-            RowFlags? flagsAfterRename = null;
-            string? nameAfterRename = null;
-            uint? liveRowCountAfterRename = null;
-            writer.Hooks._rowCaptured = () =>
-            {
-                flagsAfterRename = writer.Block.Rows[(int)NotesFileRow].Flags;
-                nameAfterRename = NamePool.ReadRowName(writer.Block, NotesFileRow).ToString();
-                liveRowCountAfterRename = writer.Block.Header.LiveRowCount;
-            };
-
+            var attributesBefore = block.Rows[(int)NotesFileRow].Attributes;
             var mutator = new JournalMutator(writer);
-            var changes = mutator.Apply(rootBlock,
+            UsnJournalEntry[] entries =
             [
                 CreateEntry(NotesFileRow, UserDirectoryRow, "notes.txt", UsnReason.RenameOldName, ChangeMoment,
                     sequenceNumber: 1),
@@ -242,7 +233,19 @@ public partial class JournalMutatorTests
                     ChangeMoment, sequenceNumber: 1),
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.FileDelete | UsnReason.Close, ChangeMoment, sequenceNumber: 1)
-            ], journalIdentifier: 7, nextUsn: 2000);
+            ];
+
+            // The refused rename stops the batch with the row exactly as it was and the cursor on the refused record.
+            var stopped = mutator.ApplyUntilRefusal(rootBlock, entries, 0, journalIdentifier: 7, nextUsn: 2000);
+            Assert.AreEqual(1, stopped.Refusal!.Value.Index);
+            Assert.AreEqual(entries[1].Usn, block.Header.UsnNextUsn);
+            Assert.AreEqual(RowFlags.InUse, block.Rows[(int)NotesFileRow].Flags);
+            Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, NotesFileRow).ToString());
+            Assert.AreEqual(liveRowCountBefore, block.Header.LiveRowCount);
+            Assert.AreEqual(attributesBefore, block.Rows[(int)NotesFileRow].Attributes);
+            Assert.IsFalse(block.Header.IsCapacityExhausted);
+
+            var changes = mutator.Apply(rootBlock, entries, journalIdentifier: 7, nextUsn: 2000);
 
             Assert.DoesNotContain(change => change.Kind == FileChangeKind.DeletePending, changes);
             Assert.HasCount(1, changes);
@@ -250,9 +253,6 @@ public partial class JournalMutatorTests
             Assert.AreEqual(expectedPath, changes[0].Path);
             Assert.AreEqual("notes.txt", changes[0].Entry.Name);
             Assert.IsNull(changes[0].PreviousPath);
-            Assert.AreEqual(RowFlags.InUse, flagsAfterRename);
-            Assert.AreEqual("notes.txt", nameAfterRename);
-            Assert.AreEqual(liveRowCountBefore, liveRowCountAfterRename);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
             Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, NotesFileRow).ToString());
             Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone, block.Rows[(int)NotesFileRow].Flags);
@@ -284,18 +284,9 @@ public partial class JournalMutatorTests
         {
             var expectedPath = Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt");
             var liveRowCountBefore = block.Header.LiveRowCount;
-            RowFlags? flagsAfterRename = null;
-            string? nameAfterRename = null;
-            uint? liveRowCountAfterRename = null;
-            writer.Hooks._rowCaptured = () =>
-            {
-                flagsAfterRename = writer.Block.Rows[(int)NotesFileRow].Flags;
-                nameAfterRename = NamePool.ReadRowName(writer.Block, NotesFileRow).ToString();
-                liveRowCountAfterRename = writer.Block.Header.LiveRowCount;
-            };
-
+            var attributesBefore = block.Rows[(int)NotesFileRow].Attributes;
             var mutator = new JournalMutator(writer);
-            var changes = mutator.Apply(rootBlock,
+            UsnJournalEntry[] entries =
             [
                 CreateEntry(NotesFileRow, UserDirectoryRow, "notes.txt", UsnReason.RenameOldName, ChangeMoment,
                     sequenceNumber: 1),
@@ -304,7 +295,19 @@ public partial class JournalMutatorTests
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.FileDelete | UsnReason.Close, ChangeMoment, sequenceNumber: 1,
                     FileAttributes.Archive | FileAttributes.ReadOnly)
-            ], journalIdentifier: 7, nextUsn: 2000);
+            ];
+
+            // The refused rename stops the batch with the row exactly as it was and the cursor on the refused record.
+            var stopped = mutator.ApplyUntilRefusal(rootBlock, entries, 0, journalIdentifier: 7, nextUsn: 2000);
+            Assert.AreEqual(1, stopped.Refusal!.Value.Index);
+            Assert.AreEqual(entries[1].Usn, block.Header.UsnNextUsn);
+            Assert.AreEqual(RowFlags.InUse, block.Rows[(int)NotesFileRow].Flags);
+            Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, NotesFileRow).ToString());
+            Assert.AreEqual(liveRowCountBefore, block.Header.LiveRowCount);
+            Assert.AreEqual(attributesBefore, block.Rows[(int)NotesFileRow].Attributes);
+            Assert.IsFalse(block.Header.IsCapacityExhausted);
+
+            var changes = mutator.Apply(rootBlock, entries, journalIdentifier: 7, nextUsn: 2000);
 
             Assert.DoesNotContain(change => change.Kind == FileChangeKind.DeletePending, changes);
             Assert.HasCount(1, changes);
@@ -312,12 +315,8 @@ public partial class JournalMutatorTests
             Assert.AreEqual(expectedPath, changes[0].Path);
             Assert.AreEqual("notes.txt", changes[0].Entry.Name);
             Assert.IsNull(changes[0].PreviousPath);
-            Assert.AreEqual(RowFlags.InUse, flagsAfterRename);
-            Assert.AreEqual("notes.txt", nameAfterRename);
-            Assert.AreEqual(liveRowCountBefore, liveRowCountAfterRename);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
-            Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.ReadOnly),
-                block.Rows[(int)NotesFileRow].Attributes);
+            Assert.AreEqual(attributesBefore, block.Rows[(int)NotesFileRow].Attributes);
             Assert.AreEqual("notes.txt", NamePool.ReadRowName(block, NotesFileRow).ToString());
             Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone, block.Rows[(int)NotesFileRow].Flags);
             Assert.AreEqual(liveRowCountBefore - 1, block.Header.LiveRowCount);

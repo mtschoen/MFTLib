@@ -54,7 +54,7 @@ public sealed class NamePoolChainTests
         ids = new uint[casings];
         for (var mask = 0; mask < casings; mask++)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(block, Casing(mask), out ids[mask]));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, Casing(mask), out ids[mask]));
         }
 
         return builder;
@@ -65,14 +65,14 @@ public sealed class NamePoolChainTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        Assert.IsTrue(NamePool.TryGetOrAdd(block, "alpha", out var alphaId));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "alpha", out var alphaId));
         var appended = false;
         void AppendSameChainName()
         {
             if (!appended)
             {
                 appended = true;
-                Assert.IsTrue(NamePool.TryGetOrAdd(block, "ALPHA", out _));
+                Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, "ALPHA", out _));
             }
         }
 
@@ -135,7 +135,7 @@ public sealed class NamePoolChainTests
             }
             else
             {
-                Assert.IsTrue(NamePool.TryGetOrAdd(block, name, out _));
+                Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, name, out _));
             }
 
             added++;
@@ -179,14 +179,14 @@ public sealed class NamePoolChainTests
         var before = block.NameRegionAccessCount;
         for (var mask = 0; mask < casings; mask++)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(block, Casing(mask), out ids[mask]));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, Casing(mask), out ids[mask]));
         }
 
         var adding = block.NameRegionAccessCount - before;
         before = block.NameRegionAccessCount;
         for (var mask = 0; mask < casings; mask++)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(block, Casing(mask), out var again));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, Casing(mask), out var again));
             Assert.AreEqual(ids[mask], again);
         }
 
@@ -229,14 +229,14 @@ public sealed class NamePoolChainTests
         var before = block.ChainLinkVisitCount;
         for (var index = 0; index < count; index++)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(block, names[index], out ids[index]));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, names[index], out ids[index]));
         }
 
         var adding = block.ChainLinkVisitCount - before;
         before = block.ChainLinkVisitCount;
         for (var index = 0; index < count; index++)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(block, names[index], out var again));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, names[index], out var again));
             Assert.AreEqual(ids[index], again);
         }
 
@@ -287,7 +287,7 @@ public sealed class NamePoolChainTests
             foreach (var baseName in bases)
             {
                 var name = Variant(baseName, casing);
-                Assert.IsTrue(NamePool.TryGetOrAdd(block, name, out var id));
+                Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, name, out var id));
                 ids[name] = id;
             }
         }
@@ -296,7 +296,7 @@ public sealed class NamePoolChainTests
         before = block.ChainLinkVisitCount;
         foreach (var (name, id) in ids)
         {
-            Assert.IsTrue(NamePool.TryGetOrAdd(block, name, out var again));
+            Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(block, name, out var again));
             Assert.AreEqual(id, again);
         }
 
@@ -319,11 +319,11 @@ public sealed class NamePoolChainTests
         Assert.IsNull(validation);
         Assert.IsNotNull(reopened);
         Assert.AreEqual(0L, reopened.NameRegionAccessCount);
-        Assert.IsTrue(NamePool.TryGetOrAdd(reopened, Casing(57), out var found));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(reopened, Casing(57), out var found));
         Assert.AreEqual(ids[57], found);
-        Assert.IsTrue(NamePool.TryGetOrAdd(reopened, Casing(8000), out var added));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(reopened, Casing(8000), out var added));
         Assert.AreEqual(101u, added);
-        Assert.IsTrue(NamePool.TryGetOrAdd(reopened, Casing(8000), out var addedAgain));
+        Assert.AreEqual(WriteRefusal.None, NamePool.TryGetOrAdd(reopened, Casing(8000), out var addedAgain));
         Assert.AreEqual(added, addedAgain);
     }
 }

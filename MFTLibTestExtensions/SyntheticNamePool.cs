@@ -7,7 +7,7 @@ internal static class SyntheticNamePool
 {
     internal const int MaximumNameLengthUnits = NamePool.MaximumNameLengthUnits;
 
-    internal static bool TryGetOrAdd(BlockFile block, ReadOnlySpan<char> name, out uint nameId) =>
+    internal static WriteRefusal TryGetOrAdd(BlockFile block, ReadOnlySpan<char> name, out uint nameId) =>
         NamePool.TryGetOrAdd(block, name, out nameId);
 
     internal static bool TryFindOrdinal(BlockFile block, ReadOnlySpan<char> name, out uint nameId) =>

@@ -53,13 +53,13 @@ public sealed class PostingQueryConcurrencyTests
             {
                 foreach (var (row, original) in originals)
                 {
-                    Assert.IsTrue(writer.TryRenameRow(row, round % 2 == 0 ? $"zz-renamed-{round % 7}" : original, 1));
+                    Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(row, round % 2 == 0 ? $"zz-renamed-{round % 7}" : original, 1));
                 }
 
                 if (created < RowCount + 32)
                 {
                     var columns = new RowColumns(1, RowFlags.InUse, 0, 1, Support.Moment.Ticks, 0);
-                    Assert.IsTrue(writer.TryWriteRow(created++, QueriedNames[round % QueriedNames.Length], in columns));
+                    Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(created++, QueriedNames[round % QueriedNames.Length], in columns));
                 }
             }
         }, TestContext.CancellationToken);

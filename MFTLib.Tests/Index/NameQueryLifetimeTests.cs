@@ -91,7 +91,7 @@ public sealed class NameQueryLifetimeTests
             if (++checks == 2)
             {
                 renamed = true;
-                Assert.IsTrue(writer.TryRenameRow(renamedRow, "zzz-interned-during-the-pass", parentRow: 0));
+                Assert.AreEqual(WriteRefusal.None, writer.TryRenameRow(renamedRow, "zzz-interned-during-the-pass", parentRow: 0));
             }
         }
 

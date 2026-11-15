@@ -10,15 +10,15 @@ static class TestBlocks
         ProducerKind producer = ProducerKind.Enumeration,
         uint slotCapacity = 64, uint namePoolCapacity = 512, uint? nameEntryCapacity = null,
         uint volumeSerial = 0x0BADF00D, uint rootRow = 0,
-        bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0)
+        bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0, uint? deltaCapacity = null)
         => BlockFile.Create(Options(path, producer, slotCapacity, namePoolCapacity, nameEntryCapacity,
-            volumeSerial, rootRow, deleteOnClose, cacheTag, scanShape));
+            volumeSerial, rootRow, deleteOnClose, cacheTag, scanShape, deltaCapacity));
 
     public static BlockFileCreateOptions Options(string? path = null,
         ProducerKind producer = ProducerKind.Enumeration,
         uint slotCapacity = 64, uint namePoolCapacity = 512, uint? nameEntryCapacity = null,
         uint volumeSerial = 0x0BADF00D, uint rootRow = 0,
-        bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0)
+        bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0, uint? deltaCapacity = null)
         => new()
         {
             Path = path ?? Path.Combine(Path.GetTempPath(), $"mftlib-block-{Guid.NewGuid():N}.mlix"),
@@ -28,7 +28,7 @@ static class TestBlocks
             SlotCapacity = slotCapacity,
             NameEntryCapacity = nameEntryCapacity ?? slotCapacity,
             NamePoolCapacity = namePoolCapacity,
-            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(slotCapacity),
+            DeltaCapacity = deltaCapacity ?? BlockLayout.ComputeDeltaCapacity(slotCapacity),
             RootRow = rootRow,
             DeleteOnClose = deleteOnClose ?? (path is null),
             CacheTag = cacheTag,
@@ -45,10 +45,10 @@ static class TestBlocks
             volumeSerial: volumeSerial, rootRow: producer == ProducerKind.Mft ? 5u : 0u);
         var writer = new BlockWriter(block);
         var columns = new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0);
-        Assert.IsTrue(writer.TryWriteRow(0, directory, columns));
+        Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(0, directory, columns));
         if (producer == ProducerKind.Mft)
         {
-            Assert.IsTrue(writer.TryWriteRow(5, "not-the-drive-root", columns));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(5, "not-the-drive-root", columns));
         }
         writer.Complete(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), null);
         mutate?.Invoke(block);
