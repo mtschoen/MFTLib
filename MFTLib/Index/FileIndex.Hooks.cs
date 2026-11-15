@@ -17,7 +17,7 @@ public sealed partial class FileIndex
     internal sealed class IndexHooks
     {
         /// <summary>
-        ///     Lists cache files for the stale ".retired-*" sweep; owner lock held, no state/write gate.
+        ///     Lists cache files for the stale ".retired-*" and ".growing-*" sweep; owner lock held, no state/write gate.
         ///     A hold must not wait for an operation needing the same ownership/lifecycle gate.
         /// </summary>
         internal Func<string, string, IEnumerable<string>> EnumerateCacheFiles { get; init; } =
@@ -106,5 +106,14 @@ public sealed partial class FileIndex
         ///     Cannot await a rescan that drains this same pump.
         /// </summary>
         internal Action<RootKey>? BeforeWatchChanged { get; set; }
+
+        /// <summary>
+        ///     Invoked at each step of a watch growth. Every step but <see cref="WatchGrowthStep.Flushed" /> runs with the
+        ///     root's write gate held and no state lock; <see cref="WatchGrowthStep.Flushed" /> runs on the background
+        ///     flush with no gate held. The token is the growth's: the pump's stop token linked with the scan's closing
+        ///     token, so a hold can wait for a stop or a disposal to reach the growth; a hold cannot wait for either to
+        ///     finish, which needs the growth to return.
+        /// </summary>
+        internal Action<RootKey, WatchGrowthStep, CancellationToken>? WatchGrowthStepReached { get; set; }
     }
 }

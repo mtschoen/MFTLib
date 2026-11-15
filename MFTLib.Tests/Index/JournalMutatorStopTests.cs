@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     <see cref="JournalMutator.ApplyUntilRefusal" /> stops at the first record the block cannot store and leaves the
-///     block exactly consistent at that record; <see cref="JournalMutator.Apply" /> flags and skips instead.
+///     block exactly consistent at that record; the index grows the block or skips the record from there.
 /// </summary>
 [TestClass]
 public sealed class JournalMutatorStopTests : IDisposable
@@ -258,55 +258,6 @@ public sealed class JournalMutatorStopTests : IDisposable
             Assert.AreEqual("stays.txt", NamePool.ReadRowName(block, 3).ToString());
             Assert.AreEqual(0u, block.Rows[3].ParentRow);
             Assert.AreEqual(entries, block.NameEntryCount);
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
-    }
-
-    [TestMethod]
-    public async Task FlagAndSkip_SendsOneDiagnosticsLinePerSkippedRecord()
-    {
-        var (block, writer, snapshot) = BuildRoot();
-        try
-        {
-            var lines = new List<string>();
-            block.Diagnostics = lines.Add;
-
-            new JournalMutator(writer).Apply(snapshot[0],
-                [Create(400, "past-the-slots.txt", usn: 200), Create(uint.MaxValue + 1ul, "huge.txt", usn: 300)],
-                journalIdentifier: 9, nextUsn: 500);
-
-            Assert.HasCount(2, lines);
-            StringAssert.Contains(lines[0], "USN 200");
-            StringAssert.Contains(lines[0], "Slots");
-            StringAssert.Contains(lines[0], "growth could help");
-            StringAssert.Contains(lines[1], "USN 300");
-            StringAssert.Contains(lines[1], "growth could not help");
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
-    }
-
-    [TestMethod]
-    public async Task FlagAndSkip_ContinuesAfterTheRefusedRecordAndEndsAtTheBatchCursor()
-    {
-        var (block, writer, snapshot) = BuildRoot();
-        try
-        {
-            var changes = new JournalMutator(writer).Apply(snapshot[0],
-                [Create(1, "before.txt", usn: 100), Create(400, "past-the-slots.txt", usn: 200),
-                    Create(2, "after.txt", usn: 300), Create(401, "also-past.txt", usn: 350)],
-                journalIdentifier: 9, nextUsn: 500);
-
-            Assert.HasCount(2, changes);
-            Assert.AreEqual("before.txt", NamePool.ReadRowName(block, 1).ToString());
-            Assert.AreEqual("after.txt", NamePool.ReadRowName(block, 2).ToString());
-            Assert.IsTrue(block.Header.IsCapacityExhausted);
-            Assert.AreEqual(500L, block.Header.UsnNextUsn);
         }
         finally
         {

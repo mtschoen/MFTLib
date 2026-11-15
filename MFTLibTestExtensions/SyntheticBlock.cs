@@ -126,6 +126,8 @@ public static class SyntheticBlock
         // Synthetic names are arbitrary, so the pool also covers the worst case of every name stored as UTF-16.
         var namePoolCapacity = Math.Max(BlockLayout.ComputeNamePoolCapacity(slotCapacity),
             checked((uint)BlockLayout.AlignUp(nameBytes, BlockLayout.PageSize)));
+        var capacities = options.Capacities ?? new BlockCapacities(slotCapacity, slotCapacity, namePoolCapacity,
+            BlockLayout.ComputeDeltaCapacity(slotCapacity));
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = path,
@@ -133,10 +135,10 @@ public static class SyntheticBlock
             VolumeSerial = volumeSerial,
             ProducerKind = options.ProducerKind,
             RootRow = options.RootRow,
-            SlotCapacity = slotCapacity,
-            NameEntryCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity,
-            DeltaCapacity = BlockLayout.ComputeDeltaCapacity(slotCapacity),
+            SlotCapacity = capacities.SlotCapacity,
+            NameEntryCapacity = capacities.NameEntryCapacity,
+            NamePoolCapacity = capacities.NamePoolCapacity,
+            DeltaCapacity = capacities.DeltaCapacity,
             DeleteOnClose = deleteOnClose,
             CacheTag = options.CacheTag,
             ScanShape = options.ResolveScanShape()

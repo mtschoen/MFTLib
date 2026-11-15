@@ -238,20 +238,4 @@ public sealed class PostingDeltaAppendTests : IDisposable
 
         Assert.IsFalse(_block.Header.IsCapacityExhausted);
     }
-
-    [TestMethod]
-    public void GrowthMinimum_AfterDeltaExhaustionDoublesOnlyTheDeltaCapacity()
-    {
-        CreateBlock(deltaCapacity: 1);
-        Assert.AreEqual(WriteRefusal.None, _writer.TryWriteRow(5, "one.txt", FileColumns));
-        Assert.AreEqual(WriteRefusal.Delta, _writer.TryWriteRow(6, "two.txt", FileColumns));
-        _writer.MarkCapacityExhausted();
-
-        var minimum = BlockLayout.GrowthMinimum(_block.Header);
-
-        Assert.AreEqual(2u, minimum.DeltaCapacity);
-        Assert.AreEqual(0u, minimum.SlotCapacity);
-        Assert.AreEqual(0u, minimum.NameEntryCapacity);
-        Assert.AreEqual(0u, minimum.NamePoolCapacity);
-    }
 }

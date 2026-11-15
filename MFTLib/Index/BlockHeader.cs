@@ -48,10 +48,10 @@ struct BlockHeader
     ///     changed at least one row: a reported create, delete, rename, or modification, or a
     ///     close record that changed a live row's attributes while preserving its scanned size and last-write observations. Header-only writes
     ///     leave it unchanged: every batch advances the journal checkpoint
-    ///     (<see cref="UsnJournalIdentifier" /> and <see cref="UsnNextUsn" />), and a rejection (record
-    ///     number past slot capacity, name pool or name entry capacity exhausted, or parent record number out of range)
-    ///     sets the capacity-exhausted flag without bumping the generation. Producer completion
-    ///     stamps 1 on a block no batch has mutated.
+    ///     (<see cref="UsnJournalIdentifier" /> and <see cref="UsnNextUsn" />), and a record no growth can
+    ///     store (a record or parent number out of range, a region at its clamp, or a failed growth) sets the
+    ///     capacity-exhausted flag without bumping the generation. A watch growth copies the generation unchanged.
+    ///     Producer completion stamps 1 on a block no batch has mutated.
     /// </summary>
     [FieldOffset(64)] public ulong Generation;
     /// <summary>Byte offset of the fixed-size row region from the start of the file.</summary>

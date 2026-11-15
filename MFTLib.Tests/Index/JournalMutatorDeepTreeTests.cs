@@ -56,7 +56,7 @@ public sealed class JournalMutatorDeepTreeTests : IAsyncDisposable
         entries.Add(CreateEntry(shallowFileRecord, 0, "shallow.txt", UsnReason.FileCreate | UsnReason.Close,
             ChangeMoment));
 
-        var changes = new JournalMutator(_writer).Apply(_snapshot[0], entries, journalIdentifier: 7,
+        var changes = new JournalMutator(_writer).ApplyWhole(_snapshot[0], entries, journalIdentifier: 7,
             nextUsn: BatchNextUsn);
 
         Assert.HasCount(NestedDirectoryCount + 1, changes);
@@ -98,7 +98,7 @@ public sealed class JournalMutatorDeepTreeTests : IAsyncDisposable
             writer.Complete(Moment, null);
             const ulong deepFileRecord = BlockLayout.MaximumPathDepth + 1;
             const ulong shallowFileRecord = deepFileRecord + 1;
-            var changes = new JournalMutator(writer).Apply(snapshot[0],
+            var changes = new JournalMutator(writer).ApplyWhole(snapshot[0],
             [
                 CreateEntry(deepFileRecord, BlockLayout.MaximumPathDepth, "past-the-cap.txt",
                     UsnReason.FileCreate | UsnReason.Close, ChangeMoment),

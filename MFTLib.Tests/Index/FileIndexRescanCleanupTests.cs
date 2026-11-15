@@ -26,35 +26,40 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
     public async Task RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile()
     {
         var producedBlocks = new List<BlockFile>();
+        var producerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var producerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
 
             CacheDirectory = CacheDirectoryPath,
-            MftSource = new MftIndexSource((request, cancellationToken) =>
+            MftSource = new MftIndexSource(async (request, cancellationToken) =>
             {
                 SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 var block = BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
                 producedBlocks.Add(block);
                 if (producedBlocks.Count == 2)
                 {
+                    producerEntered.TrySetResult();
+                    await gateHeld.Task.WaitAsync(HangGuard, cancellationToken);
                     producerReturned.TrySetResult();
                 }
 
-                return Task.FromResult(new MftBlockProduceResult(block,
-                    SkippedRecordCount: 0));
+                return new MftBlockProduceResult(block, SkippedRecordCount: 0);
             })
         }.WithSyntheticRoot(SyntheticRoot.Create(new VolumeKey('T'), TreeRoot, 1));
         await using var index = await FileIndex.OpenAsync(options, Token);
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), 1));
         Assert.IsTrue(File.Exists(canonicalPath), "the cold scan wrote the canonical cache file");
 
+        using var rescanCancellation = new CancellationTokenSource();
+        var rescan = index.RescanAsync(rescanCancellation.Token);
+        // The scan takes the write gate briefly before it produces, so the gate is held once it is producing.
+        await producerEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         await index.WaitForRootWriteGateForTest(new VolumeKey('T'), TestContext.CancellationToken);
+        gateHeld.TrySetResult();
         try
         {
-            using var rescanCancellation = new CancellationTokenSource();
-            var rescan = index.RescanAsync(rescanCancellation.Token);
-
             // The rescan has produced its replacement block and is parked at the write gate.
             await producerReturned.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
             await rescanCancellation.CancelAsync();
@@ -282,13 +287,16 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
         Assert.AreEqual(RootState.Failed, declined.State);
         Assert.AreEqual(RootFailureKind.CacheDeclined, declined.Failure?.Kind);
 
-        await index.WaitForRootWriteGateForTest(new VolumeKey('T'), TestContext.CancellationToken);
+        var gateHeld = false;
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
             var rescan = index.RescanAsync(rescanCancellation.Token);
 
+            // The scan takes the write gate briefly before it produces, so the gate is held once it is producing.
             await producerEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
+            await index.WaitForRootWriteGateForTest(new VolumeKey('T'), TestContext.CancellationToken);
+            gateHeld = true;
             // Cancel before the producer returns: the scan completes normally, and the
             // cancellation is observed by the commit's write-gate wait.
             await rescanCancellation.CancelAsync();
@@ -310,7 +318,10 @@ public sealed class FileIndexRescanCleanupTests : IndexTreeTestBase
             // awaiting it, and DisposeAsync then hangs waiting on that rescan instead of the
             // test reporting the real failure.
             producerMayReturn.TrySetResult();
-            index.ReleaseRootWriteGateForTest(new VolumeKey('T'));
+            if (gateHeld)
+            {
+                index.ReleaseRootWriteGateForTest(new VolumeKey('T'));
+            }
         }
     }
 

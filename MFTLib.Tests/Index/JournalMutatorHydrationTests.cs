@@ -78,7 +78,7 @@ public class JournalMutatorHydrationTests
     [DataRow(22ul, "orphan.cs", (uint)UsnReason.DataOverwrite)]
     [DataRow(25ul, "orphan-delete.cs", (uint)UsnReason.FileDelete)]
     [DataRow(26ul, "orphan-rename.cs", (uint)UsnReason.RenameNewName)]
-    public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCapacityExhausted(
+    public async Task Hydration_RefusesAnOutOfRangeParentAsNotGrowable(
         ulong recordNumber, string fileName, uint reasonValue)
     {
         var reason = (UsnReason)reasonValue;
@@ -94,8 +94,12 @@ public class JournalMutatorHydrationTests
             TimestampUtc = fixture.Timestamp
         });
 
-        Assert.IsEmpty(fixture.Apply([bad]));
-        Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
+        var result = fixture.ApplyUntilRefusal([bad]);
+
+        Assert.IsEmpty(result.Changes);
+        Assert.AreEqual(WriteRefusal.Slots, result.Refusal?.Reason);
+        Assert.IsFalse(result.Refusal?.Growable);
+        Assert.IsFalse(fixture.Block.Rows[(int)recordNumber].IsInUse);
     }
 
     [TestMethod]

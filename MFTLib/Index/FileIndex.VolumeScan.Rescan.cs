@@ -21,20 +21,20 @@ public sealed partial class FileIndex
         ///     One attempt of a scan operation: produces a block for the root and publishes it, or,
         ///     when the producer returns none, records the producer's failure against the root and
         ///     publishes nothing. A root with a block has its canonical file renamed aside first and
-        ///     restored whenever nothing replaces it.
+        ///     restored whenever nothing replaces it. From the rename-aside until publication or the
+        ///     restore, the production marker parks any watch growth of the superseded block.
         /// </summary>
         async Task<ScanAttempt> ScanAndPublishAsync(bool clearsCheckpointLoss,
             RecoveryTicket? recovery, CancellationToken cancellationToken)
         {
             ThrowIfClosing(cancellationToken);
-            var superseded = FindBlockForRescan();
 
             // The rename-aside is licensed by the owner lock: an index that does not hold it (its
             // block came from a private scan while another index owned the slot) rescans privately
             // again and never touches the canonical file.
-            var ownsCanonicalSlot = Options.CacheMode != CacheMode.Disabled && EnsureCanonicalOwnership();
-            var target = ComputeScanTarget(ownsCanonicalSlot);
-            var retired = RenameAsideForRescan(target, superseded);
+            var (target, retired) = await BeginProductionAsync(FindBlockForRescan,
+                () => Options.CacheMode != CacheMode.Disabled && EnsureCanonicalOwnership(),
+                cancellationToken).ConfigureAwait(false);
 
             PendingRootResult produced;
             try
@@ -44,13 +44,13 @@ public sealed partial class FileIndex
             }
             catch
             {
-                DiscardUnproducedTarget(target, retired);
+                EndUnpublishedProduction(() => DiscardUnproducedTarget(target, retired));
                 throw;
             }
 
             if (produced.Block is not { } block)
             {
-                DiscardUnproducedTarget(target, retired);
+                EndUnpublishedProduction(() => DiscardUnproducedTarget(target, retired));
                 var failureMessage = produced.RequireFailureMessage(Root);
                 RecordRescanProducerFailure(produced);
                 return new ScanAttempt(Published: false, produced.ProducerFailure, failureMessage);
@@ -67,7 +67,7 @@ public sealed partial class FileIndex
             {
                 // Never published, so it owns no references; its mapping is closed directly.
                 block.Dispose();
-                RestoreRetiredFile(retired);
+                EndUnpublishedProduction(() => RestoreRetiredFile(retired));
                 throw;
             }
 

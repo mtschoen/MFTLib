@@ -429,11 +429,11 @@ measured use is 2.7 to 15.2 bytes per slot.
 Delta capacity is `D = max(65536, ceil(S / 8))`: every journal name change consumes one delta entry, so the
 reservation follows the slots, and the figure is calibrated by measuring appends per day on a watched volume.
 
-Exhausting rows, name entries, delta entries or name bytes sets the capacity-exhausted flag. A clear flag asks for no growth, even
+A producer that exhausts rows, name entries or name bytes sets the capacity-exhausted flag; a full delta never sets
+it, because a watch growth rebuilds the posting base, which empties the delta. A clear flag asks for no growth, even
 when a region is full. With the flag set, the header identifies the exhausted regions: entries are exhausted when
-`NameEntryCount >= E`; the pool is exhausted when at most 510 bytes remain; the delta is exhausted when
-`DeltaEntryCount >= D`; and rows are exhausted when `RowCount >= S`, or when none of entries, pool and delta is
-exhausted. The posting rows region cannot exhaust (the base holds at most one entry per slot) and neither can the
+`NameEntryCount >= E`; the pool is exhausted when at most 510 bytes remain; and rows are exhausted when
+`RowCount >= S`, or when neither entries nor pool is exhausted. The posting rows region cannot exhaust (the base holds at most one entry per slot) and neither can the
 posting offsets (`B <= E`). The row fallback covers a write at a record index
 past `S`, which leaves `RowCount` below `S`. A name of at most 255 UTF-16 units needs at most 510 bytes plus one
 alignment byte, so a pool refusal always leaves at most 510 bytes. When a row refusal coincides with entry or pool
@@ -445,10 +445,12 @@ span; the entry capacity clamps at 2147483645, leaving room for the reserved zer
 offsets; the pool clamps at `0x7FFFF000`. Every other region keeps its volume-plan value. For MFT, the index sends
 these minima to the producer, which combines them with fresh volume geometry where that geometry is known.
 
-An enumeration walk grows the same way without starting again: FileIndex copies the used rows, sequence numbers,
-name entries and name bytes out, disposes and deletes the exhausted block, and restores them into a block with only
-the exhausted regions doubled. Row indices and name identifiers are unchanged; bucket chains are rebuilt for the
-replacement `E`, the replacement's posting base is built when the walk completes (the copy carries no posting data),
+An enumeration walk grows the same way without starting again: FileIndex creates a replacement at a
+`<block>.growing-<guid>` sibling with only the exhausted regions doubled, and `BlockCopier` copies the used rows,
+sequence numbers, name entries and name bytes into it region to region, with no managed staging. The exhausted block
+is then disposed and deleted, and the replacement is renamed into its place. Row indices and name identifiers are
+unchanged; bucket chains are copied when `E` is unchanged and rebuilt for the replacement `E` otherwise, the
+replacement's posting base is built when the walk completes (the copy carries no posting data),
 and the walk continues from its frontier without reading a directory twice. Growth is geometric,
 so copies are bounded. Only a tree that still cannot fit at the clamps publishes an exhausted block.
 
@@ -463,10 +465,27 @@ stops consuming slices at once (the row writer stops, and disposing the slice so
 next slice and waits for it), so the saving includes the rest of that attempt's volume or dump reads, row writes and
 posting construction; the stopped block is discarded, skips its freed-row trust and extension-size passes, and a pool that still cannot hold the names takes further doubled retries. Row exhaustion alone never stops a scan early:
 the scan reads on, counts the skipped records and publishes the flagged block. A scan therefore publishes an incomplete
-block only for row exhaustion or at the clamps. A custom `MftBlockProducer` that returns a flagged block is not retried: its flag stays and a rescan grows it as above. USN journal exhaustion keeps
-the flag-and-rescan remedy.
+block only for row exhaustion or at the clamps. A custom `MftBlockProducer` that returns a flagged block is not retried: its flag stays and a rescan grows it as above.
 
-An MFT mutator keeps what fits and the volume remains Ready and queryable. Read
+A watched block grows while the watch runs ([Watch lifetime](watch-lifetime.md), "Growth"). The journal apply stops
+at the first record the block refuses and copies the block into a replacement planned for the refusing region, then
+applies that record on the replacement. No region ever shrinks:
+
+- Rows (a record at or past `S`): the volume plan for `max(record + 1, RowCount)`, so `S` becomes the record plus
+  25 percent or 65536 rows, and `E`, `P` and `D` re-plan from the new `S` but keep their current values when those
+  are larger.
+- Name entries or name bytes: that region doubles, up to its clamp. Name compaction (dropping names no row
+  references) is not done yet, so every name growth doubles.
+- Delta: `D` doubles on each delta growth until it reaches `S`, then stays; the rebuilt posting base empties the
+  delta either way.
+
+The copy keeps row numbers, sequence numbers and name identifiers, carries every header field that describes the
+data (the journal cursor at the refused record, the generation, the counts, the scan timestamp, cache tag and scan
+shape, and the capacity-exhausted bit only when the old block already had it), and builds a fresh posting base.
+
+A record no growth can store is skipped whole and sets the capacity-exhausted flag: a record or parent number above
+32 bits, a region at its clamp, a record refused again by the same region right after its own growth, or a growth
+that failed (an I/O error ends growing for the rest of that batch). The volume remains Ready and queryable. Read
 `RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a
 replacement without it; failed or cancelled rescans retain the old block and its flag.
 
@@ -549,9 +568,9 @@ parent-only move, a tombstone and a detach append nothing, and a rename back to 
 association that readers de-duplicate. `TryAppendDelta` writes the whole entry with `Next` set to the current head,
 publishes the entry count, then publishes the head with a volatile store, and only then does the writer store the row's
 descriptor word. A crash between those steps leaves unreachable entry storage or a stale association, never a descriptor
-without an association. When `DeltaEntryCount >= D` the write is refused and the capacity-exhausted flag is set, exactly
-like a name that does not fit: `JournalMutator` keeps applying the rest of the batch and the rescan that follows doubles
-`D` and rebuilds the base.
+without an association. When `DeltaEntryCount >= D` the write is refused before anything of it is stored, exactly
+like a name that does not fit: the journal apply stops at that record and grows the block, whose rebuilt base empties
+the delta (see Capacity), then applies the record on the replacement.
 
 Invariant: every row whose descriptor holds name `n` other than zero has an association `(r, n)` in name `n`'s base list
 or delta chain. An interrupted writer can leave a stale association, never a missing one.

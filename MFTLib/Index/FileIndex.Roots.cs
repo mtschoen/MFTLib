@@ -63,4 +63,7 @@ public sealed partial class FileIndex
 
     /// <summary>A test seam: how many deliveries waited for another thread delivering the same root.</summary>
     internal long ContendedWatchStateDeliveriesForTest => _view.ContendedWatchStateDeliveries;
+
+    /// <summary>A test observation: the background flush of the root's latest watch growth into its canonical slot.</summary>
+    internal Task GrowthFlushForTest(RootKey root) => GetVolumeScan(root).LastGrowthFlush;
 }

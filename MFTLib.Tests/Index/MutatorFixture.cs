@@ -29,7 +29,13 @@ sealed class MutatorFixture : IAsyncDisposable
 
     public IReadOnlyList<FileChange> Apply(IReadOnlyList<UsnJournalEntry> entries)
     {
-        return _mutator.Apply(Snapshot[0], entries, journalIdentifier: 7, _nextUsn++);
+        return _mutator.ApplyWhole(Snapshot[0], entries, journalIdentifier: 7, _nextUsn++);
+    }
+
+    /// <summary>Applies <paramref name="entries" /> until the first record the block refuses.</summary>
+    public JournalApplyResult ApplyUntilRefusal(IReadOnlyList<UsnJournalEntry> entries)
+    {
+        return _mutator.ApplyUntilRefusal(Snapshot[0], entries, 0, journalIdentifier: 7, _nextUsn++);
     }
 
     public async ValueTask DisposeAsync()

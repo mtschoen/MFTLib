@@ -236,16 +236,19 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
     public async Task RescanAsync_CancelledWhileAwaitingWriteGate_DisposesCompletedScanAndRestoresRetiredCache()
     {
         using var harness = new WatchHarness('T');
+        var initialBlock = harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock;
+        var initialProducedBlock = harness.BlockFor('T');
+        using var rescanCancellation = new CancellationTokenSource();
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
+        var production = harness.HoldNextProduction('T');
+        var rescan = harness.IndexFor('T').RescanAsync(rescanCancellation.Token);
 
+        // The scan takes the write gate briefly before it produces, so the gate is held once it is producing.
+        await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.IndexFor('T').WaitForRootWriteGateForTest(new VolumeKey('T'), TestContext.CancellationToken);
+        production.Release();
         try
         {
-            var initialBlock = harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock;
-            var initialProducedBlock = harness.BlockFor('T');
-            using var rescanCancellation = new CancellationTokenSource();
-            harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-
-            var rescan = harness.IndexFor('T').RescanAsync(rescanCancellation.Token);
             var producedBlock = await WaitForReplacementBlockAsync(harness, 'T', initialProducedBlock, rescan);
             await rescanCancellation.CancelAsync();
 

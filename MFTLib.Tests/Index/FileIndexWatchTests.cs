@@ -298,10 +298,10 @@ public sealed class FileIndexWatchTests : IndexTreeTestBase, IAsyncDisposable
     }
 
     [TestMethod]
-    public async Task ApplyJournalEntries_ExhaustingCapacityReportsReadyWithCapacityExhausted()
+    public async Task ApplyJournalEntries_ARecordNoGrowthCanStoreReportsReadyWithCapacityExhausted()
     {
         await _index!.ApplyJournalEntriesAsync('T',
-            [Entry(50_000_000, 0, "far.txt", UsnReason.FileCreate | UsnReason.Close)],
+            [Entry((ulong)uint.MaxValue + 1, 0, "far.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 300);
 
         Assert.AreEqual(RootState.Ready, _index!.Status.State);

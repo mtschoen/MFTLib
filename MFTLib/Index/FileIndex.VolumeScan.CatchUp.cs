@@ -87,8 +87,9 @@ public sealed partial class FileIndex
             RootBlock? adopted = null;
             while (true)
             {
-                var target = ComputeScanTarget(ownsCanonicalSlot);
-                var retired = RenameAsideForRescan(target, adopted);
+                var superseded = adopted;
+                var (target, retired) = await BeginProductionAsync(() => superseded, () => ownsCanonicalSlot,
+                    cancellationToken).ConfigureAwait(false);
                 PendingRootResult produced;
                 try
                 {
@@ -97,7 +98,7 @@ public sealed partial class FileIndex
                 }
                 catch
                 {
-                    DiscardUnproducedTarget(target, retired);
+                    EndUnpublishedProduction(() => DiscardUnproducedTarget(target, retired));
                     throw;
                 }
 
@@ -108,7 +109,7 @@ public sealed partial class FileIndex
                 };
                 if (settled.Block is not { } block)
                 {
-                    DiscardUnproducedTarget(target, retired);
+                    EndUnpublishedProduction(() => DiscardUnproducedTarget(target, retired));
                     RecordOpenProducerFailure(settled, lostBlockInPlace: adopted is not null);
                     return;
                 }
@@ -123,7 +124,7 @@ public sealed partial class FileIndex
                 catch
                 {
                     block.Dispose();
-                    RestoreRetiredFile(retired);
+                    EndUnpublishedProduction(() => RestoreRetiredFile(retired));
                     throw;
                 }
                 // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.

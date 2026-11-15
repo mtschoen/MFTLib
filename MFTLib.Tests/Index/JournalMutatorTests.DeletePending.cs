@@ -69,7 +69,7 @@ public partial class JournalMutatorTests
             for (var start = 0; start < records.Length; start += recordsPerBatch)
             {
                 var batch = records.Skip(start).Take(recordsPerBatch).ToArray();
-                changes.AddRange(mutator.Apply(rootBlock, batch, journalIdentifier: 7,
+                changes.AddRange(mutator.ApplyWhole(rootBlock, batch, journalIdentifier: 7,
                     nextUsn: 1000 + start + batch.Length));
             }
 
@@ -129,7 +129,7 @@ public partial class JournalMutatorTests
             for (var start = 0; start < allRecords.Length; start += recordsPerBatch)
             {
                 var batch = allRecords.Skip(start).Take(recordsPerBatch).ToArray();
-                changes.AddRange(mutator.Apply(rootBlock, batch, journalIdentifier: 7,
+                changes.AddRange(mutator.ApplyWhole(rootBlock, batch, journalIdentifier: 7,
                     nextUsn: 1000 + start + batch.Length));
             }
 
@@ -159,7 +159,7 @@ public partial class JournalMutatorTests
             var liveRowCountBefore = block.Header.LiveRowCount;
             var mutator = new JournalMutator(writer);
 
-            var pendingChanges = mutator.Apply(rootBlock,
+            var pendingChanges = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, UserDirectoryRow, "notes.txt", UsnReason.RenameOldName, ChangeMoment,
                     sequenceNumber: 1),
@@ -183,7 +183,7 @@ public partial class JournalMutatorTests
             Assert.DoesNotContain(entry => entry.Name == "notes.txt",
                 IndexNavigation.GetChildren(PinnedRootBlock.Current(rootBlock), UserDirectoryRow, CancellationToken.None));
 
-            var holderChanges = mutator.Apply(rootBlock,
+            var holderChanges = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.DataExtend | UsnReason.BasicInfoChange | UsnReason.Close, ChangeMoment,
@@ -191,7 +191,7 @@ public partial class JournalMutatorTests
             ], journalIdentifier: 7, nextUsn: 2001);
             Assert.IsEmpty(holderChanges);
 
-            var deletedChanges = mutator.Apply(rootBlock,
+            var deletedChanges = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.FileDelete | UsnReason.Close, ChangeMoment, sequenceNumber: 1)
@@ -206,7 +206,7 @@ public partial class JournalMutatorTests
             Assert.AreEqual(liveRowCountBefore - 1, block.Header.LiveRowCount);
 
             var reusedPath = Path.Combine(TestRootDirectory.For('T'), "documents", "reused.txt");
-            var reusedChanges = mutator.Apply(rootBlock,
+            var reusedChanges = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, UserDirectoryRow, "reused.txt",
                     UsnReason.FileCreate | UsnReason.Close, ChangeMoment, sequenceNumber: 2)
@@ -258,7 +258,7 @@ public partial class JournalMutatorTests
 
             var mutator = new JournalMutator(writer);
 
-            var ordinaryMove = mutator.Apply(rootBlock,
+            var ordinaryMove = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(secondFileRow, archiveDirectoryRow, "moved.txt",
                     UsnReason.RenameNewName | UsnReason.Close, ChangeMoment, sequenceNumber: 1)
@@ -266,7 +266,7 @@ public partial class JournalMutatorTests
             Assert.HasCount(1, ordinaryMove);
             Assert.AreEqual(FileChangeKind.Renamed, ordinaryMove[0].Kind);
 
-            var nonExtendDeletedMove = mutator.Apply(rootBlock,
+            var nonExtendDeletedMove = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(thirdFileRow, userDeletedDirectoryRow, "0000000000000003",
                     UsnReason.RenameNewName | UsnReason.Close, ChangeMoment, sequenceNumber: 1)
@@ -274,7 +274,7 @@ public partial class JournalMutatorTests
             Assert.HasCount(1, nonExtendDeletedMove);
             Assert.AreEqual(FileChangeKind.Renamed, nonExtendDeletedMove[0].Kind);
 
-            var nonRootExtendDeletedMove = mutator.Apply(rootBlock,
+            var nonRootExtendDeletedMove = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(fourthFileRow, nestedDeletedDirectoryRow, "0000000000000004",
                     UsnReason.RenameNewName | UsnReason.Close, ChangeMoment, sequenceNumber: 1)
@@ -282,7 +282,7 @@ public partial class JournalMutatorTests
             Assert.HasCount(1, nonRootExtendDeletedMove);
             Assert.AreEqual(FileChangeKind.Renamed, nonRootExtendDeletedMove[0].Kind);
 
-            var realDeletePending = mutator.Apply(rootBlock,
+            var realDeletePending = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.RenameNewName, ChangeMoment, sequenceNumber: 1),
@@ -293,7 +293,7 @@ public partial class JournalMutatorTests
                 [FileChangeKind.DeletePending, FileChangeKind.Deleted],
                 [.. realDeletePending.Select(change => change.Kind)]);
 
-            var secondDeleteOnTombstonedRow = mutator.Apply(rootBlock,
+            var secondDeleteOnTombstonedRow = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.FileDelete | UsnReason.Close, ChangeMoment, sequenceNumber: 1)
@@ -322,7 +322,7 @@ public partial class JournalMutatorTests
                 (_, newParentRecordNumber, newName) =>
                     newParentRecordNumber == ordinaryStagingRow && newName == "staged.bin");
 
-            var changes = mutator.Apply(rootBlock,
+            var changes = mutator.ApplyWhole(rootBlock,
             [
                 CreateEntry(NotesFileRow, UserDirectoryRow, "notes.txt", UsnReason.RenameOldName, ChangeMoment,
                     sequenceNumber: 1),
@@ -367,7 +367,7 @@ public partial class JournalMutatorTests
             try
             {
                 var initialMutator = new JournalMutator(initialWriter);
-                var pendingChanges = initialMutator.Apply(initialRootBlock,
+                var pendingChanges = initialMutator.ApplyWhole(initialRootBlock,
                 [
                     CreateEntry(NotesFileRow, UserDirectoryRow, "notes.txt", UsnReason.RenameOldName, ChangeMoment,
                         sequenceNumber: 1),
@@ -400,7 +400,7 @@ public partial class JournalMutatorTests
                 CancellationToken.None));
 
             var reopenedMutator = new JournalMutator(new BlockWriter(reopenedBlock));
-            var completedChanges = reopenedMutator.Apply(reopenedRootBlock,
+            var completedChanges = reopenedMutator.ApplyWhole(reopenedRootBlock,
             [
                 CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001",
                     UsnReason.FileDelete | UsnReason.Close, ChangeMoment, sequenceNumber: 1)

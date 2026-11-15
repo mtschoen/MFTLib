@@ -26,6 +26,12 @@ public sealed record SyntheticBlockOptions
     /// </summary>
     internal ulong? ScanShape { get; init; }
 
+    /// <summary>
+    ///     The block's capacities, for a test that drives one region to its limit; null plans them from the rows, with
+    ///     headroom for later edits.
+    /// </summary>
+    internal BlockCapacities? Capacities { get; init; }
+
     /// <summary>The shape stamped into the header: <see cref="ScanShape" />, or the default for the producer kind.</summary>
     internal ulong ResolveScanShape() => ScanShape ?? SyntheticScanShape.Default(ProducerKind);
 }

@@ -31,8 +31,10 @@ ownership; block operations still follow the locks described below.
 - Index contracts:
     - **Block ownership**: a cache-mode `VolumeScan` holds one sibling `<block>.lock` (opened with
       `FileShare.None`, an exclusive non-blocking `flock` on Unix) for as long as it owns a canonical
-      cache block, and that lock is taken before any validation, retired-sibling sweep, rename, or
-      delete. Views of the same process share key attach to that scan and lock. A different share key or process that cannot take the
+      cache block, and that lock is taken before any validation, sibling sweep, rename, or
+      delete. The sweep, run once when the scan takes the lock, deletes the `<block>.retired-*` files a rescan or a
+      watch growth renamed aside and the `<block>.growing-*` replacements an enumeration growth or a watch growth was
+      still writing, all of which a killed process can leave behind. Views of the same process share key attach to that scan and lock. A different share key or process that cannot take the
       lock reports the root `Failed` with `RootFailureKind.InUse` on a cache-only open; a non-cache-only
       open instead scans into a private `mftlib-private-*` delete-on-close block and leaves the canonical
       cache untouched. `.lock` files are deliberately never unlinked (unlinking races a fresh

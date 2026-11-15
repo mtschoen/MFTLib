@@ -166,22 +166,6 @@ public class BlockLayoutTests
     }
 
     [TestMethod]
-    public void GrowthMinimum_ADeltaRegionAtCapacity_DoublesOnlyTheDelta()
-    {
-        var header = new BlockHeader
-        {
-            Flags = BlockFlags.CapacityExhausted,
-            RowCount = 6,
-            SlotCapacity = 64,
-            NameEntryCapacity = 64,
-            NamePoolCapacity = 4096,
-            DeltaCapacity = 128,
-            DeltaEntryCount = 128
-        };
-        Assert.AreEqual(new BlockCapacities(0, 0, 0, 256), BlockLayout.GrowthMinimum(in header));
-    }
-
-    [TestMethod]
     public void GrowthMinimum_ADeltaRegionWithRoomLeft_DoesNotRequestRowsWhenRowsAreFull()
     {
         var header = new BlockHeader
@@ -195,22 +179,6 @@ public class BlockLayoutTests
             DeltaEntryCount = 3
         };
         Assert.AreEqual(new BlockCapacities(128, 0, 0, 0), BlockLayout.GrowthMinimum(in header));
-    }
-
-    [TestMethod]
-    public void GrowthMinimum_AnExhaustedDeltaWithFullRows_DoublesBoth()
-    {
-        var header = new BlockHeader
-        {
-            Flags = BlockFlags.CapacityExhausted,
-            RowCount = 64,
-            SlotCapacity = 64,
-            NameEntryCapacity = 64,
-            NamePoolCapacity = 4096,
-            DeltaCapacity = 128,
-            DeltaEntryCount = 128
-        };
-        Assert.AreEqual(new BlockCapacities(128, 0, 0, 256), BlockLayout.GrowthMinimum(in header));
     }
 
     [TestMethod]

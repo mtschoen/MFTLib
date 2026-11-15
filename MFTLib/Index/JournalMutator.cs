@@ -9,9 +9,9 @@ namespace MFTLib.Index;
 ///     block's access scope. The batch also holds an access scope across incarnation checks,
 ///     handle creation and event path reads between writer calls. A record the block cannot store is
 ///     refused whole: nothing of it is written and its cycle is not marked.
-///     <see cref="ApplyUntilRefusal" /> stops there with the cursor on the refused record;
-///     <see cref="Apply" /> flags the block capacity-exhausted, skips the record, and keeps applying what
-///     fits, leaving the volume queryable rather than crashing or silently dropping a record. NTFS closes every open cycle with a record
+///     <see cref="ApplyUntilRefusal" /> stops there with the cursor on the refused record, and the index either grows
+///     the block and resumes at that record or, when no growth can store it, flags the block, skips the record and
+///     resumes after it. NTFS closes every open cycle with a record
 ///     that repeats the cycle's reasons plus <see cref="UsnReason.Close" />; the mutator
 ///     coalesces that close record against the reasons the cycle already reported (tracked per
 ///     root block in <see cref="ReportedReasonCycles" />), so one real transition raises one
@@ -51,34 +51,6 @@ sealed class JournalMutator
     }
 
     public bool CapacityExhausted => Writer.CapacityExhausted;
-
-    /// <summary>
-    ///     Applies one batch, flagging and skipping every record the block cannot store: the block is marked
-    ///     capacity-exhausted, the refused record is skipped whole, and the batch continues after it. The batch cursor
-    ///     <paramref name="nextUsn" /> is written when the batch ends. A caller that can enlarge the block calls
-    ///     <see cref="ApplyUntilRefusal" /> itself and resumes at the refused index instead.
-    /// </summary>
-    public IReadOnlyList<FileChange> Apply(RootBlock rootBlock,
-        IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
-    {
-        var changes = new List<FileChange>();
-        var firstIndex = 0;
-        while (true)
-        {
-            var result = ApplyUntilRefusal(rootBlock, entries, firstIndex, journalIdentifier, nextUsn);
-            changes.AddRange(result.Changes);
-            if (result.Refusal is not { } refusal)
-            {
-                return changes;
-            }
-
-            Writer.MarkCapacityExhausted();
-            var entry = entries[refusal.Index];
-            DiagnosticsReport.Send(Writer.Block.Diagnostics, FormattableString.Invariant(
-                $"Skipped journal record at USN {entry.Usn} (record {entry.RecordNumber}): refused by the {refusal.Reason} region; growth could{(refusal.Growable ? "" : " not")} help."));
-            firstIndex = refusal.Index + 1;
-        }
-    }
 
     /// <summary>
     ///     Applies <paramref name="entries" /> from <paramref name="firstIndex" /> in order and stops at the first record

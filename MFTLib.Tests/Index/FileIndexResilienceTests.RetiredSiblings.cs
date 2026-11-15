@@ -4,23 +4,29 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="FileIndex.OpenAsync" />'s best-effort sweep of stale ".retired-*" siblings
-///     left behind by a killed process, and what happens when that sweep cannot delete one.
+///     <see cref="FileIndex.OpenAsync" />'s best-effort sweep of stale ".retired-*" and ".growing-*"
+///     siblings left behind by a killed process, and what happens when that sweep cannot delete one.
 /// </summary>
 public partial class FileIndexResilienceTests
 {
+    /// <summary>
+    ///     A renamed-aside file and a replacement a growth was still writing are both swept; this root is an
+    ///     enumeration walk, so the <c>.growing-*</c> case is the leftover of an enumeration growth.
+    /// </summary>
     [TestMethod]
-    public async Task OpenAsync_CacheMode_DeletesAPreExistingRetiredSiblingForTheRoot()
+    [DataRow(".retired-", DisplayName = "a renamed-aside file")]
+    [DataRow(".growing-", DisplayName = "a growth's unfinished replacement")]
+    public async Task OpenAsync_CacheMode_DeletesAPreExistingStaleSiblingForTheRoot(string suffix)
     {
         Directory.CreateDirectory(CacheDirectoryPath);
-        var staleRetiredPath = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
-        await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken);
+        var stalePath = Path.Combine(CacheDirectoryPath,
+            CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + suffix + Guid.NewGuid().ToString("N"));
+        await File.WriteAllTextAsync(stalePath, "leftover from a killed process", TestContext.CancellationToken);
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
         Assert.AreEqual(RootState.Ready, index.Status.State);
-        Assert.IsFalse(File.Exists(staleRetiredPath));
+        Assert.IsFalse(File.Exists(stalePath));
     }
 
     [TestMethod]

@@ -20,9 +20,9 @@ public sealed partial class FileIndex
 
             if (EnsureCanonicalOwnership())
             {
-                // Cache-mode rescans can leave a renamed ".retired-*" sibling if a prior attempt
-                // aborted before removing it; swept here, under the held owner lock.
-                CleanupRetiredSiblings();
+                // A killed process can leave ".retired-*" and ".growing-*" siblings; swept here,
+                // under the held owner lock.
+                CleanupStaleSiblings();
                 return CanonicalSlotOutcome.Owned;
             }
 
@@ -75,15 +75,23 @@ public sealed partial class FileIndex
             owned?.Dispose();
         }
 
-        void CleanupRetiredSiblings()
+        /// <summary>
+        ///     Deletes the siblings a killed process can leave beside the canonical file: a <c>.retired-*</c> file a
+        ///     rescan or a watch growth renamed aside, and a <c>.growing-*</c> replacement an enumeration or a watch
+        ///     growth was still writing. Runs under the owner lock, before this index writes the slot.
+        /// </summary>
+        void CleanupStaleSiblings()
         {
-            var pattern = CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial) + ".retired-*";
+            var blockFileName = CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial);
             try
             {
-                foreach (var path in Hooks.EnumerateCacheFiles(creation.CacheDirectoryPath, pattern))
+                foreach (var suffix in (ReadOnlySpan<string>)[".retired-*", ".growing-*"])
                 {
-                    TryDeleteBestEffort(path,
-                        "sweeping a stale \".retired-*\" sibling left by a killed process");
+                    foreach (var path in Hooks.EnumerateCacheFiles(creation.CacheDirectoryPath, blockFileName + suffix))
+                    {
+                        TryDeleteBestEffort(path,
+                            $"sweeping a stale \"{suffix}\" sibling left by a killed process");
+                    }
                 }
             }
             catch (IOException)

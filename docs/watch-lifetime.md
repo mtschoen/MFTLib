@@ -221,10 +221,67 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       LookupEngine.TryMatchRootPrefix, including equal paths; a block-root view receives every change. Each Entry is
       rebound to the recipient's RootBlock with its captured sequence. A move across view boundaries is Renamed on
       both views; a held-handle delete into `$Extend\$Deleted` keeps its pre-move path and emits `DeletePending` followed by `Deleted`, never `Renamed`. Changed delivery does not require a watch request; scan fault delivery does.
+    - **Growth**: a batch applies until the first record the block refuses (`JournalMutator.ApplyUntilRefusal`,
+      which leaves the block's cursor on that record's USN `u`). When a larger block can hold the record, the apply
+      grows the block and resumes at that record with the same `RootBlock`, and the batch ends at its own cursor as
+      before. The capacities follow [Capacity](index-format.md#capacity). Under the write gate, in order:
+        1. Under `StateLock`, read the production marker; when a scan is producing, park (below).
+        2. Create the replacement: at `<canonical>.growing-<guid>` when this index owns the canonical slot and the
+           block is the canonical file, otherwise a new private delete-on-close temp file (a private or
+           cache-disabled root). Copy with `BlockCopier`, build the posting base and set `Complete`. The pump's stop
+           token and the scan's closing token are observed between phases and every 4096 rows of the build;
+           cancellation deletes the replacement and leaves the old block published at `u`, so the batch ends there
+           and a later watch replays the record.
+        3. Canonical slot only: rename the canonical file aside to `.retired-<guid>`, schedule its deletion on the
+           old mapping's release, then rename the replacement to the canonical name. Two renames, because Windows
+           refuses to move a file over a mapped one (`BlockFileAtomicReplaceTests`). From here only disposal stops
+           the growth.
+        4. Under `StateLock`: refuse when closing, then `MappedBlock.Replace` moves every view onto the replacement
+           in one volatile store. One diagnostics line names the refused record, the new capacities and the bytes
+           the retired mappings hold: a retired mapping stays mapped, and its file on disk, until the lineage is
+           released by a rescan or disposal, because unborrowed handle reads take no count to drain.
+        5. Resume the apply at the refused record; route and deliver as for any batch.
+        6. A canonical replacement is flushed on a background task under an access scope.
+
+      A successful growth raises no event and changes no status field: `Status`, `Origin`, `CacheLocation`,
+      `ScanTimestamp`, `Generation` and `LiveRowCount` read the same, handles stay equal and live, and a query in flight
+      finishes on the mapping it pinned. Rows keep their numbers and sequence numbers across the copy, so a directory
+      view's binding resolved on the old mapping names the same row on the replacement; views are not re-resolved.
+      A record no growth can store is flagged, skipped whole and reported on one diagnostics line: a record or parent
+      number above 32 bits, a region at its clamp, a record refused again by the same region right after its growth,
+      or a growth that failed, after which the rest of the batch does not grow again.
+      A process killed before step 3 leaves the old block at `u` or an earlier cursor and a `.growing-*` sibling;
+      killed between the renames it leaves no canonical file, so the next open cold-scans; killed after them it
+      leaves the replacement at `u`, from which replay is exact. The next owner sweeps both kinds of sibling
+      ([block ownership](block-ownership.md)).
+    - **Growth during production**: a rescan, a recovery or the open's lost-catch-up retry takes the write gate
+      briefly to find the block it supersedes, rename the canonical file aside and set a `StateLock`-protected
+      production marker in one step. Publication clears the marker in its commit section; a production that publishes
+      nothing restores or discards its files and then clears it, without the write gate (no growth runs while it is
+      set, and a scan cancelled at the publication gate must not wait for that gate). A growth that meets the marker
+      delivers the changes it applied, releases the write gate and waits for the marker with its stop token; the pump
+      never takes the lifecycle gate, so this cannot deadlock. When the rescan publishes, the parked pump is retired
+      with the old lineage and the new watch replays from the scan's cursor: a parked record after that cursor is
+      replayed, and one before it is in the state the scan read, so in that case the parked records raise no
+      `Changed` event, as a rescan retiring a pump that is behind its cursor does. When the production gives up, the
+      pump takes the write gate again, checks that it is still the running watch over the same lineage, and grows. A
+      rescan queued behind a growth waits for the write gate and supersedes the grown block.
+    - **Single writer**: every write to a published block holds the write gate or cannot run during a growth:
+        - the journal apply, including the cursor, generation, delta appends, metadata and freshness updates,
+          tombstones and the capacity flag of a skipped record (`ApplyJournalEntriesCoreAsync`, write gate);
+        - the generation advance of a replacement before commit (`PublishRescannedBlockAsync`,
+          `AdoptOpenedRootAsync`), which writes the unpublished replacement under the write gate;
+        - producers, broker cursor adoption, freed-row trust and enumeration growth, which write only a block no
+          view has yet;
+        - the growth itself (write gate) and its background flush, which writes no content.
+
+      `FileIndex.ReleaseResidentPages` unlocks resident pages without changing content, and the view binding,
+      deleted-child links and name ordinal lookups are managed caches, not block writes.
     - **Lock order**: the order is the lifecycle gate, the write gate, then
       `StateLock`. No gate is acquired while `StateLock` is held; disposal takes the lifecycle gate and then the
-      write gate. Production holds the lifecycle gate but neither
-      the write gate nor `StateLock`; publication takes the write gate and commits the block,
+      write gate. Production holds the lifecycle gate; it takes the write gate only briefly before producing, to find the
+      superseded block, rename the canonical file aside and set the production marker, and holds neither the write gate
+      nor `StateLock` while it produces; publication takes the write gate and commits the block,
       status, and pending result under `StateLock`, retiring a healthy watch in that same
       section. After releasing both `StateLock` and the write gate, it requests stop and awaits
       the old pump's `Drained` and any predecessor's, holding only the lifecycle gate. `Changed`,

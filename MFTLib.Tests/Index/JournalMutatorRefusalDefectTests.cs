@@ -58,12 +58,13 @@ public sealed class JournalMutatorRefusalDefectTests : IDisposable
         var (block, writer, snapshot) = BuildRoot(namePoolCapacity: 1);
         try
         {
-            var changes = new JournalMutator(writer).Apply(snapshot[0],
+            var result = new JournalMutator(writer).ApplyUntilRefusal(snapshot[0],
                 [Entry(1, "much-longer-name.txt", UsnReason.RenameNewName,
-                    attributes: FileAttributes.Archive | FileAttributes.ReadOnly)],
+                    attributes: FileAttributes.Archive | FileAttributes.ReadOnly)], 0,
                 journalIdentifier: 1, nextUsn: 10);
 
-            Assert.IsEmpty(changes);
+            Assert.IsEmpty(result.Changes);
+            Assert.AreEqual(WriteRefusal.NamePool, result.Refusal?.Reason);
             Assert.AreEqual(32u, block.Rows[1].Attributes);
             Assert.AreEqual("a", NamePool.ReadRowName(block, 1).ToString());
         }
@@ -79,8 +80,8 @@ public sealed class JournalMutatorRefusalDefectTests : IDisposable
         var (_, writer, snapshot) = BuildRoot(namePoolCapacity: 1);
         try
         {
-            new JournalMutator(writer).Apply(snapshot[0],
-                [Entry(1, "much-longer-name.txt", UsnReason.RenameNewName)], journalIdentifier: 1, nextUsn: 10);
+            new JournalMutator(writer).ApplyUntilRefusal(snapshot[0],
+                [Entry(1, "much-longer-name.txt", UsnReason.RenameNewName)], 0, journalIdentifier: 1, nextUsn: 10);
 
             Assert.AreEqual(UsnReason.None, snapshot[0].ReportedCycles.GetReportedReasons(1, 0));
         }

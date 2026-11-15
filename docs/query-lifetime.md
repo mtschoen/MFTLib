@@ -59,7 +59,7 @@
       release has a scheduled delete) stays on disk, until the lineage is released: by disposal, which drains the
       borrows of every mapping before unmapping it, or by finalization once a rescan's retired lineage is
       unreachable. A sealed lineage (retired by a rescan or handed to disposal) refuses a replacement with
-      `ObjectDisposedException`. A rescan always creates a new lineage.
+      `ObjectDisposedException`. A rescan always creates a new lineage; a watch growth ([watch lifetime](watch-lifetime.md), "Growth") is the one caller of `Replace`.
 
     - **Row enumeration**: `FileIndex.EnumerateRows` and `FileIndexSet.EnumerateRows` take a snapshot borrow when `foreach` begins
       (`GetEnumerator()`), and `foreach` releases it on completion, `break`, an exception or cancellation.
@@ -186,7 +186,7 @@
       completes against mapped memory or, if it arrives after disposal began, fails with
       `ObjectDisposedException` instead of dereferencing an unmapped view. Raw `BlockFile`
       property reads are not serialized against disposal; readers go through snapshot borrows.
-      `JournalMutator.Apply` additionally holds one access scope for the whole batch, including
+      `JournalMutator.ApplyUntilRefusal` additionally holds one access scope for each applied range, including
       incarnation checks, handle creation and event path materialization between writer calls.
       Disposal waits for that scope too; nested writer calls after disposal begins can still
       throw `ObjectDisposedException`, returning the batch scope as application unwinds.

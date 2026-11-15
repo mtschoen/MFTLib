@@ -166,9 +166,15 @@ public sealed partial class FileIndex
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(entries);
         var runtime = GetVolumeScan(root);
-        var changes = await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn,
-            CancellationToken.None).ConfigureAwait(false);
-        runtime.DeliverChanges(changes, null);
-        return changes.FirstOrDefault(route => ReferenceEquals(route.View, _view)).Changes ?? [];
+        var delivered = new List<FileChange>();
+        void DeliverRouted(IReadOnlyList<VolumeScan.RoutedChanges> routed)
+        {
+            runtime.DeliverChanges(routed, null);
+            delivered.AddRange(routed.FirstOrDefault(route => ReferenceEquals(route.View, _view)).Changes ?? []);
+        }
+
+        DeliverRouted(await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn, DeliverRouted,
+            CancellationToken.None).ConfigureAwait(false));
+        return delivered;
     }
 }

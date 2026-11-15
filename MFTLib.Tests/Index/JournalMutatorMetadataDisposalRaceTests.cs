@@ -36,7 +36,7 @@ public class JournalMutatorMetadataDisposalRaceTests
         };
 
         var timestamp = new DateTime(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
-        var applyTask = Task.Run(() => mutator.Apply(snapshot[0],
+        var applyTask = Task.Run(() => mutator.ApplyWhole(snapshot[0],
             [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
         Task? disposeTask = null;
         try
@@ -103,7 +103,7 @@ public class JournalMutatorMetadataDisposalRaceTests
 
         var timestamp = new DateTime(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
         Task? disposeTask = null;
-        var applyTask = Task.Run(() => mutator.Apply(snapshot[0],
+        var applyTask = Task.Run(() => mutator.ApplyWhole(snapshot[0],
             [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
         try
         {

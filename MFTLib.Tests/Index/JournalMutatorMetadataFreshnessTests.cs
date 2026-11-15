@@ -292,14 +292,14 @@ public class JournalMutatorMetadataFreshnessTests
         fixture.Block.PublishNamePoolUsed(fixture.Block.NamePoolCapacity);
         var generation = fixture.Block.Header.Generation;
 
-        var changes = fixture.Apply(
+        var result = fixture.ApplyUntilRefusal(
         [
             CreateEntry(FileRowIndex, 6, "a-new-name-that-cannot-fit.txt", UsnReason.RenameNewName | UsnReason.DataExtend,
                 fixture.Timestamp, sequenceNumber: 1)
         ]);
 
-        Assert.IsEmpty(changes);
-        Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
+        Assert.IsEmpty(result.Changes);
+        Assert.AreEqual(WriteRefusal.NamePool, result.Refusal?.Reason);
         var row = fixture.Block.Rows[(int)FileRowIndex];
         Assert.IsTrue(row.SizeKnown, "A refused rename must not apply the record's metadata.");
         Assert.IsTrue(row.LastWriteTimeKnown);

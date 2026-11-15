@@ -102,11 +102,15 @@ public class FileIndexWatchFailedRescanTests
         var original = harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock;
         var startCount = harness.Source.TargetsFor('T').Count;
         var initialProducedBlock = harness.BlockFor('T');
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        var production = harness.HoldNextProduction('T');
+        var rescan = harness.IndexFor('T').RescanAsync(cancellation.Token);
+        // The scan takes the write gate briefly before it produces, so the gate is held once it is producing.
+        await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.IndexFor('T').WaitForRootWriteGateForTest(new VolumeKey('T'), TestContext.CancellationToken);
+        production.Release();
         try
         {
-            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
-            var rescan = harness.IndexFor('T').RescanAsync(cancellation.Token);
             var unpublished = await FileIndexWatchRescanTests.WaitForReplacementBlockAsync(
                 harness, 'T', initialProducedBlock, rescan);
             await cancellation.CancelAsync();

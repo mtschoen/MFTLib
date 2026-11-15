@@ -61,7 +61,8 @@ public sealed partial class FileIndex
         ///     and publication share the state-lock section. Returns the count of lost catch-ups and
         ///     the handoff to drain after releasing the write gate, outside unpublished-block cleanup.
         ///     A manual rescan clears any recovery queued during production in that same section;
-        ///     an automatic <paramref name="recovery" /> keeps its own ticket and state.
+        ///     an automatic <paramref name="recovery" /> keeps its own ticket and state. The same
+        ///     section clears the production marker, so a growth parked on it finds its watch retired.
         /// </summary>
         async Task<(int ConsecutiveLostCatchUps, WatchHandoff Handoff)> PublishRescannedBlockAsync(
             BlockFile block, PendingRootResult produced,
@@ -102,6 +103,7 @@ public sealed partial class FileIndex
                     }
 
                     PublishBindingsLocked(rootBlock, bindings);
+                    ClearProductionMarkerLocked();
                     if (recovery is not null)
                     {
                         recovery.FailedBlock = rootBlock;

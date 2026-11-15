@@ -32,6 +32,9 @@ public sealed class SyntheticMftProducer
     /// <summary>Becomes <see cref="RootBlockStatus.SkippedRecordCount" />; zero means the scan placed every record.</summary>
     internal int SkippedRecordCount { get; init; }
 
+    /// <summary>The capacities of every block this producer builds; null plans them from the rows.</summary>
+    internal BlockCapacities? Capacities { get; init; }
+
     /// <summary>Awaited before each production builds its block, so a test can hold a scan or rescan in progress.</summary>
     public Func<VolumeKey, CancellationToken, Task>? BeforeProduceAsync { get; init; }
 
@@ -75,7 +78,8 @@ public sealed class SyntheticMftProducer
                 JournalCursor = cursor,
                 ScanTimestamp = ScanTimestamp,
                 CacheTag = request.CacheTag,
-                ScanShape = request.ScanShape
+                ScanShape = request.ScanShape,
+                Capacities = Capacities
             }, _rowsForVolume(request.Volume)), request.Volume);
     }
 

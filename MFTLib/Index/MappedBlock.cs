@@ -101,6 +101,18 @@ sealed class MappedBlock
         }
     }
 
+    /// <summary>The bytes of every mapping this lineage retired, which stay mapped and on disk until the lineage is released.</summary>
+    internal long RetiredBytes
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _retired.Sum(mapping => mapping.Block.Length);
+            }
+        }
+    }
+
     /// <summary>
     ///     Hands every mapping of the lineage to a release: the retired ones first, then the current one. No
     ///     replacement is published afterwards, so the list is complete.

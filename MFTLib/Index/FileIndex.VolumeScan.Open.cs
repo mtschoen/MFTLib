@@ -122,7 +122,8 @@ public sealed partial class FileIndex
         /// <summary>
         ///     Adopts an opened root's settled result: builds its <see cref="RootBlock" /> over
         ///     <paramref name="block" /> and records the result on the runtime in one step under
-        ///     <see cref="StateLock" />. Returns the adopted block and the count of lost catch-ups in a row.
+        ///     <see cref="StateLock" />, which also clears the production marker of the scan that produced it.
+        ///     Returns the adopted block and the count of lost catch-ups in a row.
         /// </summary>
         async Task<(RootBlock Adopted, int ConsecutiveLostCatchUps)> AdoptOpenedRootAsync(
             BlockFile block, PendingRootResult settled, RootBlock? replacing = null)
@@ -140,6 +141,7 @@ public sealed partial class FileIndex
                 lock (StateLock)
                 {
                     PublishBindingsLocked(adopted, bindings);
+                    ClearProductionMarkerLocked();
                     RecordPendingResultLocked(settled, clearsCheckpointLoss: false);
                     return (adopted, _consecutiveLostCatchUps);
                 }

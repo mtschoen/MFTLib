@@ -136,7 +136,8 @@ static class BlockLayout
 
     /// <summary>
     ///     Returns no minimum when the capacity flag is clear; otherwise doubles each exhausted region,
-    ///     using rows as the fallback when none of the entry, pool and delta regions reached its exhaustion test.
+    ///     using rows as the fallback when neither the entry nor the pool region reached its exhaustion test.
+    ///     A full delta never sets the flag: a watch growth rebuilds the posting base, which empties it.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
@@ -149,14 +150,12 @@ static class BlockLayout
 
         var entriesExhausted = header.NameEntryCount >= header.NameEntryCapacity;
         var poolExhausted = header.NamePoolCapacity - header.NamePoolUsed <= NamePoolExhaustionMarginBytes;
-        var deltaExhausted = header.DeltaEntryCount >= header.DeltaCapacity;
-        var rowsExhausted = header.RowCount >= header.SlotCapacity ||
-                            (!entriesExhausted && !poolExhausted && !deltaExhausted);
+        var rowsExhausted = header.RowCount >= header.SlotCapacity || (!entriesExhausted && !poolExhausted);
         return new BlockCapacities(
             rowsExhausted ? DoubleCapacity(header.SlotCapacity) : 0,
             entriesExhausted ? DoubleNameEntryCapacity(header.NameEntryCapacity) : 0,
             poolExhausted ? DoubleNamePoolCapacity(header.NamePoolCapacity) : 0,
-            deltaExhausted ? DoubleCapacity(header.DeltaCapacity) : 0);
+            0);
     }
 
     /// <summary>

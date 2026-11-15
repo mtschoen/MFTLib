@@ -43,8 +43,8 @@ public sealed class PostingDeltaJournalTests : IAsyncDisposable
         return new JournalMutator(_writer);
     }
 
-    IReadOnlyList<FileChange> Apply(JournalMutator mutator, params UsnJournalEntry[] entries) =>
-        mutator.Apply(_snapshot[0], entries, journalIdentifier: 7, nextUsn: 2000);
+    void Apply(JournalMutator mutator, params UsnJournalEntry[] entries) =>
+        mutator.ApplyWhole(_snapshot[0], entries, journalIdentifier: 7, nextUsn: 2000);
 
     static UsnJournalEntry Create(ulong record, string name) =>
         CreateEntry(record, 1, name, UsnReason.FileCreate | UsnReason.Close, ChangeMoment);
@@ -172,20 +172,19 @@ public sealed class PostingDeltaJournalTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ExhaustedDelta_ReportsCapacityExhaustedKeepsThePriorNameAndKeepsApplyingTheRest()
+    public void ExhaustedDelta_StopsAtTheRefusedRecordWithThePriorNamesIntact()
     {
         var mutator = CreateMutator(deltaCapacity: 1);
 
-        var changes = Apply(mutator, Create(5, "first.txt"), Create(6, "second.txt"), Rename(2, "third.txt"),
-            CreateEntry(2, 1, "existing.txt", UsnReason.DataExtend | UsnReason.Close, ChangeMoment));
+        var result = mutator.ApplyUntilRefusal(_snapshot[0], [Create(5, "first.txt"), Create(6, "second.txt"),
+            Rename(2, "third.txt")], 0, journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.IsTrue(mutator.CapacityExhausted);
-        Assert.IsTrue(_block.Header.IsCapacityExhausted);
+        Assert.AreEqual(new JournalRefusal { Index = 1, Reason = WriteRefusal.Delta, Growable = true }, result.Refusal);
+        Assert.IsFalse(_block.Header.IsCapacityExhausted);
         Assert.AreEqual(1u, _block.DeltaEntryCount);
         Assert.AreEqual("existing.txt", NamePool.ReadRowName(_block, 2).ToString());
         Assert.IsFalse(_block.Rows[6].IsInUse);
-        Assert.IsTrue(changes.Any(change => change.Entry.Name == "first.txt"));
-        Assert.IsFalse(changes.Any(change => change.Kind == FileChangeKind.Renamed));
+        Assert.AreEqual("first.txt", result.Changes.Single().Entry.Name);
         AssertEquivalent(_block);
     }
 

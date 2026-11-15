@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     A writer's claim on a block's mapped view, held for the whole of one
-///     <see cref="BlockWriter" /> operation, MFT transfer batch or <see cref="JournalMutator.Apply" /> batch. While one is outstanding, <see cref="BlockFile.Dispose" />
+///     <see cref="BlockWriter" /> operation, MFT transfer batch or <see cref="JournalMutator.ApplyUntilRefusal" /> range. While one is outstanding, <see cref="BlockFile.Dispose" />
 ///     waits rather than unmapping, so a write admitted before disposal began completes against
 ///     memory that is still mapped. Admission closes the moment disposal begins: a late writer is
 ///     answered with <see cref="ObjectDisposedException" /> instead of a view that is on its way
