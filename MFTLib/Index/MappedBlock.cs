@@ -44,6 +44,10 @@ sealed class MappedBlock
 
     internal ProducerKind ProducerKind { get; }
     internal ReportedReasonCycles ReportedCycles { get; } = new();
+
+    /// <summary>The lineage's memory of changes it could not store; a rescan's new lineage starts clean.</summary>
+    internal LineageCapacity Capacity { get; } = new();
+
     internal LineageHooks Hooks { get; } = new();
 
     /// <summary>Per-instance test hooks for this lineage.</summary>

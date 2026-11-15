@@ -6,8 +6,8 @@ public sealed partial class FileIndex
     {
         /// <summary>
         ///     Where one journal batch stands across the growths and parks of its application: the next record to
-        ///     apply, the refusal the latest growth remedied, and the growth failure that ends growing for the rest of
-        ///     the batch.
+        ///     apply, the refusal the latest growth remedied, the growth failure that ends growing for the rest of
+        ///     the batch, and the first record the batch skipped.
         /// </summary>
         sealed class BatchApplication(IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
         {
@@ -15,13 +15,25 @@ public sealed partial class FileIndex
             public ulong JournalIdentifier { get; } = journalIdentifier;
             public long NextUsn { get; } = nextUsn;
 
+            /// <summary>
+            ///     The lineage the batch first skipped a record on, with that skip's cause; null before any. A watch
+            ///     raises <see cref="WatchFaultKind.CapacityExhausted" /> with it once per lineage.
+            /// </summary>
+            public CapacityExhaustion? FirstSkip { get; private set; }
+
+            /// <summary>Records a skip on <paramref name="lineage" /> for <paramref name="cause" /> when it is the batch's first.</summary>
+            public void NoteSkip(MappedBlock lineage, Exception cause) => FirstSkip ??= new CapacityExhaustion(lineage, cause);
+
             /// <summary>Position in <see cref="Entries" /> where a resumed apply starts; the count once the batch ended.</summary>
             public int NextIndex { get; set; }
 
             /// <summary>Which record, refused by which region, the most recent growth was for; null before any.</summary>
             public (int Index, WriteRefusal Reason)? LastGrowth { get; set; }
 
-            /// <summary>Why the batch's one growth attempt failed; later refusals in the batch are skipped with it.</summary>
+            /// <summary>
+            ///     The I/O error the batch's one growth attempt failed with; later refusals in the batch are skipped with
+            ///     it, and the next refusal in a later batch tries again.
+            /// </summary>
             public Exception? GrowthFailure { get; set; }
 
             /// <summary>Set when a stop or disposal ended a growth: the batch ends at the refused record.</summary>
@@ -30,9 +42,10 @@ public sealed partial class FileIndex
             /// <summary>
             ///     The cause that makes <paramref name="refusal" /> unstorable, or null when a growth can make room: the
             ///     record is out of range, the same record was refused by the same region right after a growth, so
-            ///     growing again cannot help, or a growth already failed in this batch.
+            ///     growing again cannot help, the lineage already found that region at its clamp, or a growth already
+            ///     failed in this batch.
             /// </summary>
-            public Exception? WhyNotGrowable(JournalRefusal refusal)
+            public Exception? WhyNotGrowable(JournalRefusal refusal, LineageCapacity lineage)
             {
                 var entry = Entries[refusal.Index];
                 if (!refusal.Growable)
@@ -47,13 +60,14 @@ public sealed partial class FileIndex
                         $"Record {entry.RecordNumber} at USN {entry.Usn} was refused by the {refusal.Reason} region again right after a growth for it."));
                 }
 
-                return GrowthFailure;
+                return lineage.ClampFor(refusal.Reason) ?? GrowthFailure;
             }
         }
 
         /// <summary>
         ///     Applies <paramref name="batch" /> from its next record to its end, growing the block at each growable
-        ///     refusal and skipping each record that cannot be stored. Stops early to park, with
+        ///     refusal and skipping each record that cannot be stored (the first skip is kept as
+        ///     <see cref="BatchApplication.FirstSkip" />). Stops early to park, with
         ///     <paramref name="park" /> set to the production marker, when a scan is producing this root's replacement,
         ///     or when a stop or disposal ended a growth. The caller holds <see cref="WriteGate" />.
         /// </summary>
@@ -75,7 +89,7 @@ public sealed partial class FileIndex
                 }
 
                 batch.NextIndex = refusal.Index;
-                var cause = batch.WhyNotGrowable(refusal);
+                var cause = batch.WhyNotGrowable(refusal, rootBlock.Mapped.Capacity);
                 if (cause is null)
                 {
                     if (TryGetProductionMarker(out var marker))
@@ -94,6 +108,7 @@ public sealed partial class FileIndex
                 if (cause is not null)
                 {
                     SkipUnstorableRecord(rootBlock, batch.Entries[refusal.Index], refusal, cause);
+                    batch.NoteSkip(rootBlock.Mapped, cause);
                     batch.NextIndex = refusal.Index + 1;
                 }
             }
@@ -101,8 +116,9 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     Grows the block for <paramref name="refusal" />. Returns null when the replacement is published or a stop
-        ///     ended the growth (<see cref="BatchApplication.Stopped" />), otherwise the failure: the region at its clamp
-        ///     or the I/O error that stopped the copy, which also ends growing for the rest of the batch. A lineage
+        ///     ended the growth (<see cref="BatchApplication.Stopped" />), otherwise the failure: the planner's clamp,
+        ///     which the lineage remembers for a name region (<see cref="LineageCapacity" />), or the I/O error that
+        ///     stopped the copy, which ends growing for the rest of the batch only. A lineage
         ///     released before publication (<see cref="ObjectDisposedException" /> from <see cref="MappedBlock.Replace" />)
         ///     is a stop like disposal: it never flags the block or skips the record.
         /// </summary>
@@ -119,7 +135,11 @@ public sealed partial class FileIndex
             }
             catch (InvalidOperationException clamp)
             {
-                batch.GrowthFailure = clamp;
+                if (refusal.Reason != WriteRefusal.Slots)
+                {
+                    rootBlock.Mapped.Capacity.RememberClamp(refusal.Reason, clamp);
+                }
+
                 return clamp;
             }
 

@@ -29,6 +29,32 @@ public sealed partial class FileIndex
             }
         }
 
+        /// <summary>
+        ///     Notifies every requesting view that a journal change could not be stored on <paramref name="skip" />'s
+        ///     lineage, once per lineage, with its cause as the exception. Under <see cref="StateLock" /> it claims the
+        ///     lineage's notification and captures the recipients only while <paramref name="instance" /> is still the
+        ///     root's running watch and the skip's lineage is still the published one, so a rescan that published a
+        ///     replacement meanwhile suppresses it. Not a watch fault: no view records it as outstanding, so a stop
+        ///     never returns it, and no watch state changes. Called by the pump with no gate or lock held; delivery
+        ///     runs outside the lock.
+        /// </summary>
+        void RaiseCapacityExhausted(WatchInstance instance, CapacityExhaustion skip)
+        {
+            IndexView[] recipients;
+            lock (StateLock)
+            {
+                if (IsClosing || !ReferenceEquals(Current, instance) || instance.State != WatchInstanceState.Running ||
+                    !ReferenceEquals(Block?.Mapped, skip.Lineage) || !skip.Lineage.Capacity.TryClaimNotification())
+                {
+                    return;
+                }
+
+                recipients = [.. _requesters];
+            }
+
+            RaiseWatchFaulted(new WatchFault(WatchFaultKind.CapacityExhausted, Volume, skip.Cause), recipients);
+        }
+
         static void RaiseWatchFaulted(WatchFault fault, IReadOnlyList<IndexView> recipients)
         {
             foreach (var view in recipients)

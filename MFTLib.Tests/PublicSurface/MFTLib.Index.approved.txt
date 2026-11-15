@@ -429,6 +429,7 @@ MFTLib.Index.WatchFault :: property public Kind { get; init; } : MFTLib.Index.Wa
 MFTLib.Index.WatchFault :: property public Volume { get; init; } : MFTLib.Index.VolumeKey
 MFTLib.Index.WatchFault :: type public sealed class : System.IEquatable<MFTLib.Index.WatchFault>
 MFTLib.Index.WatchFaultKind :: field public const Apply : MFTLib.Index.WatchFaultKind = 2
+MFTLib.Index.WatchFaultKind :: field public const CapacityExhausted : MFTLib.Index.WatchFaultKind = 7
 MFTLib.Index.WatchFaultKind :: field public const CatchUpLost : MFTLib.Index.WatchFaultKind = 3
 MFTLib.Index.WatchFaultKind :: field public const Channel : MFTLib.Index.WatchFaultKind = 4
 MFTLib.Index.WatchFaultKind :: field public const Recovery : MFTLib.Index.WatchFaultKind = 5

@@ -103,7 +103,7 @@ struct BlockHeader
     /// <summary>Determines whether the producer marked the block complete.</summary>
     public readonly bool IsComplete => (Flags & BlockFlags.Complete) != 0;
 
-    /// <summary>Determines whether a mutation exhausted the block's reserved capacity.</summary>
+    /// <summary>Determines whether at least one change could not be stored in the block (<see cref="BlockFlags.CapacityExhausted" />).</summary>
     public readonly bool IsCapacityExhausted => (Flags & BlockFlags.CapacityExhausted) != 0;
 
     /// <summary>Converts <see cref="ScanTimestampTicks" /> to a UTC <see cref="DateTime" />.</summary>

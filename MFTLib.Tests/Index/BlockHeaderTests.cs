@@ -206,7 +206,7 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsNine()
+    public void FormatVersion_IsTen()
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
@@ -214,7 +214,7 @@ public class BlockHeaderTests
         using var block = builder.OpenForReading(out var validation);
         Assert.IsNull(validation);
         Assert.IsNotNull(block);
-        Assert.AreEqual(9u, block.Header.FormatVersion);
+        Assert.AreEqual(10u, block.Header.FormatVersion);
     }
 
     [TestMethod]

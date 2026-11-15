@@ -247,9 +247,24 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       `ScanTimestamp`, `Generation` and `LiveRowCount` read the same, handles stay equal and live, and a query in flight
       finishes on the mapping it pinned. Rows keep their numbers and sequence numbers across the copy, so a directory
       view's binding resolved on the old mapping names the same row on the replacement; views are not re-resolved.
-      A record no growth can store is flagged, skipped whole and reported on one diagnostics line: a record or parent
-      number above 32 bits, a region at its clamp, a record refused again by the same region right after its growth,
-      or a growth that failed, after which the rest of the batch does not grow again.
+      A record no growth can store is flagged, skipped whole and reported on one diagnostics line, and the batch
+      continues: a record or parent number above 32 bits, a region at its clamp, a record refused again by the same
+      region right after its growth, or a growth that failed with an I/O error. A growth I/O failure ends growing for
+      the rest of that batch only: the next refusal in a later batch tries again, at most once per batch. A name
+      region found at its clamp is remembered by the lineage (`LineageCapacity`) and not retried until a rescan starts
+      a new lineage; a slot plan past the largest plannable slot region belongs to its record and is not remembered.
+    - **Cannot grow**: the pump raises `WatchFaulted` with `WatchFaultKind.CapacityExhausted` once per lineage, for
+      the first skipped record, after that batch's `Changed` delivery and with no gate or lock held. The exception is
+      the cause: the growth's `IOException` or `UnauthorizedAccessException`, or an `InvalidOperationException`
+      naming the region and its clamp or the out-of-range record. Under `StateLock` the pump claims the lineage's
+      notification and snapshots the requesting views only while its watch is still the root's running watch and the
+      lineage it skipped on is still the published one; a rescan that published a replacement meanwhile (for example
+      while the batch's `Changed` handlers ran) suppresses it, and a growth, which keeps the lineage, does not.
+      Delivery runs outside the lock. Recipients are that snapshot;
+      no view records it as an outstanding fault, so a stop never returns it as Failed, `IsRecovering` is false, no
+      recovery starts and no `WatchStateChanged` is raised. `RootBlockStatus.IsCapacityExhausted` reads true. A
+      direct journal apply (no pump) flags and skips without notifying, and leaves the lineage's notification for its
+      watch. A rescan starts a new lineage, which can notify again.
       A process killed before step 3 leaves the old block at `u` or an earlier cursor and a `.growing-*` sibling;
       killed between the renames it leaves no canonical file, so the next open cold-scans; killed after them it
       leaves the replacement at `u`, from which replay is exact. The next owner sweeps both kinds of sibling

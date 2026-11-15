@@ -211,9 +211,11 @@ from the stored `S`, `E`, delta capacity `D` and pool capacity `P`. The posting 
 | 160 | delta entry count | u32 | Published delta entries, excluding entry zero; at most `D` |
 | 164 | delta capacity | u32 | `D`, the allocatable delta entries, excluding entry zero; at least 1 |
 
-The format version is 9. The declared header ends at byte 168 within a
+The format version is 10. The declared header ends at byte 168 within a
 4096-byte header page; the root key text follows it. A version mismatch rejects the block: normal opens
-rebuild it, and cache-only opens decline the root and leave the block in place.
+rebuild it, and cache-only opens decline the root and leave the block in place. In version 10 the
+capacity-exhausted flag means a change could not be stored ([Capacity](#capacity)); a version 9 block, whose flag can
+stand for journal changes dropped behind its cursor, is rejected as `WrongFormatVersion` and cold-scans once.
 
 ## Root key text
 
@@ -485,9 +487,13 @@ shape, and the capacity-exhausted bit only when the old block already had it), a
 
 A record no growth can store is skipped whole and sets the capacity-exhausted flag: a record or parent number above
 32 bits, a region at its clamp, a record refused again by the same region right after its own growth, or a growth
-that failed (an I/O error ends growing for the rest of that batch). The volume remains Ready and queryable. Read
+that failed (an I/O error ends growing for the rest of that batch). So in format version 10 the flag means at least
+one change could not be stored; a full region alone never sets it, because the watch grows the block instead. The
+watch reports the first such skip of a lineage once as `WatchFaultKind.CapacityExhausted`
+([Watch lifetime](watch-lifetime.md), "Cannot grow"). The volume remains Ready, queryable and watched. Read
 `RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a
-replacement without it; failed or cancelled rescans retain the old block and its flag.
+replacement without it; failed or cancelled rescans retain the old block and its flag. A flagged block warm-opens
+and its watch starts normally, with no event: the flag is read through the status.
 
 ## Name entries, byte pool and hash chains
 

@@ -15,8 +15,11 @@ public sealed partial class FileIndex
         ///     <paramref name="deliverBeforePark" /> with no gate or lock held, the apply waits for the scan to
         ///     publish or give up, and then resumes only if the same watch still runs over the same lineage.
         /// </summary>
-        /// <returns>The changes applied after the last park, routed to their views.</returns>
-        public async Task<IReadOnlyList<RoutedChanges>> ApplyJournalEntriesCoreAsync(WatchInstance? instance,
+        /// <returns>
+        ///     The changes applied after the last park, routed to their views, and the batch's first skipped record,
+        ///     which a pump reports as <see cref="WatchFaultKind.CapacityExhausted" /> once per lineage.
+        /// </returns>
+        public async Task<JournalApplication> ApplyJournalEntriesCoreAsync(WatchInstance? instance,
             IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn,
             Action<IReadOnlyList<RoutedChanges>> deliverBeforePark, CancellationToken cancellationToken)
         {
@@ -49,7 +52,7 @@ public sealed partial class FileIndex
                 {
                     if (instance is not null && !IsRunningWatchOverItsBlock(instance))
                     {
-                        return [];
+                        return JournalApplication.Nothing;
                     }
 
                     ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
@@ -63,7 +66,7 @@ public sealed partial class FileIndex
                     // A parked batch resumes only on the lineage it parked on: a published rescan replays from its own cursor.
                     if (lineage is not null && !ReferenceEquals(lineage, rootBlock.Mapped))
                     {
-                        return [];
+                        return JournalApplication.Nothing;
                     }
 
                     lineage = rootBlock.Mapped;
@@ -94,13 +97,26 @@ public sealed partial class FileIndex
 
                 if (park is null)
                 {
-                    return routed;
+                    return new JournalApplication(routed, batch.FirstSkip);
                 }
 
                 deliverBeforePark(routed);
                 await park.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
         }
+
+        /// <summary>
+        ///     What one journal batch's application hands back: its routed changes and the batch's first skipped
+        ///     record, if any. A batch that ends because its watch or lineage was replaced hands back nothing: the
+        ///     replacement replays its records.
+        /// </summary>
+        internal readonly record struct JournalApplication(IReadOnlyList<RoutedChanges> Routed, CapacityExhaustion? FirstSkip)
+        {
+            public static JournalApplication Nothing { get; } = new([], null);
+        }
+
+        /// <summary>A record skipped because no growth could store it: the lineage it was skipped on and why.</summary>
+        internal sealed record CapacityExhaustion(MappedBlock Lineage, Exception Cause);
 
         bool IsRunningWatchOverItsBlock(WatchInstance instance)
         {

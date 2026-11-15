@@ -49,9 +49,13 @@ public sealed record RootBlockStatus
     public ulong Generation { get; init; }
 
     /// <summary>
-    ///     A producer write or mutation could not fit; the inventory is incomplete or stale. A rescan
-    ///     doubles only each exhausted region (rows, name entries or name bytes) and clears this flag
-    ///     when it publishes a replacement without capacity exhaustion.
+    ///     At least one change could not be stored, so the inventory is incomplete: a scan that did not fit
+    ///     its regions at their clamps, or a journal change the watch skipped because growing the block could
+    ///     not make room for it (a region at its clamp, a growth that failed with an I/O error, or a record
+    ///     or parent number out of range); the watch reports the latter once as
+    ///     <see cref="WatchFaultKind.CapacityExhausted" />. A full region alone never sets it, because the watch
+    ///     grows the block instead. <see cref="FileIndex.RescanAsync" /> rebuilds the block and clears this
+    ///     flag when the replacement stored everything.
     /// </summary>
     public bool IsCapacityExhausted { get; init; }
 

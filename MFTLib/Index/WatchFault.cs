@@ -55,7 +55,20 @@ public enum WatchFaultKind
     ///     until a consumer starts or rescans it; no automatic recovery is queued. Stop returns
     ///     this fault once as a Failed result.
     /// </summary>
-    RescanRestart
+    RescanRestart,
+
+    /// <summary>
+    ///     A journal change could not be stored because no growth of the block could make room for it: a region at
+    ///     its clamp, a growth that failed with an I/O error, or a record or parent number out of range. The
+    ///     exception is that cause, an <see cref="IOException" /> or <see cref="UnauthorizedAccessException" /> from
+    ///     the growth or an <see cref="InvalidOperationException" /> naming the region or the record. The change was
+    ///     skipped, <see cref="RootBlockStatus.IsCapacityExhausted" /> reads true, and the watch keeps running: this
+    ///     is not a watch failure, leaves no outstanding fault for a stop to return, starts no recovery and changes
+    ///     no watch state. Raised once per block lineage, on the root's pump after the batch's
+    ///     <see cref="FileIndex.Changed" /> delivery; <see cref="FileIndex.RescanAsync" /> rebuilds the block, and the
+    ///     rescanned block can raise it again.
+    /// </summary>
+    CapacityExhausted
 }
 
 /// <summary>

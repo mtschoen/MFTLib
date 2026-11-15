@@ -23,8 +23,10 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Raised for this view's first subscriber fault per watch instance, and for requesting views every time the shared watch
-    ///     ends with a volume, apply, or channel fault, and after every scan of a volume whose
-    ///     journal catch-up was lost or whose replacement watch could not start. Every fault names
+    ///     ends with a volume, apply, or channel fault, after every scan of a volume whose
+    ///     journal catch-up was lost or whose replacement watch could not start, and once per block
+    ///     lineage when the watch skipped a journal change no growth could store
+    ///     (<see cref="WatchFaultKind.CapacityExhausted" />, which leaves the watch running). Every fault names
     ///     its volume. Requesting recipients are captured when a scan fault settles; subscriber faults stay on their view.
     ///     Raised from that scan's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
     ///     and <see cref="WatchFaultKind.RescanRestart" /> from the scan after publication drained

@@ -15,9 +15,9 @@ namespace MFTLib.Index;
 ///     require a close between renames, so a second rename inside one open cycle is a new
 ///     transition, not an echo. Only rows with an open cycle occupy an entry, and a close
 ///     record removes its row, so the dictionary stays small no matter how large the block
-///     is. Runtime-only state: it is not persisted in the block and dies with the
-///     <see cref="RootBlock" /> that owns it, which is the lifecycle reset a rescan (block
-///     replacement) provides. Not thread-safe: every journal mutation
+///     is. Runtime-only state: it is not persisted in the block and dies with the block
+///     lineage (<see cref="MappedBlock" />) that owns it, so a watch growth keeps it and a
+///     rescan, which starts a new lineage, resets it. Not thread-safe: every journal mutation
 ///     of a volume's block is already serialized by that volume's write gate
 ///     (<see cref="FileIndex.ApplyJournalEntriesAsync(VolumeKey, IReadOnlyList{UsnJournalEntry}, ulong, long)" />),
 ///     and tests root it single-threaded.

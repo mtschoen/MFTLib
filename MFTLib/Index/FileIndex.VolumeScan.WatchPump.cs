@@ -90,7 +90,9 @@ public sealed partial class FileIndex
         ///     the apply failure, which ends the root's watch; a subscriber failure does not. A stop
         ///     that arrives while the batch waits for the write gate propagates as cancellation, which
         ///     the pump classifies as a stop. A growth parked behind a producing scan raises the
-        ///     changes applied before it first, the same way.
+        ///     changes applied before it first, the same way. After the batch's changes, the first
+        ///     record the batch could not store raises <see cref="WatchFaultKind.CapacityExhausted" />
+        ///     when its lineage has not raised it yet.
         /// </summary>
         async Task<Exception?> ApplyWatchBatchAsync(WatchInstance instance, JournalBatch batch,
             CancellationToken stopToken)
@@ -101,10 +103,10 @@ public sealed partial class FileIndex
                 DeliverChanges(routed, instance);
             }
 
-            IReadOnlyList<RoutedChanges> changes;
+            JournalApplication application;
             try
             {
-                changes = await ApplyJournalEntriesCoreAsync(instance, batch.Entries, batch.JournalIdentifier,
+                application = await ApplyJournalEntriesCoreAsync(instance, batch.Entries, batch.JournalIdentifier,
                     batch.NextUsn, Deliver, stopToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (!(exception is OperationCanceledException &&
@@ -113,7 +115,12 @@ public sealed partial class FileIndex
                 return exception;
             }
 
-            Deliver(changes);
+            Deliver(application.Routed);
+            if (application.FirstSkip is { } skip)
+            {
+                RaiseCapacityExhausted(instance, skip);
+            }
+
             return null;
         }
 

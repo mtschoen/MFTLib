@@ -321,15 +321,16 @@ missing or inaccessible subtrees; neither is an operational producer failure by 
 
 ## A retained FileEntry keeps only its own root block mapped
 
-**Decision:** A `FileEntry` holds its view's `RootBlock`, which holds one shared `MappedBlock`. A held handle keeps
-only that mapping alive; it does not retain the scan, other views or later mappings. The
+**Decision:** A `FileEntry` holds its view's `RootBlock`, which holds one shared `MappedBlock` lineage. A held handle
+keeps only that lineage alive: every mapping the lineage has had, until the lineage is released by disposal or a
+rescan; it does not retain the scan, other views or a later lineage. The
 16-byte layout holds (`RootBlock?`, `uint` row index, `ushort` sequence number); the root ordinal comes from
 the block. Queries acquire their view's borrow counter before the mapping's counter and return in reverse.
 Closing a view invalidates its handles and drains only its borrows. Last-detach teardown drains and releases every
 current and retired mapping regardless of held handles; an unreachable retired MappedBlock finalizes independently.
 
-**Reason:** MFTLib issue 844 ruling 5 requires independent view lifetime over shared storage. Retaining only the
-mapped block preserves the handle-isolation decision: a handle cannot pin unrelated or replacement blocks.
+**Reason:** MFTLib issue 844 ruling 5 requires independent view lifetime over shared storage. Retaining only its own
+lineage preserves the handle-isolation decision: a handle cannot pin unrelated blocks or a rescan's replacement.
 
 **Revisit only if:** a consumer needs a handle to pin a consistent multi-root view.
 
@@ -1080,9 +1081,9 @@ branches on `DriveType`, `IsReady` and `Format` instead of parsing the reason te
 
 **Revisit only if:** a consumer needs a different selectable discovery policy.
 
-## Capacity exhaustion names the state; rescan is the remedy
+## Capacity exhaustion names the state; growth is the remedy
 
-**Decision (2026-10-16):** use `CapacityExhausted` for the internal state and `IsCapacityExhausted` for the public boolean; bit 2 and the block format stay unchanged. A write did not fit, and a rescan rebuilds the inventory. **Reason:** state names describe the observed condition and the API names the actual remedy. **Revisit only if:** a consumer needs a distinct capacity-recovery state.
+**Decision (owner, 2026-11-15; MFTLib issue 953):** a journal change that does not fit pauses the watch before that change, copies the block into a larger replacement whose posting base is rebuilt, publishes it under the same root block identity, and applies the change; nothing is lost and nothing rescans. `CapacityExhausted` and `IsCapacityExhausted` keep their names and now mean a change could not be stored because growth could not make room (a clamp, an I/O failure or an out-of-range record); `WatchFaultKind.CapacityExhausted` notifies requesting views once per lineage and is not a watch failure. A consumer may call `RescanAsync`. **Reason:** a silent drop under a Ready, caught-up root is the worst failure an index can have, and growth costs a sub-second pause on real volumes. **Revisit only if:** a region reaches its clamp on a real volume.
 
 ## The public-surface pin stays bespoke
 

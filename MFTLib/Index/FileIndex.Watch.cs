@@ -173,8 +173,9 @@ public sealed partial class FileIndex
             delivered.AddRange(routed.FirstOrDefault(route => ReferenceEquals(route.View, _view)).Changes ?? []);
         }
 
-        DeliverRouted(await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn, DeliverRouted,
-            CancellationToken.None).ConfigureAwait(false));
+        // A direct apply has no pump, so a skipped record flags the block without a notification.
+        DeliverRouted((await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn, DeliverRouted,
+            CancellationToken.None).ConfigureAwait(false)).Routed);
         return delivered;
     }
 }
