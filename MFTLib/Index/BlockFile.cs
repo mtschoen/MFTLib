@@ -114,7 +114,7 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     Gets the path of the backing file. Its mapped contents remain available until this block
     ///     is disposed.
     /// </summary>
-    public string Path { get; }
+    public string Path { get; private set; }
 
     /// <summary>
     ///     Gets the fixed mapped-file length in bytes, including the header, rows, sequence

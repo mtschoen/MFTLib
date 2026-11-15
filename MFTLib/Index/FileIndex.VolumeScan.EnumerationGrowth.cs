@@ -18,8 +18,10 @@ public sealed partial class FileIndex
             public BlockFile Block => _block ?? throw new ObjectDisposedException(nameof(EnumerationBlockGrowth));
 
             /// <summary>
-            ///     Copies the exhausted block's rows out, disposes and deletes it, and restores the rows into a
-            ///     block with only the exhausted regions doubled. Null when every exhausted region is at its clamp.
+            ///     Copies the exhausted block's regions straight into a replacement created at a sibling path, with
+            ///     only the exhausted regions doubled, disposes and deletes the old block, and renames the replacement
+            ///     into place. The walk is unfinished, so no posting base is built. Null when every exhausted region is
+            ///     at its clamp.
             /// </summary>
             public BlockWriter? Grow(BlockWriter exhausted)
             {
@@ -29,23 +31,47 @@ public sealed partial class FileIndex
                     return null;
                 }
 
-                var snapshot = BlockRowSnapshot.Capture(exhausted.Block);
-                // Dispose first: private blocks delete on close; canonical blocks need an
-                // explicit deletion while the caller still holds their cache owner lock.
-                Dispose();
-                if (!deleteOnClose)
+                var replacementPath = $"{blockPath}.growing-{Guid.NewGuid():N}";
+                var replacement = runtime.CreateEnumerationBlock(replacementPath, deleteOnClose, next);
+                var rowCount = exhausted.Block.RowCount;
+                try
                 {
-                    File.Delete(blockPath);
+                    // The refusal that triggered this growth is remedied by it, so the replacement starts unflagged.
+                    using (exhausted.Block.TakeAccess())
+                    {
+                        exhausted.Block.Header.Flags &= ~BlockFlags.CapacityExhausted;
+                    }
+
+                    BlockCopier.Copy(exhausted.Block, replacement, buildPostings: false, complete: false);
+                    // Dispose first: private blocks delete on close; canonical blocks need an
+                    // explicit deletion while the caller still holds their cache owner lock.
+                    Dispose();
+                    if (!deleteOnClose)
+                    {
+                        File.Delete(blockPath);
+                    }
+
+                    File.Move(replacementPath, blockPath);
+                    replacement.AdoptRenamedPath(blockPath);
+                }
+                catch
+                {
+                    replacement.Dispose();
+                    if (!deleteOnClose)
+                    {
+                        File.Delete(replacementPath);
+                    }
+
+                    throw;
                 }
 
                 _capacities = next;
-                _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, _capacities);
-                snapshot.RestoreInto(_block);
+                _block = replacement;
                 DiagnosticsReport.Send(runtime.Diagnostics,
-                    $"Grew block file '{blockPath}': enumeration capacity exhausted at {snapshot.RowCount} rows; " +
+                    $"Grew block file '{blockPath}': enumeration capacity exhausted at {rowCount} rows; " +
                     $"the walk continues with {_capacities.SlotCapacity} slots, {_capacities.NameEntryCapacity} name entries " +
                     $"and {_capacities.NamePoolCapacity} name-pool bytes.");
-                return new BlockWriter(_block);
+                return new BlockWriter(replacement);
             }
 
             /// <summary>Hands the current block to the caller, who owns it from here.</summary>

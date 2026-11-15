@@ -19,6 +19,16 @@ sealed partial class BlockFile
     uint _nameEntryCount;
     ulong _generation;
 
+    /// <summary>
+    ///     Records the new name of the backing file after the caller renamed it while the block stays mapped;
+    ///     the mapping and its handle are unaffected.
+    /// </summary>
+    internal void AdoptRenamedPath(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        Path = path;
+    }
+
     /// <summary>Row slot count from the validated layout this block was built from.</summary>
     internal uint SlotCapacity { get; }
 

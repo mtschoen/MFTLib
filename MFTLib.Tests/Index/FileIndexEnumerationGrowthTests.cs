@@ -80,5 +80,34 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
         }
     }
 
+    [TestMethod]
+    public async Task Open_WithTheCacheDisabled_GrowsAPrivateBlockAndLeavesNoSiblingFile()
+    {
+        var diagnostics = new List<string>();
+        var options = Fixture.Options() with { Diagnostics = diagnostics.Add, CacheMode = CacheMode.Disabled };
+
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+        Assert.Contains(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase), diagnostics);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
+        Assert.IsFalse(index.Status.Block!.IsCapacityExhausted);
+        Assert.AreEqual((uint)FileCount + 3, index.Status.Block!.LiveRowCount);
+        Assert.IsNull(NamePoolIntegrity.Check(index.CurrentBlock!.Block));
+        Assert.DoesNotContain(".growing-", index.CurrentBlock.Block.Path, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task Open_AGrownCachedBlock_HasNoSiblingFileAndNamesTheCanonicalPath()
+    {
+        var options = Fixture.Options();
+
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+        var block = index.CurrentBlock!.Block;
+        Assert.AreEqual(Path.GetFileName(block.Path), Path.GetFileName(Directory.GetFiles(Fixture.CacheDirectory).Single(
+            path => !path.EndsWith(".lock", StringComparison.Ordinal))));
+        Assert.IsEmpty(Directory.GetFiles(Fixture.CacheDirectory, "*.growing-*"));
+    }
+
     public TestContext TestContext { get; set; } = null!;
 }
