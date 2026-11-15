@@ -91,13 +91,10 @@ sealed partial class BlockWriter
             return WriteRefusal.Slots;
         }
 
-        if (DeltaIsFull && !name.IsEmpty)
+        var previousNameId = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in Block.Rows[(int)rowIndex]));
+        if (DeltaLacksRoomFor(name, previousNameId))
         {
-            var previousNameId = FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in Block.Rows[(int)rowIndex]));
-            if (!NamePool.TryFindOrdinal(Block, name, out var existingNameId) || existingNameId != previousNameId)
-            {
-                return WriteRefusal.Delta;
-            }
+            return WriteRefusal.Delta;
         }
 
         var internRefusal = NamePool.TryGetOrAdd(Block, name, out var nameId);
@@ -400,4 +397,15 @@ sealed partial class BlockWriter
 
     /// <summary>True when the posting base exists and every delta entry is used, so a name change cannot be recorded.</summary>
     bool DeltaIsFull => Block.PostingsBuilt && Block.DeltaEntryCount >= Block.DeltaCapacity;
+
+    /// <summary>
+    ///     True when moving a row from <paramref name="previousNameId" /> to <paramref name="name" /> needs a delta
+    ///     entry and none is left: the delta is full, the name is not empty, and it is not the spelling the row
+    ///     already holds.
+    /// </summary>
+    bool DeltaLacksRoomFor(ReadOnlySpan<char> name, uint previousNameId)
+    {
+        return DeltaIsFull && !name.IsEmpty &&
+               (!NamePool.TryFindOrdinal(Block, name, out var existingNameId) || existingNameId != previousNameId);
+    }
 }

@@ -31,7 +31,8 @@ sealed partial class BlockWriter
     /// <param name="rowIndex">Zero-based row slot to mark.</param>
     /// <returns>
     ///     <see cref="WriteRefusal.None" /> when the row is marked; otherwise the refusal, with the row unchanged:
-    ///     a past-the-end index, or a delete-pending row whose restored bare name cannot be stored.
+    ///     a past-the-end index, or a delete-pending row whose restored bare name cannot be stored or cannot take
+    ///     its posting (<see cref="WriteRefusal.Delta" />). A restored name gets a delta entry like a rename.
     /// </returns>
     public WriteRefusal MarkTombstone(uint rowIndex)
     {
@@ -43,7 +44,8 @@ sealed partial class BlockWriter
     ///     Marks an allocated row delete-pending so it is hidden from queries like a tombstone while storing its
     ///     full pre-move path in the name column for the later delete record that completes the tombstone. A row
     ///     becomes delete-pending only when <paramref name="preMovePath" /> is interned into the name column;
-    ///     if interning fails, the transition is refused without changing the row.
+    ///     if interning fails, or the posting delta has no room for the path's association (the full path is posted
+    ///     like any name), the transition is refused without changing the row.
     /// </summary>
     /// <param name="rowIndex">Zero-based row slot to mark.</param>
     /// <param name="preMovePath">The row's full path before the delete-pending rename.</param>
@@ -177,24 +179,25 @@ sealed partial class BlockWriter
         ref var row = ref Block.Rows[(int)rowIndex];
         var descriptor = FileRow.ReadDescriptorWord(in row);
         var flags = FileRow.DescriptorFlags(descriptor);
-        var nameId = FileRow.DescriptorNameId(descriptor);
+        var previousNameId = FileRow.DescriptorNameId(descriptor);
+        var nameId = previousNameId;
         if ((additionalFlags & RowFlags.DeletePending) != 0)
         {
-            var internRefusal = NamePool.TryGetOrAdd(Block, replacementName, out nameId);
-            if (internRefusal != WriteRefusal.None)
+            var refusal = ChangeName(replacementName, rowIndex, previousNameId, out nameId);
+            if (refusal != WriteRefusal.None)
             {
-                return internRefusal;
+                return refusal;
             }
         }
         else if ((additionalFlags & RowFlags.Tombstone) != 0 && (flags & RowFlags.DeletePending) != 0)
         {
-            var lastSegment = IndexNavigation.LastPathSegmentString(NamePool.Read(Block, nameId));
+            var lastSegment = IndexNavigation.LastPathSegmentString(NamePool.Read(Block, previousNameId));
             if (lastSegment.Length > 0)
             {
-                var restoreRefusal = NamePool.TryGetOrAdd(Block, lastSegment, out nameId);
-                if (restoreRefusal != WriteRefusal.None)
+                var refusal = ChangeName(lastSegment, rowIndex, previousNameId, out nameId);
+                if (refusal != WriteRefusal.None)
                 {
-                    return restoreRefusal;
+                    return refusal;
                 }
             }
         }
@@ -215,6 +218,30 @@ sealed partial class BlockWriter
         FileRow.WriteDescriptorWord(ref row,
             nameId,
             updatedFlags);
+        return WriteRefusal.None;
+    }
+
+    /// <summary>
+    ///     Chooses the name identifier a row moves onto, the way a rename does: delta room is checked before the name
+    ///     is interned, so a refusal writes nothing, and the posting is appended before the caller stores the
+    ///     descriptor word, so a descriptor naming a name always has an association. As in a rename back to an old
+    ///     spelling, a name the row held before gets another delta entry rather than a membership test.
+    /// </summary>
+    WriteRefusal ChangeName(ReadOnlySpan<char> name, uint rowIndex, uint previousNameId, out uint nameId)
+    {
+        nameId = previousNameId;
+        if (DeltaLacksRoomFor(name, previousNameId))
+        {
+            return WriteRefusal.Delta;
+        }
+
+        var internRefusal = NamePool.TryGetOrAdd(Block, name, out nameId);
+        if (internRefusal != WriteRefusal.None)
+        {
+            return internRefusal;
+        }
+
+        PublishPosting(rowIndex, previousNameId, nameId);
         return WriteRefusal.None;
     }
 }
