@@ -286,6 +286,51 @@ public partial class JournalBrokerHostLivenessTests
         }
     }
 
+    // The processing limit measures time since the last completed frame write, so a write that was slow
+    // enough to outlast the limit does not make the pipe stalled the moment it completes.
+    [TestMethod]
+    public async Task Visit_ProcessingFrameWriteCompletesAfterLimit_HeartbeatsAndDoesNotStall()
+    {
+        var clock = new FakeTimeProvider();
+        using var owner = new CancellationTokenSource();
+        using var inner = new MemoryStream();
+        var gate = new TestGate();
+        using var stream = new BlockedWriteStream(inner, gate);
+        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner);
+        try
+        {
+            pipe.Processing("scan");
+            var write = pipe.WriteFrameAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()), CancellationToken.None);
+            await gate.Entered.WaitAsync(HangGuard);
+
+            clock.Advance(BrokerLiveness.ProcessingLimit + BrokerLiveness.HeartbeatInterval);
+            pipe.Visit(clock.GetUtcNow());
+            Assert.AreEqual(0L, inner.Length, "A visit during an in-flight write is skipped.");
+
+            gate.Release();
+            await write.WaitAsync(HangGuard);
+            pipe.Visit(clock.GetUtcNow());
+
+            Assert.AreSequenceEqual(
+                [BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat], FrameKinds(inner), "A write that just completed is progress: the visit heartbeats instead of writing Stalled.");
+            Assert.IsFalse(owner.IsCancellationRequested, "The pipe is not marked stalled.");
+        }
+        finally
+        {
+            pipe.Close();
+        }
+    }
+
+    sealed class BlockedWriteStream(Stream inner, TestGate gate) : DelegatingStream(inner)
+    {
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            gate.MarkEntered();
+            await gate.WaitForReleaseAsync(cancellationToken);
+            await base.WriteAsync(buffer, cancellationToken);
+        }
+    }
+
     static BrokerFrameKind[] FrameKinds(MemoryStream stream)
     {
         var bytes = stream.ToArray();

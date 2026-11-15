@@ -7,7 +7,7 @@ namespace MFTLib;
 ///     One host pipe (the control pipe or one volume pipe): serializes its frame writes under a
 ///     write lock, records whether it wrote since the heartbeat sender's last visit, and holds the
 ///     operation state its loop and its source publish. It is the <see cref="ISourceOperationReporter" />
-///     every source on that pipe receives. A frame write or a publication restarts the progress
+///     every source on that pipe receives. A frame write (at its start and again when it completes) or a publication restarts the progress
 ///     clock; the heartbeat sender's own writes do not.
 /// </summary>
 [SuppressMessage("Design", "CA1001",
@@ -106,6 +106,13 @@ sealed class HostPipeWriter : ISourceOperationReporter
             }
 
             await WriteBufferAsync(buffer, cancellationToken).ConfigureAwait(false);
+
+            // The processing limit measures time since the last completed write, so a slow write that
+            // outlasted it is not stalled the moment it completes.
+            lock (_gate)
+            {
+                _state = _state with { Since = _timeProvider.GetUtcNow() };
+            }
         }
         catch (IOException exception)
         {
