@@ -706,6 +706,82 @@ run of the former complete writer. Allocation, native parse, completion and flus
 Temporary blocks are deleted after each phase. Memory counters cover the whole benchmark process, including input
 generation and all phases; use fresh processes when comparing peak private bytes and working set.
 
+### Measuring watch growth
+
+`Benchmark.exe index-growth --synthetic N [--iterations K]` measures what a [watch growth](watch-lifetime.md) costs.
+It is reported only. It is not in the release comparison set, `compare` does not read it, and it never goes into
+`Benchmark/baselines/`. The block is a synthetic MFT block of N rows with the volume plan for N, so `D = S / 8`. The
+root is row 5, and rows 6 onward are files under it. Their 15-character ASCII names are shared in pairs or more:
+there are half as many distinct names as file rows, capped at half of `E`. The scenario has three runs:
+
+- `growth-verbatim`: a delta growth of the fresh block, which has no unused names. It runs the copier's phases
+  (`NameReferences.Count`, `BlockFile.Create`, `BlockCopier.CopyRows`, `CopyNames`, `CarryHeader`,
+  `PostingBuilder.Build`, then the flush) with one clock read between phases. A delta growth keeps `E`, so it
+  copies the bucket region. `NamePool.RebuildBuckets`, which a growth that changes `E` runs instead, is timed
+  separately on the same replacement and is not in the pause.
+- `growth-compacting`, plus `growth-mix-verbatim` on the same source: the block is first opened cache-only through
+  `FileIndex`, and its delta is filled through the journal apply path with the mix measured on a real volume. Half
+  the name changes create a file under a new name on a reused headroom record, so about 56 percent of the new names
+  end unused (77,452 new and 43,571 unused on the real block). The other half rename a file to a name already
+  stored. The phases are then timed with `NameCompaction.CopyNames` and with the verbatim name copy. Each block
+  states whether the default plan compacts this growth.
+- `growth-burst`: S creates through the journal apply path (`FileIndex.ApplyJournalEntriesAsync`, the core a pump
+  runs), in 4,096-record batches over the slot headroom. Every other create interns a new name. The block grows
+  each time the delta fills, and `D` doubles toward `S`. A growth's pause is the time its batch took beyond the
+  median batch that did not grow. The growth-step hooks split out the copy (replacement created to copied) and the
+  renames and publication. The report lists each growth's diagnostics line, the bytes copied (the used bytes written
+  into each replacement: rows, sequence numbers, entries, pool, buckets and posting base) and the bytes per name
+  change.
+
+The pause is every phase except the flush, which a watch growth runs on a background task. Each copy run warms up
+once, then reports the median, minimum and maximum of K runs. Each burst run starts from a fresh copy of the block.
+Temporary files are deleted.
+
+Measured 2026-11-15 on a 16-core desktop CPU (32 threads) with 64 GB of RAM and a PCIe 4 NVMe SSD, Release build. The
+machine was shared with other build and test work, so maxima include interference. Commands:
+`Benchmark.exe index-growth --synthetic 955392 --iterations 5` (`S` = 1,194,240, the real volume's slot count) and
+`Benchmark.exe index-growth --synthetic 8000000 --iterations 3` (`S` = 10,000,000). Medians, with the range in
+parentheses, in milliseconds:
+
+| Phase | 1.2 million slots, verbatim | 1.2 million, compacting (mix) | 10 million, verbatim | 10 million, compacting (mix) |
+| --- | --- | --- | --- | --- |
+| Reference count | 1.6 (1.5 to 2.9) | 1.7 (1.6 to 1.7) | 11.2 (10.4 to 13.3) | 9.9 (9.6 to 10.3) |
+| Create replacement | 0.5 (0.4 to 0.6) | 0.4 (0.4 to 0.4) | 0.9 (0.9 to 1.0) | 1.3 (0.6 to 1.8) |
+| Copy rows | 9.9 (9.7 to 13.1) | 9.8 (9.6 to 9.9) | 96 (93 to 106) | 92 (86 to 98) |
+| Copy names | 4.8 (4.6 to 7.1) | 38.5 (36.3 to 42.7) | 20.8 (19.0 to 21.1) | 146 (143 to 164) |
+| Posting build | 6.0 (4.5 to 6.5) | 4.6 (4.6 to 5.6) | 45 (43 to 48) | 42 (40 to 42) |
+| **Pause** | **22.9 (21.2 to 28.7)** | **54.8 (52.7 to 59.9)** | **174 (167 to 190)** | **288 (282 to 316)** |
+| Flush (off the pause) | 44 (40 to 57) | 40 (38 to 61) | 533 (93 to 627) | 572 (531 to 905) |
+| Bucket rebuild (when `E` changes) | 18.9 (14.4 to 27.9) | none | 98 (55 to 145) | none |
+| Used bytes written | 53,210,568 | 55,463,418 | 363,994,341 | 382,859,148 |
+
+The header carry is under 0.01 ms everywhere. On the same mixed source, a verbatim copy pauses for 22.1 ms
+(22.0 to 22.4) at 1.2 million slots and 150 ms (145 to 174) at 10 million. At 1.2 million slots the mix leaves
+41,990 of 552,334 stored names unused (7.6 percent), which is below one eighth, so the default plan copies verbatim.
+At 10 million it leaves 351,597 of 2,425,001 unused (14.5 percent), so the plan compacts. Compacting costs about
+twice the verbatim name copy's pause. A second process run at 1.2 million slots gave pauses of 20.4 ms (19.8 to 20.8)
+verbatim and 40.9 ms (38.8 to 43.8) compacting, flushes of 106 to 134 ms, and a burst total of 206 ms (146 to 684). The spec estimated 0.1 to 0.2 s for 1.2 million slots; the measured pause is
+23 ms verbatim and 55 ms compacting.
+
+The bursts (5 runs at 1.2 million slots, 3 at 10 million):
+
+| | 1.2 million slots | 10 million slots |
+| --- | --- | --- |
+| Creates | 1,194,240 | 10,000,000 |
+| Growths | 3: delta to 298,560, delta to 597,120 (compacting), delta to 1,194,240 (compacting) | 3: delta to 2,500,000, name entries to 7,200,000 (compacting), delta to 5,000,000 (compacting) |
+| Pause per growth | 28.6, 66.8, 62.7 (ranges 26.8 to 85.5, 56.2 to 96.0, 59.6 to 103.0) | 215, 510, 468 (ranges 199 to 229, 413 to 563, 376 to 522) |
+| Of which renames and publication | 1.0 to 1.3 each | 1.0 to 1.1 each |
+| Total pause | 186 (155 to 240) | 1,153 (1,134 to 1,207) |
+| Bytes copied | 193,488,408 | 1,383,871,631 |
+| Bytes copied per name change | 162.0 | 138.4 |
+
+No record was skipped. The burst's growths after the first compact, because the reused headroom records leave
+their earlier names unused: from 701,614 to 597,118 names and then from 895,678 to 597,118 at 1.2 million slots.
+At 10 million slots the second growth is a name-entry refusal. It compacts from 3,600,000 to 2,800,001 names, which
+is still more than half of `E`, so `E` doubles. The thresholds stay at their defaults. At the real volume's mix,
+unused names stay below one eighth for one delta period, so the first growth copies verbatim at the cheaper pause.
+Under sustained churn they pass one eighth by the next growth, so names are shed every other growth or so.
+
 ## Enumeration blocks
 
 An enumeration producer has no record numbers. Its single writer assigns dense

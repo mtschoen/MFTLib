@@ -28,6 +28,11 @@ public partial class BenchmarkRunner
             return RunIndexWriteAsync(arguments[1..]);
         }
 
+        if (arguments.Length > 0 && arguments[0].Equals("index-growth", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunIndexGrowthAsync(arguments[1..]);
+        }
+
         if (arguments.Length > 0 && arguments[0].Equals("index", StringComparison.OrdinalIgnoreCase))
         {
             return RunIndexAsync(arguments[1..]);
@@ -63,7 +68,7 @@ public partial class BenchmarkRunner
             return RunMftEnumerationAsync(arguments[1..]);
         }
 
-        _output.WriteLine("Usage: Benchmark.exe <index|index-storage|index-pipeline|index-write|compare|native-timings|enumeration-walk|mft-enumeration> ...");
+        _output.WriteLine("Usage: Benchmark.exe <index|index-storage|index-pipeline|index-write|index-growth|compare|native-timings|enumeration-walk|mft-enumeration> ...");
         return Task.FromResult(1);
     }
 }

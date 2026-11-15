@@ -281,6 +281,10 @@
   metadata-only row enumeration, name-consuming row enumeration and full-path construction on configurable synthetic data.
   Unlike the isolated query/walk memory workers, its peak memory covers the whole generation-and-consumption
   pipeline. See [the measurement procedure](index-format.md#separating-completion-from-row-consumption).
+  - **Index growth benchmark**: `Benchmark.exe index-growth --synthetic N [--iterations K]` measures the pause a
+  watch growth costs on a synthetic MFT block of N rows with the volume plan, phase by phase, and a burst of creates
+  through the journal apply path. It is reported, not part of the release comparison set. See
+  [the measurement procedure and results](index-format.md#measuring-watch-growth).
 - **MFTLib.Tests** (C# MSTest) - Unit, integration and contract tests for the library, the broker, the samples, the benchmark, the public surface and the agent instructions.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a
   real broker host in process over in-memory control and volume pipes and returns an `InProcessBrokerHandle`

@@ -245,6 +245,9 @@ Automatic recovery is one ticket per scan and does not join manual requests.
         5. Resume the apply at the refused record; route and deliver as for any batch.
         6. A canonical replacement is flushed on a background task under an access scope.
 
+      The pause (steps 2 to 5) and the flush are measured by `Benchmark.exe index-growth`
+      ([Measuring watch growth](index-format.md#measuring-watch-growth)).
+
       A successful growth raises no event and changes no status field: `Status`, `Origin`, `CacheLocation`,
       `ScanTimestamp`, `Generation` and `LiveRowCount` read the same, handles stay equal and live, and a query in flight
       finishes on the mapping it pinned. Rows keep their numbers and sequence numbers across the copy, so a directory
