@@ -30,6 +30,8 @@ engines:
   security: true
 
 lint:
+  # Time limit in ms for the shared C#/C++ jb inspectcode pass; CI exceeded the 10-minute default (MFTLib issue 960).
+  jbTimeout: 1200000
   csharp:
     # Required opt-in since aislop 0.14.1: jb/roslynator evaluate MSBuild
     # projects, and the trust gate silently skips them without this flag.

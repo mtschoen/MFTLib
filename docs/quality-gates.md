@@ -270,6 +270,13 @@ MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
 C# projects, and `lint.cpp.jbProjects` scopes the native ReSharper C++ inspection to
 `MFTLibNative`, which the same gate also scores with clang-tidy, cppcheck and clang-format.
 
+`lint.jbTimeout` in `.aislop/config.yml` (aislop key, positive integer milliseconds, default 600000) is the
+time limit of the shared C#/C++ jb inspectcode pass for `MFTLib.sln`. It is 1200000 (20 minutes) because CI
+exceeded the 10-minute default (`Command timed out after 600000ms: jb`) at score 100 with no finding.
+Runner contention is a suspected cause, not a measured diagnosis. The workflow's `timeout-minutes: 30`
+allows one 20-minute pass plus 10 minutes for build and other work. The key needs the fork commit pinned
+in `.aislop/fork-commit` to include it.
+
 The workflow prepares the `schoen/aislop` fork at the commit in
 `.aislop/fork-commit`, using a pin-keyed cache at the workspace-relative path `.aislop-fork`
 (the cache version hash covers the raw path string, so it must be the same in
