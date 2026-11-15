@@ -40,9 +40,9 @@ static class IndexNavigation
     ///     The root block has no configured root directory, so there is nothing to root the name
     ///     chain in. Every production block sets one; a synthetic test block need not.
     /// </exception>
-    internal static string BuildPath(RootBlock rootBlock, uint rowIndex)
+    internal static string BuildPath(PinnedRootBlock pinned, uint rowIndex)
     {
-        return TryBuildPath(rootBlock, rowIndex)
+        return TryBuildPath(pinned, rowIndex)
                ?? throw new InvalidDataException(
                    $"Parent chain for row {rowIndex} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
     }
@@ -51,28 +51,31 @@ static class IndexNavigation
     ///     The path a journal change reports. A parent chain that does not end within
     ///     <see cref="BlockLayout.MaximumPathDepth" /> hops cannot be rendered; that change reports the row's bare
     ///     name, as a detached row does, so one corrupt chain degrades one change instead of failing the batch.
+    ///     It reads the current mapping, which the journal writer's write gate keeps in place.
     /// </summary>
     /// <exception cref="InvalidOperationException">The root block has no configured root directory.</exception>
     internal static string BuildChangePath(RootBlock rootBlock, uint rowIndex)
     {
-        return TryBuildPath(rootBlock, rowIndex)
-               ?? NamePool.ReadRowName(rootBlock.Block, rowIndex).ToString();
+        var pinned = PinnedRootBlock.Current(rootBlock);
+        return TryBuildPath(pinned, rowIndex)
+               ?? NamePool.ReadRowName(pinned.Block, rowIndex).ToString();
     }
 
     // The rendered path, or null when the parent chain does not end within the depth limit.
-    static string? TryBuildPath(RootBlock rootBlock, uint rowIndex)
+    static string? TryBuildPath(PinnedRootBlock pinned, uint rowIndex)
     {
-        if (rowIndex < rootBlock.Block.Header.RowCount)
+        var (rootBlock, block) = pinned;
+        if (rowIndex < block.Header.RowCount)
         {
-            var descriptor = FileRow.ReadDescriptorWord(in rootBlock.Block.Rows[(int)rowIndex]);
+            var descriptor = FileRow.ReadDescriptorWord(in block.Rows[(int)rowIndex]);
             if ((FileRow.DescriptorFlags(descriptor) & RowFlags.DeletePending) != 0)
             {
-                return NamePool.Read(rootBlock.Block, FileRow.DescriptorNameId(descriptor)).ToString();
+                return NamePool.Read(block, FileRow.DescriptorNameId(descriptor)).ToString();
             }
         }
 
         var segments = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
-        if (!TryCollectSegments(rootBlock.Block, rowIndex, ref segments, out var isDetached))
+        if (!TryCollectSegments(block, rowIndex, ref segments, out var isDetached))
         {
             return null;
         }
@@ -80,7 +83,7 @@ static class IndexNavigation
         // Nothing above a broken parent link is verified, including for descendants of that link.
         if (isDetached)
         {
-            return rootBlock.Kind.JoinPath(rootBlock.Block, string.Empty, segments.Values);
+            return rootBlock.Kind.JoinPath(block, string.Empty, segments.Values);
         }
 
         if (rootBlock.RootDirectoryPath is not { } rootDirectoryPath)
@@ -89,7 +92,7 @@ static class IndexNavigation
                 $"Root block {rootBlock.Root} has no configured root directory to build a path from.");
         }
 
-        return rootBlock.Kind.JoinPath(rootBlock.Block, rootDirectoryPath, segments.Values);
+        return rootBlock.Kind.JoinPath(block, rootDirectoryPath, segments.Values);
     }
 
     /// <summary>
@@ -113,18 +116,18 @@ static class IndexNavigation
     ///     Direct live children only. A tombstoned row is excluded here even though
     ///     <see cref="TryGetParentRow" /> and the path walk still pass through it.
     /// </summary>
-    internal static List<FileEntry> GetChildren(RootBlock rootBlock, uint rowIndex,
+    internal static List<FileEntry> GetChildren(PinnedRootBlock pinned, uint rowIndex,
         CancellationToken cancellationToken = default)
     {
         var children = new List<FileEntry>();
-        var scanner = new RowScanner(rootBlock, cancellationToken);
+        var scanner = new RowScanner(pinned.Block, cancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
             var candidate = scanner.CurrentRowIndex;
             if (row.IsInUse && !row.IsDeleted && row.ParentRow == rowIndex && candidate != rowIndex)
             {
-                children.Add(FileEntry.Create(rootBlock, candidate));
+                children.Add(FileEntry.Create(pinned, candidate));
             }
         }
 

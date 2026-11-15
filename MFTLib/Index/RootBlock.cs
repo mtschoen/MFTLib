@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace MFTLib.Index;
 
 /// <summary>
@@ -35,14 +37,16 @@ sealed class RootBlock
     internal ViewRoot View { get; }
 
     // I5 Borrows: acquire the view before the mapping; return in reverse. A closed view refuses
-    // admission on every generation, while each mapped block independently drains its admitted readers.
-    internal bool TryTakeBorrow()
+    // admission on every generation, while each mapping independently drains its admitted readers.
+    // The borrow pins the lineage's current mapping, which the reader reads through and returns.
+    internal bool TryTakeBorrow([NotNullWhen(true)] out BlockMapping? mapping)
     {
         if (_viewBorrows is not null && !_viewBorrows.TryTake())
         {
+            mapping = null;
             return false;
         }
-        if (ReleaseState.TryTakeBorrow())
+        if (Mapped.TryTakeBorrow(out mapping))
         {
             return true;
         }
@@ -50,19 +54,24 @@ sealed class RootBlock
         return false;
     }
 
-    internal void ReturnBorrow()
+    internal void ReturnBorrow(BlockMapping mapping)
     {
-        ReleaseState.ReturnBorrow();
+        mapping.ReleaseState.ReturnBorrow();
         _viewBorrows?.Return();
     }
 
     public RootKey Root { get; }
 
+    /// <summary>The lineage every view's root block of one scan shares; a rescan publishes a new one.</summary>
     internal MappedBlock Mapped { get; }
 
+    /// <summary>
+    ///     The lineage's current mapping. A reader pins a mapping instead (<see cref="PinnedRootBlock" />); this is for
+    ///     a caller that holds the write gate, where no replacement can be published.
+    /// </summary>
     public BlockFile Block => Mapped.Block;
 
-    /// <summary>The block's mapping and borrows, retained by the root owner after it retires this block.</summary>
+    /// <summary>The current mapping's release state and borrows.</summary>
     internal RootBlockRelease ReleaseState => Mapped.ReleaseState;
 
     /// <summary>True from the moment a release begins, before the block is unmapped.</summary>
@@ -91,8 +100,8 @@ sealed class RootBlock
     internal string? MatchableRootDirectoryPath { get; }
 
     /// <summary>
-    ///     Coalescing state for journal close records, owned by this block so that a
-    ///     rescan replacing the block starts with no reported cycles. See
+    ///     Coalescing state for journal close records, owned by the block lineage: a replacement
+    ///     mapping keeps it, and a rescan, which starts a new lineage, starts with no reported cycles. See
     ///     <see cref="JournalMutator" /> for how it is used.
     /// </summary>
     internal ReportedReasonCycles ReportedCycles => Mapped.ReportedCycles;

@@ -23,16 +23,15 @@ ref struct RowScanner
     uint _rowsUntilCancellationCheck;
     bool _started;
 
-    internal RowScanner(RootBlock rootBlock, CancellationToken cancellationToken = default)
-        : this(rootBlock, 0, uint.MaxValue, cancellationToken)
+    internal RowScanner(BlockFile block, CancellationToken cancellationToken = default)
+        : this(block, 0, uint.MaxValue, cancellationToken)
     {
     }
 
-    internal RowScanner(RootBlock rootBlock, uint startRow, uint endRowExclusive,
+    internal RowScanner(BlockFile block, uint startRow, uint endRowExclusive,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(rootBlock);
-        var block = rootBlock.Block;
+        ArgumentNullException.ThrowIfNull(block);
         _rows = block.Rows;
         _block = block;
         _endRowExclusive = Math.Min(endRowExclusive, block.Header.RowCount);

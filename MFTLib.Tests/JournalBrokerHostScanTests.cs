@@ -752,7 +752,7 @@ public class JournalBrokerHostScanTests
             ];
             foreach (var row in expected)
             {
-                var entry = LookupEngine.Find(rootBlock, Path.Combine(rootPath, row.RelativePath));
+                var entry = LookupEngine.Find(PinnedRootBlock.Current(rootBlock), Path.Combine(rootPath, row.RelativePath));
                 Assert.IsNotNull(entry, $"Expected lookup for {row.RelativePath}");
                 Assert.AreEqual(row.Row, entry.Value.RowIndex);
                 Assert.AreEqual(row.Name, entry.Value.Name);
@@ -760,7 +760,7 @@ public class JournalBrokerHostScanTests
                 Assert.AreEqual(row.Flags, entry.Value.Row.Flags);
             }
 
-            Assert.IsNull(LookupEngine.Find(rootBlock, Path.Combine(rootPath, "huge")));
+            Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(rootBlock), Path.Combine(rootPath, "huge")));
         }
         finally
         {

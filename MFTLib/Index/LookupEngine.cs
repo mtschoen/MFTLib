@@ -11,16 +11,19 @@ static class LookupEngine
     ///     read once; the caller holds a block borrow, and a view that is absent is answered by the caller never lending
     ///     the block.
     /// </summary>
-    internal static FileEntry Root(RootBlock rootBlock, uint? admittedViewRow = null, CancellationToken cancellationToken = default)
+    internal static FileEntry Root(PinnedRootBlock pinned, uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(rootBlock);
+        ArgumentNullException.ThrowIfNull(pinned.RootBlock);
         cancellationToken.ThrowIfCancellationRequested();
 
         // The row admission bound, never a fresh read of a binding a later batch may have cleared.
-        return FileEntry.Create(rootBlock, admittedViewRow ?? rootBlock.View.Row);
+        return FileEntry.Create(pinned, admittedViewRow ?? pinned.RootBlock.View.Row);
     }
 
-    /// <summary>The block <see cref="Find" /> reads for this path, or null when the root does not match.</summary>
+    /// <summary>
+    ///     The block <see cref="Find" /> reads for this path, or null when the root does not match. Whether a directory
+    ///     view is present is left to admission, which judges it on the mapping the lookup pins.
+    /// </summary>
     internal static RootBlock? SelectPathBlock(RootBlock? current, string nativePath)
     {
         if (current is null)
@@ -29,27 +32,28 @@ static class LookupEngine
         }
 
         string? foldedPath = null;
-        return current.View.IsPresent &&
-               TryMatchRootPrefix(current.Kind, current.MatchableRootDirectoryPath, nativePath, ref foldedPath, out _)
+        return TryMatchRootPrefix(current.Kind, current.MatchableRootDirectoryPath, nativePath, ref foldedPath, out _)
             ? current
             : null;
     }
 
     /// <summary>
-    ///     Resolves a native filesystem path against the borrowed block. When the block's root
-    ///     directory is a prefix of the path, the remaining segments are walked down from that
-    ///     block's root row.
+    ///     Resolves a native filesystem path against the borrowed block's pinned mapping. When the block's root
+    ///     directory is a prefix of the path, the remaining segments are walked down from the row admission bound a
+    ///     directory view to, or from the block's root row, never from a fresh read of the shared binding.
     /// </summary>
-    internal static FileEntry? Find(RootBlock? rootBlock, string nativePath,
+    internal static FileEntry? Find(PinnedRootBlock? pinned, string nativePath, uint? admittedViewRow = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(nativePath);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (rootBlock is null)
+        if (pinned is not { } root)
         {
             return null;
         }
+
+        var rootBlock = root.RootBlock;
 
         string? foldedPath = null;
         if (!TryMatchRootPrefix(rootBlock.Kind, rootBlock.MatchableRootDirectoryPath, nativePath, ref foldedPath,
@@ -58,35 +62,40 @@ static class LookupEngine
             return null;
         }
 
-        if (!rootBlock.View.TryGetRow(out var viewRow) ||
-            !TryDescend(rootBlock, viewRow, nativePath.AsSpan(rootLength), cancellationToken, out var foundRow))
+        if (rootBlock.View.IsDirectoryView && admittedViewRow is null)
+        {
+            throw new InvalidOperationException("A directory view must be admitted with its bound row before a lookup.");
+        }
+
+        if (!TryDescend(root, admittedViewRow ?? rootBlock.View.Row, nativePath.AsSpan(rootLength), cancellationToken,
+                out var foundRow))
         {
             return null;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return FileEntry.Create(rootBlock, foundRow);
+        return FileEntry.Create(root, foundRow);
     }
 
     /// <summary>
     ///     Walks <paramref name="relativePath" />, a path below the row <paramref name="startRow" />, one name per
     ///     level. False when a level has no live child of that name.
     /// </summary>
-    internal static bool TryDescend(RootBlock rootBlock, uint startRow, ReadOnlySpan<char> relativePath,
+    internal static bool TryDescend(PinnedRootBlock pinned, uint startRow, ReadOnlySpan<char> relativePath,
         CancellationToken cancellationToken, out uint row) =>
-        TryDescend(rootBlock, startRow, relativePath, null, cancellationToken, out row);
+        TryDescend(pinned, startRow, relativePath, null, cancellationToken, out row);
 
     /// <summary>
-    ///     <see cref="TryDescend(RootBlock, uint, ReadOnlySpan{char}, CancellationToken, out uint)" /> that also reports how
+    ///     <see cref="TryDescend(PinnedRootBlock, uint, ReadOnlySpan{char}, CancellationToken, out uint)" /> that also reports how
     ///     far the walk got: every level it tried is added to <paramref name="trace" />, and when a level has no live
     ///     child, <paramref name="row" /> is the last row found and the trace's last level names what was missing.
     /// </summary>
-    internal static bool TryDescend(RootBlock rootBlock, uint startRow, ReadOnlySpan<char> relativePath,
+    internal static bool TryDescend(PinnedRootBlock pinned, uint startRow, ReadOnlySpan<char> relativePath,
         DescentTrace? trace, CancellationToken cancellationToken, out uint row)
     {
         row = startRow;
-        var descent = new PathDescent(rootBlock, IsCaseSensitive(rootBlock), cancellationToken);
-        foreach (var segmentRange in relativePath.SplitAny(rootBlock.Kind.Separators))
+        var descent = new PathDescent(pinned.Block, IsCaseSensitive(pinned.RootBlock), cancellationToken);
+        foreach (var segmentRange in relativePath.SplitAny(pinned.RootBlock.Kind.Separators))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var segment = relativePath[segmentRange];
@@ -166,12 +175,12 @@ static class LookupEngine
     }
 
     /// <summary>
-    ///     What stays the same for every level of one path descent: the block being walked, how
+    ///     What stays the same for every level of one path descent: the pinned mapping being walked, how
     ///     its names compare, and the token that stops the walk. Passed as one value so each
     ///     level's call carries only what actually changes between levels.
     /// </summary>
     readonly record struct PathDescent(
-        RootBlock RootBlock,
+        BlockFile Block,
         bool CaseSensitive,
         CancellationToken CancellationToken);
 
@@ -183,7 +192,7 @@ static class LookupEngine
     static bool TryFindChild(in PathDescent descent, uint parentRow, ReadOnlySpan<char> segment,
         out uint childRow)
     {
-        var block = descent.RootBlock.Block;
+        var block = descent.Block;
         var query = new SearchQuery(segment.ToString(), NameMatchMode.Exact, descent.CaseSensitive);
         using var names = new NameQueryMatches(block, query, descent.CancellationToken);
         using var candidates = PostingCandidates.Gather(block, PostingCandidates.IdentifiersOf(names),

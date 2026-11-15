@@ -48,9 +48,10 @@ static class SubtreeAnchor
 
     /// <summary>
     ///     Resolves the query's anchor against the block the query borrowed, so a publication that lands
-    ///     after admission cannot turn the validation into a check-then-use race.
+    ///     after admission cannot turn the validation into a check-then-use race. The incarnation is judged on the
+    ///     mapping the borrow pinned.
     /// </summary>
-    /// <param name="borrowed">The root block this query holds a borrow on, or null when none matched.</param>
+    /// <param name="borrowed">The root block this query holds a borrow on with its pinned mapping, or null when none matched.</param>
     /// <param name="query">The query whose anchor is resolved.</param>
     /// <returns>The resolved anchor, or null when the query has no subtree restriction.</returns>
     /// <exception cref="ArgumentException">
@@ -58,7 +59,7 @@ static class SubtreeAnchor
     ///     rescan replaced, or has been superseded by a newer file reusing its row slot.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The anchor's root block has been released.</exception>
-    internal static ResolvedSubtree? Resolve(RootBlock? borrowed, SearchQuery query)
+    internal static ResolvedSubtree? Resolve(PinnedRootBlock? borrowed, SearchQuery query)
     {
         if (query.Subtree is not { } anchor)
         {
@@ -72,12 +73,12 @@ static class SubtreeAnchor
 
         // A borrowed block stays mapped even once a disposal has started releasing it, and that disposal
         // reaches the scan as cancellation. Any other released block has been unmapped.
-        if (!ReferenceEquals(borrowed, anchorBlock))
+        if (borrowed is not { } pinned || !ReferenceEquals(pinned.RootBlock, anchorBlock))
         {
             throw ForeignOrDisposed(anchorBlock, nameof(query));
         }
 
-        if (anchor.IsSupersededWhileMapped)
+        if (anchor.IsSupersededIn(pinned))
         {
             throw new ArgumentException(
                 "SearchQuery.Subtree names an entry whose row slot a newer file has reused after its deletion. " +
@@ -88,13 +89,14 @@ static class SubtreeAnchor
     }
 
     /// <summary>
-    ///     The membership test that restricts a query on <paramref name="rootBlock" /> to a subtree, or null when no row
+    ///     The membership test that restricts a query on <paramref name="pinned" /> to a subtree, or null when no row
     ///     is excluded: the explicit anchor when the query has one, intersected with the directory a view is rooted at.
     ///     The caller disposes it when the root's scan ends.
     /// </summary>
-    internal static SubtreeMembership? CreateMembership(RootBlock rootBlock, ResolvedSubtree? explicitAnchor,
+    internal static SubtreeMembership? CreateMembership(PinnedRootBlock pinned, ResolvedSubtree? explicitAnchor,
         uint? admittedViewRow)
     {
+        var (rootBlock, block) = pinned;
         // A directory view is never unrestricted: its admitted row is mandatory, and an explicit anchor narrows it
         // further, so an anchor that has moved out of the view matches nothing.
         if (rootBlock.View.IsDirectoryView && admittedViewRow is null)
@@ -103,10 +105,10 @@ static class SubtreeAnchor
         }
 
         var view = admittedViewRow is { } viewRow && rootBlock.View.IsDirectoryView
-            ? new SubtreeMembership(rootBlock.Block, viewRow)
+            ? new SubtreeMembership(block, viewRow)
             : null;
         return explicitAnchor is { } anchor
-            ? new SubtreeMembership(rootBlock.Block, anchor.RowIndex, view)
+            ? new SubtreeMembership(block, anchor.RowIndex, view)
             : view;
     }
 

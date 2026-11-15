@@ -62,7 +62,7 @@ public sealed partial class FileIndex
                     }
                     if (current is not null)
                     {
-                        await current.ReleaseState.DrainAndReleaseAsync().ConfigureAwait(false);
+                        await current.Mapped.DrainAndReleaseAsync().ConfigureAwait(false);
                     }
                 }
                 finally

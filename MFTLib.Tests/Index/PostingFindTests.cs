@@ -86,7 +86,7 @@ public sealed class PostingFindTests
         foreach (var path in PathsOf(opened.Block))
         {
             var expected = ReferenceDescend(opened.Root, path, out var expectedRow);
-            var actual = LookupEngine.TryDescend(opened.Root, 0, path, TestContext.CancellationToken, out var actualRow);
+            var actual = LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, path, TestContext.CancellationToken, out var actualRow);
             Assert.AreEqual(expected, actual, $"{label} {path}");
             if (expected)
             {
@@ -121,9 +121,9 @@ public sealed class PostingFindTests
         using var opened = new Support.OpenedRoot(builder);
         Assert.IsFalse(opened.Root.Kind.IsCaseSensitive, "an MFT block folds case on every OS");
 
-        Assert.IsTrue(LookupEngine.TryDescend(opened.Root, 0, "d/readme", TestContext.CancellationToken, out var exact));
-        Assert.IsTrue(LookupEngine.TryDescend(opened.Root, 0, "d/README", TestContext.CancellationToken, out var exactUpper));
-        Assert.IsTrue(LookupEngine.TryDescend(opened.Root, 0, "d/ReadMe", TestContext.CancellationToken, out var neither));
+        Assert.IsTrue(LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, "d/readme", TestContext.CancellationToken, out var exact));
+        Assert.IsTrue(LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, "d/README", TestContext.CancellationToken, out var exactUpper));
+        Assert.IsTrue(LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, "d/ReadMe", TestContext.CancellationToken, out var neither));
 
         Assert.AreEqual(lower, exact);
         Assert.AreEqual(upper, exactUpper);
@@ -139,12 +139,12 @@ public sealed class PostingFindTests
         using var opened = new Support.OpenedRoot(builder);
         Assert.IsTrue(opened.Root.Kind.IsCaseSensitive);
 
-        Assert.IsTrue(LookupEngine.TryDescend(opened.Root, 0, "d/readme", TestContext.CancellationToken, out var exact));
-        Assert.IsTrue(LookupEngine.TryDescend(opened.Root, 0, "d/README", TestContext.CancellationToken, out var exactUpper));
+        Assert.IsTrue(LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, "d/readme", TestContext.CancellationToken, out var exact));
+        Assert.IsTrue(LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, "d/README", TestContext.CancellationToken, out var exactUpper));
 
         Assert.AreEqual(lower, exact);
         Assert.AreEqual(upper, exactUpper);
-        Assert.IsFalse(LookupEngine.TryDescend(opened.Root, 0, "d/ReadMe", TestContext.CancellationToken, out _),
+        Assert.IsFalse(LookupEngine.TryDescend(PinnedRootBlock.Current(opened.Root), 0, "d/ReadMe", TestContext.CancellationToken, out _),
             "a case-sensitive root has no fallback to a differently spelled name");
     }
 

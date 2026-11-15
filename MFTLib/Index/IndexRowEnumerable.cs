@@ -61,7 +61,7 @@ public ref struct IndexRowEnumerator
     readonly FileIndex.QueryScope _scope;
     readonly RowEnumerationSegments? _segments;
     readonly SearchQuery _query;
-    readonly RootBlock? _singleBlock;
+    readonly PinnedRootBlock? _singleBlock;
     readonly bool _queryNeedsOnlyFlags;
     bool _flagsOnly;
     readonly bool _includeDeleted;
@@ -73,7 +73,7 @@ public ref struct IndexRowEnumerator
     RowScanner _scanner;
     CandidateCheckpoint _candidateCheckpoint;
     int _candidateCursor;
-    RootBlock? _rootBlock;
+    PinnedRootBlock? _rootBlock;
     readonly RowEnumerationResources _resources;
     int _advanceVersion;
     uint _currentNameId;
@@ -90,7 +90,7 @@ public ref struct IndexRowEnumerator
         _segments = null;
         _query = query;
         _cancellationToken = scope.CancellationToken;
-        _singleBlock = scope.RootBlock;
+        _singleBlock = scope.Pinned;
         _admittedViewRow = scope.ViewRow;
 
         // A query with no name, size, date or subtree predicate needs only the row flags, so its loop
@@ -277,8 +277,8 @@ public ref struct IndexRowEnumerator
             if (_segments.TryMoveNextSegment(out var nextBlock, out var segmentViewRow, out _cancellationToken, ref _segment))
             {
                 _rootBlock = nextBlock;
-                _scanner = new RowScanner(nextBlock, _cancellationToken);
-                _flagsOnly = _queryNeedsOnlyFlags && !nextBlock.View.IsDirectoryView;
+                _scanner = new RowScanner(nextBlock.Block, _cancellationToken);
+                _flagsOnly = _queryNeedsOnlyFlags && !nextBlock.RootBlock.View.IsDirectoryView;
                 _resources.BeginRoot(nextBlock, _query, null, segmentViewRow, _cancellationToken);
                 BeginCandidates();
                 return true;
@@ -295,8 +295,8 @@ public ref struct IndexRowEnumerator
             if (_singleBlock is { } rootBlock)
             {
                 _rootBlock = rootBlock;
-                _scanner = new RowScanner(rootBlock, _cancellationToken);
-                _flagsOnly = _queryNeedsOnlyFlags && !rootBlock.View.IsDirectoryView;
+                _scanner = new RowScanner(rootBlock.Block, _cancellationToken);
+                _flagsOnly = _queryNeedsOnlyFlags && !rootBlock.RootBlock.View.IsDirectoryView;
                 _resources.BeginRoot(rootBlock, _query, _subtree, _admittedViewRow, _cancellationToken);
                 BeginCandidates();
                 return true;

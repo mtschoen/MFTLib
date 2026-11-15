@@ -152,8 +152,8 @@ static class PostingQueryTestSupport
     /// <summary>The rows an exact query accepts, by the old row pass: every row tested against the name pass and predicates.</summary>
     internal static uint[] ReferenceRows(RootBlock root, SearchQuery query, CancellationToken cancellationToken)
     {
-        var subtree = SubtreeAnchor.Resolve(root, query);
-        using var membership = SubtreeAnchor.CreateMembership(root, subtree, null);
+        var subtree = SubtreeAnchor.Resolve(PinnedRootBlock.Current(root), query);
+        using var membership = SubtreeAnchor.CreateMembership(PinnedRootBlock.Current(root), subtree, null);
         using var names = new NameQueryMatches(root.Block, query, cancellationToken);
         var rows = root.Block.Rows;
         var matches = new List<uint>();

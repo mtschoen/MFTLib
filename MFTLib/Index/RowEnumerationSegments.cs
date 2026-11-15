@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 /// <summary>
@@ -34,7 +32,7 @@ sealed class RowEnumerationSegments : IDisposable
 
     internal int ActiveSegment => Volatile.Read(ref _activeSegment);
 
-    internal bool TryMoveNextSegment([NotNullWhen(true)] out RootBlock? rootBlock, out uint? admittedViewRow,
+    internal bool TryMoveNextSegment(out PinnedRootBlock rootBlock, out uint? admittedViewRow,
         out CancellationToken cancellationToken, ref int enumeratorSegment)
     {
         while (true)
@@ -45,7 +43,7 @@ sealed class RowEnumerationSegments : IDisposable
                 if (!_hasActiveScope)
                 {
                     _callerCancellationToken.ThrowIfCancellationRequested();
-                    rootBlock = null;
+                    rootBlock = default;
                     admittedViewRow = null;
                     cancellationToken = default;
                     return false;
@@ -65,7 +63,7 @@ sealed class RowEnumerationSegments : IDisposable
                 {
                     enumeratorSegment = _activeSegment;
                     _callerCancellationToken.ThrowIfCancellationRequested();
-                    rootBlock = null;
+                    rootBlock = default;
                     admittedViewRow = null;
                     cancellationToken = default;
                     return false;
@@ -78,7 +76,7 @@ sealed class RowEnumerationSegments : IDisposable
             }
 
             _activeScope.CancellationToken.ThrowIfCancellationRequested();
-            if (_activeScope.RootBlock is { } block)
+            if (_activeScope.Pinned is { } block)
             {
                 rootBlock = block;
                 admittedViewRow = _activeScope.ViewRow;

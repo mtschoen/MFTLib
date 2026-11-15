@@ -26,7 +26,7 @@ public readonly partial record struct FileEntry
     public FileStream Open(FileAccess access)
     {
         var rootBlock = RootBlock;
-        if (IsSupersededIn(rootBlock))
+        if (IsSupersededIn(PinnedRootBlock.Current(rootBlock)))
         {
             throw new FileNotFoundException($"{this}: The entry has been deleted.");
         }

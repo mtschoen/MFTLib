@@ -9,19 +9,19 @@ namespace MFTLib.Index;
 /// </summary>
 static partial class SearchEngine
 {
-    internal static List<FileEntry> Search(RootBlock? rootBlock, SearchQuery query,
+    internal static List<FileEntry> Search(PinnedRootBlock? pinned, SearchQuery query,
         uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
         NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var subtree = SubtreeAnchor.Resolve(rootBlock, query);
+        var subtree = SubtreeAnchor.Resolve(pinned, query);
         var results = new List<FileEntry>();
-        if (rootBlock is not null)
+        if (pinned is { } root)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var membership = SubtreeAnchor.CreateMembership(rootBlock, subtree, admittedViewRow);
-            SearchOneRoot(new RootScan(rootBlock, query, membership), results, cancellationToken);
+            using var membership = SubtreeAnchor.CreateMembership(root, subtree, admittedViewRow);
+            SearchOneRoot(new RootScan(root, query, membership), results, cancellationToken);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -33,19 +33,19 @@ static partial class SearchEngine
     ///     entries produced are exactly the ones <see cref="Search" /> would return, without the list.
     ///     Single threaded where <see cref="Search" /> partitions: the caller pulls rows one at a
     ///     time, and the borrow <see cref="FileIndex.Enumerate" /> takes is what keeps the
-    ///     block mapped while it does.
+    ///     pinned mapping mapped while it does.
     /// </summary>
-    internal static IEnumerable<FileEntry> Enumerate(RootBlock? rootBlock, SearchQuery query,
+    internal static IEnumerable<FileEntry> Enumerate(PinnedRootBlock? pinned, SearchQuery query,
         uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var subtree = SubtreeAnchor.Resolve(rootBlock, query);
-        if (rootBlock is not null)
+        var subtree = SubtreeAnchor.Resolve(pinned, query);
+        if (pinned is { } root)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var membership = SubtreeAnchor.CreateMembership(rootBlock, subtree, admittedViewRow);
-            var scan = new RootScan(rootBlock, query, membership);
+            using var membership = SubtreeAnchor.CreateMembership(root, subtree, admittedViewRow);
+            var scan = new RootScan(root, query, membership);
             foreach (var entry in EnumerateRoot(scan, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -117,22 +117,22 @@ static partial class SearchEngine
     }
 
     /// <summary>
-    ///     One root's share of a query: the borrowed root block, the query, and the subtree membership test the
+    ///     One root's share of a query: the borrowed root block with its pinned mapping, the query, and the subtree membership test the
     ///     scan shares between its partitions (an explicit anchor resolved by <see cref="SubtreeAnchor" />, or the
     ///     directory a view is rooted at). It is null when the query excludes no row.
     /// </summary>
-    readonly record struct RootScan(RootBlock RootBlock, SearchQuery Query, SubtreeMembership? Membership);
+    readonly record struct RootScan(PinnedRootBlock Pinned, SearchQuery Query, SubtreeMembership? Membership);
 
     static void SearchOneRoot(RootScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
-        using var names = new NameQueryMatches(scan.RootBlock.Block, scan.Query, cancellationToken);
+        using var names = new NameQueryMatches(scan.Pinned.Block, scan.Query, cancellationToken);
         if (names.IsExactCandidates)
         {
             SearchExactRoot(scan, names, results, cancellationToken);
             return;
         }
 
-        var rowCount = scan.RootBlock.Block.Header.RowCount;
+        var rowCount = scan.Pinned.Block.Header.RowCount;
         var partitions = ScanPartitioning.Partition(rowCount, ScanPartitioning.DefaultPartitionCount(rowCount));
         if (partitions.Count == 0)
         {
@@ -176,9 +176,9 @@ static partial class SearchEngine
     static void CollectPartition(RootScan scan, NameQueryMatches names, (uint StartRow, uint EndRowExclusive) partition,
         List<FileEntry> destination, CancellationToken cancellationToken)
     {
-        var (rootBlock, query, membership) = scan;
+        var (pinned, query, membership) = scan;
         var candidates = new List<uint>();
-        var scanner = new RowScanner(rootBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
+        var scanner = new RowScanner(pinned.Block, partition.StartRow, partition.EndRowExclusive, cancellationToken);
         while (scanner.MoveNext())
         {
             if (RowMatches(in scanner.Current, names, query))
@@ -206,7 +206,7 @@ static partial class SearchEngine
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            destination.Add(FileEntry.Create(rootBlock, rowIndex));
+            destination.Add(FileEntry.Create(pinned, rowIndex));
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -222,8 +222,8 @@ static partial class SearchEngine
     /// </summary>
     static IEnumerable<FileEntry> EnumerateRoot(RootScan scan, CancellationToken cancellationToken)
     {
-        var (rootBlock, query, membership) = scan;
-        var block = rootBlock.Block;
+        var (pinned, query, membership) = scan;
+        var block = pinned.Block;
         using var names = new NameQueryMatches(block, query, cancellationToken);
         if (names.IsExactCandidates)
         {
@@ -257,7 +257,7 @@ static partial class SearchEngine
                 continue;
             }
 
-            yield return FileEntry.Create(rootBlock, rowIndex);
+            yield return FileEntry.Create(pinned, rowIndex);
         }
     }
 

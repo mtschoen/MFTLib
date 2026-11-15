@@ -139,13 +139,13 @@ public sealed class PostingQueryCancellationTests
         var cancelled = new CancellationToken(true);
         var query = new SearchQuery(Shared, NameMatchMode.Exact);
 
-        Assert.ThrowsExactly<OperationCanceledException>(() => SearchEngine.Search(root, query, cancellationToken: cancelled));
+        Assert.ThrowsExactly<OperationCanceledException>(() => SearchEngine.Search(PinnedRootBlock.Current(root), query, cancellationToken: cancelled));
         Assert.ThrowsExactly<OperationCanceledException>(() =>
-            SearchEngine.Enumerate(root, query, cancellationToken: cancelled).ToArray());
+            SearchEngine.Enumerate(PinnedRootBlock.Current(root), query, cancellationToken: cancelled).ToArray());
         Assert.ThrowsExactly<OperationCanceledException>(() => NamePool.EnumerateRows(root, query, cancelled));
-        Assert.ThrowsExactly<OperationCanceledException>(() => LookupEngine.Find(root, "T:/" + Shared, cancelled));
+        Assert.ThrowsExactly<OperationCanceledException>(() => LookupEngine.Find(PinnedRootBlock.Current(root), "T:/" + Shared, cancellationToken: cancelled));
         Assert.ThrowsExactly<OperationCanceledException>(() =>
-            SearchEngine.SearchExactNames(root, [Shared], new SearchQuery(null), cancellationToken: cancelled));
+            SearchEngine.SearchExactNames(PinnedRootBlock.Current(root), [Shared], new SearchQuery(null), cancellationToken: cancelled));
     }
 
     [TestMethod]
@@ -154,7 +154,7 @@ public sealed class PostingQueryCancellationTests
         using var builder = BuildBlock();
         using var opened = new Support.OpenedRoot(builder);
 
-        var results = SearchEngine.Search(opened.Root, new SearchQuery(Shared, NameMatchMode.Exact),
+        var results = SearchEngine.Search(PinnedRootBlock.Current(opened.Root), new SearchQuery(Shared, NameMatchMode.Exact),
             cancellationToken: TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(Enumerable.Range(1, Postings).Select(row => (uint)row).ToArray(),

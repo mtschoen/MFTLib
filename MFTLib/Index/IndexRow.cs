@@ -6,17 +6,17 @@ namespace MFTLib.Index;
 /// </summary>
 public readonly ref struct IndexRow
 {
-    readonly RootBlock _rootBlock;
+    readonly PinnedRootBlock _pinned;
     readonly ref readonly FileRow _row;
     readonly uint _rowIndex;
     readonly uint _nameId;
     readonly RowEnumerationResources _resources;
     readonly int _advanceVersion;
 
-    internal IndexRow(RootBlock rootBlock, uint rowIndex, ref readonly FileRow row, uint nameId,
+    internal IndexRow(PinnedRootBlock pinned, uint rowIndex, ref readonly FileRow row, uint nameId,
         RowEnumerationResources resources, int advanceVersion)
     {
-        _rootBlock = rootBlock;
+        _pinned = pinned;
         _rowIndex = rowIndex;
         _row = ref row;
         _nameId = nameId;
@@ -29,14 +29,14 @@ public readonly ref struct IndexRow
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_rootBlock.IsReleased, nameof(IndexRow));
+            ObjectDisposedException.ThrowIf(_pinned.RootBlock.IsReleased, nameof(IndexRow));
             _resources.ValidateVersion(_advanceVersion);
-            return _resources.Capture(_rootBlock.Block, _nameId);
+            return _resources.Capture(_pinned.Block, _nameId);
         }
     }
 
     /// <summary>The configured logical volume key, including for virtual dump roots.</summary>
-    public RootKey Root => _rootBlock.Root;
+    public RootKey Root => _pinned.RootBlock.Root;
 
     /// <summary>
     ///     The file length in bytes, or zero for directories and unknown sizes. This is the length the last
@@ -66,5 +66,5 @@ public readonly ref struct IndexRow
     public bool IsDeleted => _row.IsDeleted;
 
     /// <summary>Returns a durable handle for this row, usable after the enumeration ends.</summary>
-    public FileEntry ToEntry() => FileEntry.Create(_rootBlock, _rowIndex);
+    public FileEntry ToEntry() => FileEntry.Create(_pinned, _rowIndex);
 }

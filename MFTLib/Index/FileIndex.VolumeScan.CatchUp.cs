@@ -140,7 +140,7 @@ public sealed partial class FileIndex
                     }
                     if (!visible)
                     {
-                        adopted.ReleaseState.ReleaseUnborrowed();
+                        adopted.Mapped.ReleaseUnborrowed();
                     }
                 }
                 adopted = newlyAdopted;

@@ -16,8 +16,8 @@ namespace MFTLib.Index;
 ///         gate last reads the rows as they are then.
 ///     </para>
 ///     <para>
-///         A query that took its block borrow before a rename keeps reading under the binding it saw at admission
-///         only through <see cref="Row" /> reads it makes itself; the engines read the binding once per query.
+///         A query reads the whole of its length under the row <see cref="TryAdmit" /> returned on the mapping it
+///         pinned; no engine rereads the shared binding, which may already describe a newer mapping.
 ///     </para>
 /// </remarks>
 sealed class ViewRoot
@@ -41,6 +41,12 @@ sealed class ViewRoot
     readonly Lock _gate = new();
     readonly Target? _target;
     Absence? _absence;
+
+    /// <summary>
+    ///     The mapping the stored binding was resolved on. An absence is trusted without a descent only on that
+    ///     mapping, so a verdict a replacement made stale is looked up again on the replacement.
+    /// </summary>
+    BlockFile? _resolvedOn;
     long _state;
     long _resolutionDescents;
 
@@ -111,7 +117,7 @@ sealed class ViewRoot
 
         lock (_gate)
         {
-            return ResolveLocked(target, rootBlock, cancellationToken, out _);
+            return ResolveLocked(target, PinnedRootBlock.Current(rootBlock), cancellationToken, out _);
         }
     }
 
@@ -122,7 +128,7 @@ sealed class ViewRoot
     ///     the answer: an absent path can only come into existence through an entry that names one of its components, so
     ///     an unrelated batch costs nothing however large the block has grown.
     /// </summary>
-    /// <param name="rootBlock">The block the view is bound to.</param>
+    /// <param name="rootBlock">The block the view is bound to; its current mapping cannot move under the write gate.</param>
     /// <param name="entries">The batch that was just applied.</param>
     internal void RefreshAfterBatch(RootBlock rootBlock, IReadOnlyList<UsnJournalEntry> entries)
     {
@@ -131,22 +137,24 @@ sealed class ViewRoot
             return;
         }
 
+        var pinned = PinnedRootBlock.Current(rootBlock);
         lock (_gate)
         {
             var current = Volatile.Read(ref _state);
             if ((current & PresentBit) != 0)
             {
-                if (StillBound(target, rootBlock, (uint)(current >> RowShift), (ushort)(current >> SequenceShift)))
+                if (StillBound(target, pinned, (uint)(current >> RowShift), (ushort)(current >> SequenceShift)))
                 {
                     return;
                 }
             }
-            else if (_absence is not { } absence || !CanChangeTheOutcome(target, absence, entries))
+            else if (ReferenceEquals(_resolvedOn, pinned.Block) &&
+                     (_absence is not { } absence || !CanChangeTheOutcome(target, absence, entries)))
             {
                 return;
             }
 
-            _ = ResolveLocked(target, rootBlock, CancellationToken.None, out _);
+            _ = ResolveLocked(target, pinned, CancellationToken.None, out _);
         }
     }
 
@@ -155,15 +163,18 @@ sealed class ViewRoot
     ///     binding, so the query restricts itself to that row for its whole length whatever a later batch does. A bound
     ///     view whose row stopped matching (a batch applied since the last follow-up) is looked up again; an absent view
     ///     is answered as absent without a descent, because only a batch's follow-up can make it present.
+    ///     The shared binding follows the lineage's current mapping only. A query that pinned a mapping its lineage has
+    ///     since retired accepts the binding when it still holds on that mapping and otherwise looks the path up on that
+    ///     mapping for itself, publishing nothing: what a retired mapping shows must never become the current binding.
     /// </summary>
-    /// <param name="rootBlock">The block the view is bound to; the caller has borrowed it.</param>
+    /// <param name="pinned">The block the view is bound to with the mapping the caller's borrow pinned.</param>
     /// <param name="row">The admitted row when present.</param>
     /// <returns>Whether the view's directory is present.</returns>
-    internal bool TryAdmit(RootBlock rootBlock, out uint row)
+    internal bool TryAdmit(PinnedRootBlock pinned, out uint row)
     {
         if (_target is not { } target)
         {
-            row = rootBlock.Block.Header.RootRow;
+            row = pinned.Block.Header.RootRow;
             return true;
         }
 
@@ -171,23 +182,35 @@ sealed class ViewRoot
         {
             var current = Volatile.Read(ref _state);
             row = (uint)(current >> RowShift);
-            if ((current & PresentBit) == 0)
+            var present = (current & PresentBit) != 0;
+            if (present && StillBound(target, pinned, row, (ushort)(current >> SequenceShift)))
+            {
+                return true;
+            }
+
+            if (!ReferenceEquals(pinned.Block, pinned.RootBlock.Block))
+            {
+                Interlocked.Increment(ref _resolutionDescents);
+                return TryResolve(target, pinned, CancellationToken.None, out row, out _);
+            }
+
+            if (!present && ReferenceEquals(_resolvedOn, pinned.Block))
             {
                 return false;
             }
 
-            return StillBound(target, rootBlock, row, (ushort)(current >> SequenceShift)) ||
-                   ResolveLocked(target, rootBlock, CancellationToken.None, out row);
+            return ResolveLocked(target, pinned, CancellationToken.None, out row);
         }
     }
 
-    bool ResolveLocked(Target target, RootBlock rootBlock, CancellationToken cancellationToken, out uint row)
+    bool ResolveLocked(Target target, PinnedRootBlock pinned, CancellationToken cancellationToken, out uint row)
     {
         Interlocked.Increment(ref _resolutionDescents);
-        var resolved = TryResolve(target, rootBlock, cancellationToken, out row, out var absence);
+        var resolved = TryResolve(target, pinned, cancellationToken, out row, out var absence);
         _absence = resolved ? null : absence;
+        _resolvedOn = pinned.Block;
         Volatile.Write(ref _state, resolved
-            ? PresentBit | ((long)rootBlock.Block.SequenceNumbers[(int)row] << SequenceShift) | row
+            ? PresentBit | ((long)pinned.Block.SequenceNumbers[(int)row] << SequenceShift) | row
             : 0);
         return resolved;
     }
@@ -223,9 +246,9 @@ sealed class ViewRoot
         return false;
     }
 
-    bool StillBound(Target target, RootBlock rootBlock, uint row, ushort sequence)
+    bool StillBound(Target target, PinnedRootBlock pinned, uint row, ushort sequence)
     {
-        var block = rootBlock.Block;
+        var block = pinned.Block;
         if (row >= block.Header.RowCount)
         {
             return false;
@@ -237,14 +260,14 @@ sealed class ViewRoot
             return false;
         }
 
-        return RendersPath(target, rootBlock, row);
+        return RendersPath(target, pinned, row);
     }
 
-    bool RendersPath(Target target, RootBlock rootBlock, uint row)
+    bool RendersPath(Target target, PinnedRootBlock pinned, uint row)
     {
         try
         {
-            var rendered = target.Kind.ToMatchablePrefix(IndexNavigation.BuildPath(rootBlock, row));
+            var rendered = target.Kind.ToMatchablePrefix(IndexNavigation.BuildPath(pinned, row));
             return string.Equals(rendered, MatchablePath, target.Kind.Comparison);
         }
         catch (InvalidDataException)
@@ -253,7 +276,7 @@ sealed class ViewRoot
         }
     }
 
-    static bool TryResolve(Target target, RootBlock rootBlock, CancellationToken cancellationToken, out uint row,
+    static bool TryResolve(Target target, PinnedRootBlock pinned, CancellationToken cancellationToken, out uint row,
         out Absence? absence)
     {
         string? folded = null;
@@ -266,7 +289,7 @@ sealed class ViewRoot
         }
 
         var trace = new LookupEngine.DescentTrace();
-        if (LookupEngine.TryDescend(rootBlock, rootBlock.Block.Header.RootRow, target.Path.AsSpan(prefixLength),
+        if (LookupEngine.TryDescend(pinned, pinned.Block.Header.RootRow, target.Path.AsSpan(prefixLength),
                 trace, cancellationToken, out row))
         {
             return true;

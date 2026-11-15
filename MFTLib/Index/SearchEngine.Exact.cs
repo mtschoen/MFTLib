@@ -11,7 +11,7 @@ static partial class SearchEngine
     static void SearchExactRoot(RootScan scan, NameQueryMatches names, List<FileEntry> results,
         CancellationToken cancellationToken)
     {
-        using var candidates = PostingCandidates.Gather(scan.RootBlock.Block, PostingCandidates.IdentifiersOf(names),
+        using var candidates = PostingCandidates.Gather(scan.Pinned.Block, PostingCandidates.IdentifiersOf(names),
             cancellationToken);
         if (candidates.Count <= PostingCandidates.ParallelVerificationThreshold)
         {
@@ -48,8 +48,8 @@ static partial class SearchEngine
     static void VerifyCandidates(RootScan scan, NameQueryMatches names, PostingCandidates candidates,
         ArraySegment<uint> slice, List<FileEntry> destination, CancellationToken cancellationToken)
     {
-        var (rootBlock, query, membership) = scan;
-        var rows = rootBlock.Block.Rows;
+        var (pinned, query, membership) = scan;
+        var rows = pinned.Block.Rows;
         var checkpoint = candidates.BeginVerification();
         foreach (var rowIndex in slice)
         {
@@ -68,7 +68,7 @@ static partial class SearchEngine
                 }
             }
 
-            destination.Add(FileEntry.Create(rootBlock, rowIndex));
+            destination.Add(FileEntry.Create(pinned, rowIndex));
         }
     }
 
@@ -79,8 +79,8 @@ static partial class SearchEngine
     static IEnumerable<FileEntry> EnumerateExactRoot(RootScan scan, NameQueryMatches names,
         CancellationToken cancellationToken)
     {
-        var (rootBlock, query, membership) = scan;
-        var block = rootBlock.Block;
+        var (pinned, query, membership) = scan;
+        var block = pinned.Block;
         using var candidates = PostingCandidates.Gather(block, PostingCandidates.IdentifiersOf(names), cancellationToken);
         var checkpoint = candidates.BeginVerification();
         foreach (var rowIndex in candidates.Rows)
@@ -96,7 +96,7 @@ static partial class SearchEngine
                 continue;
             }
 
-            yield return FileEntry.Create(rootBlock, rowIndex);
+            yield return FileEntry.Create(pinned, rowIndex);
         }
     }
 
@@ -105,7 +105,7 @@ static partial class SearchEngine
     ///     <c>i</c> belongs to <c>names[i]</c> and equals the single-name <see cref="Search" /> for it: the same rows in
     ///     ascending row order. <paramref name="filter" /> carries every predicate except the name.
     /// </summary>
-    internal static List<FileEntry>[] SearchExactNames(RootBlock? rootBlock, IReadOnlyList<string> names,
+    internal static List<FileEntry>[] SearchExactNames(PinnedRootBlock? pinned, IReadOnlyList<string> names,
         SearchQuery filter, uint? admittedViewRow = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(names);
@@ -114,12 +114,12 @@ static partial class SearchEngine
 
         var results = Enumerable.Range(0, names.Count).Select(_ => new List<FileEntry>()).ToArray();
 
-        var subtree = SubtreeAnchor.Resolve(rootBlock, filter);
-        if (rootBlock is not null && names.Count > 0)
+        var subtree = SubtreeAnchor.Resolve(pinned, filter);
+        if (pinned is { } root && names.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var membership = SubtreeAnchor.CreateMembership(rootBlock, subtree, admittedViewRow);
-            GatherExactNames(new RootScan(rootBlock, filter, membership), names, results, cancellationToken);
+            using var membership = SubtreeAnchor.CreateMembership(root, subtree, admittedViewRow);
+            GatherExactNames(new RootScan(root, filter, membership), names, results, cancellationToken);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -129,8 +129,8 @@ static partial class SearchEngine
     static void GatherExactNames(RootScan scan, IReadOnlyList<string> requested, List<FileEntry>[] results,
         CancellationToken cancellationToken)
     {
-        var (rootBlock, filter, _) = scan;
-        var block = rootBlock.Block;
+        var block = scan.Pinned.Block;
+        var filter = scan.Query;
         var passes = new List<NameQueryMatches>(requested.Count);
         try
         {
@@ -170,8 +170,8 @@ static partial class SearchEngine
     static void VerifyExactNames(RootScan scan, PostingCandidates candidates,
         Dictionary<uint, List<int>> requestsByIdentifier, List<FileEntry>[] results, CancellationToken cancellationToken)
     {
-        var (rootBlock, filter, membership) = scan;
-        var rows = rootBlock.Block.Rows;
+        var (pinned, filter, membership) = scan;
+        var rows = pinned.Block.Rows;
         var checkpoint = candidates.BeginVerification();
         foreach (var rowIndex in candidates.Rows)
         {
@@ -198,7 +198,7 @@ static partial class SearchEngine
                 }
             }
 
-            var entry = FileEntry.Create(rootBlock, rowIndex);
+            var entry = FileEntry.Create(pinned, rowIndex);
             foreach (var request in requests)
             {
                 results[request].Add(entry);

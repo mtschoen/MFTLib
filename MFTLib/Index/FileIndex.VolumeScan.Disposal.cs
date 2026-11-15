@@ -40,16 +40,17 @@ public sealed partial class FileIndex
         }
 
         /// <summary>
-        ///     Keeps a replaced block's release state until its release completes, so disposal can
-        ///     release it even after its last handle was collected. The caller holds
-        ///     <see cref="StateLock" />.
+        ///     Keeps the release state of every mapping of a replaced lineage until its release
+        ///     completes, so disposal can release them even after their last handle was collected.
+        ///     Sealing the lineage refuses any later replacement, so the list is complete. The caller
+        ///     holds <see cref="StateLock" />.
         /// </summary>
         void RetireBlockLocked(RootBlock replaced)
         {
             lock (StateLock)
             {
                 _retiredBlocks.RemoveAll(retired => retired.IsReleaseComplete);
-                _retiredBlocks.Add(replaced.ReleaseState);
+                _retiredBlocks.AddRange(replaced.Mapped.Seal());
             }
         }
 

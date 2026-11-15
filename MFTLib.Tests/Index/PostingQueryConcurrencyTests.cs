@@ -70,7 +70,7 @@ public sealed class PostingQueryConcurrencyTests
             for (var query = 0; query < QueriesPerReader; query++)
             {
                 var name = QueriedNames[query % QueriedNames.Length];
-                var rows = SearchEngine.Search(root, new SearchQuery(name, NameMatchMode.Exact),
+                var rows = SearchEngine.Search(PinnedRootBlock.Current(root), new SearchQuery(name, NameMatchMode.Exact),
                     cancellationToken: TestContext.CancellationToken).Select(entry => entry.RowIndex).ToArray();
                 Assert.AreEqual(rows.Length, rows.Distinct().Count(), $"duplicate rows for {name}");
                 Assert.IsTrue(rows.Zip(rows.Skip(1), (left, right) => left < right).All(ascending => ascending),
@@ -94,7 +94,7 @@ public sealed class PostingQueryConcurrencyTests
         opened.Dispose();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() =>
-            SearchEngine.Search(opened.Root, new SearchQuery("index.js", NameMatchMode.Exact),
+            SearchEngine.Search(PinnedRootBlock.Current(opened.Root), new SearchQuery("index.js", NameMatchMode.Exact),
                 cancellationToken: TestContext.CancellationToken));
         Assert.ThrowsExactly<ObjectDisposedException>(() =>
             PostingCandidates.Gather(block, [1u], TestContext.CancellationToken));

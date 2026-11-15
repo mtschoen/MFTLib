@@ -35,7 +35,7 @@ public sealed class DeletePendingPostingTests : IDisposable
         return (block, writer, snapshot);
     }
 
-    int ExactHits(RootBlock root, string name) => SearchEngine.Search(root,
+    int ExactHits(RootBlock root, string name) => SearchEngine.Search(PinnedRootBlock.Current(root),
         new SearchQuery(name, NameMatchMode.Exact, CaseSensitive: false, IncludeDeleted: true),
         cancellationToken: TestContext.CancellationToken).Count;
 

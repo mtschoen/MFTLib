@@ -176,12 +176,12 @@ public partial class JournalMutatorTests
             Assert.AreEqual(RowFlags.InUse | RowFlags.DeletePending, block.Rows[(int)NotesFileRow].Flags);
             Assert.AreEqual(liveRowCountBefore - 1, block.Header.LiveRowCount);
 
-            Assert.IsEmpty(SearchEngine.Search(rootBlock, new SearchQuery("notes.txt"), null, CancellationToken.None));
+            Assert.IsEmpty(SearchEngine.Search(PinnedRootBlock.Current(rootBlock), new SearchQuery("notes.txt"), null, CancellationToken.None));
             Assert.DoesNotContain(entry => entry.Name == "notes.txt",
-                SearchEngine.Enumerate(rootBlock, new SearchQuery(null), null, CancellationToken.None));
-            Assert.IsNull(LookupEngine.Find(rootBlock, expectedPath, CancellationToken.None));
+                SearchEngine.Enumerate(PinnedRootBlock.Current(rootBlock), new SearchQuery(null), null, CancellationToken.None));
+            Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(rootBlock), expectedPath, cancellationToken: CancellationToken.None));
             Assert.DoesNotContain(entry => entry.Name == "notes.txt",
-                IndexNavigation.GetChildren(rootBlock, UserDirectoryRow, CancellationToken.None));
+                IndexNavigation.GetChildren(PinnedRootBlock.Current(rootBlock), UserDirectoryRow, CancellationToken.None));
 
             var holderChanges = mutator.Apply(rootBlock,
             [
@@ -218,7 +218,7 @@ public partial class JournalMutatorTests
             Assert.IsFalse(block.Rows[(int)NotesFileRow].IsDeleted);
             Assert.AreEqual(liveRowCountBefore, block.Header.LiveRowCount);
             Assert.ContainsSingle(entry => entry.Name == "reused.txt",
-                SearchEngine.Search(rootBlock, new SearchQuery("reused.txt"), null, CancellationToken.None));
+                SearchEngine.Search(PinnedRootBlock.Current(rootBlock), new SearchQuery("reused.txt"), null, CancellationToken.None));
         }
         finally
         {
@@ -396,7 +396,7 @@ public partial class JournalMutatorTests
         {
             Assert.IsTrue(reopenedBlock.Rows[(int)NotesFileRow].IsDeleted);
             Assert.AreEqual(RowFlags.InUse | RowFlags.DeletePending, reopenedBlock.Rows[(int)NotesFileRow].Flags);
-            Assert.IsEmpty(SearchEngine.Search(reopenedRootBlock, new SearchQuery("notes.txt"), null,
+            Assert.IsEmpty(SearchEngine.Search(PinnedRootBlock.Current(reopenedRootBlock), new SearchQuery("notes.txt"), null,
                 CancellationToken.None));
 
             var reopenedMutator = new JournalMutator(new BlockWriter(reopenedBlock));

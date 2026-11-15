@@ -3,13 +3,16 @@
 - Index contracts:
     - **Query lifetime**: the six query operations (`Find`, `Search`, `Enumerate`, `EnumerateRows`, `Root`, and
       `FileEntry.Children`) accept an optional CancellationToken and borrow only the mapping they read for the
-      operation's duration. Each FileIndex owns one view. Admission chooses its RootBlock under the scan's StateLock;
+      operation's duration. The borrow pins the lineage's current mapping (see Block lineage below), and the query
+      reads rows, names and postings only through that pinned mapping, never through `RootBlock.Block`, so a
+      replacement published mid-query cannot mix two mappings in one answer. Each FileIndex owns one view. Admission chooses its RootBlock under the scan's StateLock;
       Find borrows only when the path matches the view, Root throws InvalidOperationException naming the root and
       RootState when no block is available, and the three row-query forms validate any Subtree against that handle.
       FileIndexSet borrows one member at a time: Find chooses the outermost available containing member without fallback
       on a miss; an anchored query uses the anchor's own member; an unscoped query visits only outermost available
       members in Indices order. Shared members still borrow through their own view. A directory view binds its row at
-      admission and intersects its implicit subtree with any explicit anchor. Closing one view waits for its own
+      admission, on the mapping the query pinned, and intersects its implicit subtree with any explicit anchor; that
+      row is also Root's answer and Find's descent anchor, and no query rereads the shared view binding. Closing one view waits for its own
       borrows only; another view's query can keep their shared mapping alive until last-detach teardown.
       Children borrows its handle's view and mapping. All six observe cancellation before the first row and scans
       check at least every 4096 examined rows, including rejected rows: rows of the table for substring and glob queries,
@@ -18,12 +21,16 @@
       queries (and each path segment of Find) take it from the posting gather and candidate verification. Children uses
       only its caller's token because a handle holds no index reference, so disposal waits for that listing.
       Row-backed `FileEntry` reads take no borrow and retain the per-access `IsReleased`
-      check; `Root` and `RecordKey` are also release-checked. Equality, hashing,
+      check; `Root` and `RecordKey` are also release-checked. Each such read loads the lineage's current mapping
+      once and makes its incarnation check and every column, name and parent read of that call on it. It takes
+      no read scope either: an interlocked count around each read was measured on the consumer loop and not
+      shipped, so a read can still race the unmapping by index disposal, and a mapping the lineage retired stays
+      mapped until the lineage is released. Equality, hashing,
       `IsValid` and `IsDisposed` use stored identity/state and remain available after
       release. `ToString()` also remains safe and renders a disposed marker after
       release. Row-column getters access the mapped row; `Path` (and `ToString()`
       when formatting a live path) follows the parent chain for at most 16383 hops, the deepest path NTFS can name. A journal change whose chain cannot be rendered within that limit reports the bare file name instead of faulting the watch.
-      A borrow takes ViewBorrows first and the MappedBlock's RootBlockRelease second, returning in reverse.
+      A borrow takes ViewBorrows first and the pinned mapping's RootBlockRelease second, returning in reverse.
       DisposeAsync closes the view and cancels its linked queries and waits, then drains its own current/retired
       borrows. Last detach drains and unmaps the scan's blocks. A suspended `Enumerate` enumerator holds its borrow between yields, so
       disposal waits until it advances or is disposed, or, if abandoned, until garbage collection and finalization
@@ -32,12 +39,27 @@
       disposes is therefore safe. The mapped block finalizer path
       is unaffected: a borrow holds its block, so a borrowed block is never collected.
 
-    - **Handle lifetime**: a retained FileEntry holds its view's RootBlock, which reaches one MappedBlock and its
-      view's borrow counter. It retains no scan or other mappings. A rescan replaces every view's handle together;
-      the retired MappedBlock finalizer unmaps once no handle or borrow reaches it. View closure invalidates that
-      view's handles without unmapping storage another view uses. Last detach stops the watch, drains recovery and
-      production, takes lifecycle then write gate, drains retired releases and the current mapping, and releases the
-      owner lock. The scan retains retired release states rather than RootBlock objects.
+    - **Handle lifetime**: a retained FileEntry holds its view's RootBlock, which reaches one lineage
+      (`MappedBlock`) and its view's borrow counter. It retains no scan or other lineage. A rescan replaces every
+      view's handle together and starts a new lineage; the retired lineage's mapping finalizers unmap once no
+      handle or borrow reaches it. View closure invalidates that view's handles without unmapping storage another
+      view uses. Last detach stops the watch, drains recovery and production, takes lifecycle then write gate,
+      drains retired releases and every mapping of the current lineage, and releases the owner lock. The scan
+      retains retired release states rather than RootBlock objects: retiring a lineage seals it and keeps the
+      release state of each of its mappings.
+
+    - **Block lineage**: a `MappedBlock` is a lineage, shared by every view's RootBlock of one scan. It keeps the
+      `ProducerKind` and the journal's `ReportedCycles` and publishes one `BlockMapping` (a `BlockFile`, its
+      `RootBlockRelease` and its finalizer) at a time as its volatile `Current`. `Replace` publishes a replacement
+      mapping with one store, under the write gate of the caller, so every view moves together and handle equality,
+      `WatchInstance.ArmedBlock` reference checks and event routing hold by lineage identity. A handle minted
+      before a replacement stays equal to one minted after and reads the replacement. A borrow that races a
+      replacement returns its count and pins the replacement. A query that pinned the retired mapping finishes on
+      it and returns that mapping's rows. The retired mapping stays mapped, and its renamed-aside file (when its
+      release has a scheduled delete) stays on disk, until the lineage is released: by disposal, which drains the
+      borrows of every mapping before unmapping it, or by finalization once a rescan's retired lineage is
+      unreachable. A sealed lineage (retired by a rescan or handed to disposal) refuses a replacement with
+      `ObjectDisposedException`. A rescan always creates a new lineage.
 
     - **Row enumeration**: `FileIndex.EnumerateRows` and `FileIndexSet.EnumerateRows` take a snapshot borrow when `foreach` begins
       (`GetEnumerator()`), and `foreach` releases it on completion, `break`, an exception or cancellation.

@@ -5,8 +5,8 @@ public sealed partial class FileIndex
     internal sealed partial class VolumeScan
     {
         /// <summary>
-        ///     The block's ownership passes to the <see cref="RootBlock" />, which releases it through
-        ///     <see cref="RootBlock.ReleaseState" /> (see its own summary), not through
+        ///     The block's ownership passes to a new lineage (<see cref="MappedBlock" />), which releases
+        ///     each of its mappings through their release states (see its own summary), not through
         ///     <see cref="IDisposable" />.
         /// </summary>
         RootBlock BuildRootBlock(BlockFile block)

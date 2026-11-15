@@ -30,10 +30,10 @@ public class LookupEngineRootMatchingTests
         var rootBlock = new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: root);
         try
         {
-            Assert.IsNotNull(LookupEngine.Find(rootBlock,
-                Path.Combine(root, "documents", "notes.txt"), TestContext.CancellationToken));
-            Assert.IsNotNull(LookupEngine.Find(rootBlock,
-                Path.Combine(root, "DOCUMENTS", "NOTES.TXT"), TestContext.CancellationToken));
+            Assert.IsNotNull(LookupEngine.Find(PinnedRootBlock.Current(rootBlock),
+                Path.Combine(root, "documents", "notes.txt"), cancellationToken: TestContext.CancellationToken));
+            Assert.IsNotNull(LookupEngine.Find(PinnedRootBlock.Current(rootBlock),
+                Path.Combine(root, "DOCUMENTS", "NOTES.TXT"), cancellationToken: TestContext.CancellationToken));
         }
         finally
         {
@@ -50,9 +50,9 @@ public class LookupEngineRootMatchingTests
         var rootBlock = new RootBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
         try
         {
-            Assert.IsNotNull(LookupEngine.Find(rootBlock, Path.Combine(root, "Readme.md"), TestContext.CancellationToken));
+            Assert.IsNotNull(LookupEngine.Find(PinnedRootBlock.Current(rootBlock), Path.Combine(root, "Readme.md"), cancellationToken: TestContext.CancellationToken));
 
-            var mismatchedCase = LookupEngine.Find(rootBlock, Path.Combine(root, "README.MD"), TestContext.CancellationToken);
+            var mismatchedCase = LookupEngine.Find(PinnedRootBlock.Current(rootBlock), Path.Combine(root, "README.MD"), cancellationToken: TestContext.CancellationToken);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsNotNull(mismatchedCase, "a Windows enumeration block folds case the way the host does");
@@ -76,7 +76,7 @@ public class LookupEngineRootMatchingTests
         var rootlessBlock = new RootBlock(new VolumeKey('N'), rootlessBuilder.OpenForReading(out _)!);
         try
         {
-            Assert.IsNull(LookupEngine.Find(rootlessBlock, Path.Combine(root, "visible.txt"), TestContext.CancellationToken));
+            Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(rootlessBlock), Path.Combine(root, "visible.txt"), cancellationToken: TestContext.CancellationToken));
         }
         finally
         {
@@ -94,7 +94,7 @@ public class LookupEngineRootMatchingTests
         try
         {
             var mixedPath = root.Replace('\\', '/').Replace("/Users/", @"\Users/") + @"\file.txt";
-            var entry = LookupEngine.Find(rootBlock, mixedPath, TestContext.CancellationToken);
+            var entry = LookupEngine.Find(PinnedRootBlock.Current(rootBlock), mixedPath, cancellationToken: TestContext.CancellationToken);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsTrue(entry.HasValue);
@@ -130,7 +130,7 @@ public class LookupEngineRootMatchingTests
         try
         {
             var expected = FileEntry.Create(rootBlock, backslashFile);
-            var resolved = LookupEngine.Find(rootBlock, expected.Path, TestContext.CancellationToken);
+            var resolved = LookupEngine.Find(PinnedRootBlock.Current(rootBlock), expected.Path, cancellationToken: TestContext.CancellationToken);
 
             Assert.IsTrue(resolved.HasValue);
             var resolvedVal = resolved.GetValueOrDefault();
@@ -158,7 +158,7 @@ public class LookupEngineRootMatchingTests
         var outerBlock = new RootBlock(new VolumeKey('O'), outerBuilder.OpenForReading(out _)!, rootDirectoryPath: outerRoot);
         try
         {
-            Assert.IsNull(LookupEngine.Find(outerBlock, Path.Combine(secondRoot, "file.txt"), TestContext.CancellationToken),
+            Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(outerBlock), Path.Combine(secondRoot, "file.txt"), cancellationToken: TestContext.CancellationToken),
                 "a string prefix without a path boundary must not select the outer root");
         }
         finally

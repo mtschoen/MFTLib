@@ -43,6 +43,6 @@ public sealed partial class FileIndex
         }
 
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, filter));
-        return SearchEngine.SearchExactNames(scope.RootBlock, names, filter, scope.ViewRow, scope.CancellationToken);
+        return SearchEngine.SearchExactNames(scope.Pinned, names, filter, scope.ViewRow, scope.CancellationToken);
     }
 }

@@ -2,9 +2,9 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     Owns one mapped block's release and readers independently of the
-///     <see cref="MappedBlock" /> object's lifetime, so scan teardown can release a retired block
+///     <see cref="BlockMapping" /> object's lifetime, so scan teardown can release a retired block
 ///     after garbage collection but before its finalizer runs. Released once: by the
-///     <see cref="MappedBlock" /> finalizer when the last handle on a retired block becomes
+///     <see cref="BlockMapping" /> finalizer when the last handle on a retired block becomes
 ///     unreachable, or by index disposal, which drains borrows first. A released block rejects
 ///     subsequent handle reads.
 /// </summary>
@@ -154,10 +154,10 @@ sealed class RootBlockRelease
 
     /// <summary>
     ///     Unmaps the block, or reports that another caller already began. Never waits, for
-    ///     either a competing release or an outstanding borrow: the <see cref="MappedBlock" />
+    ///     either a competing release or an outstanding borrow: the <see cref="BlockMapping" />
     ///     finalizer calls this, and a finalizer thread parked behind another thread stalls
     ///     finalization for the whole process. Waiting for borrows here would also be waiting for
-    ///     nothing, because a borrow holds the <see cref="RootBlock" /> itself and a borrowed
+    ///     nothing, because a borrow holds the <see cref="BlockMapping" /> itself and a borrowed
     ///     block is never collected.
     /// </summary>
     internal bool ReleaseUnborrowed()

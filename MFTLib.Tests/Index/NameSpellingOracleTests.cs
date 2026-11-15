@@ -137,8 +137,8 @@ public sealed class NameSpellingOracleTests
         {
             var expected = files.Where(item => OracleMatches(item.Name, pattern, mode, caseSensitive)).ToArray();
             var query = new SearchQuery(pattern, mode, caseSensitive, IsDirectory: false);
-            var searched = SearchEngine.Search(root, query, cancellationToken: TestContext.CancellationToken);
-            var streamed = SearchEngine.Enumerate(root, query, cancellationToken: TestContext.CancellationToken).ToArray();
+            var searched = SearchEngine.Search(PinnedRootBlock.Current(root), query, cancellationToken: TestContext.CancellationToken);
+            var streamed = SearchEngine.Enumerate(PinnedRootBlock.Current(root), query, cancellationToken: TestContext.CancellationToken).ToArray();
             var rows = NamePool.EnumerateRows(root, query, TestContext.CancellationToken);
             var label = $"{mode} caseSensitive={caseSensitive} pattern='{pattern}'";
             Assert.AreSequenceEqual(expected.Select(item => item.Row).ToArray(), searched.Select(entry => entry.RowIndex).ToArray(), label);
@@ -167,10 +167,10 @@ public sealed class NameSpellingOracleTests
     public void CaseSensitiveSubstring_UsesTheOriginalPattern()
     {
         using var fixture = new Fixture();
-        var sensitive = SearchEngine.Search(fixture.Root,
+        var sensitive = SearchEngine.Search(PinnedRootBlock.Current(fixture.Root),
             new SearchQuery("readme", CaseSensitive: true, IsDirectory: false), cancellationToken: TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { "readme.md", "readme.txt" }, sensitive.Select(entry => entry.Name).ToArray());
-        var insensitive = SearchEngine.Search(fixture.Root,
+        var insensitive = SearchEngine.Search(PinnedRootBlock.Current(fixture.Root),
             new SearchQuery("readme", CaseSensitive: false, IsDirectory: false), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(4, insensitive.Count);
     }
@@ -181,7 +181,7 @@ public sealed class NameSpellingOracleTests
     public void Glob_MatchesWildcardsNotALiteralSubstring(bool caseSensitive)
     {
         using var fixture = new Fixture();
-        var matches = SearchEngine.Search(fixture.Root,
+        var matches = SearchEngine.Search(PinnedRootBlock.Current(fixture.Root),
             new SearchQuery("*.cs", NameMatchMode.Glob, caseSensitive, IsDirectory: false), cancellationToken: TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { "Program.cs" }, matches.Select(entry => entry.Name).ToArray());
     }
@@ -190,11 +190,11 @@ public sealed class NameSpellingOracleTests
     public void Find_IgnoreCase_PrefersTheOrdinalSpellingElseTheLowestRow()
     {
         using var fixture = new Fixture();
-        var exact = LookupEngine.Find(fixture.Root, Fixture.PathOf("a", "makefile"), TestContext.CancellationToken);
+        var exact = LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Fixture.PathOf("a", "makefile"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual("makefile", exact!.Value.Name);
-        var upper = LookupEngine.Find(fixture.Root, Fixture.PathOf("a", "Makefile"), TestContext.CancellationToken);
+        var upper = LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Fixture.PathOf("a", "Makefile"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual("Makefile", upper!.Value.Name);
-        var neither = LookupEngine.Find(fixture.Root, Fixture.PathOf("a", "MAKEFILE"), TestContext.CancellationToken);
+        var neither = LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Fixture.PathOf("a", "MAKEFILE"), cancellationToken: TestContext.CancellationToken);
         Assert.AreEqual(fixture.Files[0].Row, neither!.Value.RowIndex);
         Assert.AreEqual("Makefile", neither.Value.Name);
     }
@@ -203,17 +203,17 @@ public sealed class NameSpellingOracleTests
     public void Find_NamesThatDifferOnlyByCaseInDifferentDirectoriesResolveWithinTheirParent()
     {
         using var fixture = new Fixture();
-        Assert.AreEqual("README.md", LookupEngine.Find(fixture.Root, Fixture.PathOf("b", "readme.md"), TestContext.CancellationToken)!.Value.Name);
-        Assert.AreEqual("readme.md", LookupEngine.Find(fixture.Root, Fixture.PathOf("c", "README.MD"), TestContext.CancellationToken)!.Value.Name);
-        Assert.IsNull(LookupEngine.Find(fixture.Root, Fixture.PathOf("a", "readme.md"), TestContext.CancellationToken));
+        Assert.AreEqual("README.md", LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Fixture.PathOf("b", "readme.md"), cancellationToken: TestContext.CancellationToken)!.Value.Name);
+        Assert.AreEqual("readme.md", LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Fixture.PathOf("c", "README.MD"), cancellationToken: TestContext.CancellationToken)!.Value.Name);
+        Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Fixture.PathOf("a", "readme.md"), cancellationToken: TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Children_ReturnInputSpellings()
     {
         using var fixture = new Fixture();
-        var directory = LookupEngine.Find(fixture.Root, Path.Combine(TestRootDirectory.For('T'), "d"), TestContext.CancellationToken)!.Value;
-        var children = IndexNavigation.GetChildren(fixture.Root, directory.RowIndex, TestContext.CancellationToken);
+        var directory = LookupEngine.Find(PinnedRootBlock.Current(fixture.Root), Path.Combine(TestRootDirectory.For('T'), "d"), cancellationToken: TestContext.CancellationToken)!.Value;
+        var children = IndexNavigation.GetChildren(PinnedRootBlock.Current(fixture.Root), directory.RowIndex, TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { "readme.txt", "README.txt", "Program.cs", "Program.csx" },
             children.Select(entry => entry.Name).ToArray());
     }
@@ -229,10 +229,10 @@ public sealed class NameSpellingOracleTests
 
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, renamed).Name);
         Assert.AreEqual("readme.md", FileEntry.Create(fixture.Root, peer).Name);
-        var oldSpelling = SearchEngine.Search(fixture.Root,
+        var oldSpelling = SearchEngine.Search(PinnedRootBlock.Current(fixture.Root),
             new SearchQuery("README.md", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken);
         Assert.IsEmpty(oldSpelling);
-        var newSpelling = SearchEngine.Search(fixture.Root,
+        var newSpelling = SearchEngine.Search(PinnedRootBlock.Current(fixture.Root),
             new SearchQuery("readme.md", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken);
         Assert.AreSequenceEqual(new[] { renamed, peer }.Order().ToArray(),
             newSpelling.Select(entry => entry.RowIndex).Order().ToArray());

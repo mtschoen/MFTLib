@@ -41,7 +41,7 @@ public sealed partial class FileIndex
     {
         ArgumentNullException.ThrowIfNull(path);
         using var query = BeginQuery(cancellationToken, current => LookupEngine.SelectPathBlock(current, path));
-        return LookupEngine.Find(query.RootBlock, path, query.CancellationToken);
+        return LookupEngine.Find(query.Pinned, path, query.ViewRow, query.CancellationToken);
     }
 
     /// <summary>
@@ -71,7 +71,7 @@ public sealed partial class FileIndex
         ArgumentNullException.ThrowIfNull(query);
         SubtreeAnchor.ThrowIfDefault(query);
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, query));
-        return SearchEngine.Search(scope.RootBlock, query, scope.ViewRow, scope.CancellationToken);
+        return SearchEngine.Search(scope.Pinned, query, scope.ViewRow, scope.CancellationToken);
     }
 
     /// <summary>
@@ -174,7 +174,7 @@ public sealed partial class FileIndex
     IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
     {
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, query));
-        foreach (var entry in SearchEngine.Enumerate(scope.RootBlock, query, scope.ViewRow, scope.CancellationToken))
+        foreach (var entry in SearchEngine.Enumerate(scope.Pinned, query, scope.ViewRow, scope.CancellationToken))
         {
             yield return entry;
         }
@@ -194,7 +194,7 @@ public sealed partial class FileIndex
     {
         using var query = BeginQuery(cancellationToken);
         query.CancellationToken.ThrowIfCancellationRequested();
-        if (query.RootBlock is null)
+        if (query.Pinned is not { } pinned)
         {
             Hooks.RootsReadBeforeLock?.Invoke();
             string message;
@@ -208,7 +208,7 @@ public sealed partial class FileIndex
             throw new InvalidOperationException(message);
         }
 
-        return LookupEngine.Root(query.RootBlock, query.ViewRow, query.CancellationToken);
+        return LookupEngine.Root(pinned, query.ViewRow, query.CancellationToken);
     }
 
     /// <summary>
@@ -243,12 +243,12 @@ public sealed partial class FileIndex
     SnapshotBorrow BorrowForQuery(Func<RootBlock?, RootBlock?>? select)
     {
         var borrow = BorrowBlock(select);
-        if (borrow.RootBlock is not { View.IsDirectoryView: true } directoryView)
+        if (borrow.Pinned is not { RootBlock.View.IsDirectoryView: true } directoryView)
         {
             return borrow;
         }
 
-        if (directoryView.View.TryAdmit(directoryView, out var admittedRow))
+        if (directoryView.RootBlock.View.TryAdmit(directoryView, out var admittedRow))
         {
             borrow.ViewRow = admittedRow;
             return borrow;
@@ -260,8 +260,8 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Everything a query needs and nothing it has to remember to give back by hand: the
-    ///     block to read, the token to observe, and a borrow that is returned when the query
-    ///     returns, whether it answered or threw.
+    ///     block to read with the mapping its borrow pinned, the token to observe, and a borrow that is
+    ///     returned when the query returns, whether it answered or threw.
     /// </summary>
     internal QueryScope BeginQuery(CancellationToken cancellationToken,
         Func<RootBlock?, RootBlock?>? select = null)
@@ -323,7 +323,8 @@ public sealed partial class FileIndex
             _linkedCancellation = linkedCancellation;
         }
 
-        internal RootBlock? RootBlock => _borrow.RootBlock;
+        /// <summary>The borrowed root block with its pinned mapping, which the query reads through to the end.</summary>
+        internal PinnedRootBlock? Pinned => _borrow.Pinned;
 
         /// <summary>The row an admitted directory view was bound to; null when the root is not a view.</summary>
         internal uint? ViewRow => _borrow.ViewRow;

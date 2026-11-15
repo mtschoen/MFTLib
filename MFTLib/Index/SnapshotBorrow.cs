@@ -1,11 +1,12 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     A reader's claim on a mapped root block, held for the whole of a query. While
-///     one is outstanding, every deterministic release path waits rather than unmapping, so a scan
-///     that is partway through a block never reads freed memory. Holding the block itself is
-///     also what keeps it reachable, which is why the finalizer path needs no borrow check of its
-///     own: a borrowed block cannot be collected.
+///     A reader's claim on a mapped root block, held for the whole of a query. It pins the mapping that was current
+///     when it was taken: the query reads through <see cref="Pinned" /> to the end, whatever replacement its lineage
+///     publishes meanwhile. While one is outstanding, every deterministic release path waits rather than unmapping
+///     the pinned mapping, so a scan that is partway through a block never reads freed memory. Holding the mapping
+///     itself is also what keeps it reachable, which is why the finalizer path needs no borrow check of its own: a
+///     borrowed mapping cannot be collected.
 /// </summary>
 sealed class SnapshotBorrow : IDisposable
 {
@@ -13,13 +14,15 @@ sealed class SnapshotBorrow : IDisposable
 
     internal SnapshotBorrow(RootBlock? rootBlock)
     {
-        if (rootBlock is not null && !rootBlock.TryTakeBorrow())
+        BlockMapping? mapping = null;
+        if (rootBlock is not null && !rootBlock.TryTakeBorrow(out mapping))
         {
             throw new ObjectDisposedException(nameof(RootBlock),
                 "This root block has been released and can no longer be read.");
         }
 
         RootBlock = rootBlock;
+        Mapping = mapping;
 
         // Failed construction is finalizable too; only an admitted reader owns a count.
         _acquired = 1;
@@ -32,8 +35,15 @@ sealed class SnapshotBorrow : IDisposable
     /// </summary>
     internal uint? ViewRow { get; set; }
 
-    /// <summary>The block this borrow keeps mapped, for the query that took it to read through, or null when the query reads no block.</summary>
+    /// <summary>The view's root block this borrow was taken on, or null when the query reads no block.</summary>
     internal RootBlock? RootBlock { get; }
+
+    /// <summary>The mapping this borrow keeps mapped, or null when the query reads no block.</summary>
+    internal BlockMapping? Mapping { get; }
+
+    /// <summary>The root block with the pinned mapping, for the query that took this borrow to read through.</summary>
+    internal PinnedRootBlock? Pinned =>
+        RootBlock is { } rootBlock && Mapping is { } mapping ? new PinnedRootBlock(rootBlock, mapping.Block) : null;
 
     /// <summary>Shared by value-type scope copies; independent of a block's release starting.</summary>
     internal bool IsReturned => _acquired == 0;
@@ -47,7 +57,11 @@ sealed class SnapshotBorrow : IDisposable
     {
         if (Interlocked.Exchange(ref _acquired, 0) != 0)
         {
-            RootBlock?.ReturnBorrow();
+            if (RootBlock is { } rootBlock && Mapping is { } mapping)
+            {
+                rootBlock.ReturnBorrow(mapping);
+            }
+
             GC.SuppressFinalize(this);
         }
     }

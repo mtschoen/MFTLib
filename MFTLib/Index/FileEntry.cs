@@ -43,11 +43,6 @@ public readonly partial record struct FileEntry
 {
     readonly ushort _sequenceNumber;
 
-    FileEntry(RootBlock rootBlock, uint rowIndex)
-        : this(rootBlock, rowIndex, SequenceNumberOf(rootBlock, rowIndex))
-    {
-    }
-
     FileEntry(RootBlock rootBlock, uint rowIndex, ushort sequenceNumber)
     {
         NamedRootBlock = rootBlock;
@@ -58,11 +53,21 @@ public readonly partial record struct FileEntry
     /// <summary>Routes an event to a view without re-reading a row's possibly replaced incarnation.</summary>
     internal FileEntry WithRootBlock(RootBlock rootBlock) => new(rootBlock, RowIndex, _sequenceNumber);
 
-    /// <summary>Internal factory. Handles are only ever minted by the index and its query engines.</summary>
+    /// <summary>
+    ///     Internal factory. Handles are only ever minted by the index and its query engines. The incarnation is read
+    ///     from the pinned mapping the minting read goes through.
+    /// </summary>
+    internal static FileEntry Create(PinnedRootBlock pinned, uint rowIndex)
+    {
+        ArgumentNullException.ThrowIfNull(pinned.RootBlock);
+        return new FileEntry(pinned.RootBlock, rowIndex, SequenceNumberOf(pinned, rowIndex));
+    }
+
+    /// <summary>Mints a handle on the current mapping, for a caller that holds the write gate, where it cannot move.</summary>
     internal static FileEntry Create(RootBlock rootBlock, uint rowIndex)
     {
         ArgumentNullException.ThrowIfNull(rootBlock);
-        return new FileEntry(rootBlock, rowIndex);
+        return Create(PinnedRootBlock.Current(rootBlock), rowIndex);
     }
 
     internal uint RowIndex { get; }
@@ -96,8 +101,8 @@ public readonly partial record struct FileEntry
     ///     MFT block stores one; an enumeration block is never mutated by the journal, so its rows keep
     ///     one incarnation for the life of the block.
     /// </summary>
-    static ushort SequenceNumberOf(RootBlock rootBlock, uint rowIndex) =>
-        rootBlock.ProducerKind == ProducerKind.Mft ? rootBlock.Block.SequenceNumbers[(int)rowIndex] : (ushort)0;
+    static ushort SequenceNumberOf(PinnedRootBlock pinned, uint rowIndex) =>
+        pinned.RootBlock.ProducerKind == ProducerKind.Mft ? pinned.Block.SequenceNumbers[(int)rowIndex] : (ushort)0;
 
     /// <summary>
     ///     True when a newer file incarnation has reused this handle's row slot, so the handle no longer
@@ -105,25 +110,31 @@ public readonly partial record struct FileEntry
     /// </summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    bool IsSuperseded => IsSupersededIn(RootBlock);
+    bool IsSuperseded => IsSupersededIn(PinnedRootBlock.Current(RootBlock));
 
-    bool IsSupersededIn(RootBlock rootBlock) => _sequenceNumber != SequenceNumberOf(rootBlock, RowIndex);
+    /// <summary>Whether a newer file has reused this handle's row slot, judged on the mapping the caller pinned.</summary>
+    internal bool IsSupersededIn(PinnedRootBlock pinned) => _sequenceNumber != SequenceNumberOf(pinned, RowIndex);
 
     /// <summary>
     ///     The one place a column read learns its slot was reused. Every row-backed getter reads through
-    ///     here, so none of them can return the replacement file's values for a superseded handle.
+    ///     here, so none of them can return the replacement file's values for a superseded handle. The
+    ///     lineage's current mapping is read once, and the identity check and the getter's column reads
+    ///     all use it, so one read never mixes two mappings.
     /// </summary>
-    BlockFile CurrentBlock()
+    BlockFile CurrentBlock() => CurrentPinned().Block;
+
+    /// <summary><see cref="CurrentBlock" /> with the root block it was read through.</summary>
+    PinnedRootBlock CurrentPinned()
     {
-        var rootBlock = RootBlock;
-        if (IsSupersededIn(rootBlock))
+        var pinned = PinnedRootBlock.Current(RootBlock);
+        if (IsSupersededIn(pinned))
         {
             throw new InvalidOperationException(
                 "This FileEntry's row slot was reused after deletion by a newer file, so its columns no longer " +
                 "describe the entry. Read FileChange.Path, PreviousPath and Timestamp for the facts of a change.");
         }
 
-        return rootBlock.Block;
+        return pinned;
     }
 
     /// <summary>
@@ -131,12 +142,6 @@ public readonly partial record struct FileEntry
     ///     never throws, so equality holds for default and released handles.
     /// </summary>
     internal RootBlock? NamedRootBlock { get; }
-
-    /// <summary>
-    ///     <see cref="IsSuperseded" /> without the released check, for a caller that already holds a borrow
-    ///     that keeps the block mapped.
-    /// </summary>
-    internal bool IsSupersededWhileMapped => NamedRootBlock is { } rootBlock && IsSupersededIn(rootBlock);
 
     /// <summary>
     ///     Compares the view's root block, row index and sequence number. A superseded handle never equals the
@@ -237,8 +242,8 @@ public readonly partial record struct FileEntry
     {
         get
         {
-            var rootBlock = RootBlock;
-            return IsSupersededIn(rootBlock) || rootBlock.Block.Rows[(int)RowIndex].IsDeleted;
+            var pinned = PinnedRootBlock.Current(RootBlock);
+            return IsSupersededIn(pinned) || pinned.Block.Rows[(int)RowIndex].IsDeleted;
         }
     }
 

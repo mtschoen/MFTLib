@@ -39,10 +39,10 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_RoundTripsWhateverPathEmits()
     {
-        var report = LookupEngine.Find(_rootBlock,
-            Path.Combine(TestRootDirectory.For('T'), "Documents", "report.pdf"), TestContext.CancellationToken)!.Value;
+        var report = LookupEngine.Find(PinnedRootBlock.Current(_rootBlock),
+            Path.Combine(TestRootDirectory.For('T'), "Documents", "report.pdf"), cancellationToken: TestContext.CancellationToken)!.Value;
 
-        var roundTripped = LookupEngine.Find(_rootBlock, report.Path, TestContext.CancellationToken);
+        var roundTripped = LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), report.Path, cancellationToken: TestContext.CancellationToken);
 
         Assert.IsTrue(roundTripped.HasValue);
         Assert.AreEqual(report.Path, roundTripped.GetValueOrDefault().Path);
@@ -52,16 +52,16 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_APathUnderNoIndexedRootReturnsNull()
     {
-        Assert.IsNull(LookupEngine.Find(_rootBlock,
-            Path.Combine(TestRootDirectory.For('Z'), "Documents", "report.pdf"), TestContext.CancellationToken));
-        Assert.IsNull(LookupEngine.Find(_rootBlock, "not-a-path", TestContext.CancellationToken));
-        Assert.IsNull(LookupEngine.Find(_rootBlock, "", TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(_rootBlock),
+            Path.Combine(TestRootDirectory.For('Z'), "Documents", "report.pdf"), cancellationToken: TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), "not-a-path", cancellationToken: TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), "", cancellationToken: TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Find_TheRootDirectoryItselfReturnsTheRootRow()
     {
-        var entry = LookupEngine.Find(_rootBlock, TestRootDirectory.For('T'), TestContext.CancellationToken);
+        var entry = LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), TestRootDirectory.For('T'), cancellationToken: TestContext.CancellationToken);
 
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual(TestRootDirectory.For('T'), entry.GetValueOrDefault().Path);
@@ -70,7 +70,7 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_ResolvesAFullPathToItsEntry()
     {
-        var entry = LookupEngine.Find(_rootBlock, Path.Combine(TestRootDirectory.For('T'), "Documents", "report.pdf"), TestContext.CancellationToken);
+        var entry = LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), Path.Combine(TestRootDirectory.For('T'), "Documents", "report.pdf"), cancellationToken: TestContext.CancellationToken);
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
         Assert.AreEqual(4096L, entry.GetValueOrDefault().Size);
@@ -79,22 +79,22 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_MissingSegmentReturnsNull()
     {
-        Assert.IsNull(LookupEngine.Find(_rootBlock, Path.Combine(TestRootDirectory.For('T'), "Documents", "nothing.txt"), TestContext.CancellationToken));
-        Assert.IsNull(LookupEngine.Find(_rootBlock, Path.Combine(TestRootDirectory.For('T'), "Nowhere", "report.pdf"), TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), Path.Combine(TestRootDirectory.For('T'), "Documents", "nothing.txt"), cancellationToken: TestContext.CancellationToken));
+        Assert.IsNull(LookupEngine.Find(PinnedRootBlock.Current(_rootBlock), Path.Combine(TestRootDirectory.For('T'), "Nowhere", "report.pdf"), cancellationToken: TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void SearchExact_IsAnExactNameMatchNotASubstring()
     {
-        Assert.IsEmpty(SearchEngine.Search(_rootBlock, new SearchQuery("readme", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
-        Assert.HasCount(1, SearchEngine.Search(_rootBlock, new SearchQuery("README.MD", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
-        Assert.IsEmpty(SearchEngine.Search(_rootBlock, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken));
+        Assert.IsEmpty(SearchEngine.Search(PinnedRootBlock.Current(_rootBlock), new SearchQuery("readme", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
+        Assert.HasCount(1, SearchEngine.Search(PinnedRootBlock.Current(_rootBlock), new SearchQuery("README.MD", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
+        Assert.IsEmpty(SearchEngine.Search(PinnedRootBlock.Current(_rootBlock), new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true), cancellationToken: TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Root_ReturnsTheRootRoot()
     {
-        Assert.AreEqual(TestRootDirectory.For('T'), LookupEngine.Root(_rootBlock, cancellationToken: TestContext.CancellationToken).Path);
+        Assert.AreEqual(TestRootDirectory.For('T'), LookupEngine.Root(PinnedRootBlock.Current(_rootBlock), cancellationToken: TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
@@ -118,8 +118,8 @@ public class LookupEngineTests
         var rootBlock = new RootBlock(new VolumeKey('V'), block, rootDirectoryPath: TestRootDirectory.For('V'));
         try
         {
-            Assert.AreEqual(rootRow, LookupEngine.Root(rootBlock, cancellationToken: TestContext.CancellationToken).RowIndex);
-            var entry = LookupEngine.Find(rootBlock, Path.Combine(TestRootDirectory.For('V'), "Documents", "report.pdf"), TestContext.CancellationToken);
+            Assert.AreEqual(rootRow, LookupEngine.Root(PinnedRootBlock.Current(rootBlock), cancellationToken: TestContext.CancellationToken).RowIndex);
+            var entry = LookupEngine.Find(PinnedRootBlock.Current(rootBlock), Path.Combine(TestRootDirectory.For('V'), "Documents", "report.pdf"), cancellationToken: TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
         }
@@ -137,7 +137,7 @@ public class LookupEngineTests
         Assert.IsNull(validation);
         var rootBlock = new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: TestRootDirectory.For('T'));
 
-        var root = LookupEngine.Root(rootBlock, cancellationToken: TestContext.CancellationToken);
+        var root = LookupEngine.Root(PinnedRootBlock.Current(rootBlock), cancellationToken: TestContext.CancellationToken);
 
         Assert.AreEqual(5u, root.RowIndex);
     }
@@ -149,7 +149,7 @@ public class LookupEngineTests
         using var block = builder.OpenForReading(out _)!;
         var rootBlock = new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: TestRootDirectory.For('T'));
 
-        var found = LookupEngine.Find(rootBlock, Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt"), TestContext.CancellationToken);
+        var found = LookupEngine.Find(PinnedRootBlock.Current(rootBlock), Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt"), cancellationToken: TestContext.CancellationToken);
 
         Assert.IsNotNull(found);
         Assert.AreEqual("notes.txt", found.Value.Name);
@@ -162,7 +162,7 @@ public class LookupEngineTests
     static List<FileEntry> SequentialExactName(RootBlock rootBlock, string name, bool caseSensitive)
     {
         var reference = new List<FileEntry>();
-        var scanner = new RowScanner(rootBlock);
+        var scanner = new RowScanner(rootBlock.Block);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
@@ -200,7 +200,7 @@ public class LookupEngineTests
         var rootBlock = new RootBlock(new VolumeKey('T'), block);
         try
         {
-            var partitioned = SearchEngine.Search(rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken);
+            var partitioned = SearchEngine.Search(PinnedRootBlock.Current(rootBlock), new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken);
             var reference = SequentialExactName(rootBlock, "needle.txt", caseSensitive: false);
 
             Assert.HasCount(3, partitioned);
@@ -223,7 +223,7 @@ public class LookupEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(
-            () => SearchEngine.Search(_rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: token));
+            () => SearchEngine.Search(PinnedRootBlock.Current(_rootBlock), new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: token));
     }
 
     [TestMethod]
@@ -234,7 +234,7 @@ public class LookupEngineTests
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.IsEmpty(SearchEngine.Search(rootBlock, new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
+            Assert.IsEmpty(SearchEngine.Search(PinnedRootBlock.Current(rootBlock), new SearchQuery("needle.txt", NameMatchMode.Exact), cancellationToken: TestContext.CancellationToken));
         }
         finally
         {

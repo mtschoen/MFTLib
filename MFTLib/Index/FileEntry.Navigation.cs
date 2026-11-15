@@ -23,8 +23,7 @@ public readonly partial record struct FileEntry
     {
         get
         {
-            _ = CurrentBlock();
-            return IndexNavigation.BuildPath(RootBlock, RowIndex);
+            return IndexNavigation.BuildPath(CurrentPinned(), RowIndex);
         }
     }
 
@@ -35,14 +34,14 @@ public readonly partial record struct FileEntry
     {
         get
         {
-            var current = CurrentBlock();
-            if ((RootBlock.View.TryGetRow(out var viewRow) && RowIndex == viewRow) ||
-                !IndexNavigation.TryGetParentRow(current, RowIndex, out var parentRow))
+            var current = CurrentPinned();
+            if ((current.RootBlock.View.TryGetRow(out var viewRow) && RowIndex == viewRow) ||
+                !IndexNavigation.TryGetParentRow(current.Block, RowIndex, out var parentRow))
             {
                 return null;
             }
 
-            return Create(RootBlock, parentRow);
+            return Create(current, parentRow);
         }
     }
 
@@ -65,14 +64,14 @@ public readonly partial record struct FileEntry
     public IReadOnlyList<FileEntry> Children(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var rootBlock = RootBlock;
-        using var borrow = new SnapshotBorrow(rootBlock);
-        rootBlock.ReleaseState.Hooks._readerAdmitted?.Invoke();
-        if (IsSupersededIn(rootBlock))
+        using var borrow = new SnapshotBorrow(RootBlock);
+        var pinned = borrow.Pinned ?? throw new InvalidOperationException("A handle's borrow always pins a mapping.");
+        borrow.Mapping?.ReleaseState.Hooks._readerAdmitted?.Invoke();
+        if (IsSupersededIn(pinned))
         {
             return [];
         }
 
-        return IndexNavigation.GetChildren(rootBlock, RowIndex, cancellationToken);
+        return IndexNavigation.GetChildren(pinned, RowIndex, cancellationToken);
     }
 }

@@ -70,8 +70,8 @@ public sealed class PostingQueryEquivalenceTests
                 {
                     var query = filter(new SearchQuery(pattern, NameMatchMode.Exact, caseSensitive));
                     var expected = Support.ReferenceRows(root, query, TestContext.CancellationToken);
-                    var searched = SearchEngine.Search(root, query, cancellationToken: TestContext.CancellationToken);
-                    var streamed = SearchEngine.Enumerate(root, query, cancellationToken: TestContext.CancellationToken);
+                    var searched = SearchEngine.Search(PinnedRootBlock.Current(root), query, cancellationToken: TestContext.CancellationToken);
+                    var streamed = SearchEngine.Enumerate(PinnedRootBlock.Current(root), query, cancellationToken: TestContext.CancellationToken);
                     var viewed = NamePool.EnumerateRows(root, query, TestContext.CancellationToken);
                     var why = $"{label} pattern='{pattern}' caseSensitive={caseSensitive} query={query}";
                     Assert.AreSequenceEqual(expected, searched.Select(entry => entry.RowIndex).ToArray(), why);
@@ -118,9 +118,9 @@ public sealed class PostingQueryEquivalenceTests
         builder.MutateNameDescriptor(moved, firstId);
         using var opened = new Support.OpenedRoot(builder);
 
-        var exact = SearchEngine.Search(opened.Root, new SearchQuery("a.txt", NameMatchMode.Exact),
+        var exact = SearchEngine.Search(PinnedRootBlock.Current(opened.Root), new SearchQuery("a.txt", NameMatchMode.Exact),
             cancellationToken: TestContext.CancellationToken);
-        var substring = SearchEngine.Search(opened.Root, new SearchQuery("a.txt"),
+        var substring = SearchEngine.Search(PinnedRootBlock.Current(opened.Root), new SearchQuery("a.txt"),
             cancellationToken: TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(new uint[] { 1 }, exact.Select(entry => entry.RowIndex).ToArray());
@@ -133,7 +133,7 @@ public sealed class PostingQueryEquivalenceTests
         using var corpus = Support.BuildCorpus(seed: 4);
         using var opened = new Support.OpenedRoot(corpus.Builder);
 
-        var results = SearchEngine.Search(opened.Root, new SearchQuery("", NameMatchMode.Exact),
+        var results = SearchEngine.Search(PinnedRootBlock.Current(opened.Root), new SearchQuery("", NameMatchMode.Exact),
             cancellationToken: TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(new uint[] { 0 }, results.Select(entry => entry.RowIndex).ToArray());

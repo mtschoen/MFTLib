@@ -40,7 +40,7 @@ public class RowScannerTests
     public void Scanner_VisitsEveryUsedRowInOrder()
     {
         var names = new List<string>();
-        var scanner = new RowScanner(_snapshot[0]);
+        var scanner = new RowScanner(_snapshot[0].Block);
         while (scanner.MoveNext())
         {
             names.Add(scanner.CurrentName.ToString());
@@ -53,7 +53,7 @@ public class RowScannerTests
     public void Scanner_StopsAtRowCountNotSlotCapacity()
     {
         var visited = 0;
-        var scanner = new RowScanner(_snapshot[0]);
+        var scanner = new RowScanner(_snapshot[0].Block);
         while (scanner.MoveNext())
         {
             visited++;
@@ -65,7 +65,7 @@ public class RowScannerTests
     [TestMethod]
     public void Scanner_ExposesTheRowByReference()
     {
-        var scanner = new RowScanner(_snapshot[0]);
+        var scanner = new RowScanner(_snapshot[0].Block);
         Assert.IsTrue(scanner.MoveNext());
         Assert.IsTrue(scanner.MoveNext());
 
@@ -77,7 +77,7 @@ public class RowScannerTests
     public void RangeScanner_VisitsOnlyItsPartition()
     {
         var names = new List<string>();
-        var scanner = new RowScanner(_snapshot[0], startRow: 2, endRowExclusive: 4);
+        var scanner = new RowScanner(_snapshot[0].Block, startRow: 2, endRowExclusive: 4);
         while (scanner.MoveNext())
         {
             names.Add(scanner.CurrentName.ToString());
@@ -90,7 +90,7 @@ public class RowScannerTests
     public void RangeScanner_ClampsAnEndPastRowCount()
     {
         var visited = 0;
-        var scanner = new RowScanner(_snapshot[0], startRow: 3, endRowExclusive: 9999);
+        var scanner = new RowScanner(_snapshot[0].Block, startRow: 3, endRowExclusive: 9999);
         while (scanner.MoveNext())
         {
             visited++;
@@ -113,14 +113,14 @@ public class RowScannerTests
         var token = cancellation.Token;
 
         Assert.ThrowsExactly<OperationCanceledException>(
-            () => new RowScanner(_snapshot[0], startRow: 0, endRowExclusive: 0, token).MoveNext());
+            () => new RowScanner(_snapshot[0].Block, startRow: 0, endRowExclusive: 0, token).MoveNext());
     }
 
     [TestMethod]
     public void Scanner_WorksInAForeachThroughGetEnumerator()
     {
         var visited = 0;
-        foreach (var _ in new RowScanner(_snapshot[0]))
+        foreach (var _ in new RowScanner(_snapshot[0].Block))
         {
             visited++;
         }

@@ -3,40 +3,137 @@ using System.Diagnostics.CodeAnalysis;
 namespace MFTLib.Index;
 
 /// <summary>
-///     I6 Mapping: one mapping shared by every view's RootBlock. Scan teardown, retirement draining or
-///     finalization releases it; closing an individual view never releases the mapping.
+///     I6 Mapping: one block lineage, shared by every view's RootBlock. It publishes one
+///     <see cref="BlockMapping" /> at a time as <see cref="Current" />, so a single volatile store moves every view
+///     onto a replacement mapping while handle identity, <see cref="ProducerKind" /> and
+///     <see cref="ReportedCycles" /> stay with the lineage. A rescan starts a new lineage. Scan teardown, retirement
+///     draining or finalization releases its mappings; closing an individual view never releases them.
 /// </summary>
-sealed class MappedBlock(BlockFile block)
+/// <remarks>
+///     A mapping that <see cref="Replace" /> retired stays mapped until the lineage itself is released, because an
+///     unborrowed <see cref="FileEntry" /> read can still be inside it and takes no count that a release could wait
+///     for. Its file is deleted then, when its release has a scheduled delete.
+/// </remarks>
+sealed class MappedBlock
 {
-    internal BlockFile Block { get; } = block;
-    internal RootBlockRelease ReleaseState { get; } = new(block);
-    internal ProducerKind ProducerKind { get; } = block.Header.ProducerKind;
+    /// <summary>Guards <see cref="_retired" />, <see cref="_isSealed" /> and replacement of <see cref="_current" />.</summary>
+    readonly Lock _gate = new();
+
+    /// <summary>Every mapping this lineage replaced, held strongly so none is finalized while its lineage lives.</summary>
+    readonly List<BlockMapping> _retired = [];
+
+    BlockMapping _current;
+
+    /// <summary>Set when the lineage's mappings are handed to a release; no replacement is published after it.</summary>
+    bool _isSealed;
+
+    internal MappedBlock(BlockFile block)
+    {
+        _current = new BlockMapping(block);
+        ProducerKind = block.Header.ProducerKind;
+    }
+
+    /// <summary>The mapping a reader admitted now reads. Read once per operation and pinned for its length.</summary>
+    internal BlockMapping Current => Volatile.Read(ref _current);
+
+    /// <summary>The current mapping's block, for a caller that holds the write gate, where it cannot move.</summary>
+    internal BlockFile Block => Current.Block;
+
+    /// <summary>The current mapping's release state.</summary>
+    internal RootBlockRelease ReleaseState => Current.ReleaseState;
+
+    internal ProducerKind ProducerKind { get; }
     internal ReportedReasonCycles ReportedCycles { get; } = new();
-    internal bool IsReleased => ReleaseState.IsReleaseStarted;
+    internal LineageHooks Hooks { get; } = new();
+
+    /// <summary>Per-instance test hooks for this lineage.</summary>
+    internal sealed class LineageHooks
+    {
+        /// <summary>Invoked by <see cref="TryTakeBorrow" /> after it counted a borrow, before it rechecks the current mapping.</summary>
+        internal Action? _borrowCounted;
+    }
+
+    /// <summary>True from the moment the current mapping's release begins, which is the lineage's release.</summary>
+    internal bool IsReleased => Current.IsReleased;
 
     /// <summary>
-    ///     Releases the block for a caller who simply dropped every handle. The catch is
-    ///     deliberately unconditional and local to this path: releasing unmaps a view and can
-    ///     delete a retired block file, so a file the operating system will not unlink surfaces as
-    ///     an exception, and an exception leaving a finalizer terminates the process with a stack
-    ///     no consumer can act on. The worst case swallowed here is a leaked mapping or a leftover
-    ///     file, which is what the caller already has. <see cref="RootBlockRelease.DrainAndReleaseAsync" />
-    ///     keeps propagating, because a deterministic teardown failure is worth surfacing.
+    ///     Counts one reader on the current mapping and pins it. A reader that raced a replacement retries on the
+    ///     mapping that replaced it, so a borrow admitted after the store reads the replacement; false only when the
+    ///     current mapping's release has begun.
     /// </summary>
-    [SuppressMessage("Roslynator", "RCS1075",
-        Justification = "A finalizer is the one place where catching everything and doing nothing is the " +
-                        "correct behaviour: an exception that escapes it terminates the process. There is " +
-                        "nothing to log to and nothing to retry, and the swallowed worst case is a leaked " +
-                        "mapping, which is strictly better than the alternative. Scoped to this method only.")]
-    ~MappedBlock()
+    internal bool TryTakeBorrow([NotNullWhen(true)] out BlockMapping? mapping)
     {
-        try
+        while (true)
         {
-            ReleaseState.ReleaseUnborrowed();
+            var candidate = Current;
+            var taken = candidate.ReleaseState.TryTakeBorrow();
+            Hooks._borrowCounted?.Invoke();
+            if (ReferenceEquals(candidate, Current))
+            {
+                mapping = taken ? candidate : null;
+                return taken;
+            }
+
+            if (taken)
+            {
+                candidate.ReleaseState.ReturnBorrow();
+            }
         }
-        catch (Exception)
+    }
+
+    /// <summary>
+    ///     Publishes <paramref name="replacement" /> as the lineage's current mapping in one volatile store and
+    ///     retires the mapping it replaces, which stays mapped until the lineage is released. Readers that pinned
+    ///     the retired mapping finish on it. The caller holds the write gate, so no writer is on the retired mapping.
+    /// </summary>
+    /// <returns>The retired mapping, for its caller to schedule the deletion of a renamed-aside file on.</returns>
+    /// <exception cref="ObjectDisposedException">The lineage has been handed to a release.</exception>
+    internal BlockMapping Replace(BlockFile replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        lock (_gate)
         {
-            // See this finalizer's summary.
+            ObjectDisposedException.ThrowIf(_isSealed || _current.IsReleased, this);
+            var retired = _current;
+            _retired.Add(retired);
+            Volatile.Write(ref _current, new BlockMapping(replacement));
+            return retired;
+        }
+    }
+
+    /// <summary>
+    ///     Hands every mapping of the lineage to a release: the retired ones first, then the current one. No
+    ///     replacement is published afterwards, so the list is complete.
+    /// </summary>
+    internal RootBlockRelease[] Seal()
+    {
+        lock (_gate)
+        {
+            _isSealed = true;
+            return [.. _retired.Select(mapping => mapping.ReleaseState), _current.ReleaseState];
+        }
+    }
+
+    /// <summary>
+    ///     Releases every mapping of the lineage without waiting, for a lineage no reader was ever admitted to.
+    /// </summary>
+    internal void ReleaseUnborrowed()
+    {
+        foreach (var release in Seal())
+        {
+            release.ReleaseUnborrowed();
+        }
+    }
+
+    /// <summary>
+    ///     Releases every mapping of the lineage, waiting for each one's borrows to drain before unmapping it.
+    ///     Returns once all of them are unmapped.
+    /// </summary>
+    internal async ValueTask DrainAndReleaseAsync()
+    {
+        foreach (var release in Seal())
+        {
+            await release.DrainAndReleaseAsync().ConfigureAwait(false);
         }
     }
 }

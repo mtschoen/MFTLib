@@ -38,18 +38,18 @@ sealed class RowEnumerationResources : IDisposable
         return ++_version;
     }
 
-    internal void BeginRoot(RootBlock rootBlock, SearchQuery query, ResolvedSubtree? explicitAnchor,
+    internal void BeginRoot(PinnedRootBlock pinned, SearchQuery query, ResolvedSubtree? explicitAnchor,
         uint? admittedViewRow, CancellationToken cancellationToken)
     {
         EndRoot();
-        _names = new NameQueryMatches(rootBlock.Block, query, cancellationToken);
+        _names = new NameQueryMatches(pinned.Block, query, cancellationToken);
         if (_names.IsExactCandidates)
         {
-            _candidates = PostingCandidates.Gather(rootBlock.Block, PostingCandidates.IdentifiersOf(_names),
+            _candidates = PostingCandidates.Gather(pinned.Block, PostingCandidates.IdentifiersOf(_names),
                 cancellationToken);
         }
 
-        _membership = SubtreeAnchor.CreateMembership(rootBlock, explicitAnchor, admittedViewRow);
+        _membership = SubtreeAnchor.CreateMembership(pinned, explicitAnchor, admittedViewRow);
     }
 
     internal void EndRoot()

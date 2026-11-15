@@ -24,7 +24,7 @@ public class MappedBlockTests
 
         await fixture.FirstBorrows.CloseAndDrainAsync();
 
-        Assert.IsFalse(fixture.First.TryTakeBorrow());
+        Assert.IsFalse(fixture.First.TryTakeBorrow(out _));
         using var other = new SnapshotBorrow(fixture.Second);
         Assert.AreEqual(1, fixture.SecondBorrows.OutstandingCount);
         Assert.IsFalse(fixture.Mapped.IsReleased);
@@ -101,10 +101,10 @@ public class MappedBlockTests
         var anchor = FileEntry.Create(fixture.First, 5);
         var query = new SearchQuery("a", Subtree: anchor);
 
-        var exception = Assert.ThrowsExactly<ArgumentException>(() => SubtreeAnchor.Resolve(fixture.Second, query));
+        var exception = Assert.ThrowsExactly<ArgumentException>(() => SubtreeAnchor.Resolve(PinnedRootBlock.Current(fixture.Second), query));
 
         Assert.Contains("another view", exception.Message);
-        Assert.IsNotNull(SubtreeAnchor.Resolve(fixture.First, query));
+        Assert.IsNotNull(SubtreeAnchor.Resolve(PinnedRootBlock.Current(fixture.First), query));
     }
 
     [TestMethod]
@@ -116,7 +116,7 @@ public class MappedBlockTests
 
         Assert.IsTrue(fixture.First.IsReleased);
         Assert.IsTrue(fixture.Second.IsReleased);
-        Assert.IsFalse(fixture.First.TryTakeBorrow());
+        Assert.IsFalse(fixture.First.TryTakeBorrow(out _));
         Assert.AreEqual(0, fixture.FirstBorrows.OutstandingCount);
     }
 

@@ -39,13 +39,13 @@ public sealed class SearchExactNamesTests
         ];
         foreach (var filter in filters)
         {
-            var results = SearchEngine.SearchExactNames(root, Requested, filter,
+            var results = SearchEngine.SearchExactNames(PinnedRootBlock.Current(root), Requested, filter,
                 cancellationToken: TestContext.CancellationToken);
 
             Assert.HasCount(Requested.Length, results);
             for (var index = 0; index < Requested.Length; index++)
             {
-                var single = SearchEngine.Search(root,
+                var single = SearchEngine.Search(PinnedRootBlock.Current(root),
                     filter with { NamePattern = Requested[index], MatchMode = NameMatchMode.Exact },
                     cancellationToken: TestContext.CancellationToken);
                 Assert.AreSequenceEqual(single.Select(entry => entry.RowIndex).ToArray(),
@@ -60,7 +60,7 @@ public sealed class SearchExactNamesTests
         using var corpus = Support.BuildCorpus(seed: 32, rowCount: 200);
         using var opened = new Support.OpenedRoot(corpus.Builder);
 
-        Assert.IsEmpty(SearchEngine.SearchExactNames(opened.Root, [], new SearchQuery(null),
+        Assert.IsEmpty(SearchEngine.SearchExactNames(PinnedRootBlock.Current(opened.Root), [], new SearchQuery(null),
             cancellationToken: TestContext.CancellationToken));
         var blockless = SearchEngine.SearchExactNames(null, ["a", "b"], new SearchQuery(null),
             cancellationToken: TestContext.CancellationToken);

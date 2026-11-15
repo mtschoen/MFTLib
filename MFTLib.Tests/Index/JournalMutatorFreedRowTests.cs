@@ -87,13 +87,13 @@ public class JournalMutatorFreedRowTests
         Assert.IsNull(deeperChild.Parent);
 
         var replacement = FileEntry.Create(fixture.Snapshot[0], FreedRow);
-        var deletedSubtreeSearch = SearchEngine.Search(fixture.Snapshot[0],
+        var deletedSubtreeSearch = SearchEngine.Search(PinnedRootBlock.Current(fixture.Snapshot[0]),
             new SearchQuery(null, Subtree: replacement, IncludeDeleted: true), cancellationToken: TestContext.CancellationToken)
             .Where(entry => entry.IsDeleted)
             .ToList();
         Assert.IsEmpty(deletedSubtreeSearch);
 
-        var deletedSubtreeEnumerate = SearchEngine.Enumerate(fixture.Snapshot[0],
+        var deletedSubtreeEnumerate = SearchEngine.Enumerate(PinnedRootBlock.Current(fixture.Snapshot[0]),
             new SearchQuery(null, Subtree: replacement, IncludeDeleted: true), cancellationToken: TestContext.CancellationToken)
             .Where(entry => entry.IsDeleted)
             .ToList();
