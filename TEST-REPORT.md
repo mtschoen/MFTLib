@@ -1,29 +1,29 @@
 # Test report: generated on main by CI; must not be edited in a pull request
 
-Source commit: 50c581c8127d5777011aef23d14ee9862ee48825
-Workflow run: 59212
-Generated at: 2026-11-15T16:43:20Z (workflow run creation time).
+Source commit: 79e84a1a310bfc984c6c4f312108804f82a041ee
+Workflow run: 59255
+Generated at: 2026-11-15T17:31:30Z (workflow run creation time).
 
 ## Windows unelevated
 
 | Test project | Total | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| mftlib.tests | 4436 | 4417 | 0 | 19 |
+| mftlib.tests | 4462 | 4443 | 0 | 19 |
 
 | Managed coverage | Line | Branch |
 | --- | ---: | ---: |
-| coverage.xml | 97.24% | 94.07% |
+| coverage.xml | 97.21% | 94.11% |
 
 ## Linux
 
 | Test project | Total | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| mftlib.tests | 4306 | 4187 | 0 | 119 |
+| mftlib.tests | 4332 | 4213 | 0 | 119 |
 
 | Managed coverage | Line | Branch |
 | --- | ---: | ---: |
-| coverage.cobertura.xml | 92.65% | 90.69% |
+| coverage.cobertura.xml | 92.66% | 90.79% |
 
-Native coverage: lines: 96.5% (1615 out of 1673)
+Native coverage: lines: 96.5% (1614 out of 1673)
 
 Full TRX and coverage reports are retained as CI artifacts.
