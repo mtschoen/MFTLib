@@ -228,7 +228,9 @@ Automatic recovery is one ticket per scan and does not join manual requests.
         1. Under `StateLock`, read the production marker; when a scan is producing, park (below).
         2. Create the replacement: at `<canonical>.growing-<guid>` when this index owns the canonical slot and the
            block is the canonical file, otherwise a new private delete-on-close temp file (a private or
-           cache-disabled root). Copy with `BlockCopier`, build the posting base and set `Complete`. The pump's stop
+           cache-disabled root). Count the names the rows reference, plan the capacities from the compacted sizes,
+           copy with `BlockCopier` (compacting the names when the plan says so), build the posting base and set
+           `Complete`. The pump's stop
            token and the scan's closing token are observed between phases and every 4096 rows of the build;
            cancellation deletes the replacement and leaves the old block published at `u`, so the batch ends there
            and a later watch replays the record.
@@ -247,9 +249,11 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       `ScanTimestamp`, `Generation` and `LiveRowCount` read the same, handles stay equal and live, and a query in flight
       finishes on the mapping it pinned. Rows keep their numbers and sequence numbers across the copy, so a directory
       view's binding resolved on the old mapping names the same row on the replacement; views are not re-resolved.
+      A compacting copy renumbers names, which nothing outside the block holds, so every row reads the same name.
       A record no growth can store is flagged, skipped whole and reported on one diagnostics line, and the batch
       continues: a record or parent number above 32 bits, a region at its clamp, a record refused again by the same
-      region right after its growth, or a growth that failed with an I/O error. A growth I/O failure ends growing for
+      region right after its growth, or a growth that failed with an I/O error. A name region is at its clamp only when
+      it cannot double and its referenced names alone leave no room after compaction. A growth I/O failure ends growing for
       the rest of that batch only: the next refusal in a later batch tries again, at most once per batch. A name
       region found at its clamp is remembered by the lineage (`LineageCapacity`) and not retried until a rescan starts
       a new lineage; a slot plan past the largest plannable slot region belongs to its record and is not remembered.

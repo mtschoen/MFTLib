@@ -115,37 +115,61 @@ public sealed partial class FileIndex
         }
 
         /// <summary>
-        ///     Grows the block for <paramref name="refusal" />. Returns null when the replacement is published or a stop
-        ///     ended the growth (<see cref="BatchApplication.Stopped" />), otherwise the failure: the planner's clamp,
-        ///     which the lineage remembers for a name region (<see cref="LineageCapacity" />), or the I/O error that
-        ///     stopped the copy, which ends growing for the rest of the batch only. A lineage
-        ///     released before publication (<see cref="ObjectDisposedException" /> from <see cref="MappedBlock.Replace" />)
-        ///     is a stop like disposal: it never flags the block or skips the record.
+        ///     Grows the block for <paramref name="refusal" />. Counts the names its rows reference first, in one pass
+        ///     over the descriptor words, so the plan sees what compaction leaves. Returns null when the replacement is
+        ///     published or a stop ended the growth (<see cref="BatchApplication.Stopped" />), otherwise the failure: the
+        ///     planner's clamp, which for a name region means its referenced names alone leave no room even after
+        ///     compaction and which the lineage remembers (<see cref="LineageCapacity" />), or the I/O error that stopped
+        ///     the copy, which ends growing for the rest of the batch only. A block or lineage released before
+        ///     publication (<see cref="ObjectDisposedException" />) is a stop like disposal: it never flags the block or
+        ///     skips the record.
         /// </summary>
         Exception? TryGrow(RootBlock rootBlock, BatchApplication batch, JournalRefusal refusal,
             CancellationToken cancellationToken)
         {
             var entry = batch.Entries[refusal.Index];
             var source = rootBlock.Block;
-            BlockCapacities capacities;
+            NameReferences references;
             try
             {
-                capacities = WatchGrowthPlan.Plan(WatchGrowthPlan.CapacitiesOf(source), source.RowCount,
-                    refusal.Reason, (uint)entry.RecordNumber);
+                references = NameReferences.Count(source);
             }
-            catch (InvalidOperationException clamp)
+            catch (ObjectDisposedException)
             {
-                if (refusal.Reason != WriteRefusal.Slots)
+                batch.Stopped = true;
+                return null;
+            }
+
+            using (references)
+            {
+                PlannedGrowth plan;
+                try
                 {
-                    rootBlock.Mapped.Capacity.RememberClamp(refusal.Reason, clamp);
+                    plan = WatchGrowthPlan.Plan(WatchGrowthPlan.CapacitiesOf(source), source.RowCount, refusal.Reason,
+                        (uint)entry.RecordNumber, references.Usage);
+                }
+                catch (InvalidOperationException clamp)
+                {
+                    if (refusal.Reason != WriteRefusal.Slots)
+                    {
+                        rootBlock.Mapped.Capacity.RememberClamp(refusal.Reason, clamp);
+                    }
+
+                    return clamp;
                 }
 
-                return clamp;
+                return TryGrowAsPlanned(rootBlock, batch, refusal, plan, references, cancellationToken);
             }
+        }
 
+        /// <summary>The copy and publication half of <see cref="TryGrow" />, from the source <paramref name="references" /> counted.</summary>
+        Exception? TryGrowAsPlanned(RootBlock rootBlock, BatchApplication batch, JournalRefusal refusal,
+            PlannedGrowth plan, NameReferences references, CancellationToken cancellationToken)
+        {
+            var entry = batch.Entries[refusal.Index];
             try
             {
-                GrowPublishedBlock(rootBlock, capacities, refusal, entry, cancellationToken);
+                GrowPublishedBlock(rootBlock, plan, references, refusal, entry, cancellationToken);
                 batch.LastGrowth = (refusal.Index, refusal.Reason);
                 return null;
             }

@@ -476,14 +476,34 @@ applies that record on the replacement. No region ever shrinks:
 - Rows (a record at or past `S`): the volume plan for `max(record + 1, RowCount)`, so `S` becomes the record plus
   25 percent or 65536 rows, and `E`, `P` and `D` re-plan from the new `S` but keep their current values when those
   are larger.
-- Name entries or name bytes: that region doubles, up to its clamp. Name compaction (dropping names no row
-  references) is not done yet, so every name growth doubles.
+- Name entries or name bytes: the copy compacts names first (below), and that region doubles, up to its clamp,
+  only if it is still more than half full after compaction; otherwise it keeps its capacity. Either way at least
+  half of it is free afterwards, so the growth cannot recur at once. At its clamp a region that cannot double keeps
+  its capacity while the referenced names leave room for one more name (an entry, or 511 pool bytes); only when the
+  referenced names alone fill the clamped region is the refusal final.
 - Delta: `D` doubles on each delta growth until it reaches `S`, then stays; the rebuilt posting base empties the
   delta either way.
 
-The copy keeps row numbers, sequence numbers and name identifiers, carries every header field that describes the
+The copy keeps row numbers and sequence numbers, carries every header field that describes the
 data (the journal cursor at the refused record, the generation, the counts, the scan timestamp, cache tag and scan
-shape, and the capacity-exhausted bit only when the old block already had it), and builds a fresh posting base.
+shape, and the capacity-exhausted bit only when the old block already had it), and builds a fresh posting base. It
+keeps name identifiers unless it compacts.
+
+**Name compaction.** Names are interned once and never removed from a block, so journal churn (temporary files,
+lock files, renames) leaves names no row references. Every watch growth first marks the identifiers its rows
+reference in one pass over the descriptor words, into a bitmap of `NameEntryCount` bits held outside the managed
+heap. A name is unused when no row's descriptor word holds it, whatever the row's flags: a tombstoned, delete-pending
+or freed row keeps its name, so no row reads differently afterwards. The copy compacts when the refusing region is
+the name entries or the name pool, or when unused names are at least one eighth of the stored names (so a delta or
+slot growth also sheds them); otherwise it copies the name regions verbatim. A compacting copy stores only the
+referenced names into the replacement, in ascending old-identifier order, keeps an old-to-new identifier map outside
+the managed heap, rewrites each copied row's descriptor word, links the bucket chains for the replacement `E`, and then
+builds the posting base from the rewritten rows, so the base name count `B` is the compacted count. Nothing outside
+the block holds a name identifier: handles hold a row and a sequence number, and every reader resolves a row and its
+name on one mapping ([Query and writer lifetime](query-lifetime.md)), so the renumbering is invisible. The thresholds
+are `WatchGrowthPlan.UnusedNameShareDenominator` (8) and `WatchGrowthPlan.FullNameRegionShareDenominator` (2).
+Enumeration growth always copies verbatim: a walk interns each name for the row it writes and never renames, so it
+has no unused names to drop.
 
 A record no growth can store is skipped whole and sets the capacity-exhausted flag: a record or parent number above
 32 bits, a region at its clamp, a record refused again by the same region right after its own growth, or a growth
@@ -525,7 +545,8 @@ full. On a miss it checks pool and entry capacity, writes the bytes, writes the 
 link, publishes pool usage and entry count, and finally publishes the bucket head with a volatile write. Readers
 acquire the published count or head before reading the immutable storage. The row descriptor is published afterwards
 in one aligned 64-bit store. An interruption before bucket publication leaves unreachable storage, not a link to
-unwritten bytes. Entries and bytes remain valid after rename or deletion.
+unwritten bytes. Entries and bytes remain valid after rename or deletion; only a watch growth's compacting copy
+(see Capacity) leaves unused ones out of the replacement block.
 
 ### Validation
 
@@ -566,7 +587,8 @@ base from the rows and restarts the delta chain empty.
 The base needs no stored "built" flag: an incomplete block is rejected, and a complete block always has its base. The
 writer keeps an in-memory `PostingsBuilt` bit, set by `Complete`, by opening a complete block and by adopting a
 broker-completed section; a journal name change appends a delta entry only while it is set. The base is never rewritten
-after completion. A rescan or enumeration growth builds a new base in the replacement block.
+after completion. A rescan, an enumeration walk's completion or a watch growth builds a new base in the replacement
+block; after a compacting watch growth the base name count is the compacted name count.
 
 The journal appends in exactly two writer members, `BlockWriter.TryWriteRow` and `BlockWriter.TryRenameRow`, and only
 when a row's name identifier changes to a nonzero value: a create on a reused slot with the same name, a rewrite, a

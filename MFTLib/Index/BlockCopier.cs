@@ -4,11 +4,36 @@ namespace MFTLib.Index;
 ///     Copies the used regions of one mapped block into an empty, larger mapped block with span copies and no
 ///     managed staging: rows and sequence numbers, name entries, and name-pool bytes. Posting regions are never
 ///     copied; the caller chooses whether a fresh posting base is built. Each phase is a separate member so a
-///     caller that must observe cancellation between phases, or a later copy that drops unreferenced names,
-///     can compose them. Name identifiers are preserved, so no row changes.
+///     caller that must observe cancellation between phases can compose them. <see cref="Copy(BlockFile, BlockFile, bool, bool, CancellationToken)" /> is verbatim: name
+///     identifiers are preserved, so no row changes. <see cref="CopyCompacting" /> stores only the names some row
+///     references and renumbers them (<see cref="NameCompaction" />); every row still reads the same name.
 /// </summary>
 static class BlockCopier
 {
+    /// <summary>
+    ///     Copies <paramref name="source" /> into <paramref name="target" /> as <see cref="Copy(BlockFile, BlockFile, bool, bool, CancellationToken)" /> does, except that
+    ///     only the names <paramref name="references" /> marks are stored, renumbered in ascending old-identifier order,
+    ///     and each copied row's descriptor word is rewritten to its name's new identifier. The posting base is built
+    ///     from the rewritten rows, so its name count is the compacted count, and the target is completed. A watch
+    ///     growth copies this way; enumeration growth copies verbatim, because every name a walk interns is referenced.
+    /// </summary>
+    /// <param name="source">The block to copy from; the caller keeps it unchanged until the copy returns.</param>
+    /// <param name="target">An empty block with at least the source's used extents in every region.</param>
+    /// <param name="references">The reference count taken of <paramref name="source" /> in its current state.</param>
+    /// <param name="cancellationToken">Observed between phases and every 4096 rows of the posting build.</param>
+    /// <exception cref="ArgumentException">
+    ///     The blocks are the same object, the target is not empty or too small, or <paramref name="references" />
+    ///     describes another block or an earlier state of it.
+    /// </exception>
+    /// <exception cref="InvalidDataException">A referenced name entry or a row's name identifier is corrupt.</exception>
+    /// <exception cref="OperationCanceledException">Cancelled; the target is left incomplete for the caller to discard.</exception>
+    internal static void CopyCompacting(BlockFile source, BlockFile target, NameReferences references,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(references);
+        Copy(source, target, references, buildPostings: true, complete: true, cancellationToken);
+    }
+
     /// <summary>
     ///     Copies <paramref name="source" /> into <paramref name="target" /> and carries the header fields that
     ///     describe the data. The generation is not bumped: the rows are identical.
@@ -27,7 +52,11 @@ static class BlockCopier
     /// </exception>
     /// <exception cref="OperationCanceledException">Cancelled; the target is left incomplete for the caller to discard.</exception>
     internal static void Copy(BlockFile source, BlockFile target, bool buildPostings, bool complete,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Copy(source, target, null, buildPostings, complete, cancellationToken);
+
+    static void Copy(BlockFile source, BlockFile target, NameReferences? compaction, bool buildPostings, bool complete,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(target);
@@ -42,7 +71,15 @@ static class BlockCopier
         cancellationToken.ThrowIfCancellationRequested();
         CopyRows(source, target);
         cancellationToken.ThrowIfCancellationRequested();
-        CopyNames(source, target);
+        if (compaction is null)
+        {
+            CopyNames(source, target);
+        }
+        else
+        {
+            NameCompaction.CopyNames(source, target, compaction, source.RowCount);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         CarryHeader(source, target);
         if (buildPostings)

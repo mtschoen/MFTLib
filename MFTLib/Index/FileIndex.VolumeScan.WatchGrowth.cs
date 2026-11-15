@@ -37,23 +37,29 @@ public sealed partial class FileIndex
         ///     Steps 2 to 4 and 6 of a watch growth (docs/watch-lifetime.md, "Growth"): copies the published block of
         ///     <paramref name="rootBlock" /> into a replacement planned for <paramref name="refusal" />, renames it into
         ///     the canonical slot when this index owns it, publishes it as the lineage's current mapping, and flushes it
-        ///     in the background. The caller holds <see cref="WriteGate" />, not <see cref="StateLock" />, and found no
+        ///     in the background. A compacting copy stores only the referenced names; nothing outside the block holds a
+        ///     name identifier, so no reader observes the renumbering. The caller holds <see cref="WriteGate" />, not <see cref="StateLock" />, and found no
         ///     production marker. Until the renames begin, cancellation deletes the replacement and leaves the old
         ///     block published at the refused record's cursor; after them only disposal stops the growth.
         /// </summary>
         /// <param name="rootBlock">The root block the batch applies to; its lineage keeps its identity.</param>
-        /// <param name="capacities">The replacement's capacities, from <see cref="WatchGrowthPlan.Plan" />.</param>
+        /// <param name="plan">The replacement's capacities and whether the copy compacts names, from <see cref="WatchGrowthPlan.Plan" />.</param>
+        /// <param name="references">
+        ///     The names the published block's rows reference, counted under the same write gate; its block is the copy
+        ///     source, read once by the caller for the count, the plan and the copy.
+        /// </param>
         /// <param name="refusal">The refusal the growth remedies, for the diagnostics line.</param>
         /// <param name="entry">The refused record, for the diagnostics line.</param>
         /// <param name="cancellationToken">The pump's stop token; the index's closing token is observed with it.</param>
         /// <exception cref="OperationCanceledException">Stopped or closing; the old block stays published.</exception>
         /// <exception cref="IOException">The replacement could not be created, written or renamed.</exception>
         /// <exception cref="UnauthorizedAccessException">The replacement could not be created or renamed.</exception>
-        void GrowPublishedBlock(RootBlock rootBlock, BlockCapacities capacities, JournalRefusal refusal,
-            UsnJournalEntry entry, CancellationToken cancellationToken)
+        void GrowPublishedBlock(RootBlock rootBlock, PlannedGrowth plan, NameReferences references,
+            JournalRefusal refusal, UsnJournalEntry entry, CancellationToken cancellationToken)
         {
+            var source = references.Block;
+            var capacities = plan.Capacities;
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ClosingToken);
-            var source = rootBlock.Block;
             var canonicalPath = OwnsCanonicalFileOf(source) ? CanonicalBlockPath() : null;
             var replacementPath = canonicalPath is null
                 ? ComputeScanTarget(ownsCanonicalSlot: false).Path
@@ -64,7 +70,15 @@ public sealed partial class FileIndex
             try
             {
                 Hooks.WatchGrowthStepReached?.Invoke(Root, WatchGrowthStep.ReplacementCreated, cancellation.Token);
-                BlockCopier.Copy(source, replacement, buildPostings: true, complete: true, cancellation.Token);
+                if (plan.CompactsNames)
+                {
+                    BlockCopier.CopyCompacting(source, replacement, references, cancellation.Token);
+                }
+                else
+                {
+                    BlockCopier.Copy(source, replacement, buildPostings: true, complete: true, cancellation.Token);
+                }
+
                 Hooks.WatchGrowthStepReached?.Invoke(Root, WatchGrowthStep.Copied, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (canonicalPath is not null)
@@ -89,7 +103,7 @@ public sealed partial class FileIndex
                 throw;
             }
 
-            ReportGrowth(rootBlock, refusal, entry, capacities);
+            ReportGrowth(rootBlock, refusal, entry, capacities, plan.CompactsNames ? references.Usage : null);
             Hooks.WatchGrowthStepReached?.Invoke(Root, WatchGrowthStep.Published, cancellation.Token);
             if (!replacement.DeletesOnClose)
             {
@@ -189,10 +203,17 @@ public sealed partial class FileIndex
             }
         }
 
-        void ReportGrowth(RootBlock rootBlock, JournalRefusal refusal, UsnJournalEntry entry, BlockCapacities capacities)
+        void ReportGrowth(RootBlock rootBlock, JournalRefusal refusal, UsnJournalEntry entry, BlockCapacities capacities,
+            NameUsage? compacted)
         {
             var refused = FormattableString.Invariant(
                 $"the journal record at USN {entry.Usn} (record {entry.RecordNumber}) was refused by the {refusal.Reason} region");
+            if (compacted is { } names)
+            {
+                refused += FormattableString.Invariant(
+                    $"; names compacted from {names.StoredEntries} to {names.ReferencedEntries} and pool bytes from {names.StoredPoolBytes} to {names.CompactedPoolBytes}");
+            }
+
             var grown = FormattableString.Invariant(
                 $"{capacities.SlotCapacity} slots, {capacities.NameEntryCapacity} name entries, {capacities.NamePoolCapacity} name-pool bytes and {capacities.DeltaCapacity} delta entries");
             var retained = FormattableString.Invariant($"{rootBlock.Mapped.RetiredBytes}");

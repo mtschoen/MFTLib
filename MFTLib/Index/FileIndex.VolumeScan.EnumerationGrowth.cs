@@ -20,8 +20,9 @@ public sealed partial class FileIndex
             /// <summary>
             ///     Copies the exhausted block's regions straight into a replacement created at a sibling path, with
             ///     only the exhausted regions doubled, disposes and deletes the old block, and renames the replacement
-            ///     into place. The walk is unfinished, so no posting base is built. Null when every exhausted region is
-            ///     at its clamp.
+            ///     into place. The walk is unfinished, so no posting base is built. The copy is verbatim, never
+            ///     compacting: a walk interns each name for the row it writes and never renames one, so every stored
+            ///     name is referenced. Null when every exhausted region is at its clamp.
             /// </summary>
             public BlockWriter? Grow(BlockWriter exhausted)
             {

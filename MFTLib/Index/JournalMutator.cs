@@ -42,6 +42,12 @@ sealed class JournalMutator
 
     public BlockWriter Writer { get; }
 
+    /// <summary>
+    ///     <paramref name="rootBlock" /> pinned on the block this mutator writes, so a change's path and handle are read
+    ///     on the rows and names it just wrote, whatever mapping the lineage publishes as current.
+    /// </summary>
+    PinnedRootBlock Written(RootBlock rootBlock) => new(rootBlock, Writer.Block);
+
     internal MutationHooks Hooks { get; } = new();
 
     /// <summary>Per-mutator observation immediately before modification path materialization.</summary>
@@ -217,14 +223,14 @@ sealed class JournalMutator
         // the tombstone never walks a parent chain that may have been renamed or reused since.
         var path = (flags & RowFlags.DeletePending) != 0
             ? NamePool.ReadRowName(Writer.Block, rowIndex).ToString()
-            : IndexNavigation.BuildChangePath(rootBlock, rowIndex);
+            : IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex);
         var refusal = Writer.MarkTombstone(rowIndex);
         if (refusal != WriteRefusal.None)
         {
             return ApplyOutcome.Refused(refusal);
         }
 
-        return ApplyOutcome.Applied(new FileChange(FileChangeKind.Deleted, FileEntry.Create(rootBlock, rowIndex),
+        return ApplyOutcome.Applied(new FileChange(FileChangeKind.Deleted, FileEntry.Create(Written(rootBlock), rowIndex),
             path, entry.TimestampUtc));
     }
 
@@ -249,7 +255,7 @@ sealed class JournalMutator
         if (hydrated)
         {
             return ApplyOutcome.Applied(new FileChange(FileChangeKind.Created,
-                FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildChangePath(rootBlock, rowIndex),
+                FileEntry.Create(Written(rootBlock), rowIndex), IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex),
                 entry.TimestampUtc));
         }
 
@@ -282,8 +288,8 @@ sealed class JournalMutator
 
         Writer.InvalidateDeletedDescendants(rowIndex);
 
-        return ApplyOutcome.Applied(new FileChange(FileChangeKind.Created, FileEntry.Create(rootBlock, rowIndex),
-            IndexNavigation.BuildChangePath(rootBlock, rowIndex), entry.TimestampUtc));
+        return ApplyOutcome.Applied(new FileChange(FileChangeKind.Created, FileEntry.Create(Written(rootBlock), rowIndex),
+            IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex), entry.TimestampUtc));
     }
 
     ApplyOutcome ApplyRename(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
@@ -294,14 +300,14 @@ sealed class JournalMutator
             return ApplyOutcome.Refused(WriteRefusal.Slots, growable: false);
         }
 
-        var previousPath = IndexNavigation.BuildChangePath(rootBlock, rowIndex);
+        var previousPath = IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex);
         if (_isDeletePendingRename(Writer.Block, entry.ParentRecordNumber, entry.FileName))
         {
             var pendingRefusal = Writer.MarkDeletePending(rowIndex, previousPath);
             return pendingRefusal != WriteRefusal.None
                 ? ApplyOutcome.Refused(pendingRefusal)
                 : ApplyOutcome.Applied(new FileChange(FileChangeKind.DeletePending,
-                    FileEntry.Create(rootBlock, rowIndex), previousPath, entry.TimestampUtc));
+                    FileEntry.Create(Written(rootBlock), rowIndex), previousPath, entry.TimestampUtc));
         }
 
         // A refused rename leaves the row whole: the record's attributes are not applied without its name.
@@ -313,7 +319,7 @@ sealed class JournalMutator
 
         Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
         return ApplyOutcome.Applied(new FileChange(FileChangeKind.Renamed,
-            FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildChangePath(rootBlock, rowIndex),
+            FileEntry.Create(Written(rootBlock), rowIndex), IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex),
             entry.TimestampUtc, previousPath));
     }
 
@@ -337,8 +343,8 @@ sealed class JournalMutator
 
         Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
         Hooks._beforeModificationPath?.Invoke();
-        return ApplyOutcome.Applied(new FileChange(FileChangeKind.Modified, FileEntry.Create(rootBlock, rowIndex),
-            IndexNavigation.BuildChangePath(rootBlock, rowIndex), entry.TimestampUtc));
+        return ApplyOutcome.Applied(new FileChange(FileChangeKind.Modified, FileEntry.Create(Written(rootBlock), rowIndex),
+            IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex), entry.TimestampUtc));
     }
 
     static RowFreshness FreshnessFor(UsnReason classification)

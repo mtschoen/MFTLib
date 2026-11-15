@@ -51,12 +51,11 @@ static class IndexNavigation
     ///     The path a journal change reports. A parent chain that does not end within
     ///     <see cref="BlockLayout.MaximumPathDepth" /> hops cannot be rendered; that change reports the row's bare
     ///     name, as a detached row does, so one corrupt chain degrades one change instead of failing the batch.
-    ///     It reads the current mapping, which the journal writer's write gate keeps in place.
+    ///     It reads the block the journal writer wrote, so the row and its names come from one mapping.
     /// </summary>
     /// <exception cref="InvalidOperationException">The root block has no configured root directory.</exception>
-    internal static string BuildChangePath(RootBlock rootBlock, uint rowIndex)
+    internal static string BuildChangePath(PinnedRootBlock pinned, uint rowIndex)
     {
-        var pinned = PinnedRootBlock.Current(rootBlock);
         return TryBuildPath(pinned, rowIndex)
                ?? NamePool.ReadRowName(pinned.Block, rowIndex).ToString();
     }
