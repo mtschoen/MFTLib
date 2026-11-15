@@ -231,8 +231,9 @@ static class BlockLayout
 
     /// <summary>
     ///     Plans delta entries for a slot capacity: one per <see cref="SlotsPerDeltaEntry" /> slots, at least
-    ///     <see cref="MinimumDeltaCapacity" />. Every journal name change consumes one; an exceeded plan sets the
-    ///     capacity-exhausted flag and the growth path doubles the delta region.
+    ///     <see cref="MinimumDeltaCapacity" />. Every journal name change consumes one; when a watch exceeds
+    ///     the plan, its growth doubles the delta region, up to the slot capacity, and rebuilds the posting base,
+    ///     which empties the delta.
     /// </summary>
     /// <param name="slotCapacity">Row slot capacity, headroom included.</param>
     /// <returns>The allocatable delta entry count, excluding reserved entry zero.</returns>

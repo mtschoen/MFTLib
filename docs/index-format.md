@@ -710,7 +710,7 @@ generation and all phases; use fresh processes when comparing peak private bytes
 
 `Benchmark.exe index-growth --synthetic N [--iterations K]` measures what a [watch growth](watch-lifetime.md) costs.
 It is reported only. It is not in the release comparison set, `compare` does not read it, and it never goes into
-`Benchmark/baselines/`. The block is a synthetic MFT block of N rows with the volume plan for N, so `D = S / 8`. The
+`Benchmark/baselines/`. The block is a synthetic MFT block of N rows with the volume plan for N, so `D = max(65536, ceil(S / 8))`. The
 root is row 5, and rows 6 onward are files under it. Their 15-character ASCII names are shared in pairs or more:
 there are half as many distinct names as file rows, capped at half of `E`. The scenario has three runs:
 
