@@ -51,6 +51,45 @@ internal static class AdapterTests
             result.Output.Split('\n').Count(line => line.Trim() == Completion), "completed summary");
     }
 
+    // Worktree-only mode (review worktrees) restores and builds in place and never configures git,
+    // installs agent files or invokes the optional provisioning helper or provisioners.
+    private static void CheckWorktreeOnly(string root, string entry)
+    {
+        foreach (var build in new[] { false, true })
+        {
+            using var fixture = new ProcessFixture(root, 3, 0);
+            var result = fixture.Invoke(entry, build, worktreeOnly: true);
+            TestProgram.Equal(0, result.ExitCode, $"worktree-only exit (build: {build})");
+            var calls = fixture.Calls();
+            TestProgram.Equal(false, calls.Any(call => call[0] == "git"), "worktree-only never calls git");
+            TestProgram.Equal(false, calls.Any(call => call[0] == "aislop" && call.ElementAtOrDefault(1) == "hook"),
+                "worktree-only installs no agent files");
+            TestProgram.Equal(false, calls.Any(call => call[0] is "schoen-lab-onboard" or "schoen-lab" or "onboard"),
+                "worktree-only invokes no provisioner");
+            TestProgram.Equal(false, calls.Any(call => call.Any(argument =>
+                argument.EndsWith("OptionalProvisioning.csproj", StringComparison.Ordinal))),
+                "worktree-only never touches the optional-provisioning helper");
+            TestProgram.Equal(false, Directory.Exists(Path.Combine(fixture.Repository, ".claude")), "no agent files written");
+            TestProgram.Equal(true, calls.Any(call => call[0] == "dotnet" && call.ElementAtOrDefault(1) == "restore"), "worktree-only restores");
+            TestProgram.Equal(build, calls.Any(call => call[0] == "dotnet" && call.ElementAtOrDefault(1) == "build"), "build only on request");
+            TestProgram.Equal(build, calls.Any(call => call[0] == (OperatingSystem.IsWindows() ? "MSBuild" : "cmake")), "native build only on request");
+        }
+        foreach (var build in new[] { false, true })
+        {
+            using var fixture = new ProcessFixture(root, 3, 0);
+            fixture.EnvironmentValues["MFTLIB_INIT_REQUIRED_FAILURE"] = "1";
+            var result = fixture.Invoke(entry, build, worktreeOnly: true);
+            TestProgram.Equal(true, result.ExitCode != 0, "worktree-only restore failure is non-zero");
+        }
+        if (OperatingSystem.IsWindows()) return;
+        using var missing = new ProcessFixture(root, 3, 0);
+        File.Delete(Path.Combine(missing.Commands, "dotnet"));
+        var missingResult = missing.Invoke(entry, true, worktreeOnly: true);
+        TestProgram.Equal(true, missingResult.ExitCode != 0, "worktree-only fails fast without dotnet");
+        TestProgram.Contains("dotnet SDK is missing", missingResult.Error);
+        TestProgram.Equal(0, missing.Calls().Length, "worktree-only runs nothing after a missing prerequisite");
+    }
+
     private static void CheckManagedSmokeInvocation(ProcessFixture fixture, string[][] calls)
     {
         var smoke = calls.Where(call => call[0] == "dotnet" && call.ElementAtOrDefault(1) == "test").ToArray();
@@ -136,6 +175,8 @@ internal static class AdapterTests
             TestProgram.Equal(true, calls.Any(call => call[0] == (OperatingSystem.IsWindows() ? "MSBuild" : "cmake")), "native build forwarding");
             if (!OperatingSystem.IsWindows()) CheckManagedSmokeInvocation(fixture, calls);
         }
+        foreach (var entry in entries)
+            CheckWorktreeOnly(root, entry);
         foreach (var entry in entries)
         {
             using var fixture = new ProcessFixture(root, 3, 0);

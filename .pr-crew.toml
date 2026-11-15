@@ -1,0 +1,8 @@
+[review.setup]
+# Review worktree preparation for pr-crew: argv run from the worktree root after
+# `git submodule update --init --recursive`. Exit 0 means restored and built.
+# windows builds MFTLibNative.dll with MSVC, then the managed projects.
+# linux builds libMFTLibNative.so with cmake/ninja, then the managed projects.
+windows = ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "init.ps1", "-WorktreeOnly", "-Build"]
+linux = ["bash", "init.sh", "--worktree-only", "--build"]
+timeout_seconds = 1800

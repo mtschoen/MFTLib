@@ -9,6 +9,11 @@
 # Usage:
 #   git clean -ffxd && ./init.sh
 #   git clean -ffxd && ./init.sh --build    # also build the native + managed output
+#   ./init.sh --worktree-only --build       # review worktree: restore and build only
+#
+# --worktree-only restores (and with --build, builds) in place and does nothing
+# else: no aislop hook install, no optional provisioning, no git configuration.
+# A missing dotnet SDK (or, with --build, cmake or ninja) exits non-zero at once.
 #
 # Safe to run at any time; every step is idempotent.
 # Windows equivalent: init.ps1
@@ -18,11 +23,13 @@ set -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD=0
+WORKTREE_ONLY=0
 
 for arg in "$@"; do
     case "$arg" in
         --build) BUILD=1 ;;
-        -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --worktree-only) WORKTREE_ONLY=1 ;;
+        -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -31,6 +38,21 @@ missing=()
 completed=()
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+if [ "$WORKTREE_ONLY" -eq 1 ]; then
+    if ! have dotnet; then
+        echo "worktree-only init: dotnet SDK is missing (https://dotnet.microsoft.com/download)" >&2
+        exit 1
+    fi
+    if [ "$BUILD" -eq 1 ]; then
+        for tool in cmake ninja g++; do
+            if ! have "$tool"; then
+                echo "worktree-only init: $tool is missing (required to build the native library)" >&2
+                exit 1
+            fi
+        done
+    fi
+fi
 
 echo "Checking prerequisites..."
 
@@ -86,10 +108,14 @@ echo "Restoring NuGet packages..."
 dotnet restore "$ROOT/MFTLib/MFTLib.csproj" --locked-mode
 dotnet restore "$ROOT/MFTLibTestExtensions/MFTLibTestExtensions.csproj" --locked-mode
 dotnet restore "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" --locked-mode
-dotnet restore "$ROOT/scripts/optional-provisioning/OptionalProvisioning.csproj" --locked-mode
+if [ "$WORKTREE_ONLY" -eq 0 ]; then
+    dotnet restore "$ROOT/scripts/optional-provisioning/OptionalProvisioning.csproj" --locked-mode
+fi
 completed+=("NuGet packages restored")
 
-if [ "$aislop_available" -eq 1 ]; then
+if [ "$WORKTREE_ONLY" -eq 1 ]; then
+    :
+elif [ "$aislop_available" -eq 1 ]; then
     echo
     echo "Restoring agent instruction files..."
     aislop hook install claude --project
@@ -103,7 +129,9 @@ fi
 # Optional provisioning policy and diagnostics belong to scripts/optional-provisioning.
 # It uses the already-required SDK; settings writes remain owned by the external tool.
 # Only a successful helper result contributes a completed-step message.
-if provisioning_message="$(dotnet run --project \
+if [ "$WORKTREE_ONLY" -eq 1 ]; then
+    :
+elif provisioning_message="$(dotnet run --project \
     "$ROOT/scripts/optional-provisioning/OptionalProvisioning.csproj" \
     -c Release -p:Platform=x64 --no-restore --no-launch-profile --verbosity quiet)"; then
     if [ -n "$provisioning_message" ]; then completed+=("$provisioning_message"); fi

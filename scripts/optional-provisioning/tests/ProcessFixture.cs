@@ -208,12 +208,12 @@ internal sealed class ProcessFixture : IDisposable
             File.SetUnixFileMode(destination, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
-    internal ProcessResult Invoke(string entry, bool build)
+    internal ProcessResult Invoke(string entry, bool build, bool worktreeOnly = false)
     {
         if (entry == "init.bat")
         {
             // cmd consumes a command string, not an ordinary argument vector.
-            var command = "\"\"" + Path.Combine(Repository, entry) + "\"" + (build ? " -Build" : "") + "\"";
+            var command = "\"\"" + Path.Combine(Repository, entry) + "\"" + (build ? " -Build" : "") + (worktreeOnly ? " -WorktreeOnly" : "") + "\"";
             return Run(Path.Combine(Environment.SystemDirectory, "cmd.exe"), Array.Empty<string>(),
                 Repository, EnvironmentValues, "/d /s /c " + command);
         }
@@ -221,6 +221,7 @@ internal sealed class ProcessFixture : IDisposable
             ? new List<string> { Path.Combine(Repository, entry) }
             : new List<string> { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(Repository, entry) };
         if (build) arguments.Add(entry == "init.sh" ? "--build" : "-Build");
+        if (worktreeOnly) arguments.Add(entry == "init.sh" ? "--worktree-only" : "-WorktreeOnly");
         return Run(Host, arguments, Repository, EnvironmentValues);
     }
 

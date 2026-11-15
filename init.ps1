@@ -17,6 +17,11 @@ Safe to run at any time; every step is idempotent.
 .PARAMETER Build
 Also build the solution after restoring. Off by default to keep the script fast.
 
+.PARAMETER WorktreeOnly
+Restore (and with -Build, build) in place and do nothing else: no aislop hook
+install, no optional provisioning, no git configuration. Used to prepare a
+review worktree. A missing prerequisite exits non-zero at once with one line.
+
 .EXAMPLE
 .\init.ps1
 
@@ -25,7 +30,8 @@ git clean -ffxd && .\init.ps1 -Build
 #>
 [CmdletBinding()]
 param(
-    [switch]$Build
+    [switch]$Build,
+    [switch]$WorktreeOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +45,20 @@ $completedSteps = [System.Collections.Generic.List[string]]::new()
 function Test-CommandAvailable {
     param([Parameter(Mandatory)][string]$Name)
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+if ($WorktreeOnly) {
+    if (-not (Test-CommandAvailable 'dotnet')) {
+        [Console]::Error.WriteLine('worktree-only init: dotnet SDK is missing (https://dotnet.microsoft.com/download)')
+        exit 1
+    }
+    if ($Build) {
+        try { $null = Get-WindowsMSBuild }
+        catch {
+            [Console]::Error.WriteLine("worktree-only init: amd64 MSBuild with the MSVC C++ workload is missing ($($_.Exception.Message -replace '\s+', ' '))")
+            exit 1
+        }
+    }
 }
 
 Write-Host 'Checking prerequisites...' -ForegroundColor Cyan
@@ -104,7 +124,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 $completedSteps.Add('NuGet packages restored')
 
-if ($aislopAvailable) {
+if ($WorktreeOnly) {
+    # Review worktree: no agent instruction files and no git writes.
+}
+elseif ($aislopAvailable) {
     Write-Host ''
     Write-Host 'Restoring agent instruction files...' -ForegroundColor Cyan
     & aislop hook install claude --project
@@ -137,6 +160,7 @@ else {
 # It uses the already-required SDK; settings writes remain owned by the external tool.
 # Only a successful helper result contributes a completed-step message.
 & {
+    if ($WorktreeOnly) { return }
     $PSNativeCommandUseErrorActionPreference = $false
     $provisioningMessage = @(& dotnet run --project `
         (Join-Path $repositoryRoot 'scripts/optional-provisioning/OptionalProvisioning.csproj') `

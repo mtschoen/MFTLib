@@ -58,6 +58,12 @@ and run the instruction checks with the same configuration and platform.
 
 Both are idempotent, so they are safe to run at any time, not only after a clean.
 
+### Worktree-only mode (pr-crew review worktrees)
+
+`.\init.ps1 -WorktreeOnly -Build` and `./init.sh --worktree-only --build` prepare a bare review worktree: NuGet restore and, with the build flag, the same native and managed Release|x64 build as normal mode, and nothing else. Worktree-only mode writes no git configuration, runs no `git` command, installs no agent instruction files (`aislop hook install`), and never restores or runs the optional-provisioning helper or a provisioner, so it touches nothing outside the worktree beyond package-manager caches. A missing prerequisite (the dotnet SDK; with build, also amd64 MSBuild with the MSVC workload on Windows, or cmake, ninja and g++ on Linux) exits non-zero with one line naming it, and nothing prompts. Without the build flag it restores only. `init.bat` forwards `-WorktreeOnly` like any other argument. Normal mode is unchanged.
+
+The repository root `.pr-crew.toml` declares both commands under `[review.setup]`, so pr-crew runs them in each review worktree and reports whether the worktree was built. Both platforms are declared because both build the native library the tests load (MFTLibNative.dll with MSVC on Windows, libMFTLibNative.so with cmake and Ninja on Linux). The adapter regressions below assert the mode's no-git, no-provisioner contract.
+
 Both init entry points delegate optional provisioning to `scripts/optional-provisioning/OptionalProvisioning.csproj`, a package-free utility built with the already-required .NET SDK 10. It selects `schoen-lab-onboard` before `schoen-lab` on PATH and invokes exactly `apply auto-memory`. Absence is a silent skip; a failed invocation is reported and initialization continues. Only an exit-zero invocation adds the completed-step message. The unqualified `onboard` executable is never considered.
 
 The external provisioner owns settings, registry discovery, and memory writes. Its selected feature can affect global settings and registered checkouts; MFTLib does not recreate that logic or limit the feature to the current checkout. The utility's local build configuration has no package sources or package dependencies and does not import the library's native-copy targets. This step needs neither PowerShell on Linux nor Python or Bash on Windows.
