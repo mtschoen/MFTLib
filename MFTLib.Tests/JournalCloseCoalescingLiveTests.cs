@@ -14,14 +14,19 @@ namespace MFTLib.Tests;
 ///     are remapped onto synthetic rows so the replay needs no multi-gigabyte block;
 ///     batch boundaries, order, reasons, sequence numbers, and timestamps are preserved.
 /// </summary>
+/// <remarks>
+///     The journal window is the records this test's own file operations write: from the cursor
+///     queried before the cycle to the cursor queried after it. NTFS writes every record the
+///     product's promise depends on before the deleting call returns: <c>FileDelete|Close</c> when
+///     no other handle is open, otherwise the <c>RenameOldName</c>/<c>RenameNewName</c> move into
+///     <c>$Extend\$Deleted</c>. The <c>FileDelete|Close</c> that completes a delete-pending row is
+///     written when the last handle closes; when another process (a scanner) owns that handle, the
+///     record lies outside the window and the test neither waits for it nor expects
+///     <c>Deleted</c>, because the product promises it only at that later close.
+/// </remarks>
 [TestClass]
 public class JournalCloseCoalescingLiveTests
 {
-    // Cancellation bound only, never an asserted duration. When another process (a first-run scanner)
-    // holds a handle on the new file, Windows POSIX delete semantics rename the file into \$Extend\$Deleted
-    // and the FileDelete|Close record arrives later under that new name, so the file is tracked by its
-    // file reference, not its name. Healthy runs exit on the record.
-    private const int DeleteCloseWaitSeconds = 60;
     private const uint VolumeRootRow = 5;
     private const uint UserDirectoryRow = 6;
     private const uint ExtendDirectoryRow = 11;
@@ -47,6 +52,65 @@ public class JournalCloseCoalescingLiveTests
         return RunCreateModifyDeleteCycleAsync(holdShareDeleteHandleAcrossDelete: true);
     }
 
+    // The record stream of the 2026-11-13 failure (issue 889): another process opened the file between
+    // the modify close and the delete, so the delete moved it into \$Extend\$Deleted (parent record 29)
+    // and its FileDelete|Close was not written while the test watched.
+    [TestMethod]
+    public Task Replay_DeleteWhileAnotherProcessHoldsTheFile_ExpectsDeletePendingWithoutDeleted()
+    {
+        return VerifyReplayedTransitionsAsync(SyntheticCycle(SyntheticDeletePendingMove), SyntheticFileReference,
+            SyntheticFileName);
+    }
+
+    [TestMethod]
+    public Task Replay_AnotherProcessReleasesTheFileInsideTheWindow_ExpectsDeletePendingThenDeleted()
+    {
+        return VerifyReplayedTransitionsAsync(
+            SyntheticCycle([.. SyntheticDeletePendingMove, (UsnReason.FileDelete | UsnReason.Close, DeletedParentRecord)]),
+            SyntheticFileReference, SyntheticFileName);
+    }
+
+    [TestMethod]
+    public Task Replay_DirectDelete_ExpectsDeleted()
+    {
+        return VerifyReplayedTransitionsAsync(
+            SyntheticCycle([(UsnReason.FileDelete | UsnReason.Close, SyntheticParentRecord)]),
+            SyntheticFileReference, SyntheticFileName);
+    }
+
+    [TestMethod]
+    public async Task Replay_WindowWithoutTheDelete_FailsTheVerification()
+    {
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            VerifyReplayedTransitionsAsync(SyntheticCycle([]), SyntheticFileReference, SyntheticFileName));
+    }
+
+    [TestMethod]
+    public async Task ReadWindow_OvershootingBatch_ExcludesDeletesAtAndAfterEnd_Issue889()
+    {
+        var cycle = SyntheticCycle([.. SyntheticDeletePendingMove,
+            (UsnReason.FileDelete | UsnReason.Close, DeletedParentRecord),
+            (UsnReason.FileDelete | UsnReason.Close, DeletedParentRecord)]);
+        var entries = cycle.SelectMany(batch => batch).ToArray();
+        var start = new UsnJournalCursor(1, entries[0].Usn);
+        var end = new UsnJournalCursor(1, entries[7].Usn);
+
+        async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> Watch()
+        {
+            await Task.CompletedTask;
+            yield return (entries[..3], new UsnJournalCursor(1, entries[3].Usn));
+            yield return (entries[3..], new UsnJournalCursor(1, entries[^1].Usn + 96));
+            Assert.Fail("The reader must stop once the post-batch cursor reaches the window end.");
+        }
+
+        var batches = await LiveJournalWindow.ReadAsync(Watch(), start, end, TestContext.CancellationToken);
+
+        Assert.HasCount(2, batches);
+        Assert.AreSequenceEqual(entries[..3], batches[0]);
+        Assert.AreSequenceEqual(entries[3..7], batches[1]);
+        await VerifyReplayedTransitionsAsync(batches, SyntheticFileReference, SyntheticFileName);
+    }
+
     private async Task RunCreateModifyDeleteCycleAsync(bool holdShareDeleteHandleAcrossDelete)
     {
         if (!ElevationUtilities.DefaultProvider.IsElevated())
@@ -62,34 +126,9 @@ public class JournalCloseCoalescingLiveTests
             ? new VolumeKey(volumeRoot[0])
             : new VolumeKey('C');
         using var volume = MftVolume.Open(volumeKey);
-        var cursor = volume.Journal.QueryUsnJournalCursor();
         var tempFileName = Path.GetFileName(tempPath);
 
-        var batches = new List<UsnJournalEntry[]>();
-        var sawDeleteClose = false;
-        FileReference? fileReference = null;
-        var watchTask = Task.Run(async () =>
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(DeleteCloseWaitSeconds));
-            // ReSharper disable once AccessToDisposedClosure
-            // volume is captured from outer scope; watchTask is awaited before volume's using exits.
-            await foreach (var (batch, _) in volume.Journal.WatchUsnJournal(cursor, timeout.Token))
-            {
-                batches.Add(batch);
-                fileReference ??= batch
-                    .Where(e => e.IsCreate && e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase))
-                    .Select(e => (FileReference?)new FileReference(e.RecordNumber, e.SequenceNumber,
-                        e.ParentRecordNumber))
-                    .FirstOrDefault();
-                if (batch.Any(e => IsTrackedFile(e, fileReference) && e.IsDelete && e.IsClose))
-                {
-                    sawDeleteClose = true;
-                    break;
-                }
-            }
-        }, TestContext.CancellationToken);
-
+        var cycleStart = volume.Journal.QueryUsnJournalCursor();
         await File.WriteAllTextAsync(tempPath, "create", CancellationToken.None);
         await File.AppendAllTextAsync(tempPath, "modify", CancellationToken.None);
         if (holdShareDeleteHandleAcrossDelete)
@@ -103,34 +142,55 @@ public class JournalCloseCoalescingLiveTests
             File.Delete(tempPath);
         }
 
-        // WatchUsnJournal ends quietly on cancellation, so a timeout is the enumeration finishing
-        // (or cancelling) without the delete-close record, not only an OperationCanceledException.
-        try
+        var cycleEnd = volume.Journal.QueryUsnJournalCursor();
+        var batches = await LiveJournalWindow.ReadAsync(volume, cycleStart, cycleEnd, TestContext.CancellationToken);
+
+        var fileReference = batches.SelectMany(batch => batch)
+            .Where(e => e.IsCreate && e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase))
+            .Select(e => (FileReference?)new FileReference(e.RecordNumber, e.SequenceNumber, e.ParentRecordNumber))
+            .FirstOrDefault();
+        Assert.IsNotNull(fileReference, $"The journal window holds no FileCreate record for {tempFileName}.");
+        if (holdShareDeleteHandleAcrossDelete)
         {
-            await watchTask;
-        }
-        catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
-        {
+            Assert.Contains(e => IsDeletePendingRename(e, fileReference.Value), batches.SelectMany(batch => batch),
+                "Expected a RenameNewName record outside the original parent (POSIX delete-pending move).");
         }
 
-        Assert.IsTrue(sawDeleteClose,
-            $"Timed out waiting for the delete-close record of {tempFileName} after {DeleteCloseWaitSeconds} s. "
-            + $"Records seen for the file: {DescribeRecords(batches, fileReference)}");
+        await VerifyReplayedTransitionsAsync(batches, fileReference.Value, tempFileName);
+    }
+
+    // Expects one change per transition the window's records show: Created and Modified, DeletePending when
+    // the delete moved the file into \$Extend\$Deleted, and Deleted when the window holds the FileDelete record.
+    private static async Task VerifyReplayedTransitionsAsync(List<UsnJournalEntry[]> batches,
+        FileReference fileReference, string fileName)
+    {
+        var fileEntries = batches.SelectMany(batch => batch)
+            .Where(e => IsTrackedFile(e, fileReference))
+            .ToArray();
+        var records = DescribeRecords(fileEntries);
 
         // Premise guard: the fix targets the record shape NTFS writes. Without both an
         // intermediate create record and a create-close record in the raw stream, the
         // replay below would prove nothing.
-        var fileEntries = batches.SelectMany(batch => batch)
-            .Where(e => IsTrackedFile(e, fileReference))
-            .ToArray();
         Assert.Contains(e => e.IsCreate && !e.IsClose, fileEntries,
-            "Expected an intermediate FileCreate record before the close record.");
+            $"Expected an intermediate FileCreate record before the close record. Records: {records}");
         Assert.Contains(e => e.IsCreate && e.IsClose, fileEntries,
-            "Expected a FileCreate|Close record.");
-        if (holdShareDeleteHandleAcrossDelete)
+            $"Expected a FileCreate|Close record. Records: {records}");
+
+        var movedToDeleted = fileEntries.Any(e => IsDeletePendingRename(e, fileReference));
+        var deleteRecorded = fileEntries.Any(e => e.IsDelete);
+        Assert.IsTrue(movedToDeleted || deleteRecorded,
+            "The delete wrote neither FileDelete|Close nor a move into $Extend\\$Deleted before File.Delete returned. "
+            + $"Records: {records}");
+        List<FileChangeKind> expectedKinds = [FileChangeKind.Created, FileChangeKind.Modified];
+        if (movedToDeleted)
         {
-            Assert.Contains(e => IsDeletePendingRename(e, fileReference), fileEntries,
-                "Expected a RenameNewName record outside the original parent (POSIX delete-pending move).");
+            expectedKinds.Add(FileChangeKind.DeletePending);
+        }
+
+        if (deleteRecorded)
+        {
+            expectedKinds.Add(FileChangeKind.Deleted);
         }
 
         await using var fixture = new MutatorFixture();
@@ -150,7 +210,7 @@ public class JournalCloseCoalescingLiveTests
                 .Select(e => UsnJournalEntry.Create(new UsnJournalEntryOptions
                 {
                     RecordNumber = ReplayedFileRow,
-                    ParentRecordNumber = e.ParentRecordNumber == fileReference!.Value.ParentRecordNumber
+                    ParentRecordNumber = e.ParentRecordNumber == fileReference.ParentRecordNumber
                         ? UserDirectoryRow
                         : DeletedDirectoryRow,
                     SequenceNumber = e.SequenceNumber,
@@ -177,26 +237,11 @@ public class JournalCloseCoalescingLiveTests
             }
         }
 
-        var expectedPath = Path.Combine(TestRootDirectory.For('T'), "documents", tempFileName);
-        Assert.DoesNotContain(change => change.Kind == FileChangeKind.Renamed, changes,
-            "A POSIX delete-pending move into $Extend\\$Deleted must never report Renamed.");
-        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Created,
-            changes, "One real create must raise exactly one Created change.");
-        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Modified,
-            changes, "One real append/modify cycle must raise exactly one Modified change.");
-        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Deleted,
-            changes, "One real delete must raise exactly one Deleted change.");
-        Assert.AreEqual(FileChangeKind.Deleted, changes[^1].Kind,
-            "The change stream for the deleted file must end with Deleted.");
-        if (holdShareDeleteHandleAcrossDelete)
-        {
-            Assert.ContainsSingle(change => change.Kind == FileChangeKind.DeletePending,
-                changes, "A delete while a handle is held must raise exactly one DeletePending change.");
-            Assert.AreSequenceEqual(
-                [FileChangeKind.Created, FileChangeKind.Modified, FileChangeKind.DeletePending, FileChangeKind.Deleted],
-                [.. changes.Select(change => change.Kind)]);
-        }
+        // Sequence equality also proves a POSIX delete-pending move into $Extend\$Deleted never reports Renamed.
+        Assert.AreSequenceEqual(expectedKinds, [.. changes.Select(change => change.Kind)],
+            $"Expected one change per real transition. Records: {records}");
 
+        var expectedPath = Path.Combine(TestRootDirectory.For('T'), "documents", fileName);
         foreach (var change in changes)
         {
             Assert.AreEqual(expectedPath, change.Path);
@@ -211,23 +256,59 @@ public class JournalCloseCoalescingLiveTests
             "The create-write cycle invalidated the last-write observation and no scan restored it.");
     }
 
-    private static bool IsTrackedFile(UsnJournalEntry entry, FileReference? fileReference)
+    private const string SyntheticFileName = "mftlib-close-test-synthetic.tmp";
+    private const ulong SyntheticParentRecord = 0x4A12;
+    private const ulong DeletedParentRecord = 29;
+    private static readonly FileReference SyntheticFileReference = new(0xEAADF, 7, SyntheticParentRecord);
+
+    private static readonly (UsnReason Reason, ulong ParentRecord)[] SyntheticDeletePendingMove =
+    [
+        (UsnReason.RenameOldName, SyntheticParentRecord),
+        (UsnReason.RenameNewName, DeletedParentRecord)
+    ];
+
+    // The create and modify cycles as NTFS writes them, one record per batch, followed by the delete records.
+    private static List<UsnJournalEntry[]> SyntheticCycle(IEnumerable<(UsnReason Reason, ulong ParentRecord)> delete)
     {
-        return fileReference is { } reference
-            && entry.RecordNumber == reference.RecordNumber && entry.SequenceNumber == reference.SequenceNumber;
+        (UsnReason Reason, ulong ParentRecord)[] cycles =
+        [
+            (UsnReason.FileCreate, SyntheticParentRecord),
+            (UsnReason.DataExtend | UsnReason.FileCreate, SyntheticParentRecord),
+            (UsnReason.DataExtend | UsnReason.FileCreate | UsnReason.Close, SyntheticParentRecord),
+            (UsnReason.DataExtend, SyntheticParentRecord),
+            (UsnReason.DataExtend | UsnReason.Close, SyntheticParentRecord)
+        ];
+        var timestamp = new DateTime(2026, 11, 14, 1, 38, 1, DateTimeKind.Utc);
+        return [.. cycles.Concat(delete).Select((record, index) => new[]
+        {
+            UsnJournalEntry.Create(new UsnJournalEntryOptions
+            {
+                RecordNumber = SyntheticFileReference.RecordNumber,
+                ParentRecordNumber = record.ParentRecord,
+                SequenceNumber = SyntheticFileReference.SequenceNumber,
+                Usn = 4096 + (index * 96),
+                TimestampUtc = timestamp,
+                Reason = record.Reason,
+                FileAttributes = FileAttributes.Archive,
+                FileName = record.ParentRecord == DeletedParentRecord ? "006B000000EAADF40B307D75" : SyntheticFileName
+            })
+        })];
     }
 
-    private static bool IsDeletePendingRename(UsnJournalEntry entry, FileReference? fileReference)
+    private static bool IsTrackedFile(UsnJournalEntry entry, FileReference reference)
     {
-        return fileReference is { } reference
-            && (entry.Reason & UsnReason.RenameNewName) != 0 && !entry.IsDelete
+        return entry.RecordNumber == reference.RecordNumber && entry.SequenceNumber == reference.SequenceNumber;
+    }
+
+    private static bool IsDeletePendingRename(UsnJournalEntry entry, FileReference reference)
+    {
+        return IsTrackedFile(entry, reference) && (entry.Reason & UsnReason.RenameNewName) != 0 && !entry.IsDelete
             && entry.ParentRecordNumber != reference.ParentRecordNumber;
     }
 
-    private static string DescribeRecords(List<UsnJournalEntry[]> batches, FileReference? fileReference)
+    private static string DescribeRecords(UsnJournalEntry[] fileEntries)
     {
-        var descriptions = batches.SelectMany(batch => batch)
-            .Where(e => IsTrackedFile(e, fileReference))
+        var descriptions = fileEntries
             .Select(e => $"[Usn={e.Usn}, Name={e.FileName}, ParentRecordNumber={e.ParentRecordNumber}, TimestampUtc={e.TimestampUtc:O}, Reason={e.Reason}, "
                 + $"IsClose={e.IsClose}, IsDelete={e.IsDelete}]")
             .ToArray();

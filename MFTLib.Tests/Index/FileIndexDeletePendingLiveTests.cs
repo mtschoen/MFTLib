@@ -8,7 +8,9 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     Live <see cref="FileIndex" /> acceptance test for POSIX delete-pending (<c>$Extend\$Deleted</c>)
-///     handling over a real NTFS volume and broker watch.
+///     handling over a real NTFS volume and broker watch. <c>Deleted</c> is required whenever the journal
+///     window that ends after the test's own handle closed holds the file's <c>FileDelete</c> record; see
+///     <see cref="LiveJournalWindow" />.
 /// </summary>
 [TestClass]
 public sealed class FileIndexDeletePendingLiveTests
@@ -78,6 +80,8 @@ public sealed class FileIndexDeletePendingLiveTests
         var catchUpResult = await index.WaitForCatchUpAsync(TestContext.CancellationToken);
         Assert.AreEqual(RootOperationOutcome.Succeeded, catchUpResult.Outcome);
 
+        using var volume = MftVolume.Open(volumeKey);
+        var cycleStart = volume.Journal.QueryUsnJournalCursor();
         await File.WriteAllTextAsync(filePath, "held-handle-delete", TestContext.CancellationToken);
 
         FileChange pendingChange;
@@ -104,14 +108,38 @@ public sealed class FileIndexDeletePendingLiveTests
             Assert.IsNull(index.Find(filePath, TestContext.CancellationToken));
         }
 
-        using var deletedTimeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
-        deletedTimeout.CancelAfter(TimeSpan.FromSeconds(EventWaitSeconds));
-        var deletedChange = await deletedObserved.Task.WaitAsync(deletedTimeout.Token);
+        // NTFS writes the FileDelete record when the last handle closes. When it is in the journal window that
+        // ends after this test's handle closed, Deleted is owed and its wait depends only on the product; when it
+        // is not, another process (a scanner) still holds the file and owns the timing, so Deleted is not awaited.
+        // JournalMutatorTests.DeletePending_HeldHandleDeleteOnSeededFile_ReportsDeletePendingThenDeleted and the
+        // DeletePending path-retention tests pin Deleted, its path and its name on injected records.
+        var cycleEnd = volume.Journal.QueryUsnJournalCursor();
+        var windowRecords = (await LiveJournalWindow.ReadAsync(volume, cycleStart, cycleEnd,
+            TestContext.CancellationToken)).SelectMany(batch => batch).ToArray();
+        var created = windowRecords
+            .Where(e => e.IsCreate && e.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+            .Select(e => ((ulong RecordNumber, ushort SequenceNumber)?)(e.RecordNumber, e.SequenceNumber))
+            .FirstOrDefault();
+        Assert.IsNotNull(created, $"The journal window holds no FileCreate record for {fileName}.");
+        var lastHandleClosed = windowRecords.Any(e => e.IsDelete && e.RecordNumber == created.Value.RecordNumber
+            && e.SequenceNumber == created.Value.SequenceNumber);
+        if (lastHandleClosed)
+        {
+            using var deletedTimeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+            deletedTimeout.CancelAfter(TimeSpan.FromSeconds(EventWaitSeconds));
+            var deletedChange = await deletedObserved.Task.WaitAsync(deletedTimeout.Token);
 
-        Assert.AreEqual(pendingChange.Path, deletedChange.Path);
-        Assert.AreEqual(filePath, deletedChange.Path);
-        Assert.AreEqual(fileName, deletedChange.Entry.Name);
-        Assert.IsNull(deletedChange.PreviousPath);
+            Assert.AreEqual(pendingChange.Path, deletedChange.Path);
+            Assert.AreEqual(filePath, deletedChange.Path);
+            Assert.AreEqual(fileName, deletedChange.Entry.Name);
+            Assert.IsNull(deletedChange.PreviousPath);
+        }
+        else
+        {
+            TestContext.WriteLine($"Another process still held {fileName} after this test's handle closed, so the "
+                + "journal holds no FileDelete record yet and Deleted is not awaited.");
+        }
+
         Assert.DoesNotContain(change => change.Kind == FileChangeKind.Renamed, observedChanges,
             "A POSIX delete-pending move into $Extend\\$Deleted must never raise Renamed.");
     }
