@@ -1,5 +1,5 @@
 System Info
-  Commit: a9ac5f3e48cf0b5eca2201b8bcb9adf546caac03
+  Commit: 98df295546f05aa456c2c677d5607fa8e701b324
   Build:   Release
   OS:      Microsoft Windows 11 Pro (10.0.26300.0)
   CPU:     AMD Ryzen 9 7950X3D 16-Core Processor
@@ -17,16 +17,16 @@ Root: T
   Multi-name exact (5 names): median 0.005 ms; Matches: 1; Differing rows vs per-name search: 0
 --- exact-search ---
   Median: 0.002 ms; Matches: 1
-  Peak private bytes: 9158656
-  Peak working set: 33714176
+  Peak private bytes: 8785920
+  Peak working set: 33320960
   Memory measurement: windows-os-peak
 --- substring-search ---
-  Median: 31.984 ms; Matches: 1
-  Peak private bytes: 14217216
-  Peak working set: 97177600
+  Median: 31.734 ms; Matches: 1
+  Peak private bytes: 13914112
+  Peak working set: 96940032
   Memory measurement: windows-os-peak
 System Info
-  Commit: a9ac5f3e48cf0b5eca2201b8bcb9adf546caac03
+  Commit: 98df295546f05aa456c2c677d5607fa8e701b324
   Build:   Release
   OS:      Microsoft Windows 11 Pro (10.0.26300.0)
   CPU:     AMD Ryzen 9 7950X3D 16-Core Processor
@@ -41,18 +41,18 @@ Cache: warm filesystem cache; one untimed warm-up per mode; no OS cache eviction
 Timing: producer traversal and block row writes only; excludes tree generation, block creation and disposal
 Permits: sequential 1 (base only); parallel shared budget up to 32
 --- enumeration-walk-sequential ---
-  Median: 1984.355 ms; Rows: 65536
-  Peak private bytes: 91557888
-  Peak working set: 119046144
+  Median: 1585.944 ms; Rows: 65536
+  Peak private bytes: 91275264
+  Peak working set: 118730752
   Memory measurement: windows-os-peak
 --- enumeration-walk-parallel ---
-  Median: 450.892 ms; Rows: 65536
-  Peak private bytes: 95109120
-  Peak working set: 123756544
+  Median: 337.877 ms; Rows: 65536
+  Peak private bytes: 95350784
+  Peak working set: 121524224
   Memory measurement: windows-os-peak
-Speedup (sequential / parallel): 4.401x
+Speedup (sequential / parallel): 4.694x
 System Info
-  Commit: a9ac5f3e48cf0b5eca2201b8bcb9adf546caac03
+  Commit: 98df295546f05aa456c2c677d5607fa8e701b324
   Build:   Release
   OS:      Microsoft Windows 11 Pro (10.0.26300.0)
   CPU:     AMD Ryzen 9 7950X3D 16-Core Processor
@@ -66,26 +66,26 @@ Runs: one untimed warm-up, then the median of 5; each run opens a fresh index ov
 Timing: scan is FileIndex.OpenAsync until the root is Ready; row passes run on that open index; disposal is not timed
 Records per second: MFT records examined for the scan; index slots covered for row passes (exact matching reads name postings)
 --- mft-enumeration-scan ---
-  Median: 115.222 ms; Records: 1000000; Slots: 1000000; Live rows: 749599
-  Records per second: 8678883
-  Peak private bytes: 170610688
-  Peak working set: 222404608
+  Median: 106.945 ms; Records: 1000000; Slots: 1000000; Live rows: 749599
+  Records per second: 9350610
+  Peak private bytes: 172392448
+  Peak working set: 224043008
   Memory measurement: windows-os-peak
 --- mft-enumeration-rows ---
-  Median: 16.949 ms; Records: 1000000; Name checksum: -2444921985186030868
-  Records per second: 58999835
-  Peak private bytes: 164077568
-  Peak working set: 214204416
+  Median: 16.353 ms; Records: 1000000; Name checksum: -2444921985186030868
+  Records per second: 61149363
+  Peak private bytes: 165502976
+  Peak working set: 215748608
   Memory measurement: windows-os-peak
 --- mft-enumeration-exact-name ---
-  Median: 1.201 ms; Records: 1000000; Matches: 9407
-  Records per second: 832916875
-  Peak private bytes: 163643392
-  Peak working set: 213446656
+  Median: 1.282 ms; Records: 1000000; Matches: 9407
+  Records per second: 780152910
+  Peak private bytes: 165621760
+  Peak working set: 215855104
   Memory measurement: windows-os-peak
 --- mft-enumeration-substring-name ---
-  Median: 4.181 ms; Records: 1000000; Matches: 46958
-  Records per second: 239188672
-  Peak private bytes: 164151296
-  Peak working set: 214282240
+  Median: 2.644 ms; Records: 1000000; Matches: 46958
+  Records per second: 378257745
+  Peak private bytes: 165560320
+  Peak working set: 215691264
   Memory measurement: windows-os-peak
