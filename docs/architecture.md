@@ -307,6 +307,9 @@
 
   `SyntheticIndexSource.Create` joins a producer and a watch source into the `MftIndexSource` an index takes,
   and `SyntheticJournalRecord` and `SyntheticScanRecord` supply journal and scan records.
+  `ScriptedWatchSource.Starts` lists each watch start as a `ScriptedWatchStart` (volume and resume cursor),
+  `SyntheticCheckpointLoss` sets the raw journal positions of a `JournalCheckpointLoss`, and
+  `DefenderExclusionIsolation.ScriptPowerShell` returns a `ScriptedPowerShell` that records PowerShell launches.
   Test-package shapes: a double's configuration properties are init-only, except one a test changes while the
   double runs (`ScriptedWatchSource.StartFailure`, documented `set`); batches of `SyntheticJournalRecord` are
   `IReadOnlyList` in every public signature; and no public type lists a non-public base type or interface

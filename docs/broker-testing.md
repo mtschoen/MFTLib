@@ -170,8 +170,9 @@ await watch.PublishBatchAsync(
 await watch.PublishCaughtUpAsync();
 ```
 
-The source records every start in `Starts` (the root and the cursor it resumed
-from, including starts that were then failed) and every watch it handed out in
+The source records every start in `Starts` as a `ScriptedWatchStart` (the root's
+`Volume` and the `SyntheticJournalCursor` it resumed from, including starts that were then failed;
+a default volume key is rejected) and every watch it handed out in
 `Watches`; `WatchFor` returns the latest watch of one root and
 `WaitForStartAsync(root, startNumber, token)` completes with the root's
 `startNumber`th watch (one for the first). A watch handed out before the call satisfies it
@@ -208,6 +209,12 @@ watch exactly once, so a second disposal throws. An idle watch is a source nobod
 publishes to. Keep one source per index and one watch per root: sharing a queue
 between watches would reintroduce cross-root ordering and failure coupling that
 the public seam is designed to exclude.
+
+A test that compares a scripted `JournalCheckpointLoss` with the report an index
+publishes calls `SyntheticCheckpointLoss.WithJournalPositions(report, checkpointUsn, firstUsn, nextUsn)`.
+The loss type keeps its raw journal positions internal and report equality covers them, so the call returns a
+copy carrying exactly those positions with every public value unchanged; the derived sizes, the cause and
+the detection are not recomputed.
 
 ## Seed and edit cache blocks
 
@@ -310,6 +317,14 @@ reading a volume. It does not throw and does not affect broker source delegates
 supplied by the test. It covers the index's automatic checkpoint observations only:
 production scan and watch sources still query a journal cursor, and explicit
 journal settings queries still open the volume.
+
+Code that calls `ElevationUtilities.TryAddDefenderProcessExclusions` is isolated the same way:
+`DefenderExclusionIsolation.ScriptPowerShell(succeeds)` returns a `ScriptedPowerShell` scope that records each
+PowerShell launch instead of making it and reports `succeeds` as the run's outcome. `ScriptedPowerShell.Launches`
+lists the launches oldest first as `PowerShellLaunch` values, each with the `Script` text and `IsElevated`
+(true when the launch would have raised a UAC prompt). The scope is process-global like the journal scopes:
+use a nonparallel fixture, nested or overlapping scopes throw `InvalidOperationException`, and disposing it
+restores the real launcher. See [elevation](elevation.md).
 
 Use `JournalIsolation.OverrideJournalWindow` when a test needs a retained,
 trimmed, or recreated journal window. The callback receives a drive letter and

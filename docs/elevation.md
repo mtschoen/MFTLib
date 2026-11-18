@@ -97,7 +97,7 @@ launch passes it through `ArgumentList`; the elevated launch goes through ShellE
 it passes one `Arguments` string with the script wrapped as a single quoted argument.
 
 Tests use `MFTLibTestExtensions.DefenderExclusionIsolation.ScriptPowerShell`, a process-global scope (use a nonparallel
-fixture) that records each PowerShell launch and reports a chosen outcome. A fake `IElevationProvider` decides the
+fixture) that returns a `ScriptedPowerShell`, which records each PowerShell launch in `Launches` and reports a chosen outcome. A fake `IElevationProvider` decides the
 branch, so no test raises a UAC prompt, starts a real PowerShell or changes real Defender settings.
 
 `SampleProgram.Direct exclude-defender` calls it for its own executable. The verb takes no root and runs only when named.

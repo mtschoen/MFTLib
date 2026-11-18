@@ -159,7 +159,8 @@ root `x64/Release` where managed builds find it, then builds the managed project
 MFTLib contains `lib/net10.0/MFTLib.dll`, `lib/net10.0/MFTLib.xml`,
 `runtimes/win-x64/native/MFTLibNative.dll`,
 `runtimes/linux-x64/native/libMFTLibNative.so`, `LICENSE.txt` and `README.md`.
-MFTLib.TestExtensions contains its managed assembly, license and the same README,
+MFTLib.TestExtensions contains `lib/net10.0/MFTLibTestExtensions.dll`,
+`lib/net10.0/MFTLibTestExtensions.xml`, license and the same README,
 and depends on exactly MFTLib 0.3.0. Both symbol packages must exist.
 
 The Windows x64 native DLL links the Visual C++ runtime statically: Release uses
