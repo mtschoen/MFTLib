@@ -1328,6 +1328,15 @@ The owner ruled: "Yes, both." Reporting a grow that did not happen is the same d
 recommended cap down to 1 MiB ensures a journal clamped to the cap does not sit just below an unaligned byte count on a
 subsequent request.
 
+**Update (small-volume ceiling, measured 2026-11-18):** the measurements are consistent with a volume-scaled NTFS ceiling explaining
+the 1 MiB and 2 MiB observations above, but do not establish that cause for the earlier cases. Elevated runs with plain `fsutil` on
+throwaway expandable VHDXs (Windows 11 build 26300) showed that on a 1 GiB volume, `deletejournal` then `createjournal m=64MiB` and a
+later `createjournal m=256MiB` both read back a Maximum Size of 1,048,576 bytes, while on 4, 16 and 64 GiB volumes the same requests
+read back exactly 67,108,864 and 268,435,456. On that host, a freshly formatted VHDX had no journal at first (`fsutil` error 1179)
+and Windows created a default 1 MiB / 256 KiB journal shortly after. No Windows API reports this ceiling in advance, which is why the
+soft cap stays and why MFTLib can only observe the ceiling after the fact, as `UsnJournalGrowthOutcome.Unchanged`. The exact ceiling
+rule between 1 and 4 GiB is unmeasured.
+
 **Reason:** the consumer could not see the cap before elevating, and silent clamping or reporting a grow when Windows kept
 the old maximum would leave the tools misreporting the volume's journal state. Furthermore, 8 GiB proved too small for a real consumer volume (a 4 TB system drive needed 10.8 GB to
 retain one checkpoint gap), any fixed cap can be too small for a busy drive, UAC is not a security boundary so an
