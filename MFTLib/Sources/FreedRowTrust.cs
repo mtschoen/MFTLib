@@ -7,17 +7,29 @@ namespace MFTLib;
 ///     reuses record numbers, so the directory it names may now be someone else. A freed row is trusted when every
 ///     hop of its chain reaches record 5 and each hop's parent is a directory whose stored sequence equals the
 ///     sequence the child's name referenced, or exactly one higher when the parent was freed too (NTFS bumps the
-///     sequence when it frees a record, and 16-bit arithmetic wraps). The walk is at most
+///     sequence when it frees a record, and 16-bit arithmetic wraps). The chain is at most
 ///     <see cref="BlockLayout.MaximumPathDepth" /> components, never revisits a record and rebuilds to a path of at
 ///     most <see cref="BlockLayout.MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
+///     A row's verdict depends only on the chain above it, so each row's verdict is resolved once per pass and every
+///     chain through it reuses it: the pass is linear in the rows it reaches.
 /// </summary>
 sealed class FreedRowTrust
 {
     const uint RootRecord = 5;
 
+    // A resolved verdict is either Untrusted or a chain that reaches the root, packed as ReachesRootFlag, its
+    // UTF-16 name units shifted by DepthBits, and its component count. The limits keep both fields in range.
+    const int Unresolved = 0;
+    const int Untrusted = int.MinValue;
+    const int CancellationInterval = 4096;
+    const int DepthBits = 14;
+    const int DepthMask = (1 << DepthBits) - 1;
+    const int ReachesRootFlag = 1 << 30;
+
     readonly ushort[] _parentSequences;
     readonly List<uint> _freedRows = [];
     RecordFacts? _rootRecord;
+    int[] _verdicts = [];
 
     /// <summary>Sizes the per-row parent sequences from the block's own slot capacity.</summary>
     public FreedRowTrust(BlockFile block)
@@ -60,16 +72,23 @@ sealed class FreedRowTrust
     /// </summary>
     public void DetachUntrusted(BlockWriter writer, CancellationToken cancellationToken)
     {
+        if (_freedRows.Count == 0)
+        {
+            return;
+        }
+
+        _verdicts = new int[Block.RowCount];
         var untrusted = new List<uint>();
         foreach (var row in _freedRows)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsTrusted(row))
+            if (!IsTrusted(row, cancellationToken))
             {
                 untrusted.Add(row);
             }
         }
 
+        _verdicts = [];
         foreach (var row in untrusted)
         {
             if (writer.DetachRow(row) != WriteRefusal.None)
@@ -80,44 +99,99 @@ sealed class FreedRowTrust
         }
     }
 
-    bool IsTrusted(uint origin)
+    // A freed root record is no root: nothing above it verifies it.
+    bool IsTrusted(uint origin, CancellationToken cancellationToken) =>
+        origin != RootRecord && Resolve(origin, cancellationToken) != Untrusted;
+
+    // Climbs from the origin to the root, a resolved row or a failure, then hands the verdict back down the rows it
+    // climbed. A pending row's verdict slot holds the bitwise complement of its descendant's row, with the origin
+    // linking to itself. Meeting any pending row therefore closes a cycle, which never reaches the root.
+    int Resolve(uint origin, CancellationToken cancellationToken)
     {
-        // A freed root record is no root: nothing above it verifies it.
-        if (origin == RootRecord)
-        {
-            return false;
-        }
-
-        var visited = new ParentChainBuffer(stackalloc uint[ParentChainBuffer.StackCapacity]);
-        long units = 0;
-        var current = origin;
         var rowCount = Block.RowCount;
-        while (current != RootRecord && current < rowCount && visited.Count < BlockLayout.MaximumPathDepth)
+        var current = origin;
+        var previous = origin;
+        var pendingCount = 0;
+        int verdict;
+        while (true)
         {
-            if (visited.Contains(current))
+            if (pendingCount % CancellationInterval == 0)
             {
+                Block.Hooks._freedRowCheckpoint?.Invoke((Unwinding: false, Hops: pendingCount));
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (current == RootRecord)
+            {
+                verdict = ReachesRootFlag;
                 break;
             }
 
-            visited.Add(current);
+            if (current >= rowCount)
+            {
+                verdict = Untrusted;
+                break;
+            }
+
+            var known = _verdicts[current];
+            if (known != Unresolved)
+            {
+                verdict = known < 0 ? Untrusted : known;
+                break;
+            }
+
             var nameLength = NamePool.ReadRowName(Block, current).Length;
-            if (nameLength == 0)
+            var parent = Block.Rows[(int)current].ParentRow;
+            if (nameLength == 0 || !TrustsParentHop(current, parent))
             {
+                _verdicts[current] = Untrusted;
+                verdict = Untrusted;
                 break;
             }
 
-            units += nameLength;
-            var parent = Block.Rows[(int)current].ParentRow;
-            if (!TrustsParentHop(current, parent))
-            {
-                return false;
-            }
-
+            _verdicts[current] = ~(int)previous;
+            previous = current;
+            pendingCount++;
             current = parent;
         }
 
+        current = previous;
+        for (var index = 0; index < pendingCount; index++)
+        {
+            if (index % CancellationInterval == 0)
+            {
+                Block.Hooks._freedRowCheckpoint?.Invoke((Unwinding: true, Hops: index));
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            var next = (uint)~_verdicts[current];
+            var nameLength = NamePool.ReadRowName(Block, current).Length;
+            verdict = Extend(verdict, nameLength);
+            _verdicts[current] = verdict;
+            current = next;
+        }
+
+        return verdict;
+    }
+
+    // The verdict of a row whose own name has nameLength units under a parent with the given verdict. A chain past
+    // either limit stays past it for every row below, so it is untrusted for all of them.
+    static int Extend(int parentVerdict, int nameLength)
+    {
+        if (parentVerdict == Untrusted)
+        {
+            return Untrusted;
+        }
+
+        var depth = (parentVerdict & DepthMask) + 1;
+        var units = (long)((parentVerdict & ~ReachesRootFlag) >> DepthBits) + nameLength;
         // The separators between the components are part of the path.
-        return current == RootRecord && units + visited.Count - 1 <= BlockLayout.MaximumPathUnits;
+        if (depth > BlockLayout.MaximumPathDepth || units + depth - 1 > BlockLayout.MaximumPathUnits)
+        {
+            return Untrusted;
+        }
+
+        return ReachesRootFlag | ((int)units << DepthBits) | depth;
     }
 
     bool TrustsParentHop(uint child, uint parent)

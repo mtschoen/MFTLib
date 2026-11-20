@@ -4,10 +4,11 @@ sealed partial class BlockFile
 {
     internal BlockHooks Hooks { get; }
 
-    /// <summary>Per-block test hooks for disposal, view flushing and retry timing.</summary>
+    /// <summary>Per-block test hooks for disposal, view flushing, retry timing and freed-row resolution.</summary>
     internal sealed class BlockHooks(BlockFile block)
     {
         internal Action<bool>? _disposeStarted;
+        internal Action<(bool Unwinding, int Hops)>? _freedRowCheckpoint;
 
         // Receives whether the view release flushes the view first.
         internal Action<bool>? _viewReleased;

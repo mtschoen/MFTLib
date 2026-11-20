@@ -390,6 +390,62 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
     }
 
     [TestMethod]
+    public void TrustRule_DeepChainScratchDoesNotGrowPerComponent()
+    {
+        const int chainLength = 65536;
+        using var shallowBlock = TestBlocks.Create(Path.Combine(_directory.Path, "shallow.bin"), ProducerKind.Mft,
+            slotCapacity: chainLength + 32, namePoolCapacity: chainLength * 4, volumeSerial: 123, rootRow: 5);
+        using var deepBlock = TestBlocks.Create(Path.Combine(_directory.Path, "deep.bin"), ProducerKind.Mft,
+            slotCapacity: chainLength + 32, namePoolCapacity: chainLength * 4, volumeSerial: 123, rootRow: 5);
+        long shallowBefore = 0;
+        long deepBefore = 0;
+        using var shallowSource = new TrustSource(Chain(chainLength, deep: false),
+            () => shallowBefore = GC.GetAllocatedBytesForCurrentThread());
+        using var deepSource = new TrustSource(Chain(chainLength, deep: true),
+            () => deepBefore = GC.GetAllocatedBytesForCurrentThread());
+
+        MftBlockRowWriter.Write(new BlockWriter(shallowBlock), shallowSource, IncludingFreed, null,
+            CancellationToken.None);
+        var shallowAllocated = GC.GetAllocatedBytesForCurrentThread() - shallowBefore;
+        MftBlockRowWriter.Write(new BlockWriter(deepBlock), deepSource, IncludingFreed, null, CancellationToken.None);
+        var deepAllocated = GC.GetAllocatedBytesForCurrentThread() - deepBefore;
+
+        var growth = deepAllocated - shallowAllocated;
+        Assert.IsLessThan(4L * chainLength, growth,
+            "Unresolved chain storage must fit in the verdict array, not a second tuple per component.");
+        Assert.AreEqual(BlockLayout.DetachedParentRow, deepBlock.Rows[13].ParentRow);
+    }
+
+    [TestMethod]
+    [DataRow(false, DisplayName = "Cancel after 4096 climb hops")]
+    [DataRow(true, DisplayName = "Cancel after 4096 unwind hops")]
+    public void TrustRule_DeepChainObservesCancellationDuringResolution(bool unwinding)
+    {
+        const int chainLength = BlockLayout.MaximumPathDepth;
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
+            slotCapacity: chainLength + 32, namePoolCapacity: chainLength * 4, volumeSerial: 123, rootRow: 5);
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        Action cancel = cancellation.Cancel;
+        block.Hooks._freedRowCheckpoint = checkpoint =>
+        {
+            Assert.IsFalse(token.IsCancellationRequested, "Resolution continued past the cancelled checkpoint.");
+            if (checkpoint == (unwinding, 4096))
+            {
+                cancel();
+            }
+        };
+
+        var records = Chain(chainLength, deep: true);
+        var exception = Assert.ThrowsExactly<OperationCanceledException>(() =>
+            RowWriting.WriteBatches(new BlockWriter(block), [records], IncludingFreed, token));
+
+        Assert.AreEqual(token, exception.CancellationToken);
+        Assert.AreEqual((uint)records[^1].ParentRecordNumber, block.Rows[13].ParentRow,
+            "The over-depth freed leaf must still have its scanned parent.");
+    }
+
+    [TestMethod]
     public void DetachedRows_DoNotChangeTheVerdictOfTheirNeighbours()
     {
         using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
@@ -407,6 +463,37 @@ public sealed class MftBlockRowWriterFreedTests : IDisposable
         Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[12].ParentRow);
         Assert.AreEqual(5u, block.Rows[13].ParentRow);
         Assert.AreEqual(13u, block.Rows[14].ParentRow);
+    }
+
+    static List<MftRecord> Chain(int length, bool deep)
+    {
+        var records = new List<MftRecord>(length + 2) { Root() };
+        for (var index = 0; index < length; index++)
+        {
+            var recordNumber = (ulong)(20 + index);
+            records.Add(Live(recordNumber, deep && index > 0 ? recordNumber - 1 : 5, "d", 14,
+                deep && index > 0 ? (ushort)14 : RootSequence, isDirectory: true));
+        }
+
+        records.Add(Freed(13, (ulong)(19 + length), "f", 14, parentSequence: 14));
+        return records;
+    }
+
+    sealed class TrustSource(IReadOnlyList<MftRecord> records, Action finish) : IMftSliceSource
+    {
+        public MftRowValidation Validation => MftRowValidation.None;
+
+        public IEnumerable<MftParsedSlice> Slices() => [MftParsedSlice.Pack(records)];
+
+        public MftSliceCompletion Finish()
+        {
+            finish();
+            return new MftSliceCompletion(0, []);
+        }
+
+        public void Dispose()
+        {
+        }
     }
 
     static MftRecord Root() => Live(5, 5, ".", RootSequence, RootSequence, isDirectory: true);
