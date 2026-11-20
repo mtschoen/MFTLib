@@ -139,6 +139,12 @@ internal static class AdapterTests
 
     private static void CheckDotnetBackgroundNetworkIsolation(string root)
     {
+        var sharedHome = Path.Combine(root, "shared-home");
+        var shared = ProcessFixture.CreateDotnetEnvironment(sharedHome);
+        TestProgram.Equal(sharedHome, shared["DOTNET_CLI_HOME"], "shared build uses its own SDK home");
+        TestProgram.Equal("1", shared["MSBUILDDISABLENODEREUSE"], "shared build disables reusable MSBuild nodes");
+        TestProgram.Equal("0", shared["DOTNET_CLI_USE_MSBUILD_SERVER"], "shared build disables the MSBuild server");
+        TestProgram.Equal("false", shared["UseSharedCompilation"], "shared build disables the compiler server");
         foreach (var realDependencies in new[] { false, true })
         {
             using var fixture = new ProcessFixture(root, 0, 0, realDependencies);
@@ -159,11 +165,15 @@ internal static class AdapterTests
         CheckRestrictiveDisposal(root);
 
         var entries = OperatingSystem.IsWindows() ? new[] { "init.ps1", "init.bat" } : new[] { "init.sh" };
+        ProcessFixture.BuildSharedHelper(root);
         foreach (var entry in entries)
         foreach (var installed in new[] { 0, 1, 2, 3 })
         foreach (var provisionerExit in new[] { 0, 23 })
         {
             using var fixture = new ProcessFixture(root, installed, provisionerExit);
+            // One cell per entry point runs the real `dotnet run` from the fixture copy, which verifies the copied
+            // helper file list and the entry point's own delegation; the other fixtures run the shared build.
+            if (installed == 3 && provisionerExit == 0) fixture.EnvironmentValues["MFTLIB_INIT_REAL_RUN"] = "1";
             Check(fixture.Invoke(entry, false), fixture, installed, provisionerExit);
         }
         foreach (var entry in entries)

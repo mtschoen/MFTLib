@@ -23,6 +23,50 @@ internal sealed class ProcessFixture : IDisposable
     internal static readonly TimeSpan ProcessWatchdog = TimeSpan.FromSeconds(
         int.Parse(Environment.GetEnvironmentVariable("MFTLIB_INIT_TEST_TIMEOUT_SECONDS") ?? "600"));
 
+    private static readonly string[] HelperFiles = { "Directory.Build.props", "NuGet.Config", "OptionalProvisioning.csproj",
+        "packages.lock.json", "Program.cs", "ProvisioningDispatcher.cs", "CommandLauncher.cs" };
+    private static string? builtHelper;
+
+    // The fixtures' fake `dotnet run` executes this one build of the helper instead of restoring and building it in
+    // every throwaway checkout. A fixture that sets MFTLIB_INIT_REAL_RUN=1 still gets the real `dotnet run`.
+    internal static void BuildSharedHelper(string sourceRoot)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "MFTLib helper " + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(directory, "source");
+        Directory.CreateDirectory(source);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => DeleteOwnedTree(directory);
+        foreach (var relative in HelperFiles)
+            File.Copy(Path.Combine(sourceRoot, "scripts", "optional-provisioning", relative), Path.Combine(source, relative));
+        var output = Path.Combine(directory, "output");
+        var home = Path.Combine(directory, "home");
+        Directory.CreateDirectory(home);
+        var environment = CreateDotnetEnvironment(home);
+        environment["NUGET_PACKAGES"] = Path.Combine(home, "nuget");
+        var build = Run(RealDotnet, new[] { "build", Path.Combine(source, "OptionalProvisioning.csproj"), "-c", "Release",
+            "-p:Platform=x64", "--verbosity", "quiet", "--disable-build-servers", "-o", output }, source, environment);
+        if (build.ExitCode != 0) throw new IOException("Shared helper build failed: " + build.Output + build.Error);
+        builtHelper = Path.Combine(output, "OptionalProvisioning" + ExecutableSuffix);
+        if (!File.Exists(builtHelper)) throw new FileNotFoundException("Shared helper build produced no executable", builtHelper);
+    }
+
+    internal static Dictionary<string, string> CreateDotnetEnvironment(string home)
+    {
+        var environment = new Dictionary<string, string>
+        {
+            ["DOTNET_ROOT"] = Path.GetDirectoryName(RealDotnet)!,
+            ["DOTNET_NOLOGO"] = "1",
+            ["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true",
+            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+            ["DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"] = "false",
+            ["MSBUILDDISABLENODEREUSE"] = "1",
+            ["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0",
+            ["UseSharedCompilation"] = "false"
+        };
+        foreach (var name in new[] { "HOME", "USERPROFILE", "DOTNET_CLI_HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA" })
+            environment[name] = home;
+        return environment;
+    }
+
     internal static string FindHost(string name)
     {
         foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
@@ -92,7 +136,12 @@ internal sealed class ProcessFixture : IDisposable
                 }
                 if (!arguments.Any(argument => argument.EndsWith("OptionalProvisioning.csproj", StringComparison.Ordinal)))
                     throw new InvalidOperationException("Unexpected dotnet run target");
-                return Forward(Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_DOTNET")!, arguments);
+                var built = Environment.GetEnvironmentVariable("MFTLIB_INIT_BUILT_HELPER");
+                if (built is null || Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_RUN") == "1")
+                    return Forward(Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_DOTNET")!, arguments);
+                // `dotnet run` hands everything after `--` to the program.
+                var separator = Array.IndexOf(arguments, "--");
+                return Forward(built, separator < 0 ? Array.Empty<string>() : arguments[(separator + 1)..]);
             case "dotnet" when arguments.SequenceEqual(new[] { "--version" }):
                 Console.WriteLine("10.0.100"); return 0;
             case "dotnet" when arguments.FirstOrDefault() == "test": return 0;
@@ -145,21 +194,8 @@ internal sealed class ProcessFixture : IDisposable
         EnvironmentValues["MFTLIB_INIT_PROVISIONER_EXIT"] = provisionerExit.ToString();
         EnvironmentValues["MFTLIB_INIT_REAL_DOTNET"] = RealDotnet;
         EnvironmentValues["MFTLIB_INIT_REAL_SHELL"] = Host;
-        EnvironmentValues["DOTNET_ROOT"] = Path.GetDirectoryName(RealDotnet)!;
-        EnvironmentValues["DOTNET_NOLOGO"] = "1";
-        // An empty per-fixture SDK home repeats background network checks on every forwarded call.
-        EnvironmentValues["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
-        EnvironmentValues["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
-        // The fixture HOME is a throwaway directory, so the SDK first-run step would append
-        // <fixture home>/.dotnet/tools to the persistent Windows user PATH on every run.
-        EnvironmentValues["DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"] = "false";
-        // Reusable MSBuild nodes and build servers outlive the build, keep the fixture profile busy and would
-        // make disposal race with a still-running child.
-        EnvironmentValues["MSBUILDDISABLENODEREUSE"] = "1";
-        EnvironmentValues["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
-        EnvironmentValues["UseSharedCompilation"] = "false";
-        foreach (var name in new[] { "HOME", "USERPROFILE", "DOTNET_CLI_HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA" })
-            EnvironmentValues[name] = home;
+        if (builtHelper is not null) EnvironmentValues["MFTLIB_INIT_BUILT_HELPER"] = builtHelper;
+        foreach (var pair in CreateDotnetEnvironment(home)) EnvironmentValues[pair.Key] = pair.Value;
         var realProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         EnvironmentValues["AISLOP_HOME"] = Environment.GetEnvironmentVariable("AISLOP_HOME")
             ?? Path.Combine(realProfile, "aislop");
@@ -178,7 +214,7 @@ internal sealed class ProcessFixture : IDisposable
             InstallDouble(Path.Combine(Commands, name + ExecutableSuffix));
         foreach (var relative in new[] { "init.ps1", "init.sh", "init.bat", "scripts/build-windows.ps1", "scripts/windows-tools.ps1", "scripts/build-linux.sh" })
             CopyFile(sourceRoot, relative);
-        foreach (var relative in new[] { "Directory.Build.props", "NuGet.Config", "OptionalProvisioning.csproj", "packages.lock.json", "Program.cs", "ProvisioningDispatcher.cs", "CommandLauncher.cs" })
+        foreach (var relative in HelperFiles)
             CopyFile(sourceRoot, "scripts/optional-provisioning/" + relative);
         if (OperatingSystem.IsWindows())
         {

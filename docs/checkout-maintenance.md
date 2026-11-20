@@ -101,6 +101,11 @@ installed provisioner. Run the same host gate with:
 
     dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 -- --adapters .
 
+The harness builds `OptionalProvisioning.csproj` once per process into a shared temporary directory, and the
+fixtures' fake `dotnet run` executes that build with the arguments after `--`, still logging the `dotnet run` argv.
+One fixture per entry point (installed provisioners, exit 0) runs the real `dotnet run` from its fixture copy,
+so the copied helper file list and the entry point's delegation stay verified end to end.
+
 Local CI preflight includes this gate under `--only init` and under the matching
 `windows` or `linux` scope. The other platform is reported as unavailable.
 
