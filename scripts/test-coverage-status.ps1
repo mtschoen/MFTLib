@@ -46,16 +46,16 @@ try {
         [Threading.Thread]::CurrentThread.CurrentCulture = 'de-DE'
         foreach ($number in @('97.2', '87.2', '100')) {
             Write-Report $number
-            $actual = Test-CoverageMeasurement $summary $coverage 97.2
+            $actual = Test-CoverageMeasurement $summary $coverage 97.2d
             Assert-Equal $actual ([decimal]::Parse($number, [cultureinfo]::InvariantCulture)) $number
         }
     } finally { [Threading.Thread]::CurrentThread.CurrentCulture = $culture }
     foreach ($number in @('77', '87.1')) {
         Write-Report $number
-        Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'drop'
+        Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'drop'
     }
     Write-Report '97.2' 0
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'MFTLib.Index'
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'MFTLib.Index'
     $extensionCases = @(
         @{ Name='missing package'; Change={ param($p) $p.ParentNode.RemoveChild($p) | Out-Null } },
         @{ Name='empty package'; Change={ param($p) $p.RemoveChild($p.classes) | Out-Null } },
@@ -82,7 +82,7 @@ try {
         $package = $document.SelectSingleNode('/coverage/packages/package[@name="MFTLibTestExtensions"]')
         & $case.Change $package
         $document.Save($coverage)
-        Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } ''
+        Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } ''
     }
 
     Write-Report '97.2'
@@ -91,34 +91,34 @@ try {
     $extra.InnerXml = '<class name="MFTLibTestExtensions.Internal.Owner/Nested" filename="Owner.cs"><methods><method name="Run" signature="()"><lines><line number="8" hits="0"/></lines></method></methods><lines><line number="8" hits="0"/></lines></class>'
     $document.SelectSingleNode('/coverage/packages/package[@name="MFTLibTestExtensions"]/classes').AppendChild($extra) | Out-Null
     $document.Save($coverage)
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'MFTLibTestExtensions'
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'MFTLibTestExtensions'
 
     Write-Report '97.2'
     [xml]$document = Get-Content $coverage -Raw
     $document.SelectSingleNode('/coverage/packages/package[@name="MFTLibTestExtensions"]/classes/class').SetAttribute('name', 'MFTLibTestExtensionsExtra.BrokerTestHarness')
     $document.Save($coverage)
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'MFTLibTestExtensions'
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'MFTLibTestExtensions'
 
     Write-Report '97.2'
     [xml]$document = Get-Content $coverage -Raw
     $package = $document.SelectSingleNode('/coverage/packages/package[@name="MFTLibTestExtensions"]')
     $package.ParentNode.AppendChild($package.CloneNode($true)) | Out-Null
     $document.Save($coverage)
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'duplicate'
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'duplicate'
     Write-Report '97.2'
     foreach ($bad in @('101', '-1', 'NaN', '1.2.3', '97,2')) {
         Assert-Throws { ConvertFrom-CoveragePercentage $bad } 'percentage'
     }
     Set-Content $summary 'No measurement'
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'summary'
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'summary'
     Write-Report '97.2'
     Set-Content $coverage '<broken'
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } ''
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } ''
     Set-Content $coverage '<coverage><packages/></coverage>'
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } 'lines'
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } 'lines'
     Write-Report '97.2'
     Remove-Item $summary
-    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2 } ''
+    Assert-Throws { Test-CoverageMeasurement $summary $coverage 97.2d } ''
 
     $readApi = {
         param($Path)
@@ -141,7 +141,7 @@ try {
             default { throw "Unexpected API path: $Path" }
         }
     }
-    Assert-Equal (Get-MainCoverageBaseline $readApi) ([decimal]97.2) 'paginated main baseline'
+    Assert-Equal (Get-MainCoverageBaseline $readApi) (97.2d) 'paginated main baseline'
     $emptyApi = {
         param($Path)
         if ($Path -eq '/branches/main') { return @{ commit=@{ id='root' } } }
@@ -211,7 +211,7 @@ try {
     $declaration.InnerXml = '<method name="Declaration" signature="()"><lines/></method>'
     $package.SelectSingleNode('classes/class/methods').AppendChild($declaration) | Out-Null
     $document.Save($coverage)
-    Assert-Equal (Test-CoverageMeasurement $summary $coverage 97.2) ([decimal]97.2) 'branchless executable method'
+    Assert-Equal (Test-CoverageMeasurement $summary $coverage 97.2d) (97.2d) 'branchless executable method'
 
     Write-Report '97.2'
     $failedPost = { param($Body) throw 'POST unavailable' }
