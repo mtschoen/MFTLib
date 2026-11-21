@@ -8,6 +8,7 @@
 #include "../framework.h"
 #include "../mft_api.h"
 #include "../core/exception_barrier.h"
+#include "../core/platform.h"
 
 namespace mftlib::ntfs {
 struct DataRun {
@@ -65,20 +66,48 @@ struct AttributeSearch {
 };
 AttributeSearch FindAttribute(uint8_t* record, uint32_t recordSize, ATTRIBUTE_TYPE_CODE type);
 
-// Off Windows the handle is a file descriptor, so an image file stands in for the volume. The read
-// takes its position from the offset alone and leaves no file position behind.
-BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead);
+// How reads of a raw volume handle must be shaped: offsets and lengths are multiples of sectorBytes
+// and destination addresses multiples of memoryBytes. Both are powers of two; 1 asks nothing.
+struct VolumeAlignment {
+    uint32_t sectorBytes = 1;
+    uint32_t memoryBytes = 1;
+};
 
-// The first fileSize bytes of a non-resident attribute, read in whole clusters, or null when the
-// attribute is malformed, its runs are out of range or shorter than fileSize, or a read fails.
-// *outSize is the number of bytes in the returned buffer, all of them read.
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t bytesPerCluster,
-                             uint64_t* outSize);
+// A volume or image handle with the alignment its reads keep. The handle is borrowed.
+struct RawVolume {
+    HANDLE handle = nullptr;
+    VolumeAlignment alignment{};
+};
+
+// The handle with its alignment. On Windows that is the logical sector size for offsets and lengths
+// and the larger of the logical and physical sector sizes for addresses, as the storage stack reports
+// them (IOCTL_STORAGE_QUERY_PROPERTY, StorageAccessAlignmentProperty); where it does not answer, the
+// file system's sector size (FSCTL_GET_NTFS_VOLUME_DATA) for offsets and lengths and, for addresses, the physical
+// sector size of the extended data that call returns after it (the logical size when that is absent or implausible);
+// where neither answers, nothing.
+// Off Windows the handle is a file descriptor read with pread, which asks nothing. The
+// SetVolumeAlignmentOverride test hook replaces both values.
+RawVolume OpenRawVolume(HANDLE handle);
+
+// Reads count bytes at from into buffer, which may have any address, offset and length: a read whose
+// destination, offset or length breaks the volume's alignment reads the whole sectors around it into an
+// aligned bounce buffer and copies the asked-for bytes out, and fails when those sectors span more than a
+// DWORD or the bounce buffer cannot be allocated. *bytesRead is how many of the asked-for bytes arrived;
+// like ReadFile on a file, a read that reaches the end succeeds with fewer. Off Windows the handle is a
+// file descriptor, so an image file stands in for the volume. The read takes its position from the
+// offset alone and leaves no file position behind.
+BOOL Read(const RawVolume& volume, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead);
+
+// Reads the first fileSize bytes of a non-resident attribute, in whole clusters, into *data and sets
+// *outSize to fileSize. False when the attribute is malformed, its runs are out of range or shorter
+// than fileSize, the buffer cannot be allocated, or a read fails.
+bool ReadNonResidentData(const RawVolume& volume, const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t bytesPerCluster,
+                         mftlib::platform::AlignedBuffer* data, uint64_t* outSize);
 
 // mftRuns must already be validated, with a cumulative size TryMeasureRuns accepted: the lookup does
 // not remeasure the list, so it stays linear in the runs it visits. Null on success, otherwise the
 // failure message: an uncovered, failed or short read, invalid FILE magic, or invalid fixup.
-const wchar_t* ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+const wchar_t* ReadMFTRecord(const RawVolume& volume, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                              ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
 }  // namespace detail
 }  // namespace mftlib::ntfs

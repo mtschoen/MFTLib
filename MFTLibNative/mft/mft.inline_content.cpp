@@ -276,7 +276,7 @@ uint64_t ReadGroupBytes(const Call* call, const Group& group, uint64_t firstByte
 // Reads the group's bytes into the reader's scratch buffer as one read and returns the MFT offset where its valid bytes
 // end: group.lastByte for a complete read, less for a short or failed one.
 uint64_t ReadGroup(const Call* call, const Group& group) {
-    call->reader->scratch.resize(static_cast<size_t>(group.lastByte - group.firstByte));
+    call->reader->scratch.Reserve(static_cast<size_t>(group.lastByte - group.firstByte));
     return group.firstByte + ReadGroupBytes(call, group, group.firstByte, group.lastByte - group.firstByte);
 }
 

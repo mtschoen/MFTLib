@@ -3,6 +3,8 @@
     #error "mft.ntfs_io.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <algorithm>
+#include <cerrno>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -19,10 +21,70 @@
 
 namespace mftlib::ntfs::detail {
 
+namespace {
+bool Complies(const VolumeAlignment& alignment, const void* buffer, uint64_t from, uint64_t count) {
+    return reinterpret_cast<uintptr_t>(buffer) % alignment.memoryBytes == 0 && from % alignment.sectorBytes == 0 &&
+           count % alignment.sectorBytes == 0;
+}
+
+// Under SetVolumeAlignmentOverride, a read the armed alignment does not allow fails as a noncached handle's would.
+bool BreaksArmedAlignment(const void* buffer, uint64_t from, uint64_t count) {
+    const VolumeAlignment armed{VolumeSectorAlignmentOverride(), VolumeMemoryAlignmentOverride()};
+    return armed.sectorBytes != 0 && !Complies(armed, buffer, from, count);
+}
+
+// Leaves the reason a read was not issued where the platform's last error is read.
+void SetReadError(const bool outOfMemory) {
 #ifdef _WIN32
-BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
+    SetLastError(outOfMemory ? ERROR_NOT_ENOUGH_MEMORY : ERROR_INVALID_PARAMETER);
+#else
+    errno = outOfMemory ? ENOMEM : EINVAL;
+#endif
+}
+
+#ifdef _WIN32
+bool IsPowerOfTwo(const uint32_t value) { return value != 0 && (value & (value - 1)) == 0; }
+
+VolumeAlignment QueryVolumeAlignment(HANDLE handle) {
+    STORAGE_PROPERTY_QUERY query{};
+    query.PropertyId = StorageAccessAlignmentProperty;
+    query.QueryType = PropertyStandardQuery;
+    STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR descriptor{};
+    DWORD returned = 0;
+    if (DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &descriptor, sizeof(descriptor),
+                        &returned, nullptr) != 0 &&
+        returned >= offsetof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, BytesOffsetForSectorAlignment) &&
+        IsPowerOfTwo(descriptor.BytesPerLogicalSector) && IsPowerOfTwo(descriptor.BytesPerPhysicalSector)) {
+        return {descriptor.BytesPerLogicalSector,
+                (std::max)(descriptor.BytesPerLogicalSector, descriptor.BytesPerPhysicalSector)};
+    }
+    // The volume data is followed by the extended data, which carries the physical sector size.
+    struct VolumeDataWithExtension {
+        NTFS_VOLUME_DATA_BUFFER data;
+        NTFS_EXTENDED_VOLUME_DATA extension;
+    } volumeData{};
+    returned = 0;
+    if (DeviceIoControl(handle, FSCTL_GET_NTFS_VOLUME_DATA, nullptr, 0, &volumeData, sizeof(volumeData), &returned,
+                        nullptr) != 0 &&
+        returned >= sizeof(NTFS_VOLUME_DATA_BUFFER) && IsPowerOfTwo(volumeData.data.BytesPerSector)) {
+        const uint32_t logical = volumeData.data.BytesPerSector;
+        const bool extended = returned >= sizeof(volumeData) &&
+                              volumeData.extension.ByteCount >= sizeof(NTFS_EXTENDED_VOLUME_DATA) &&
+                              IsPowerOfTwo(volumeData.extension.BytesPerPhysicalSector) &&
+                              volumeData.extension.BytesPerPhysicalSector >= logical;
+        return {logical, extended ? volumeData.extension.BytesPerPhysicalSector : logical};
+    }
+    return {};
+}
+
+// One positioned read with the destination, offset and length exactly as given.
+BOOL ReadAt(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
     *bytesRead = 0;
     if (ShouldFailRead()) {
+        return FALSE;
+    }
+    if (BreaksArmedAlignment(buffer, from.value, count)) {
+        SetReadError(false);
         return FALSE;
     }
     // The offset travels with the request, so reads on one handle cannot move each other's position.
@@ -38,9 +100,13 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
 #else
 // The handle is a file descriptor. Like ReadFile on a file, a read that reaches the end of the
 // file succeeds with fewer bytes than asked for.
-BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
+BOOL ReadAt(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
     *bytesRead = 0;
     if (ShouldFailRead()) {
+        return FALSE;
+    }
+    if (BreaksArmedAlignment(buffer, from.value, count)) {
+        SetReadError(false);
         return FALSE;
     }
     const auto fileDescriptor = static_cast<int>(reinterpret_cast<intptr_t>(handle));
@@ -61,6 +127,57 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
     return TRUE;
 }
 #endif  // _WIN32
+
+// Reads the whole sectors around [from, from + count) into an aligned buffer and copies the asked-for bytes out.
+BOOL ReadThroughBounceBuffer(const RawVolume& volume, uint8_t* buffer, uint64_t from, DWORD count, PDWORD bytesRead) {
+    const uint64_t sector = volume.alignment.sectorBytes;
+    const uint64_t start = from - (from % sector);
+    const uint64_t head = from - start;
+    const uint64_t end = from + count + ((sector - ((from + count) % sector)) % sector);
+    const uint64_t span = end - start;
+    const uint64_t memory = volume.alignment.memoryBytes;
+    mftlib::platform::AlignedBuffer bounce;
+    if (span > (std::numeric_limits<DWORD>::max)()) {
+        SetReadError(false);
+        return FALSE;
+    }
+    if (!bounce.TryReserve(static_cast<size_t>(span + memory))) {
+        SetReadError(true);
+        return FALSE;
+    }
+    NoteBouncedVolumeRead();
+    const auto address = reinterpret_cast<uintptr_t>(bounce.data());
+    auto* aligned = bounce.data() + ((memory - (address % memory)) % memory);
+    DWORD arrived = 0;
+    if (ReadAt(volume.handle, aligned, VolumeOffset{start}, static_cast<DWORD>(span), &arrived) == 0) {
+        return FALSE;
+    }
+    const uint64_t delivered = arrived > head ? (std::min)(arrived - head, static_cast<uint64_t>(count)) : 0;
+    memcpy(buffer, aligned + head, static_cast<size_t>(delivered));
+    *bytesRead = static_cast<DWORD>(delivered);
+    return TRUE;
+}
+}  // namespace
+
+RawVolume OpenRawVolume(HANDLE handle) {
+    RawVolume volume{handle, {}};
+    if (const uint32_t armed = VolumeSectorAlignmentOverride(); armed != 0) {
+        volume.alignment = {armed, VolumeMemoryAlignmentOverride()};
+        return volume;
+    }
+#ifdef _WIN32
+    volume.alignment = QueryVolumeAlignment(handle);
+#endif
+    return volume;
+}
+
+BOOL Read(const RawVolume& volume, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
+    if (Complies(volume.alignment, buffer, from.value, count)) {
+        return ReadAt(volume.handle, buffer, from, count, bytesRead);
+    }
+    *bytesRead = 0;
+    return ReadThroughBounceBuffer(volume, static_cast<uint8_t*>(buffer), from.value, count, bytesRead);
+}
 
 bool ApplyFixup(uint8_t* record, uint32_t recordSize) {
     constexpr uint32_t kSectorSize = 512;
@@ -194,26 +311,26 @@ std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attribute) {
     return runs;
 }
 
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t bytesPerCluster,
-                             uint64_t* outSize) {
+bool ReadNonResidentData(const RawVolume& volume, const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t bytesPerCluster,
+                         mftlib::platform::AlignedBuffer* data, uint64_t* outSize) {
     *outSize = 0;
     if (!IsWellFormedNonresident(attribute)) {
-        return nullptr;
+        return false;
     }
     const auto runs = ParseDataRuns(attribute);
     const auto fileSize = static_cast<uint64_t>(attribute->Form.Nonresident.FileSize);
     uint64_t totalClusterBytes = 0;
     if (!TryMeasureRuns(runs, bytesPerCluster, &totalClusterBytes) || fileSize == 0 || fileSize > totalClusterBytes) {
-        return nullptr;
+        return false;
     }
     // Reads are whole clusters. The runs hold fileSize, so rounding it up to a cluster cannot overflow.
     const uint64_t remainder = fileSize % bytesPerCluster;
     const uint64_t readLimit = remainder == 0 ? fileSize : fileSize + (bytesPerCluster - remainder);
 
-    auto* buffer = ShouldFailAllocation() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(readLimit)));
-    if (buffer == nullptr) {
-        return nullptr;
+    if (ShouldFailAllocation() || !data->TryReserve(static_cast<size_t>(readLimit))) {
+        return false;
     }
+    uint8_t* buffer = data->data();
 
     uint64_t bufferOffset = 0;
     for (const auto& run : runs) {
@@ -224,11 +341,9 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
             auto chunkSize = static_cast<DWORD>(
                 (std::min)({static_cast<uint64_t>(0x10000000ULL), runBytes - runOffset, readLimit - bufferOffset}));
             DWORD bytesRead = 0;
-            if (Read(volumeHandle, buffer + bufferOffset, VolumeOffset{runStart + runOffset}, chunkSize, &bytesRead) ==
-                    0 ||
+            if (Read(volume, buffer + bufferOffset, VolumeOffset{runStart + runOffset}, chunkSize, &bytesRead) == 0 ||
                 bytesRead != chunkSize) {
-                free(buffer);
-                return nullptr;
+                return false;
             }
             bufferOffset += bytesRead;
             runOffset += bytesRead;
@@ -236,10 +351,10 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
     }
 
     *outSize = fileSize;
-    return buffer;
+    return true;
 }
 
-const wchar_t* ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+const wchar_t* ReadMFTRecord(const RawVolume& volume, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                              ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber) {
     // The runs are validated by the caller (TryMeasureRuns on the base runs, and on each extension's
     // runs before they were appended), so their lengths and disk offsets below cannot overflow. A segment number
@@ -255,7 +370,7 @@ const wchar_t* ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mf
             uint64_t diskOffset = (static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + offsetInRun;
 
             DWORD bytesRead;
-            if ((Read(volumeHandle, buffer, VolumeOffset{diskOffset}, geometry.recordSize, &bytesRead) == 0) ||
+            if ((Read(volume, buffer, VolumeOffset{diskOffset}, geometry.recordSize, &bytesRead) == 0) ||
                 bytesRead != geometry.recordSize) {
                 return kIncompleteVolumeReadMessage;
             }

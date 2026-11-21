@@ -88,7 +88,7 @@ uint32_t ClampChunkRecords(uint32_t requested, uint64_t totalRecords, uint32_t r
 }
 
 struct VolumeReadContext {
-    HANDLE volumeHandle = INVALID_HANDLE_VALUE;
+    RawVolume volume{};
     std::vector<DataRun>* mftRuns = nullptr;
     uint32_t bytesPerCluster = 0;
     size_t runIndex = 0;
@@ -123,7 +123,7 @@ uint64_t VolumeReadChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
     const auto requestedBytes = static_cast<DWORD>(filesToLoad * readContext->geometry.recordSize);
     DWORD readBytes = 0;
     auto ioStart = SteadyClock::now();
-    if (Read(readContext->volumeHandle, targetBuffer,
+    if (Read(readContext->volume, targetBuffer,
              VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * readContext->bytesPerCluster) +
                           readContext->positionInBlock},
              requestedBytes, &readBytes) == 0 ||
@@ -219,14 +219,15 @@ const wchar_t* AppendRecordDataRuns(uint8_t* extensionRecord, uint32_t recordSiz
 // Append their validated runs to mftRuns, completing the $MFT's run list. Null on success,
 // otherwise the failure message.
 // mftRuns arrive validated with cumulative size totalBytes, which grows with each accepted extension.
-const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attributeListAttribute,
+const wchar_t* MergeExtensionDataRuns(const RawVolume& volume, PATTRIBUTE_RECORD_HEADER attributeListAttribute,
                                       uint32_t bytesPerCluster, ParseGeometry geometry, std::vector<DataRun>& mftRuns,
                                       uint64_t& totalBytes) {
-    uint8_t* attributeListData;
+    mftlib::platform::AlignedBuffer attributeList;
     uint64_t attributeListSize = 0;
+    bool haveAttributeList = false;
     if (attributeListAttribute->FormCode == 1) {
-        attributeListData =
-            ReadNonResidentData(volumeHandle, attributeListAttribute, bytesPerCluster, &attributeListSize);
+        haveAttributeList =
+            ReadNonResidentData(volume, attributeListAttribute, bytesPerCluster, &attributeList, &attributeListSize);
     } else {
         if (attributeListAttribute->Form.Resident.ValueOffset < kResidentAttributeHeaderSize ||
             static_cast<size_t>(attributeListAttribute->Form.Resident.ValueOffset) +
@@ -238,27 +239,27 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
         if (attributeListSize == 0) {
             return nullptr;
         }
-        attributeListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attributeListSize)));
-        if (attributeListData != nullptr) {
+        haveAttributeList = attributeList.TryReserve(static_cast<size_t>(attributeListSize));
+        if (haveAttributeList) {
             memcpy(
-                attributeListData,
+                attributeList.data(),
                 reinterpret_cast<uint8_t*>(attributeListAttribute) + attributeListAttribute->Form.Resident.ValueOffset,
                 static_cast<size_t>(attributeListSize));
         }
     }
-    if (attributeListData == nullptr) {
+    if (!haveAttributeList) {
         return kIncompleteVolumeReadMessage;
     }
-    const NativeScopeExit attributeData([&]() { free(attributeListData); });
 
     std::vector<uint64_t> extensionRecords;
-    if (!CollectExtensionRecordNumbers(attributeListData, attributeListSize, extensionRecords)) {
+    if (!CollectExtensionRecordNumbers(attributeList.data(), attributeListSize, extensionRecords)) {
         return kMalformedAttributeListMessage;
     }
-    std::vector<uint8_t> extensionRecord(geometry.recordSize);
+    mftlib::platform::AlignedBuffer extensionRecord;
+    extensionRecord.Reserve(geometry.recordSize);
     const wchar_t* failure = nullptr;
     for (auto recordNumber : extensionRecords) {
-        failure = ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, geometry, extensionRecord.data(), recordNumber);
+        failure = ReadMFTRecord(volume, mftRuns, bytesPerCluster, geometry, extensionRecord.data(), recordNumber);
         if (failure == nullptr) {
             failure =
                 AppendRecordDataRuns(extensionRecord.data(), geometry.recordSize, bytesPerCluster, mftRuns, totalBytes);
@@ -273,11 +274,30 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
 // Where a volume's MFT is and how its records are laid out, found from the boot sector, record 0 and
 // record 0's attribute list. The runs are validated, with a cumulative size TryMeasureRuns accepted.
 struct VolumeLayout {
+    RawVolume volume{};
     ParseGeometry geometry{};
     uint32_t bytesPerCluster = 0;
     std::vector<DataRun> mftRuns;
     uint64_t totalMftBytes = 0;
 };
+
+// Reads the boot sector into *bootSector through an aligned buffer. False, with errorMessage saying why, when the read
+// fails or comes up short.
+// NOLINTNEXTLINE(modernize-avoid-c-arrays): the fixed C-ABI message buffer of a result struct
+bool ReadBootSector(const RawVolume& volume, NTFS_BPB* bootSector,
+                    MftMessageChar (&errorMessage)[MFT_ERROR_MESSAGE_UNITS]) {
+    mftlib::platform::AlignedBuffer sector;
+    sector.Reserve(sizeof(NTFS_BPB));
+    DWORD bytesRead = 0;
+    if ((Read(volume, sector.data(), VolumeOffset{0}, sizeof(NTFS_BPB), &bytesRead) == 0) ||
+        bytesRead != sizeof(NTFS_BPB)) {
+        SetErrorMessage(errorMessage, L"Failed to read boot sector. Error: %lu",
+                        static_cast<unsigned long>(mftlib::platform::last_error()));
+        return false;
+    }
+    memcpy(bootSector, sector.data(), sizeof(NTFS_BPB));
+    return true;
+}
 
 // Reads the volume's MFT layout. False, with errorMessage saying why, when the handle is not an NTFS
 // volume or image, or its MFT cannot be located and validated.
@@ -289,6 +309,7 @@ bool LoadVolumeLayout(HANDLE volumeHandle, VolumeLayout* layout,
         return false;
     }
 
+    layout->volume = OpenRawVolume(volumeHandle);
     auto geometry = QueryVolumeRecordSize(volumeHandle);
     if (!geometry.has_value()) {
         SetErrorMessage(errorMessage, L"Failed to query volume record size or unsupported record size");
@@ -297,10 +318,7 @@ bool LoadVolumeLayout(HANDLE volumeHandle, VolumeLayout* layout,
     layout->geometry = *geometry;
 
     NTFS_BPB bpb;
-    DWORD bytesRead;
-    if ((Read(volumeHandle, &bpb, VolumeOffset{0}, 512, &bytesRead) == 0) || bytesRead != 512) {
-        SetErrorMessage(errorMessage, L"Failed to read boot sector. Error: %lu",
-                        static_cast<unsigned long>(mftlib::platform::last_error()));
+    if (!ReadBootSector(layout->volume, &bpb, errorMessage)) {
         return false;
     }
     if (bpb.name[0] != 'N' || bpb.name[1] != 'T' || bpb.name[2] != 'F' || bpb.name[3] != 'S') {
@@ -316,8 +334,10 @@ bool LoadVolumeLayout(HANDLE volumeHandle, VolumeLayout* layout,
         return false;
     }
 
-    std::vector<uint8_t> record0(geometry->recordSize);
-    if ((Read(volumeHandle, record0.data(), VolumeOffset{mftStartOffset}, geometry->recordSize, &bytesRead) == 0) ||
+    mftlib::platform::AlignedBuffer record0;
+    record0.Reserve(geometry->recordSize);
+    DWORD bytesRead = 0;
+    if ((Read(layout->volume, record0.data(), VolumeOffset{mftStartOffset}, geometry->recordSize, &bytesRead) == 0) ||
         bytesRead != geometry->recordSize) {
         SetErrorMessage(errorMessage, L"Failed to read MFT record 0");
         return false;
@@ -360,7 +380,7 @@ bool LoadVolumeLayout(HANDLE volumeHandle, VolumeLayout* layout,
     }
     if (attributeListSearch.attribute != nullptr) {
         const auto* failure =
-            MergeExtensionDataRuns(volumeHandle, attributeListSearch.attribute, layout->bytesPerCluster, *geometry,
+            MergeExtensionDataRuns(layout->volume, attributeListSearch.attribute, layout->bytesPerCluster, *geometry,
                                    layout->mftRuns, layout->totalMftBytes);
         if (failure != nullptr) {
             SetErrorMessage(errorMessage, failure);
@@ -380,7 +400,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, ParseRequest request, MftParseR
     const uint64_t totalRecords = layout.totalMftBytes / layout.geometry.recordSize;
 
     VolumeReadContext readContext;
-    readContext.volumeHandle = volumeHandle;
+    readContext.volume = layout.volume;
     readContext.mftRuns = &layout.mftRuns;
     readContext.bytesPerCluster = layout.bytesPerCluster;
     readContext.filesRemaining = layout.mftRuns[0].clusterCount * layout.bytesPerCluster / layout.geometry.recordSize;

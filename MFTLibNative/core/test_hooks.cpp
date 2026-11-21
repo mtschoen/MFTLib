@@ -37,6 +37,9 @@ std::atomic<int> g_interruptedIoRemaining{0};
 std::atomic<int> g_interruptedIoCalls{0};
 #endif
 uint32_t g_volumeRecordSizeOverride = 0;
+uint32_t g_volumeSectorAlignmentOverride = 0;
+uint32_t g_volumeMemoryAlignmentOverride = 0;
+std::atomic<uint64_t> g_bouncedVolumeReads{0};
 // Process-global observation of the most recently finished parse, published by
 // ParseThreadRecording's destructor. Publication, reset and the getter lock the mutex.
 // The mutex protects access, not test ownership: tests reading these counts must not run
@@ -174,6 +177,9 @@ bool ShouldFailPlatformRead() {
 
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
 uint32_t VolumeRecordSizeOverride() { return g_volumeRecordSizeOverride; }
+uint32_t VolumeSectorAlignmentOverride() { return g_volumeSectorAlignmentOverride; }
+uint32_t VolumeMemoryAlignmentOverride() { return g_volumeMemoryAlignmentOverride; }
+void NoteBouncedVolumeRead() { g_bouncedVolumeReads.fetch_add(1, std::memory_order_relaxed); }
 
 #ifndef _WIN32
 bool TryInjectInterruptedIo(int64_t& result) {
@@ -312,6 +318,15 @@ EXPORT void SetInterruptedIo(int mode, int interruptionCount) {
 EXPORT int GetInterruptedIoCalls() { return g_interruptedIoCalls.load(); }
 #endif
 EXPORT void SetVolumeRecordSizeOverride(const uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
+// Makes sectorBytes the offset and length alignment and memoryBytes the destination address alignment (both powers of
+// two) of every raw volume opened after it, and fails every volume read that breaks either, as a noncached volume
+// handle may. A zero sectorBytes disarms.
+EXPORT void SetVolumeAlignmentOverride(const uint32_t sectorBytes, const uint32_t memoryBytes) {
+    g_volumeSectorAlignmentOverride = sectorBytes;
+    g_volumeMemoryAlignmentOverride = memoryBytes;
+}
+// How many volume reads went through a bounce buffer since the last ResetTestState.
+EXPORT uint64_t GetBouncedVolumeReads() { return g_bouncedVolumeReads.load(); }
 EXPORT void SetCancelCheckCountdown(const int countdown) {
     g_cancelCheckCountdown = countdown;
     g_cancelCheckCountdownArmed = countdown > 0;
@@ -390,6 +405,9 @@ EXPORT void ResetTestState() {
             g_failPlatformReadCountdown = 0;
             g_failPlatformWrite = 0;
             g_volumeRecordSizeOverride = 0;
+            g_volumeSectorAlignmentOverride = 0;
+            g_volumeMemoryAlignmentOverride = 0;
+            g_bouncedVolumeReads = 0;
             ClearRecordedParseThreadCounts();
             g_cancelCheckCountdownArmed = false;
             g_cancelCheckCountdown = 0;
@@ -425,6 +443,9 @@ EXPORT void ResetTestState() {
             g_interruptedIoRemaining = 0;
             g_interruptedIoCalls = 0;
             g_volumeRecordSizeOverride = 0;
+            g_volumeSectorAlignmentOverride = 0;
+            g_volumeMemoryAlignmentOverride = 0;
+            g_bouncedVolumeReads = 0;
             ClearRecordedParseThreadCounts();
             g_cancelCheckCountdownArmed = false;
             g_cancelCheckCountdown = 0;

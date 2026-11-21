@@ -20,7 +20,7 @@ namespace {
 // failed read returns nothing.
 size_t ReadVolumeBytes(const MftInlineReader& reader, uint64_t sourceOffset, uint8_t* target, size_t byteCount) {
     DWORD bytesRead = 0;
-    return Read(reader.volumeHandle, target, VolumeOffset{sourceOffset}, static_cast<DWORD>(byteCount), &bytesRead) != 0
+    return Read(reader.volume, target, VolumeOffset{sourceOffset}, static_cast<DWORD>(byteCount), &bytesRead) != 0
                ? bytesRead
                : 0;
 }
@@ -52,7 +52,7 @@ MftInlineReader* OpenVolumeInlineReader(HANDLE volumeHandle, MftInlineReaderInfo
     reader->geometry = layout.geometry;
     reader->totalRecords = layout.totalMftBytes / layout.geometry.recordSize;
     reader->read = ReadVolumeBytes;
-    reader->volumeHandle = volumeHandle;
+    reader->volume = layout.volume;
     info->totalRecords = reader->totalRecords;
     info->recordSize = layout.geometry.recordSize;
     return reader.release();

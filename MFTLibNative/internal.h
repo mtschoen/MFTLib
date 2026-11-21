@@ -163,6 +163,12 @@ enum class InterruptedIoMode : int {
 bool TryInjectInterruptedIo(int64_t& result);
 #endif
 uint32_t VolumeRecordSizeOverride();
+// The offset and length alignment SetVolumeAlignmentOverride armed, or zero when it is not armed.
+uint32_t VolumeSectorAlignmentOverride();
+// The destination address alignment SetVolumeAlignmentOverride armed with it.
+uint32_t VolumeMemoryAlignmentOverride();
+// Counts a volume read that went through a bounce buffer, for GetBouncedVolumeReads.
+void NoteBouncedVolumeRead();
 
 #ifdef _WIN32
 bool ShouldFailUsnIo(DWORD& outError);

@@ -61,6 +61,16 @@ static partial class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "SetVolumeRecordSizeOverride", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetVolumeRecordSizeOverride(uint recordSize);
 
+    // Makes sectorBytes the offset and length alignment and memoryBytes the destination address alignment (both
+    // powers of two) of raw volumes opened after this call, and fails every volume read that breaks either; a zero
+    // sectorBytes disarms.
+    [DllImport(LibraryName, EntryPoint = "SetVolumeAlignmentOverride", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetVolumeAlignmentOverride(uint sectorBytes, uint memoryBytes);
+
+    // How many volume reads went through the native bounce buffer since the last NativeResetTestState.
+    [DllImport(LibraryName, EntryPoint = "GetBouncedVolumeReads", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong NativeGetBouncedVolumeReads();
+
     [DllImport(LibraryName, EntryPoint = "SetUsnIoFailError", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetUsnIoFailError(uint error, int countdown);
 

@@ -9,6 +9,7 @@
 #include "../framework.h"
 #include "../ntfs.h"
 #include "../core/platform.h"
+#include "mft.internal.h"
 
 namespace mftlib::inline_content {
 // A stretch of the $MFT's data: byteCount bytes of MFT address space starting at mftOffset, stored
@@ -41,8 +42,9 @@ struct MftInlineReader {
     ReadBytesFunction read = nullptr;
     // What read reads: the handle of a volume or image, or the open file of a dump. A reader sets the one
     // its read function uses and borrows it, so it must outlive the reader.
-    HANDLE volumeHandle = nullptr;
+    mftlib::ntfs::detail::RawVolume volume{};
     const mftlib::platform::File* dumpFile = nullptr;
-    // The bytes of the group being evaluated. Kept between calls so a long request reuses one allocation.
-    std::vector<uint8_t> scratch;
+    // The bytes of the group being evaluated, page-aligned so a volume group read lands in them directly. Kept
+    // between calls so a long request reuses one allocation.
+    mftlib::platform::AlignedBuffer scratch;
 };
