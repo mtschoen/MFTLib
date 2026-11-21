@@ -32,19 +32,21 @@ capacity-exhausted flag independently of either count.
 
 ## File name
 
-Two shapes, both ending in the serial of the volume that contains the root as eight
+Two shapes, both ending in the full 64-bit serial of the volume that contains the root as sixteen
 uppercase hexadecimal digits and the extension `.mlix`:
 
 - A volume root, and every MFT block whatever the root of the view that owns it: `<drive letter>-<serial>.mlix`,
-  for example `C-0BADF00D.mlix`. An MFT block is the volume's, so a directory view of it shares that name.
+  for example `C-5E821C9B0BADF00D.mlix`. An MFT block is the volume's, so a directory view of it shares that name.
 - A walked directory root: `D<sixteen lowercase hexadecimal digits>-<serial>.mlix`, for example
-  `D0123456789abcdef-0BADF00D.mlix`. The digits are the first eight bytes of the SHA-256
+  `D0123456789abcdef-5E821C9B0BADF00D.mlix`. The digits are the first eight bytes of the SHA-256
   of the root key text (the normalized directory path) encoded as UTF-8. On a
   case-insensitive platform (Windows) the text is first mapped with the invariant simple uppercase
   mapping, the one `OrdinalIgnoreCase` equality of root keys uses, so every pair of equal keys
   (including sigma and final sigma) shares one name; on a case-sensitive platform it is hashed as written.
 
-The serial is part of the name so a re-lettered volume never matches the wrong block. A hashed
+The serial is part of the name so a re-lettered volume never matches the wrong block, and all 64 bits are, so two
+volumes whose serials differ only in the upper half (an `ntfsclone --new-half-serial` clone and its source) never share
+a name. A name with any other serial width is non-canonical. A hashed
 name cannot be turned back into a path, so every block stores its root key text in page 0
 (see [Root key text](#root-key-text)); the name is derived from that text and the header's
 volume serial, and a block whose file name differs from the derived name is invalid.
@@ -183,8 +185,7 @@ from the stored `S`, `E`, delta capacity `D` and pool capacity `P`. The posting 
 | 4 | format version | u32 | Mismatch means discard and rescan |
 | 8 | producer kind | u32 | 1 = MFT, 2 = enumeration |
 | 12 | flags | u32 | 1 = complete, 2 = capacity exhausted |
-| 16 | volume serial | u32 | |
-| 20 | root row | u32 | Row index of the indexed root; 0 for enumeration, normally 5 for MFT |
+| 16 | volume serial | u64 | The full serial the file system reports; compared in all 64 bits |
 | 24 | scan timestamp | i64 | UTC ticks |
 | 32 | row count | u32 | Highest used slot plus one |
 | 36 | slot capacity | u32 | Rows region size, in rows |
@@ -196,6 +197,7 @@ from the stored `S`, `E`, delta capacity `D` and pool capacity `P`. The posting 
 | 72 | row region offset | u64 | |
 | 80 | name pool offset | u64 | |
 | 88 | live row count | u32 | Rows in use and not tombstoned; maintained by `BlockWriter` |
+| 92 | root row | u32 | Row index of the indexed root; 0 for enumeration, normally 5 for MFT |
 | 96 | sequence region offset | u64 | |
 | 104 | consumer FourCC | u32 | Four ASCII bytes in source order; zero means unspecified when version is also zero |
 | 108 | consumer version | u32 | Opaque consumer-owned version; compared exactly |
@@ -211,11 +213,10 @@ from the stored `S`, `E`, delta capacity `D` and pool capacity `P`. The posting 
 | 160 | delta entry count | u32 | Published delta entries, excluding entry zero; at most `D` |
 | 164 | delta capacity | u32 | `D`, the allocatable delta entries, excluding entry zero; at least 1 |
 
-The format version is 10. The declared header ends at byte 168 within a
-4096-byte header page; the root key text follows it. A version mismatch rejects the block: normal opens
-rebuild it, and cache-only opens decline the root and leave the block in place. In version 10 the
-capacity-exhausted flag means a change could not be stored ([Capacity](#capacity)); a version 9 block, whose flag can
-stand for journal changes dropped behind its cursor, is rejected as `WrongFormatVersion` and cold-scans once.
+The format version is 11. The declared header ends at byte 168 within a
+4096-byte header page; the root key text follows it. A version mismatch rejects the block as `WrongFormatVersion`
+before any later field is trusted: normal opens rebuild it, and cache-only opens decline the root and leave the block in
+place. The capacity-exhausted flag means a change could not be stored ([Capacity](#capacity)).
 
 ## Root key text
 
@@ -507,7 +508,7 @@ has no unused names to drop.
 
 A record no growth can store is skipped whole and sets the capacity-exhausted flag: a record or parent number above
 32 bits, a region at its clamp, a record refused again by the same region right after its own growth, or a growth
-that failed (an I/O error ends growing for the rest of that batch). So in format version 10 the flag means at least
+that failed (an I/O error ends growing for the rest of that batch). So the flag means at least
 one change could not be stored; a full region alone never sets it, because the watch grows the block instead. The
 watch reports the first such skip of a lineage once as `WatchFaultKind.CapacityExhausted`
 ([Watch lifetime](watch-lifetime.md), "Cannot grow"). The volume remains Ready, queryable and watched. Read

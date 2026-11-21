@@ -20,7 +20,7 @@ public sealed class FileIndexMftFallbackTests : IndexTreeTestBase
     public TestContext TestContext { get; set; } = null!;
 
     FileIndexOptions Options(ProducerSelection selection, MftIndexSource source, RootKey? root = null,
-        string? volumeRoot = null, VolumeKey? volume = null, uint? serial = null) =>
+        string? volumeRoot = null, VolumeKey? volume = null, ulong? serial = null) =>
         SyntheticVolumeFacts.Apply(new FileIndexOptions
         {
             Root = root ?? VolumeT,

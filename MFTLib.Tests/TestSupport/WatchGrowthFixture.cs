@@ -28,7 +28,7 @@ sealed class WatchGrowthFixture : IAsyncDisposable
     readonly ConcurrentQueue<FileChange> _changes = [];
     readonly ConcurrentQueue<WatchFault> _faults = [];
 
-    WatchGrowthFixture(string cacheDirectory, uint volumeSerial, FileIndexOptions options, FileIndex index,
+    WatchGrowthFixture(string cacheDirectory, ulong volumeSerial, FileIndexOptions options, FileIndex index,
         ScriptedWatchSource watches, ConcurrentQueue<string> diagnostics)
     {
         _diagnostics = diagnostics;
@@ -111,7 +111,7 @@ sealed class WatchGrowthFixture : IAsyncDisposable
     public FileIndexOptions Options { get; }
     public ScriptedWatchSource Watches { get; }
     public string CacheDirectory { get; }
-    public uint VolumeSerial { get; }
+    public ulong VolumeSerial { get; }
     public IReadOnlyCollection<FileChange> Changes
     {
         get
@@ -127,7 +127,7 @@ sealed class WatchGrowthFixture : IAsyncDisposable
     public RootBlock RootBlock => Index.CurrentBlock ?? throw new InvalidOperationException("The root has no block.");
     public BlockFile Block => RootBlock.Block;
 
-    public static string CanonicalPathIn(string cacheDirectory, uint volumeSerial) =>
+    public static string CanonicalPathIn(string cacheDirectory, ulong volumeSerial) =>
         Path.Combine(cacheDirectory, MFTLib.Index.CacheDirectory.BlockFileName(Volume, volumeSerial));
 
     public static IEnumerable<SyntheticRow> Rows()
@@ -142,7 +142,7 @@ sealed class WatchGrowthFixture : IAsyncDisposable
     ///     Opens the index. <paramref name="beforeProduce" /> runs before every production after the open's, so a test
     ///     can hold a rescan in production.
     /// </summary>
-    public static async Task<WatchGrowthFixture> OpenAsync(string cacheDirectory, string treeRoot, uint volumeSerial,
+    public static async Task<WatchGrowthFixture> OpenAsync(string cacheDirectory, string treeRoot, ulong volumeSerial,
         BlockCapacities? capacities = null, Func<CancellationToken, Task>? beforeProduce = null,
         CacheMode cacheMode = CacheMode.Persistent)
     {

@@ -18,7 +18,7 @@ public sealed class FileIndexBlockReleaseTests : IndexTreeTestBase
 {
     FileIndexOptions Options() => Fixture.Options(volumeSerial: UniqueVolumeSerial);
 
-    FileIndexOptions SecondRootOptions(string secondTreeRoot, uint secondVolumeSerial)
+    FileIndexOptions SecondRootOptions(string secondTreeRoot, ulong secondVolumeSerial)
     {
         return new FileIndexOptions
         {

@@ -11,7 +11,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public sealed class CacheDirectoryNamingTests : IDisposable
 {
-    const uint Serial = 0x0BADF00D;
+    const ulong Serial = 0x0BADF00D;
     TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 
@@ -37,7 +37,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     static string ExpectedStem(string text) =>
         "D" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)).AsSpan(0, 8));
 
-    string Seed(RootKey root, uint serial = Serial) =>
+    string Seed(RootKey root, ulong serial = Serial) =>
         SyntheticBlock.WriteCached(_cacheDirectory, root, serial,
             new SyntheticBlockOptions { ProducerKind = ProducerKind.Enumeration, RootRow = 0 },
             [new SyntheticRow(0, root.ToString(), 0) { IsDirectory = true }]);
@@ -45,8 +45,28 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     [TestMethod]
     public void BlockFileName_VolumeRoot_IsLetterDashUppercaseSerial()
     {
-        Assert.AreEqual("C-0BADF00D.mlix", CacheDirectory.BlockFileName(new VolumeKey('c'), Serial));
-        Assert.AreEqual("Z-00000000.mlix", CacheDirectory.BlockFileName(new VolumeKey('Z'), 0));
+        Assert.AreEqual("C-000000000BADF00D.mlix", CacheDirectory.BlockFileName(new VolumeKey('c'), Serial));
+        Assert.AreEqual("Z-0000000000000000.mlix", CacheDirectory.BlockFileName(new VolumeKey('Z'), 0));
+    }
+
+    [TestMethod]
+    public void BlockFileName_SerialsSharingTheLowerHalf_NameDifferentFilesThatParseBackInFull()
+    {
+        const ulong source = 0x1111_2222_0BAD_F00D;
+        const ulong clone = 0x3333_4444_0BAD_F00D;
+        var directory = Folder("Folder");
+
+        var sourceName = CacheDirectory.BlockFileName(new VolumeKey('C'), source);
+        var cloneName = CacheDirectory.BlockFileName(new VolumeKey('C'), clone);
+
+        Assert.AreEqual("C-111122220BADF00D.mlix", sourceName);
+        Assert.AreEqual("C-333344440BADF00D.mlix", cloneName);
+        Assert.AreNotEqual(CacheDirectory.BlockFileName(directory, source), CacheDirectory.BlockFileName(directory, clone));
+        Assert.IsTrue(CacheDirectory.TryParseBlockFileName(cloneName, out var parsed));
+        Assert.AreEqual(clone, parsed.VolumeSerial);
+        Assert.IsTrue(CacheDirectory.TryParseBlockFileName(CacheDirectory.BlockFileName(directory, ulong.MaxValue),
+            out var maximum));
+        Assert.AreEqual(ulong.MaxValue, maximum.VolumeSerial);
     }
 
     [TestMethod]
@@ -57,8 +77,8 @@ public sealed class CacheDirectoryNamingTests : IDisposable
 
         var name = CacheDirectory.BlockFileName(key, Serial);
 
-        Assert.AreEqual($"{ExpectedStem(key.ToString())}-0BADF00D.mlix", name);
-        Assert.AreEqual(1 + 16 + 1 + 8 + 5, name.Length);
+        Assert.AreEqual($"{ExpectedStem(key.ToString())}-000000000BADF00D.mlix", name);
+        Assert.AreEqual(1 + 16 + 1 + 16 + 5, name.Length);
     }
 
     [TestMethod]
@@ -69,7 +89,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
         var lower = Folder("folder");
 
         Assert.AreEqual(CacheDirectory.BlockFileName(lower, Serial), CacheDirectory.BlockFileName(upper, Serial));
-        Assert.AreEqual($"{ExpectedStem(upper.ToString().ToUpperInvariant())}-0BADF00D.mlix",
+        Assert.AreEqual($"{ExpectedStem(upper.ToString().ToUpperInvariant())}-000000000BADF00D.mlix",
             CacheDirectory.BlockFileName(upper, Serial));
     }
 
@@ -107,7 +127,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     {
         var directoryName = CacheDirectory.BlockFileName(Folder("Folder"), Serial);
 
-        Assert.IsTrue(CacheDirectory.TryParseBlockFileName("C-0BADF00D.mlix", out var volume));
+        Assert.IsTrue(CacheDirectory.TryParseBlockFileName("C-000000000BADF00D.mlix", out var volume));
         Assert.AreEqual(new VolumeKey('C'), volume.Volume);
         Assert.AreEqual("C", volume.Stem);
         Assert.AreEqual(Serial, volume.VolumeSerial);
@@ -119,17 +139,20 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow("c-0BADF00D.mlix")]
-    [DataRow("C-0badf00d.mlix")]
-    [DataRow("1-0BADF00D.mlix")]
-    [DataRow("C_0BADF00D.mlix")]
-    [DataRow("C-0BADF00D.MLIX")]
-    [DataRow("D0123456789ABCDEF-0BADF00D.mlix")]
-    [DataRow("D0123456789abcde-0BADF00D.mlix")]
-    [DataRow("D0123456789abcdeg-0BADF00D.mlix")]
-    [DataRow("E0123456789abcdef-0BADF00D.mlix")]
-    [DataRow("D0123456789abcdef-0badf00d.mlix")]
-    [DataRow("D0123456789abcdef_0BADF00D.mlix")]
+    [DataRow("C-0BADF00D.mlix")]
+    [DataRow("D0123456789abcdef-0BADF00D.mlix")]
+    [DataRow("C-00000000000BADF00D.mlix")]
+    [DataRow("c-000000000BADF00D.mlix")]
+    [DataRow("C-000000000badf00d.mlix")]
+    [DataRow("1-000000000BADF00D.mlix")]
+    [DataRow("C_000000000BADF00D.mlix")]
+    [DataRow("C-000000000BADF00D.MLIX")]
+    [DataRow("D0123456789ABCDEF-000000000BADF00D.mlix")]
+    [DataRow("D0123456789abcde-000000000BADF00D.mlix")]
+    [DataRow("D0123456789abcdeg-000000000BADF00D.mlix")]
+    [DataRow("E0123456789abcdef-000000000BADF00D.mlix")]
+    [DataRow("D0123456789abcdef-000000000badf00d.mlix")]
+    [DataRow("D0123456789abcdef_000000000BADF00D.mlix")]
     [DataRow("")]
     public void TryParseBlockFileName_RejectsNamesTheFormatterWouldNotProduce(string fileName)
     {

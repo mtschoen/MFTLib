@@ -9,7 +9,7 @@
       a normalized key. Invalid input returns false with the default key.
       `RootKey` is what the index holds: a `VolumeKey` or a normalized directory path
       (`RootKey.FromDirectory`, `RootKey.TryParse`), widened implicitly from `VolumeKey`, with `TryGetVolume`
-      for volume-only boundaries and no `Letter`. The open derives the containing volume's serial (zero when
+      for volume-only boundaries and no `Letter`. The open derives the containing volume's full serial (zero when
       unreported) of a walked folder.
       `Letter` and `ToString()` reject the invalid
       default key, as do index operations, cache selections and key-bearing record initializers.
@@ -134,11 +134,13 @@
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. The tag carries only meaning the consumer
-      owns. Block format 8 stores the two values at offsets 104 and 108 in a 160-byte
+      owns. The block stores the two values at offsets 104 and 108 in a 168-byte
       declared header, and the block's root key text (the volume letter or the normalized
-      directory path) in page 0 after it. The cache file name derives from that key and the
-      volume serial, and a block whose name is not the one its stored key derives is invalid and
-      cold-scans. Old-format blocks cold-scan once. Mismatches report `WrongCacheTag` and cold-scan; a
+      directory path) in page 0 after it. The volume serial is the full 64-bit serial the file
+      system reports, resolved once per open without elevation, stored at header offset 16 and
+      written in the file name as sixteen hexadecimal digits; every comparison uses all 64 bits.
+      The cache file name derives from the key and that serial, and a block whose name is not the
+      one its stored key derives is invalid and cold-scans. Old-format blocks cold-scan once. Mismatches report `WrongCacheTag` and cold-scan; a
       cache-only open fails with `RootFailureKind.CacheIdentityMismatch` and leaves the block in place. Both emit
       stored/requested tag diagnostics.
     - **Scan-shape identity**: the library compares the options that shape a block's rows
@@ -173,6 +175,9 @@
       (`MftOnly`); `WalkOnly` never touches the MFT source. The producer is fixed for the index lifetime and each
       root selects its own, so an application can combine MFT-scanned roots with directory-walked roots across its
       indexes. A directory root on an eligible volume is a view of the volume's block rooted at its resolved row.
+      When a known local volume is not ready, including an NTFS volume whose full serial query fails, an
+      `Automatic` or `WalkOnly` walk can still reach `Ready`. It opens and rescans privately because the volume
+      identity is unknown. `ExistingOnly` reports `CacheDeclined` even if a zero-serial block exists.
       An operational producer failure leaves the root `Failed` with
       `RootFailureKind.ProducerFailed`, for MFT and enumeration alike.
       A failed rescan keeps the previous block and records `RootStatus.Failure` with the scan

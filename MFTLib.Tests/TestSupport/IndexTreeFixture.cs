@@ -43,7 +43,7 @@ sealed class IndexTreeFixture : IDisposable
     }
 
     /// <summary>Options that open the drive letter as a synthetic volume rooted at <see cref="TreeRoot" />.</summary>
-    public FileIndexOptions Options(char drive = 'T', uint volumeSerial = 0x0BADF00D,
+    public FileIndexOptions Options(char drive = 'T', ulong volumeSerial = 0x0BADF00D,
         ProducerSelection producer = ProducerSelection.WalkOnly, CacheMode? cacheMode = null) =>
         SyntheticVolumeFacts.Apply(new FileIndexOptions
         {

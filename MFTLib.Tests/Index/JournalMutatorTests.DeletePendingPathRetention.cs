@@ -123,7 +123,7 @@ public partial class JournalMutatorTests
     public async Task DeletePending_BlockReopenedThenAncestorRenamedBeforeFileDelete_RetainsOriginalPathAndNameOnDeleted()
     {
         using var directory = new TempDirectory("mftlib-delete-pending-reopen-rename");
-        var blockPath = Path.Combine(directory.Path, "T-0BADF00D.mlix");
+        var blockPath = Path.Combine(directory.Path, "T-000000000BADF00D.mlix");
         var expectedPath = Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt");
         string pendingPath;
         string pendingName;
@@ -204,7 +204,7 @@ public partial class JournalMutatorTests
     public async Task DeletePending_NamePoolExhausted_RefusesPendingTransitionAndCompletesDeletedWithFullPathInSameBatch()
     {
         using var directory = new TempDirectory("mftlib-delete-pending-pool-exhausted");
-        var blockPath = Path.Combine(directory.Path, "T-0BADF00D.mlix");
+        var blockPath = Path.Combine(directory.Path, "T-000000000BADF00D.mlix");
         using var block = TestBlocks.Create(blockPath, ProducerKind.Mft, slotCapacity: 32, namePoolCapacity: 512,
             rootRow: VolumeRootRow);
         var writer = new BlockWriter(block);
@@ -274,7 +274,7 @@ public partial class JournalMutatorTests
     public async Task DeletePending_NameEntryTableExhausted_RefusesPendingTransitionAndCompletesDeletedWithFullPathInSameBatch()
     {
         using var directory = new TempDirectory("mftlib-delete-pending-entries-exhausted");
-        var blockPath = Path.Combine(directory.Path, "T-0BADF00D.mlix");
+        var blockPath = Path.Combine(directory.Path, "T-000000000BADF00D.mlix");
         using var block = TestBlocks.Create(blockPath, ProducerKind.Mft, slotCapacity: 32, namePoolCapacity: 4096,
             nameEntryCapacity: 6, rootRow: VolumeRootRow);
         var writer = new BlockWriter(block);

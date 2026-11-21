@@ -10,7 +10,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class BlockRootKeyStorageTests : IDisposable
 {
-    const uint Serial = 0x0BADF00D;
+    const ulong Serial = 0x0BADF00D;
     const int CountOffset = BlockLayout.HeaderFieldBytes;
     readonly TempDirectory _directoryOwner = new("mftlib-rootkey-storage");
 
@@ -40,11 +40,11 @@ public sealed class BlockRootKeyStorageTests : IDisposable
     }
 
     [TestMethod]
-    public void WrittenBlock_CarriesFormatVersionTen()
+    public void WrittenBlock_CarriesFormatVersionEleven()
     {
         var bytes = File.ReadAllBytes(Seed(new VolumeKey('T')));
 
-        Assert.AreEqual(10u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)));
+        Assert.AreEqual(11u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)));
     }
 
     [TestMethod]

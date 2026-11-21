@@ -23,7 +23,7 @@ public sealed class JournalMutatorStopTests : IDisposable
     (BlockFile Block, BlockWriter Writer, RootBlock[] Snapshot) BuildRoot(uint slotCapacity = 8,
         uint namePoolCapacity = 512, uint? nameEntryCapacity = null, uint? deltaCapacity = null)
     {
-        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-00000001.mlix"), ProducerKind.Mft,
+        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-0000000000000001.mlix"), ProducerKind.Mft,
             slotCapacity, namePoolCapacity, nameEntryCapacity, volumeSerial: 1, deltaCapacity: deltaCapacity);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0, RowFlags.InUse | RowFlags.Directory,

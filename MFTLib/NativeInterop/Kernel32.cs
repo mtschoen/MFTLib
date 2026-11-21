@@ -16,6 +16,12 @@ delegate bool DeviceIoControl(
     out uint bytesReturned,
     IntPtr overlapped);
 
+// Reads the full serial the file system reports for the volume holding an open handle.
+delegate bool ReadVolumeSerialByHandle(SafeFileHandle handle, out ulong volumeSerial);
+
+// Reads the 32-bit serial GetVolumeInformationW reports for a volume root path.
+delegate bool ReadVolumeSerialByRoot(string rootPath, out uint volumeSerial);
+
 delegate int GetDiskSpaceInformation(
     string rootPath,
     out DiskSpaceInformation diskSpaceInformation);
@@ -70,14 +76,23 @@ static partial class Kernel32
             _createFile = NativeCreateFile;
         internal DeviceIoControl _deviceIoControl = NativeDeviceIoControl;
         internal GetDiskSpaceInformation _getDiskSpaceInformation = NativeGetDiskSpaceInformation;
+        internal ReadVolumeSerialByHandle _readVolumeSerialByHandle = HandleBoundFile.TryReadVolumeSerial;
+        internal ReadVolumeSerialByRoot _readVolumeSerialByRoot = NativeReadVolumeSerialByRoot;
 
         internal void ResetToDefaults()
         {
             _createFile = NativeCreateFile;
             _deviceIoControl = NativeDeviceIoControl;
             _getDiskSpaceInformation = NativeGetDiskSpaceInformation;
+            _readVolumeSerialByHandle = HandleBoundFile.TryReadVolumeSerial;
+            _readVolumeSerialByRoot = NativeReadVolumeSerialByRoot;
         }
     }
+
+    // GetVolumeInformationW's serial: 32 bits, the whole serial of a FAT or exFAT volume and the low half of an
+    // NTFS one.
+    static bool NativeReadVolumeSerialByRoot(string rootPath, out uint volumeSerial) =>
+        GetVolumeInformationW(rootPath, IntPtr.Zero, 0, out volumeSerial, out _, out _, IntPtr.Zero, 0);
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
         StringMarshalling = StringMarshalling.Utf16)]
@@ -127,11 +142,10 @@ static partial class Kernel32
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static unsafe partial bool VirtualUnlock(byte* address, nuint size);
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true,
         StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetVolumeInformationW(
+    private static partial bool GetVolumeInformationW(
         string rootPathName, IntPtr volumeNameBuffer, uint volumeNameSize,
         out uint volumeSerialNumber, out uint maximumComponentLength, out uint fileSystemFlags,
         IntPtr fileSystemNameBuffer, uint fileSystemNameSize);

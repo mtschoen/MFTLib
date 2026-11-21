@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class CacheDirectoryInspectionTests : IDisposable
 {
-    const uint VolumeSerial = 0x0BADF00D;
+    const ulong VolumeSerial = 0x0BADF00D;
     TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 

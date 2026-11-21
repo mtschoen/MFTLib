@@ -15,7 +15,7 @@ public sealed record CachedBlockFile
     /// <param name="path">The full path to the cached file.</param>
     /// <param name="sizeBytes">The file size in bytes.</param>
     /// <param name="lastWriteTimeUtc">The file's last-write time in UTC.</param>
-    internal CachedBlockFile(RootKey root, uint volumeSerial, string path, long sizeBytes,
+    internal CachedBlockFile(RootKey root, ulong volumeSerial, string path, long sizeBytes,
         DateTime lastWriteTimeUtc)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -30,7 +30,7 @@ public sealed record CachedBlockFile
     public RootKey Root { get; init => field = value.Validated(); }
 
     /// <summary>Serial of the volume containing the root, distinguishing volumes mounted at one letter over time; parsed from the file name.</summary>
-    public uint VolumeSerial { get; init; }
+    public ulong VolumeSerial { get; init; }
 
     /// <summary>Where the block file lives.</summary>
     public string Path { get; init; }

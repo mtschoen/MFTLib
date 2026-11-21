@@ -82,7 +82,7 @@ public sealed partial class FileIndex
         ///     True when the file at <paramref name="path" /> still opens as a complete block for the
         ///     volume, the same validation the open path applies before it adopts a cached block.
         /// </summary>
-        static bool HoldsCompleteBlock(string path, uint volumeSerial)
+        static bool HoldsCompleteBlock(string path, ulong volumeSerial)
         {
             // Open reports an unreadable or invalid file as null rather than throwing.
             using var block = BlockFile.OpenCanonical(path, volumeSerial, out _);

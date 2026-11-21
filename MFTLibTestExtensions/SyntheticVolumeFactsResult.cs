@@ -11,7 +11,7 @@ public readonly record struct SyntheticVolumeFactsResult
     /// <param name="isLocal">Whether the volume is a fixed local drive; otherwise it is a network drive.</param>
     /// <param name="volume">The synthetic volume's drive letter, set together with <paramref name="volumeRootDirectory" />.</param>
     /// <param name="volumeRootDirectory">The host directory the synthetic volume is rooted at.</param>
-    public SyntheticVolumeFactsResult(uint volumeSerial, bool isNtfs = true, bool isLocal = true,
+    public SyntheticVolumeFactsResult(ulong volumeSerial, bool isNtfs = true, bool isLocal = true,
         VolumeKey? volume = null, string? volumeRootDirectory = null)
     {
         VolumeSerial = volumeSerial;
@@ -22,7 +22,7 @@ public readonly record struct SyntheticVolumeFactsResult
     }
 
     /// <summary>The identity used in cache filenames and volume matching, or zero when no serial is reported.</summary>
-    public uint VolumeSerial { get; init; }
+    public ulong VolumeSerial { get; init; }
 
     /// <summary>Whether the volume's file system is NTFS; otherwise it reports exFAT.</summary>
     public bool IsNtfs { get; init; }

@@ -17,14 +17,14 @@ sealed class SyntheticBlockBuilder : IDisposable
     readonly BlockFile _block;
     uint _nextRow;
 
-    public SyntheticBlockBuilder(char driveLetter = 'T', uint volumeSerial = 0x0BADF00D,
+    public SyntheticBlockBuilder(char driveLetter = 'T', ulong volumeSerial = 0x0BADF00D,
         uint slotCapacity = 256, uint namePoolCapacity = 4096, uint? nameEntryCapacity = null)
     {
         try
         {
             Drive = driveLetter;
             VolumeSerial = volumeSerial;
-            BlockPath = Path.Combine(DirectoryPath, $"{driveLetter}-{volumeSerial:X8}.mlix");
+            BlockPath = Path.Combine(DirectoryPath, $"{driveLetter}-{volumeSerial:X16}.mlix");
 
             _block = BlockFile.Create(new BlockFileCreateOptions
             {
@@ -48,7 +48,7 @@ sealed class SyntheticBlockBuilder : IDisposable
 
     public char Drive { get; }
 
-    public uint VolumeSerial { get; }
+    public ulong VolumeSerial { get; }
 
     public string DirectoryPath => _directory.Path;
 

@@ -8,7 +8,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class CacheDirectoryDirectoryOwnershipTests : IDisposable
 {
-    const uint Serial = 0x0BADF00D;
+    const ulong Serial = 0x0BADF00D;
     readonly TempDirectory _directoryOwner = new("mftlib-dir-ownership");
 
     public void Dispose() => _directoryOwner.Dispose();

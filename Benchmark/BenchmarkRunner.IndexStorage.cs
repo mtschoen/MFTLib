@@ -50,7 +50,7 @@ public partial class BenchmarkRunner
         var geometry = new NtfsVolumeInformation(records * 1024L, 1024);
         var identity = new BlockContentIdentity(default, ScanShape.ForMft(includeFreed: false));
         var location = new MftBlockCapacity.FileLocation(new VolumeKey('T'),
-            Path.Combine(directoryPath, "T-00000000.mlix"), 0, DeleteOnClose: true);
+            Path.Combine(directoryPath, "T-0000000000000000.mlix"), 0, DeleteOnClose: true);
         var request = new MftBlockProduceRequest
         {
             Volume = location.Volume,

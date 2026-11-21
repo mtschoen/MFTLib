@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public sealed class SyntheticPostingTests : IDisposable
 {
-    const uint Serial = 0x4242;
+    const ulong Serial = 0x4242;
 
     readonly TempDirectory _directory = new("mftlib-synthetic-postings");
 

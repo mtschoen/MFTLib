@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>The destination of one volume's client-created packed block.</summary>
-sealed record BlockScanTarget(string Path, uint VolumeSerial, bool DeleteOnClose)
+sealed record BlockScanTarget(string Path, ulong VolumeSerial, bool DeleteOnClose)
 {
     /// <summary>
     ///     The consumer identity that a later warm-start attempt must match; the broker writes

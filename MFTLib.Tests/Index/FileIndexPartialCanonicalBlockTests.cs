@@ -19,7 +19,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IndexTreeTestBase
 
     CancellationToken Token => TestContext.CancellationToken;
 
-    const uint VolumeSerial = 0x2970;
+    const ulong VolumeSerial = 0x2970;
     string _canonicalPath = null!;
 
     [TestInitialize]

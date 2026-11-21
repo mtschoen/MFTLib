@@ -15,7 +15,7 @@ public class BlockFileResidentPagesTests
     public void TryReleaseResidentPages_TrimsTheWholePageAlignedView()
     {
         using var directory = new TempDirectory("mftlib-trim-whole");
-        using var block = TestBlocks.Create(Path.Combine(directory.Path, "T-0BADF00D.mlix"), slotCapacity: 512);
+        using var block = TestBlocks.Create(Path.Combine(directory.Path, "T-000000000BADF00D.mlix"), slotCapacity: 512);
         var ranges = new List<(long Start, long End)>();
         block.Hooks._trimViewRange = (start, end) =>
         {
@@ -33,7 +33,7 @@ public class BlockFileResidentPagesTests
     public void TryReleaseResidentPages_DisposedBlock_DoesNotTrim()
     {
         using var directory = new TempDirectory("mftlib-trim-disposed");
-        var block = TestBlocks.Create(Path.Combine(directory.Path, "T-0BADF00D.mlix"), slotCapacity: 512);
+        var block = TestBlocks.Create(Path.Combine(directory.Path, "T-000000000BADF00D.mlix"), slotCapacity: 512);
         var calls = 0;
         block.Hooks._trimViewRange = (_, _) => ++calls;
         block.Dispose();
@@ -46,7 +46,7 @@ public class BlockFileResidentPagesTests
     public void TryReleaseResidentPages_NativeFailure_ReportsFalse()
     {
         using var directory = new TempDirectory("mftlib-trim-failure");
-        using var block = TestBlocks.Create(Path.Combine(directory.Path, "T-0BADF00D.mlix"), slotCapacity: 512);
+        using var block = TestBlocks.Create(Path.Combine(directory.Path, "T-000000000BADF00D.mlix"), slotCapacity: 512);
         block.Hooks._trimViewRange = (_, _) => 87;
 
         Assert.IsFalse(block.TryReleaseResidentPages());
@@ -56,7 +56,7 @@ public class BlockFileResidentPagesTests
     public void TryReleaseResidentPages_WrittenRowsStayIntactAndPersist()
     {
         using var directory = new TempDirectory("mftlib-trim-dirty");
-        var path = Path.Combine(directory.Path, "T-0BADF00D.mlix");
+        var path = Path.Combine(directory.Path, "T-000000000BADF00D.mlix");
         const uint rows = 4096;
         using (var block = TestBlocks.Create(path, slotCapacity: rows, namePoolCapacity: rows * 16))
         {

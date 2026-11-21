@@ -33,7 +33,7 @@ public sealed class CacheDirectoryDeletionTests : IDisposable
         var excluded = TestBlocks.WriteInvalidCache(_directory, 'U');
         var unrelated = Path.Combine(_directory, "notes.mlix");
         var retired = selected[0] + ".retired-test";
-        var orphanLock = Path.Combine(_directory, "V-00000001.mlix.lock");
+        var orphanLock = Path.Combine(_directory, "V-0000000000000001.mlix.lock");
         foreach (var path in new[] { unrelated, retired, orphanLock })
         {
             File.WriteAllText(path, "keep");

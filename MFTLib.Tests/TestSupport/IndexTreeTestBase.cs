@@ -13,7 +13,7 @@ public abstract class IndexTreeTestBase : IDisposable
 
     protected string TreeRoot => Fixture.TreeRoot;
     protected string CacheDirectoryPath => Fixture.CacheDirectory;
-    protected uint UniqueVolumeSerial { get; private set; }
+    protected ulong UniqueVolumeSerial { get; private set; }
     protected virtual bool SeedDocuments => true;
 
     [TestInitialize]

@@ -17,7 +17,7 @@ public sealed class FileIndexPerQueryBorrowTests : IndexTreeTestBase
     const int CollectionPassLimit = 50;
 
     TempDirectory? _secondTree;
-    uint _secondSerial;
+    ulong _secondSerial;
     int _rescanCount;
 
     /// <summary>Creates two isolated enumeration trees and a shared cache location.</summary>

@@ -20,7 +20,7 @@ public sealed class PostingBuildTests : IDisposable
     public void Initialize()
     {
         _directory = new TempDirectory("mftlib-postings");
-        _blockPath = Path.Combine(_directory.Path, "T-0BADF00D.mlix");
+        _blockPath = Path.Combine(_directory.Path, "T-000000000BADF00D.mlix");
     }
 
     public void Dispose() => _directory.Dispose();

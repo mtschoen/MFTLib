@@ -40,7 +40,7 @@ public sealed class SyntheticCacheSlot : IDisposable
     /// <param name="volumeSerial">The volume serial number the index reports for the volume.</param>
     /// <returns>The held slot.</returns>
     /// <exception cref="InvalidOperationException">An open index or another slot already owns it.</exception>
-    public static SyntheticCacheSlot Acquire(string cacheDirectory, RootKey root, uint volumeSerial)
+    public static SyntheticCacheSlot Acquire(string cacheDirectory, RootKey root, ulong volumeSerial)
     {
         var blockPath = SyntheticBlock.CachedPath(cacheDirectory, root, volumeSerial);
         Directory.CreateDirectory(cacheDirectory);

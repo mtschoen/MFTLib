@@ -15,8 +15,8 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class BlockFileAtomicReplaceTests
 {
-    const uint OldSerial = 0x0000_1111;
-    const uint NewSerial = 0x0000_2222;
+    const ulong OldSerial = 0x0000_1111;
+    const ulong NewSerial = 0x0000_2222;
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
@@ -56,12 +56,12 @@ public sealed class BlockFileAtomicReplaceTests
         CollectionAssert.AreEquivalent(new[] { canonical, retired }, Directory.GetFiles(directory.Path));
     }
 
-    static uint ReadSerial(string path)
+    static ulong ReadSerial(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var header = new byte[BlockLayout.HeaderFieldBytes];
         stream.ReadExactly(header);
         var offset = (int)System.Runtime.InteropServices.Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.VolumeSerial));
-        return BitConverter.ToUInt32(header, offset);
+        return BitConverter.ToUInt64(header, offset);
     }
 }

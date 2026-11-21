@@ -24,7 +24,7 @@ public sealed partial class BlockWriterTests : IDisposable
     public void Initialize()
     {
         _directory = new TempDirectory("mftlib-writer");
-        _blockPath = Path.Combine(_directory.Path, "T-0BADF00D.mlix");
+        _blockPath = Path.Combine(_directory.Path, "T-000000000BADF00D.mlix");
     }
 
     public void Dispose() => _directory.Dispose();

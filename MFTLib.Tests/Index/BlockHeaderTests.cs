@@ -87,7 +87,7 @@ public class BlockHeaderTests
         Assert.AreEqual(8, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ProducerKind)));
         Assert.AreEqual(12, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Flags)));
         Assert.AreEqual(16, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.VolumeSerial)));
-        Assert.AreEqual(20, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
+        Assert.AreEqual(24, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ScanTimestampTicks)));
         Assert.AreEqual(32, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RowCount)));
         Assert.AreEqual(36, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.SlotCapacity)));
         Assert.AreEqual(40, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NamePoolUsed)));
@@ -194,9 +194,30 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void RootRow_SitsAtHeaderOffsetTwenty()
+    public void RootRow_SitsAtHeaderOffsetNinetyTwo()
     {
-        Assert.AreEqual(20, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
+        Assert.AreEqual(92, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
+    }
+
+    [TestMethod]
+    public void VolumeSerial_FillsHeaderBytesSixteenToTwentyFour()
+    {
+        var header = new BlockHeader { VolumeSerial = 0x0807_0605_0403_0201 };
+
+        var bytes = MemoryMarshal.AsBytes(new ReadOnlySpan<BlockHeader>(in header));
+
+        CollectionAssert.AreEqual(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, bytes.Slice(16, 8).ToArray());
+    }
+
+    [TestMethod]
+    public void Validate_SerialDifferingOnlyInTheUpperHalf_IsAWrongVolumeSerial()
+    {
+        var header = ValidHeader();
+        header.VolumeSerial = 0x1111_2222_DEAD_BEEF;
+
+        Assert.AreEqual(BlockValidationResult.WrongVolumeSerial,
+            BlockHeader.Validate(in header, 0x3333_4444_DEAD_BEEF, ValidFileLength()));
+        Assert.IsNull(BlockHeader.Validate(in header, 0x1111_2222_DEAD_BEEF, ValidFileLength()));
     }
 
     [TestMethod]
@@ -206,7 +227,7 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsTen()
+    public void FormatVersion_IsEleven()
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
@@ -214,7 +235,7 @@ public class BlockHeaderTests
         using var block = builder.OpenForReading(out var validation);
         Assert.IsNull(validation);
         Assert.IsNotNull(block);
-        Assert.AreEqual(10u, block.Header.FormatVersion);
+        Assert.AreEqual(11u, block.Header.FormatVersion);
     }
 
     [TestMethod]

@@ -83,7 +83,7 @@ public partial class BenchmarkRunner
 
     static BlockFile CreatePipelineBlock(string directory, uint rows, uint distinctNames) => BlockFile.Create(new BlockFileCreateOptions
     {
-        Path = Path.Combine(directory, "T-00000000.mlix"),
+        Path = Path.Combine(directory, "T-0000000000000000.mlix"),
         Root = new VolumeKey('T'),
         VolumeSerial = 0,
         ProducerKind = ProducerKind.Enumeration,

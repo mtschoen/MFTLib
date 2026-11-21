@@ -7,10 +7,10 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class BlockValidationMatrixTests : IndexTreeTestBase
 {
-    FileIndexOptions Options(uint volumeSerial = 0x0BADF00D) =>
+    FileIndexOptions Options(ulong volumeSerial = 0x0BADF00D) =>
         Fixture.Options(volumeSerial: volumeSerial);
 
-    string BlockPath(uint volumeSerial = 0x0BADF00D)
+    string BlockPath(ulong volumeSerial = 0x0BADF00D)
     {
         return Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(new VolumeKey('T'), volumeSerial));
     }
@@ -58,6 +58,21 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongFormatVersion);
     }
 
+    /// <summary>
+    ///     A version 10 block, whose 32-bit serial sat at offset 16 and root row at offset 20, is rejected by the
+    ///     version check before any moved field is read.
+    /// </summary>
+    [TestMethod]
+    public async Task FormatVersionTen_ColdScans()
+    {
+        await SeedCacheAsync();
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
+        BitConverter.GetBytes(10u).CopyTo(bytes, 4);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
+
+        await AssertColdScansAsync(Options(), BlockValidationResult.WrongFormatVersion);
+    }
+
     [TestMethod]
     public async Task MissingCompleteFlag_ColdScans()
     {
@@ -74,17 +89,36 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
     ///     cache path (rather than opening with a differently configured serial, which would
     ///     point at a different cache file name and never exercise this rejection at all) and
     ///     reopens with the volume's original serial, so the header's serial no longer matches
-    ///     what the caller expects.
+    ///     what the caller expects. Only the upper half changes, so the lower 32 bits still match.
     /// </summary>
     [TestMethod]
     public async Task WrongVolumeSerial_ColdScans()
     {
         await SeedCacheAsync();
         var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
-        BitConverter.GetBytes(0x99999999u).CopyTo(bytes, 16);
+        BitConverter.GetBytes(0x99999999u).CopyTo(bytes, 20);
         await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongVolumeSerial);
+    }
+
+    /// <summary>
+    ///     Two volumes whose serials share the lower 32 bits, as an <c>ntfsclone --new-half-serial</c> clone and its
+    ///     source do: the clone's open never adopts the source's block, even under the clone's own name.
+    /// </summary>
+    [TestMethod]
+    public async Task SerialDifferingOnlyInTheUpperHalf_ColdScans()
+    {
+        const ulong source = 0x1111_2222_0BAD_F00D;
+        const ulong clone = 0x3333_4444_0BAD_F00D;
+        await using (await FileIndex.OpenAsync(Options(source), CancellationToken.None))
+        {
+        }
+
+        Assert.AreNotEqual(BlockPath(source), BlockPath(clone));
+        File.Copy(BlockPath(source), BlockPath(clone));
+
+        await AssertColdScansAsync(Options(clone), BlockValidationResult.WrongVolumeSerial);
     }
 
     [TestMethod]

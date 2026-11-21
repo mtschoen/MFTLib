@@ -9,7 +9,7 @@ static class TestBlocks
     public static BlockFile Create(string? path = null,
         ProducerKind producer = ProducerKind.Enumeration,
         uint slotCapacity = 64, uint namePoolCapacity = 512, uint? nameEntryCapacity = null,
-        uint volumeSerial = 0x0BADF00D, uint rootRow = 0,
+        ulong volumeSerial = 0x0BADF00D, uint rootRow = 0,
         bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0, uint? deltaCapacity = null)
         => BlockFile.Create(Options(path, producer, slotCapacity, namePoolCapacity, nameEntryCapacity,
             volumeSerial, rootRow, deleteOnClose, cacheTag, scanShape, deltaCapacity));
@@ -17,7 +17,7 @@ static class TestBlocks
     public static BlockFileCreateOptions Options(string? path = null,
         ProducerKind producer = ProducerKind.Enumeration,
         uint slotCapacity = 64, uint namePoolCapacity = 512, uint? nameEntryCapacity = null,
-        uint volumeSerial = 0x0BADF00D, uint rootRow = 0,
+        ulong volumeSerial = 0x0BADF00D, uint rootRow = 0,
         bool? deleteOnClose = null, CacheTag cacheTag = default, ulong scanShape = 0, uint? deltaCapacity = null)
         => new()
         {
@@ -36,7 +36,7 @@ static class TestBlocks
         };
 
     public static string WriteCache(string directory, char letter,
-        uint volumeSerial = 0x0BADF00D,
+        ulong volumeSerial = 0x0BADF00D,
         ProducerKind producer = ProducerKind.Enumeration,
         Action<BlockFile>? mutate = null)
     {
@@ -56,7 +56,7 @@ static class TestBlocks
         return path;
     }
 
-    public static string WriteInvalidCache(string directory, char letter, uint volumeSerial = 1)
+    public static string WriteInvalidCache(string directory, char letter, ulong volumeSerial = 1)
     {
         var path = Path.Combine(directory, CacheDirectory.BlockFileName(new VolumeKey(letter), volumeSerial));
         File.WriteAllText(path, "deliberately invalid block content");

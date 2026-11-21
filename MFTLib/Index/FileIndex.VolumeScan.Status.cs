@@ -8,7 +8,7 @@ public sealed partial class FileIndex
         {
             var resolved = view.Resolved;
             // The platform reports no serial as zero; the public status reports it as null.
-            uint? serial = resolved.VolumeSerial != 0 ? resolved.VolumeSerial : null;
+            ulong? serial = resolved.VolumeSerial != 0 ? resolved.VolumeSerial : null;
             if (view.OpenFailure is { } declined)
             {
                 return new RootStatus(view.Root, RootState.Failed)

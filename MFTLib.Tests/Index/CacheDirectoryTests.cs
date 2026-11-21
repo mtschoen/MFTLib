@@ -119,8 +119,8 @@ public sealed class CacheDirectoryTests : IDisposable
     [TestMethod]
     public void BlockFileName_CombinesDriveLetterAndSerial()
     {
-        Assert.AreEqual("C-0BADF00D.mlix", CacheDirectory.BlockFileName(new VolumeKey('C'), 0x0BADF00D));
-        Assert.AreEqual("C-0BADF00D.mlix", CacheDirectory.BlockFileName(new VolumeKey('c'), 0x0BADF00D));
+        Assert.AreEqual("C-000000000BADF00D.mlix", CacheDirectory.BlockFileName(new VolumeKey('C'), 0x0BADF00D));
+        Assert.AreEqual("C-000000000BADF00D.mlix", CacheDirectory.BlockFileName(new VolumeKey('c'), 0x0BADF00D));
     }
 
     [TestMethod]

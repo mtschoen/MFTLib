@@ -86,7 +86,7 @@ sealed unsafe partial class BlockFile
     ///     Opens a block at its canonical cache path: everything <see cref="Open" /> checks, plus that the file name is
     ///     exactly the name the stored key and the header's volume serial derive.
     /// </summary>
-    internal static BlockFile? OpenCanonical(string path, uint expectedVolumeSerial,
+    internal static BlockFile? OpenCanonical(string path, ulong expectedVolumeSerial,
         out BlockValidationResult? validation)
     {
         var block = Open(path, expectedVolumeSerial, out validation);

@@ -17,7 +17,7 @@ public sealed class SyntheticVolumeFactsTests
     static VolumeFacts Read(FileIndexOptions options, RootKey root, string rootDirectory) =>
         options.VolumeFacts!(root, rootDirectory);
 
-    static FileIndexOptions Mapped(uint serial = 7, bool isNtfs = true, bool isLocal = true) =>
+    static FileIndexOptions Mapped(ulong serial = 7, bool isNtfs = true, bool isLocal = true) =>
         SyntheticVolumeFacts.Apply(new FileIndexOptions(), serial, isNtfs, isLocal, VolumeT, HostRoot);
 
     [TestMethod]

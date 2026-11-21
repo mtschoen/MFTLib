@@ -79,9 +79,9 @@ MFTLibTestExtensions.ScriptedWatchStart :: method public static op_Inequality(MF
 MFTLibTestExtensions.ScriptedWatchStart :: property public Cursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.ScriptedWatchStart :: property public Volume { get; init; } : MFTLib.Index.VolumeKey
 MFTLibTestExtensions.ScriptedWatchStart :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.ScriptedWatchStart>
-MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, MFTLib.Index.RootKey root, uint volumeSerial) : string
-MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, uint volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
-MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, MFTLib.Index.RootKey root, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, MFTLib.Index.RootKey root, ulong volumeSerial) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, ulong volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
+MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, MFTLib.Index.RootKey root, ulong volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
 MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
 MFTLibTestExtensions.SyntheticBlock :: type public static class
 MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completed) : void
@@ -107,7 +107,7 @@ MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; ini
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
 MFTLibTestExtensions.SyntheticCacheSlot :: method public Dispose() : void
-MFTLibTestExtensions.SyntheticCacheSlot :: method public static Acquire(string cacheDirectory, MFTLib.Index.RootKey root, uint volumeSerial) : MFTLibTestExtensions.SyntheticCacheSlot
+MFTLibTestExtensions.SyntheticCacheSlot :: method public static Acquire(string cacheDirectory, MFTLib.Index.RootKey root, ulong volumeSerial) : MFTLibTestExtensions.SyntheticCacheSlot
 MFTLibTestExtensions.SyntheticCacheSlot :: method public static LockPathFor(string blockPath) : string
 MFTLibTestExtensions.SyntheticCacheSlot :: property public BlockPath { get; } : string
 MFTLibTestExtensions.SyntheticCacheSlot :: property public LockPath { get; } : string
@@ -193,7 +193,7 @@ MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get
 MFTLibTestExtensions.SyntheticMftProducer :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureMessage) : MFTLib.Index.CachedBlockDeletionResult
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.RootKey root, uint volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.RootKey root, ulong volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockRejection(string path, string message) : MFTLib.Index.CachedBlockRejection
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockStatus(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockAvailability availability, MFTLib.Index.BlockValidationResult? validation, MFTLib.Index.ProducerKind? producerKind, string? rootDirectory, MFTLib.Index.CacheTag? cacheTag = default) : MFTLib.Index.CachedBlockStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateFileChange(MFTLib.Index.FileChangeKind kind, MFTLib.Index.FileEntry entry, string path, System.DateTime timestamp, string? previousPath = default) : MFTLib.Index.FileChange
@@ -243,10 +243,10 @@ MFTLibTestExtensions.SyntheticScanRecord :: property public required ParentRecor
 MFTLibTestExtensions.SyntheticScanRecord :: property public required RecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticScanRecord :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticScanRecord>
 MFTLibTestExtensions.SyntheticVolumeFacts :: method public static AllowOverrides() : void
-MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Apply(MFTLib.Index.FileIndexOptions options, uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default) : MFTLib.Index.FileIndexOptions
+MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Apply(MFTLib.Index.FileIndexOptions options, ulong volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default) : MFTLib.Index.FileIndexOptions
 MFTLibTestExtensions.SyntheticVolumeFacts :: method public static Override(System.Func<MFTLib.Index.RootKey, string, MFTLibTestExtensions.SyntheticVolumeFactsResult?> reader) : System.IDisposable
 MFTLibTestExtensions.SyntheticVolumeFacts :: type public static class
-MFTLibTestExtensions.SyntheticVolumeFactsResult :: constructor public (uint volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default)
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: constructor public (ulong volumeSerial, bool isNtfs = true, bool isLocal = true, MFTLib.Index.VolumeKey? volume = default, string? volumeRootDirectory = default)
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public Equals(MFTLibTestExtensions.SyntheticVolumeFactsResult other) : bool
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public override Equals(object obj) : bool
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: method public override GetHashCode() : int
@@ -257,5 +257,5 @@ MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public IsLocal { get
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public IsNtfs { get; init; } : bool
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public Volume { get; init; } : MFTLib.Index.VolumeKey?
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public VolumeRootDirectory { get; init; } : string?
-MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public VolumeSerial { get; init; } : uint
+MFTLibTestExtensions.SyntheticVolumeFactsResult :: property public VolumeSerial { get; init; } : ulong
 MFTLibTestExtensions.SyntheticVolumeFactsResult :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticVolumeFactsResult>

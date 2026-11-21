@@ -27,7 +27,7 @@ public sealed class JournalMutatorDeepTreeTests : IAsyncDisposable
     public void Initialize()
     {
         _directory = new TempDirectory("mftlib-deep-tree");
-        _block = TestBlocks.Create(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft,
+        _block = TestBlocks.Create(Path.Combine(_directory.Path, "T-000000000BADF00D.mlix"), ProducerKind.Mft,
             slotCapacity: 256, namePoolCapacity: 4096);
         _writer = new BlockWriter(_block);
         _writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,
@@ -79,7 +79,7 @@ public sealed class JournalMutatorDeepTreeTests : IAsyncDisposable
         RootBlock[] snapshot =
         [
             new RootBlock(new VolumeKey('T'),
-                TestBlocks.Create(Path.Combine(directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft,
+                TestBlocks.Create(Path.Combine(directory.Path, "T-000000000BADF00D.mlix"), ProducerKind.Mft,
                     slotCapacity: BlockLayout.MaximumPathDepth + 64, namePoolCapacity: 4096),
                 rootDirectoryPath: TestRootDirectory.For('T'))
         ];

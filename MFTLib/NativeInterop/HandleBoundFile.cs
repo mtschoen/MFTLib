@@ -45,6 +45,20 @@ static partial class HandleBoundFile
         return (information.VolumeSerialNumber, file);
     }
 
+    /// <summary>
+    ///     The 64-bit volume serial number <c>FILE_ID_INFO</c> reports for the volume holding the open file. On NTFS it
+    ///     is the serial <c>FSCTL_GET_NTFS_VOLUME_DATA</c> reports, read without elevation. False when the file system
+    ///     refuses the query.
+    /// </summary>
+    internal static unsafe bool TryReadVolumeSerial(SafeFileHandle handle, out ulong volumeSerial)
+    {
+        FileIdInformation information;
+        var succeeded = GetFileInformationByHandleEx(handle, FileIdInfoClass, &information,
+            (uint)sizeof(FileIdInformation));
+        volumeSerial = succeeded ? information.VolumeSerialNumber : 0;
+        return succeeded;
+    }
+
     /// <summary>The name of the file system holding the open file, such as <c>NTFS</c>.</summary>
     [SupportedOSPlatform("windows")]
     internal static unsafe string FileSystemNameOf(SafeFileHandle handle)

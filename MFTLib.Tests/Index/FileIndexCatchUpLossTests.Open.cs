@@ -85,7 +85,7 @@ public partial class FileIndexCatchUpLossTests
     /// </summary>
     sealed class LossScriptedCache : IDisposable
     {
-        const uint VolumeSerial = 0x5EED;
+        const ulong VolumeSerial = 0x5EED;
 
         readonly IndexTreeFixture _fixture = new(seedDocuments: false);
         string CacheDirectoryPath => _fixture.CacheDirectory;

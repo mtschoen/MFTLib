@@ -79,7 +79,7 @@ sealed class TestBlockSections : IDisposable
     }
 
     /// <summary>Every call names a new file, so scans that overlap never share a block.</summary>
-    public static BlockScanTarget Target(uint volumeSerial = 123) =>
+    public static BlockScanTarget Target(ulong volumeSerial = 123) =>
         new(Path.Combine(Path.GetTempPath(), $"broker-process-block-{Guid.NewGuid():N}.bin"), volumeSerial,
             DeleteOnClose: true);
 }

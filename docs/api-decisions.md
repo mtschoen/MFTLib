@@ -186,9 +186,13 @@ a mid-scan fallback.
 
 ## RootStatus publishes the reported volume serial
 
-**Decision (owner ruling 2026-10-28, issue 844 ruling 17):** `RootStatus.VolumeSerial` is `uint?`,
-publishing the containing volume's serial already resolved at open. Internal zero maps to null at the public
-boundary. Linux roots, network shares, unlettered mounts, volumes without a reported serial and dump sources
+**Decision (owner ruling 2026-10-28, issue 844 ruling 17; width by owner ruling 2026-11-20,
+[issue 979 comment](/schoen/MFTLib/issues/979#issuecomment-180606)):**
+`RootStatus.VolumeSerial` is `ulong?`, publishing the full serial the file system reports for the containing volume,
+already resolved at open. The volume serial is 64 bits everywhere: `RootStatus`, `CachedBlockFile`, the block header
+and the cache file names all carry the same full value, and every comparison uses all 64 bits. An NTFS volume reports
+64 bits; a file system with a 32-bit serial (FAT, exFAT) reports it zero-extended. Internal zero maps to null at the
+public boundary. Linux roots, network shares, unlettered mounts, volumes without a reported serial and dump sources
 report null, as does a root that is Offline at open. A directory view that becomes Offline after opening
 retains its resolved volume serial. No substitute identity is invented.
 
@@ -196,7 +200,11 @@ retains its resolved volume serial. No substitute identity is invented.
 `GitWizard/Watch/IndexVolumeChangeSource.Journals.cs` (`GitWizardConfiguration.IgnoredJournalWarnings`)
 and prints it in cache-status lines in `GitWizard/MftIndexCacheStatusFormatter.cs`.
 USN journals exist only on serial-bearing NTFS volumes; file-wizard reads no serial.
-The Watch sample prints the serial as eight uppercase hexadecimal digits or `none` in its status output.
+The full width is required because `ntfsclone --new-half-serial` rewrites only the upper half of an NTFS serial, so a
+clone and its source share the lower 32 bits, the record slots and the sequence numbers: with a 32-bit identity they
+share cache file names, pass cache admission for each other and collide in consumers that key by serial. A split
+public and internal identity would leave the file names colliding.
+The Watch sample prints the serial as sixteen uppercase hexadecimal digits or `none` in its status output.
 
 **Revisit only if:** a consumer needs a stable volume identity on a platform without serials.
 

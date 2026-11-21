@@ -279,7 +279,7 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     slot owner, or a caller that confirmed the file is quiescent, may call this: opening a block
     ///     another index is writing is undefined and racy (see <see cref="CacheDirectory.InspectCached" />).
     /// </summary>
-    public static BlockFile? Open(string path, uint expectedVolumeSerial, out BlockValidationResult? validation)
+    public static BlockFile? Open(string path, ulong expectedVolumeSerial, out BlockValidationResult? validation)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         long length;
@@ -354,7 +354,7 @@ sealed unsafe partial class BlockFile : IDisposable
         // FileOptions.DeleteOnClose, the last handle closure removes the backing file.
     }
 
-    static BlockFile? OpenMapped(string path, uint expectedVolumeSerial, long length,
+    static BlockFile? OpenMapped(string path, ulong expectedVolumeSerial, long length,
         out BlockValidationResult? validation)
     {
         BlockFile? block = null;

@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     The single header page of a block, laid out explicitly so the on-disk bytes are
 ///     independent of the runtime's field packing. Field order matches the format
-///     specification; <see cref="RootRow" /> aligns the 64-bit fields that follow.
+///     specification, which places each 64-bit field at an 8-byte aligned offset.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = BlockLayout.HeaderFieldBytes)]
 struct BlockHeader
@@ -19,15 +19,8 @@ struct BlockHeader
     [FieldOffset(8)] public ProducerKind ProducerKind;
     /// <summary>Completion and capacity exhaustion state published by the producer.</summary>
     [FieldOffset(12)] public BlockFlags Flags;
-    /// <summary>NTFS serial number of the volume represented by the block.</summary>
-    [FieldOffset(16)] public uint VolumeSerial;
-
-    /// <summary>
-    ///     Row index of the indexed root. An enumeration block writes its configured starting
-    ///     directory, which can be any directory, at row 0, so zero is the correct value there. An MFT block sets 5, the NTFS root directory
-    ///     record, because record 0 is $MFT.
-    /// </summary>
-    [FieldOffset(20)] public uint RootRow;
+    /// <summary>All 64 bits the file system reports as the identity of the scanned volume; an open compares every bit.</summary>
+    [FieldOffset(16)] public ulong VolumeSerial;
 
     /// <summary>UTC scan completion time as <see cref="DateTime.Ticks" />.</summary>
     [FieldOffset(24)] public long ScanTimestampTicks;
@@ -65,6 +58,13 @@ struct BlockHeader
     ///     of rows, so both producers and the journal mutator get it without their own bookkeeping.
     /// </summary>
     [FieldOffset(88)] public uint LiveRowCount;
+
+    /// <summary>
+    ///     Row index of the indexed root. An enumeration block writes its configured starting
+    ///     directory, which can be any directory, at row 0, so zero is the correct value there. An MFT block sets 5, the NTFS root directory
+    ///     record, because record 0 is $MFT.
+    /// </summary>
+    [FieldOffset(92)] public uint RootRow;
     /// <summary>Byte offset of the per-row NTFS sequence-number region.</summary>
     [FieldOffset(96)] public ulong SequenceRegionOffset;
     /// <summary>Packed four-character consumer cache identity.</summary>
@@ -120,7 +120,7 @@ struct BlockHeader
     /// <returns>A validation result that explains whether the block is safe to use.</returns>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
-    public static BlockValidationResult? Validate(in BlockHeader header, uint expectedVolumeSerial, long fileLength)
+    public static BlockValidationResult? Validate(in BlockHeader header, ulong expectedVolumeSerial, long fileLength)
     {
         if (header.Magic != BlockLayout.Magic)
         {

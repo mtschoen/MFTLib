@@ -22,8 +22,11 @@ sealed record ResolvedRoot
     /// <summary>The host directory the volume is rooted at, or null with no <see cref="Volume" />.</summary>
     public string? VolumeRootDirectory { get; init; }
 
-    /// <summary>The volume serial, or zero when the platform reports none.</summary>
-    public uint VolumeSerial { get; init; }
+    /// <summary>The full volume serial the file system reports, or zero when the platform reports none.</summary>
+    public ulong VolumeSerial { get; init; }
+
+    /// <summary>The known local volume was not ready at open, so its identity cannot be used for caching.</summary>
+    public bool VolumeNotReady { get; init; }
 
     /// <summary>The selected producer, fixed for the index's life.</summary>
     public required ProducerKind Producer { get; init; }

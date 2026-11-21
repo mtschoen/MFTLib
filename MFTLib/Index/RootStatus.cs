@@ -25,12 +25,12 @@ public sealed record RootStatus
     public RootKey Root { get; init => field = value.Validated(); }
 
     /// <summary>
-    ///     The containing volume's reported serial, or null before volume facts are read or when the platform
+    ///     The containing volume's full reported serial, all 64 bits, or null before volume facts are read or when the platform
     ///     reports none (including Linux roots, network shares, unlettered mounts, unavailable volumes and dump sources).
     ///     A root that is <see cref="RootState.Offline" /> at open reports null. A reported zero is null;
     ///     no substitute identity is generated.
     /// </summary>
-    public uint? VolumeSerial { get; init; }
+    public ulong? VolumeSerial { get; init; }
 
     /// <summary>Whether the root has a queryable block, is offline, or failed without a block. Capacity exhaustion is reported independently by <see cref="RootBlockStatus.IsCapacityExhausted" />.</summary>
     public RootState State { get; init; }

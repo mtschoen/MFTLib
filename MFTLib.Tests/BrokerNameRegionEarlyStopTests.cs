@@ -25,7 +25,7 @@ public sealed class BrokerNameRegionEarlyStopTests : IDisposable
     public void Write_WhenTheSectionPoolRunsOut_StopsRequestingBatches()
     {
         var sectionName = NamedBlockSection.BuildSectionName('T');
-        var options = TestBlocks.Options(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft,
+        var options = TestBlocks.Options(Path.Combine(_directory.Path, "T-000000000BADF00D.mlix"), ProducerKind.Mft,
             slotCapacity: 4096, namePoolCapacity: 4096, rootRow: 5, deleteOnClose: true);
         var (creator, lifetime) = NamedBlockSection.Create(options, sectionName);
         var batchesRequested = 0;

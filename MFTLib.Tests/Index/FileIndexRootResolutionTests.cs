@@ -205,7 +205,7 @@ public sealed class FileIndexRootResolutionTests
             ScanTimestamp = new DateTime(2026, 10, 14, 12, 0, 0, DateTimeKind.Utc)
         });
 
-        FileIndexOptions OnVolume(uint serial) => SyntheticVolumeFacts.Apply(new FileIndexOptions
+        FileIndexOptions OnVolume(ulong serial) => SyntheticVolumeFacts.Apply(new FileIndexOptions
         {
             Root = RootKey.FromDirectory(view),
             CacheDirectory = cache,

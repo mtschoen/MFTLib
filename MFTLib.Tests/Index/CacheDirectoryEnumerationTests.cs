@@ -38,8 +38,8 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     {
         var first = WriteFile(CacheDirectory.BlockFileName(new VolumeKey('C'), 0x0BADF00D), "first block");
         var second = WriteFile(CacheDirectory.BlockFileName(new VolumeKey('D'), 0x12345678), "second");
-        WriteFile("A-ZZZZZZZZ.mlix", "invalid hexadecimal serial");
-        WriteFile("A_12345678.mlix", "invalid separator");
+        WriteFile("A-ZZZZZZZZZZZZZZZZ.mlix", "invalid hexadecimal serial");
+        WriteFile("A_0000000012345678.mlix", "invalid separator");
         WriteFile("notes.mlix", "an unrelated name that happens to end in the extension");
         WriteFile($"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(new VolumeKey('E'), 1)}", "disabled-cache temp file");
         WriteFile(CacheDirectory.BlockFileName(new VolumeKey('F'), 2) + ".retired-" + Guid.NewGuid().ToString("N"), "retired");
@@ -61,7 +61,7 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     [TestMethod]
     public void EnumerateCached_IsTheInverseOfBlockFileNameAcrossTheLetterRangeAndEdgeSerials()
     {
-        var expected = new List<(RootKey Root, uint VolumeSerial)>();
+        var expected = new List<(RootKey Root, ulong VolumeSerial)>();
         var serials = new[] { 0u, 1u, 0x0BADF00Du, uint.MaxValue };
         for (var driveLetter = 'A'; driveLetter <= 'Z'; driveLetter++)
         {
@@ -79,10 +79,10 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     [TestMethod]
     public void EnumerateCached_LowercaseFileNameIsNotRecognised()
     {
-        // BlockFileName upper-cases the letter and formats the serial with X8, so a name that
+        // BlockFileName upper-cases the letter and formats the serial with X16, so a name that
         // does not round-trip through it is not one this library wrote. Windows preserves the
         // case a file was created with, so the parser is what decides on both platforms.
-        foreach (var fileName in new[] { "c-0badf00d.mlix", "C-0badf00d.mlix", "c-0BADF00D.mlix" })
+        foreach (var fileName in new[] { "c-000000000badf00d.mlix", "C-000000000badf00d.mlix", "c-000000000BADF00D.mlix" })
         {
             var path = WriteFile(fileName, "block");
 
@@ -95,8 +95,8 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     [TestMethod]
     public void EnumerateCached_ADigitOrSymbolInTheLetterPositionIsNotRecognised()
     {
-        WriteFile("1-0BADF00D.mlix", "digit");
-        WriteFile("_-0BADF00D.mlix", "symbol");
+        WriteFile("1-000000000BADF00D.mlix", "digit");
+        WriteFile("_-000000000BADF00D.mlix", "symbol");
 
         Assert.IsEmpty(CacheDirectory.EnumerateCached(_cacheDirectory));
     }

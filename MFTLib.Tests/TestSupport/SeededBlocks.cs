@@ -22,7 +22,7 @@ static class SeededBlocks
     public static readonly DateTime SeededMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     /// <summary>Writes the block at <paramref name="path" /> and closes it, leaving only the file on disk.</summary>
-    public static void Write(string path, uint volumeSerial, ulong journalIdentifier, long nextUsn, DateTime moment,
+    public static void Write(string path, ulong volumeSerial, ulong journalIdentifier, long nextUsn, DateTime moment,
         bool deleteOnClose = false)
     {
         using var block = Create(path, volumeSerial, deleteOnClose, default, journalIdentifier, nextUsn, moment,
@@ -65,7 +65,7 @@ static class SeededBlocks
             SkippedRecordCount: 0));
     }
 
-    static BlockFile Create(string path, uint volumeSerial, bool deleteOnClose, CacheTag cacheTag,
+    static BlockFile Create(string path, ulong volumeSerial, bool deleteOnClose, CacheTag cacheTag,
         ulong journalIdentifier, long nextUsn, DateTime moment, IEnumerable<SyntheticRow> rows)
     {
         return SyntheticBlock.Build(path, RootFor(path), volumeSerial, deleteOnClose, new SyntheticBlockOptions

@@ -60,7 +60,7 @@ MFTLib.Index.CachedBlockFile :: property public LastWriteTime { get; init; } : S
 MFTLib.Index.CachedBlockFile :: property public Path { get; init; } : string
 MFTLib.Index.CachedBlockFile :: property public Root { get; init; } : MFTLib.Index.RootKey
 MFTLib.Index.CachedBlockFile :: property public Size { get; init; } : long
-MFTLib.Index.CachedBlockFile :: property public VolumeSerial { get; init; } : uint
+MFTLib.Index.CachedBlockFile :: property public VolumeSerial { get; init; } : ulong
 MFTLib.Index.CachedBlockFile :: type public sealed class : System.IEquatable<MFTLib.Index.CachedBlockFile>
 MFTLib.Index.CachedBlockRejection :: method public <Clone>$() : MFTLib.Index.CachedBlockRejection
 MFTLib.Index.CachedBlockRejection :: method public Equals(MFTLib.Index.CachedBlockRejection? other) : bool
@@ -367,7 +367,7 @@ MFTLib.Index.RootStatus :: property public MftUnavailable { get; init; } : MFTLi
 MFTLib.Index.RootStatus :: property public Producer { get; init; } : MFTLib.Index.ProducerKind?
 MFTLib.Index.RootStatus :: property public Root { get; init; } : MFTLib.Index.RootKey
 MFTLib.Index.RootStatus :: property public State { get; init; } : MFTLib.Index.RootState
-MFTLib.Index.RootStatus :: property public VolumeSerial { get; init; } : uint?
+MFTLib.Index.RootStatus :: property public VolumeSerial { get; init; } : ulong?
 MFTLib.Index.RootStatus :: property public Watch { get; init; } : MFTLib.Index.RootWatchStatus
 MFTLib.Index.RootStatus :: type public sealed class : System.IEquatable<MFTLib.Index.RootStatus>
 MFTLib.Index.RootWatchStatus :: method public <Clone>$() : MFTLib.Index.RootWatchStatus

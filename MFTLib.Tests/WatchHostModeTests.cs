@@ -123,9 +123,9 @@ public sealed class WatchHostModeTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow(4242u, "00001092")]
-    [DataRow(0u, "none")]
-    public async Task Scan_PrintsTheProducerAndTheUnavailableReason(uint serial, string expectedSerial)
+    [DataRow(0x5EED_0000_0000_1092ul, "5EED000000001092")]
+    [DataRow(0ul, "none")]
+    public async Task Scan_PrintsTheProducerAndTheUnavailableReason(ulong serial, string expectedSerial)
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var lines = new List<string>();

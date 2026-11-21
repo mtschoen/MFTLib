@@ -27,7 +27,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     public void Initialize()
     {
         _directory = new TempDirectory("mftlib-ranged-flush");
-        _blockPath = Path.Combine(_directory.Path, "T-0BADF00D.mlix");
+        _blockPath = Path.Combine(_directory.Path, "T-000000000BADF00D.mlix");
     }
 
     public void Dispose() => _directory.Dispose();

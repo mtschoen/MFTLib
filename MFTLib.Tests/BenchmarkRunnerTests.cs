@@ -180,7 +180,7 @@ public partial class BenchmarkRunnerTests
         {
             requests.Add(request);
             Assert.IsNotNull(request.Index);
-            var blockPath = Path.Combine(request.InputPath, $"{request.Index.Drive}-00000001.mlix");
+            var blockPath = Path.Combine(request.InputPath, $"{request.Index.Drive}-0000000000000001.mlix");
             using var lockHandle = BlockOwnerLock.TryAcquire(blockPath);
             Assert.IsNotNull(lockHandle, "Parent must release block ownership before starting the memory worker.");
             return FixedMemoryAsync(request);
@@ -195,12 +195,12 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("Rows: 2", output);
         Assert.Contains("Matches: 1", output);
         var usedNameBytes = directory.Length + "file-0000000001".Length;
-        var fileBytes = new FileInfo(Path.Combine(directory, "T-00000001.mlix")).Length;
+        var fileBytes = new FileInfo(Path.Combine(directory, "T-0000000000000001.mlix")).Length;
         Assert.Contains(string.Create(CultureInfo.InvariantCulture,
             $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"), output);
         foreach (var (drive, _, _) in declined)
         {
-            Assert.Contains($"{drive}-00000001.mlix: unsupported scan shape", output);
+            Assert.Contains($"{drive}-0000000000000001.mlix: unsupported scan shape", output);
         }
         foreach (var original in originals)
         {
@@ -231,7 +231,7 @@ public partial class BenchmarkRunnerTests
         var directory = directoryOwner.Path;
         if (corrupt)
         {
-            await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt", TestContext.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(directory, "T-0000000000000001.mlix"), "corrupt", TestContext.CancellationToken);
         }
         Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
         Assert.Contains(corrupt ? "Invalid" : "No cache blocks", _output.ToString());
@@ -244,7 +244,7 @@ public partial class BenchmarkRunnerTests
     {
         using var directoryOwner = new TempDirectory("benchmark-index-test");
         var directory = directoryOwner.Path;
-        var path = Path.Combine(directory, "T-00000001.mlix");
+        var path = Path.Combine(directory, "T-0000000000000001.mlix");
         using (var block = TestBlocks.Create(path, slotCapacity: 8, namePoolCapacity: 4096,
             volumeSerial: 1, scanShape: SyntheticScanShape.Default(ProducerKind.Enumeration)))
         {
@@ -265,7 +265,7 @@ public partial class BenchmarkRunnerTests
         using var directoryOwner = new TempDirectory("benchmark-index-test");
         var directory = directoryOwner.Path;
         var drive = Path.GetPathRoot(directory)![0];
-        using (var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-00000001.mlix"),
+        using (var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-0000000000000001.mlix"),
             ProducerKind.Mft, 8, 4096, volumeSerial: 1, rootRow: 5,
             scanShape: SyntheticScanShape.Default(ProducerKind.Mft)))
         {
@@ -375,7 +375,7 @@ public partial class BenchmarkRunnerTests
         Assert.IsTrue(first.PeakPrivateBytes > 0 && second.PeakPrivateBytes > 0);
         Assert.IsTrue(first.PeakWorkingSetBytes > 0 && second.PeakWorkingSetBytes > 0);
         Assert.AreEqual(first.Method, second.Method);
-        Assert.IsTrue(File.Exists(Path.Combine(cache, "T-00000001.mlix")));
+        Assert.IsTrue(File.Exists(Path.Combine(cache, "T-0000000000000001.mlix")));
 
         var walkRoot = Directory.CreateDirectory(Path.Combine(_directory, "walk-root")).FullName;
         foreach (var walkScenario in new[] { "enumeration-walk-sequential", "enumeration-walk-parallel" })

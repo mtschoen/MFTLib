@@ -171,7 +171,7 @@ partial class SampleHost
     // A cached verb adds where the block came from, the watch state and any lost checkpoint to the status line.
     void ReportRoot(WatchArguments parsed, RootStatus status)
     {
-        _output.WriteLine($"Volume serial: {status.VolumeSerial?.ToString("X8", CultureInfo.InvariantCulture) ?? "none"}");
+        _output.WriteLine($"Volume serial: {status.VolumeSerial?.ToString("X16", CultureInfo.InvariantCulture) ?? "none"}");
         if (parsed.Verb is WatchVerb.Scan)
         {
             WriteStatus(status);

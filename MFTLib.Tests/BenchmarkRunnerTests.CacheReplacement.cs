@@ -34,7 +34,7 @@ public partial class BenchmarkRunnerTests
 
         var replacements = Directory.GetFiles(staging, "*.mlix")
             .ToDictionary(path => Path.Combine(directory, Path.GetFileName(path)), File.ReadAllBytes);
-        await using var output = new LineTriggerWriter("A-00000001.mlix: unsupported scan shape", () =>
+        await using var output = new LineTriggerWriter("A-0000000000000001.mlix: unsupported scan shape", () =>
         {
             foreach (var (path, bytes) in replacements)
             {
@@ -65,7 +65,7 @@ public partial class BenchmarkRunnerTests
         ProducerKind producer = ProducerKind.Enumeration)
     {
         var rootRow = producer == ProducerKind.Mft ? 5u : 0u;
-        using var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-00000001.mlix"),
+        using var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-0000000000000001.mlix"),
             producer, 8, 4096, volumeSerial: 1, rootRow: rootRow,
             cacheTag: new CacheTag("TEST", drive), scanShape: scanShape);
         var writer = new BlockWriter(block);

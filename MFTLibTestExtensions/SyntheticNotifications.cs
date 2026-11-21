@@ -18,7 +18,7 @@ public static class SyntheticNotifications
     /// <param name="size">The file size in bytes.</param>
     /// <param name="lastWriteTime">The file last-write time in UTC.</param>
     /// <returns>The entry.</returns>
-    public static CachedBlockFile CreateCachedBlockFile(RootKey root, uint volumeSerial, string path,
+    public static CachedBlockFile CreateCachedBlockFile(RootKey root, ulong volumeSerial, string path,
         long size, DateTime lastWriteTime) =>
         new(root, volumeSerial, path, size, lastWriteTime);
 

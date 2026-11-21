@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 {
-    const uint Serial = 0x1234;
+    const ulong Serial = 0x1234;
     static readonly DateTime Moment = new(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc);
     static readonly SyntheticJournalCursor Cursor = new(7, 4096);
 

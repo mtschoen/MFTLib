@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
 {
-    const uint Serial = 0x2345;
+    const ulong Serial = 0x2345;
 
     public TestContext TestContext { get; set; } = null!;
 

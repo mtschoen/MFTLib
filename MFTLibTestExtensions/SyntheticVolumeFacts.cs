@@ -25,7 +25,7 @@ public static class SyntheticVolumeFacts
     /// <returns>A copy of <paramref name="options" /> carrying the facts.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
     /// <exception cref="ArgumentException">Only one of <paramref name="volume" /> and <paramref name="volumeRootDirectory" /> is set.</exception>
-    public static FileIndexOptions Apply(FileIndexOptions options, uint volumeSerial, bool isNtfs = true,
+    public static FileIndexOptions Apply(FileIndexOptions options, ulong volumeSerial, bool isNtfs = true,
         bool isLocal = true, VolumeKey? volume = null, string? volumeRootDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -88,7 +88,7 @@ public static class SyntheticVolumeFacts
         }
     }
 
-    static VolumeFactsReader CreateReader(uint volumeSerial, bool isNtfs, bool isLocal,
+    static VolumeFactsReader CreateReader(ulong volumeSerial, bool isNtfs, bool isLocal,
         VolumeKey? volume, string? volumeRootDirectory)
     {
         volume?.Validated();

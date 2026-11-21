@@ -27,7 +27,7 @@ public sealed class JournalMutatorRefusalDefectTests : IDisposable
     (BlockFile Block, BlockWriter Writer, RootBlock[] Snapshot) BuildRoot(uint namePoolCapacity,
         uint? deltaCapacity = null)
     {
-        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-00000001.mlix"), ProducerKind.Mft,
+        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-0000000000000001.mlix"), ProducerKind.Mft,
             slotCapacity: 8, namePoolCapacity, volumeSerial: 1, deltaCapacity: deltaCapacity);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", DirectoryColumns);

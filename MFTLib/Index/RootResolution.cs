@@ -63,6 +63,7 @@ static class RootResolution
             Volume = facts.Volume,
             VolumeRootDirectory = facts.VolumeRootDirectory,
             VolumeSerial = facts.VolumeSerial,
+            VolumeNotReady = unavailable == MftUnavailableReason.VolumeNotReady,
             Producer = ProducerKind.Mft
         };
         return prepared.Producer switch

@@ -122,7 +122,7 @@ public partial class BenchmarkRunner
         {
             using (var block = BlockFile.Create(new BlockFileCreateOptions
             {
-                Path = Path.Combine(directory, "T-00000000.mlix"),
+                Path = Path.Combine(directory, "T-0000000000000000.mlix"),
                 Root = new VolumeKey('T'),
                 VolumeSerial = 0,
                 ProducerKind = ProducerKind.Enumeration,
@@ -216,7 +216,7 @@ public partial class BenchmarkRunner
     ///     Options that open a cached block by the identity stored in it, on any machine: the producer is forced to the
     ///     block's, and the volume facts report the stored serial and root directory instead of the host's drives.
     /// </summary>
-    internal static FileIndexOptions CachedBlockOptions(RootKey root, string rootDirectory, uint volumeSerial,
+    internal static FileIndexOptions CachedBlockOptions(RootKey root, string rootDirectory, ulong volumeSerial,
         ProducerKind producer)
     {
         VolumeKey? volume = root.TryGetVolume(out var volumeKey) ? volumeKey : null;

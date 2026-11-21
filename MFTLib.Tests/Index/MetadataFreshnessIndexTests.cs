@@ -15,7 +15,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class MetadataFreshnessIndexTests : IndexTreeTestBase
 {
-    const uint Serial = 0x2468;
+    const ulong Serial = 0x2468;
     static readonly DateTime ScannedMoment = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     static readonly DateTime OtherScannedMoment = new(2021, 6, 7, 8, 9, 10, DateTimeKind.Utc);
     static readonly DateTime EventMoment = new(2026, 10, 14, 0, 0, 0, DateTimeKind.Utc);

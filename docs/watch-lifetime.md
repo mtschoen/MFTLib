@@ -24,7 +24,7 @@ Automatic recovery is one ticket per scan and does not join manual requests.
       admission fail the call; operational failures are returned in `RootOperationResult.Failure`. Disposal after
       admission cancels an admitted start or rescan as a `Failed` result carrying
       `OperationCanceledException`; it cancels a catch-up wait with `OperationCanceledException`.
-    - **Reported volume serial**: `RootStatus.VolumeSerial` publishes the containing volume's serial resolved at
+    - **Reported volume serial**: `RootStatus.VolumeSerial` publishes the containing volume's full 64-bit serial resolved at
       open, with zero represented as null. It is null for a root Offline at open and whenever the platform reports
       none, including Linux roots, network shares, unlettered mounts, unavailable volumes and dump sources.
       A directory view that later becomes Offline retains its resolved serial. No substitute identity is supplied.

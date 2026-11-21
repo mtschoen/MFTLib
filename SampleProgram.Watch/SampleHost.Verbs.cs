@@ -70,7 +70,7 @@ partial class SampleHost
         var roots = parsed.Roots.Count == 0 ? null : parsed.Roots.ToArray();
         foreach (var block in CacheDirectory.InspectCached(directory, roots, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Message}")))
         {
-            _output.WriteLine($"{block.File.Root}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}");
+            _output.WriteLine($"{block.File.Root}: {block.File.Path} (serial {block.File.VolumeSerial:X16}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}");
         }
 
         if (parsed.Clear)

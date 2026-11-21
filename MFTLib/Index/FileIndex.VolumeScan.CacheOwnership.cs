@@ -13,7 +13,7 @@ public sealed partial class FileIndex
 
         CanonicalSlotOutcome ResolveCanonicalOwnership()
         {
-            if (Options.CacheMode == CacheMode.Disabled)
+            if (!CanOwnCanonicalSlot)
             {
                 return CanonicalSlotOutcome.NotOwned;
             }
@@ -28,6 +28,8 @@ public sealed partial class FileIndex
 
             return !_settleWrites ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
         }
+
+        bool CanOwnCanonicalSlot => Options.CacheMode != CacheMode.Disabled && !Resolved.VolumeNotReady;
 
         string CanonicalBlockPath() =>
             Path.Combine(creation.CacheDirectoryPath, CacheDirectory.BlockFileName(BlockRoot, Resolved.VolumeSerial));

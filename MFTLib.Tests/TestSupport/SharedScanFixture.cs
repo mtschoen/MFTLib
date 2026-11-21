@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 sealed class SharedScanFixture : IDisposable
 {
     readonly IndexTreeFixture _tree = new(seedDocuments: false);
-    readonly uint _serial = TestVolumeSerial.GetNext();
+    public ulong VolumeSerial { get; } = TestVolumeSerial.GetNext();
     readonly SyntheticMftProducer _producer;
     TestGate? _productionGate;
 
@@ -62,7 +62,7 @@ sealed class SharedScanFixture : IDisposable
             CacheDirectory = CacheDirectoryPath,
             MftSource = Source,
             ScanRegistry = Registry
-        }, _serial, volume: Volume, volumeRootDirectory: TreeRoot);
+        }, VolumeSerial, volume: Volume, volumeRootDirectory: TreeRoot);
 
     internal Task<FileIndex> OpenAsync(RootKey root, CancellationToken cancellationToken = default) =>
         FileIndex.OpenAsync(Options(root), cancellationToken);

@@ -89,7 +89,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
     [TestMethod]
     public void Create_SizesTheSectionWithTheEntryCapacity()
     {
-        var options = TestBlocks.Options(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft,
+        var options = TestBlocks.Options(Path.Combine(_directory.Path, "T-000000000BADF00D.mlix"), ProducerKind.Mft,
             SlotCapacity, NamePoolCapacity, rootRow: 5, deleteOnClose: true) with
         {
             NameEntryCapacity = 3 * SlotCapacity
@@ -136,7 +136,7 @@ public sealed class NamedBlockSectionLayoutTests : IDisposable
 
     (BlockFile Block, IDisposable Lifetime) CreateSection()
     {
-        return NamedBlockSection.Create(TestBlocks.Options(Path.Combine(_directory.Path, "T-0BADF00D.mlix"), ProducerKind.Mft, SlotCapacity, NamePoolCapacity, rootRow: 5, deleteOnClose: true), _sectionName);
+        return NamedBlockSection.Create(TestBlocks.Options(Path.Combine(_directory.Path, "T-000000000BADF00D.mlix"), ProducerKind.Mft, SlotCapacity, NamePoolCapacity, rootRow: 5, deleteOnClose: true), _sectionName);
     }
 
     static void RewriteBeforeOpen(ref BlockHeader header, string field)

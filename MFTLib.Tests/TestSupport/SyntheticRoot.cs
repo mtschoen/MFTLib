@@ -12,9 +12,9 @@ namespace MFTLib.Tests.TestSupport;
 /// <param name="RootDirectory">The host directory the synthetic volume is rooted at.</param>
 /// <param name="VolumeSerial">The serial the synthetic volume reports.</param>
 /// <param name="Producer">Which producer the open asks for.</param>
-sealed record SyntheticRoot(RootKey Root, string RootDirectory, uint VolumeSerial, ProducerKind Producer)
+sealed record SyntheticRoot(RootKey Root, string RootDirectory, ulong VolumeSerial, ProducerKind Producer)
 {
-    public static SyntheticRoot Create(RootKey root, string rootDirectory, uint volumeSerial,
+    public static SyntheticRoot Create(RootKey root, string rootDirectory, ulong volumeSerial,
         ProducerKind producer = ProducerKind.Mft) => new(root, rootDirectory, volumeSerial, producer);
 
     public ProducerSelection Selection => SelectionFor(Producer);

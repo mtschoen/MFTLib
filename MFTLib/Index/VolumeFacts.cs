@@ -1,4 +1,3 @@
-using System.Runtime.Versioning;
 using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
@@ -10,7 +9,7 @@ namespace MFTLib.Index;
 /// <param name="PlatformHasMft">Whether the host platform has an MFT to read at all.</param>
 /// <param name="Volume">The drive letter of the volume, or null when it has none (a network share or an unlettered mount point).</param>
 /// <param name="VolumeRootDirectory">The host directory the volume is rooted at, for example <c>C:\</c>; null with no letter.</param>
-/// <param name="VolumeSerial">The volume serial, or zero when the platform reports none.</param>
+/// <param name="VolumeSerial">The full volume serial the file system reports, or zero when the platform reports none.</param>
 /// <param name="IsReady">
 ///     Whether the volume read as ready. Readiness is read for fixed and removable drives only; every other drive type
 ///     reports true so that <paramref name="DriveType" /> decides.
@@ -21,7 +20,7 @@ internal readonly record struct VolumeFacts(
     bool PlatformHasMft,
     VolumeKey? Volume,
     string? VolumeRootDirectory,
-    uint VolumeSerial,
+    ulong VolumeSerial,
     bool IsReady,
     DriveType DriveType,
     string? Format);
@@ -65,8 +64,16 @@ static class PlatformVolumeFacts
                 return new VolumeFacts(true, volume, volumePath, 0, false, driveType, null);
             }
 
-            return new VolumeFacts(true, volume, volumePath, ReadSerial(volumePath), true, driveType,
-                drive.DriveFormat);
+            var format = drive.DriveFormat;
+            try
+            {
+                return new VolumeFacts(true, volume, volumePath, ReadSerial(volumePath, format), true, driveType, format);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                                  or System.Security.SecurityException)
+            {
+                return new VolumeFacts(true, volume, volumePath, 0, false, driveType, format);
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                               or System.Security.SecurityException)
@@ -80,9 +87,36 @@ static class PlatformVolumeFacts
     static VolumeKey? LetterOf(string volumePath) =>
         volumePath is [var letter, ':', '\\'] && char.IsAsciiLetter(letter) ? new VolumeKey(letter) : null;
 
-    [SupportedOSPlatform("windows")]
-    static uint ReadSerial(string volumePath) =>
-        Kernel32.GetVolumeInformationW(volumePath, IntPtr.Zero, 0, out var serial, out _, out _, IntPtr.Zero, 0)
-            ? serial
-            : throw new IOException($"Could not read the volume serial of '{volumePath}'.");
+    /// <summary>
+    ///     The full serial the file system reports for the volume rooted at <paramref name="volumePath" />, read once
+    ///     per open without elevation from <c>FILE_ID_INFO</c> on the root directory. On NTFS that is the 64-bit
+    ///     serial the elevated scan reads from <c>FSCTL_GET_NTFS_VOLUME_DATA</c>, so an NTFS volume that refuses the
+    ///     query has no serial to report and fails the read. A file system with only a 32-bit serial that refuses
+    ///     the query reports its <c>GetVolumeInformationW</c> serial, zero-extended.
+    /// </summary>
+    /// <exception cref="IOException">The volume refused every serial query open to its file system.</exception>
+    internal static ulong ReadSerial(string volumePath, string format)
+    {
+        using (var root = Kernel32.Hooks._createFile(volumePath, FileReadAttributes, ShareAll, IntPtr.Zero,
+                   OpenExisting, FileFlagBackupSemantics, IntPtr.Zero))
+        {
+            if (!root.IsInvalid && Kernel32.Hooks._readVolumeSerialByHandle(root, out var fullSerial))
+            {
+                return fullSerial;
+            }
+        }
+
+        if (!string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase) &&
+            Kernel32.Hooks._readVolumeSerialByRoot(volumePath, out var serial))
+        {
+            return serial;
+        }
+
+        throw new IOException($"Could not read the volume serial of '{volumePath}'.");
+    }
+
+    const uint FileReadAttributes = 0x80;
+    const uint ShareAll = 0x7; // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+    const uint OpenExisting = 3;
+    const uint FileFlagBackupSemantics = 0x02000000;
 }

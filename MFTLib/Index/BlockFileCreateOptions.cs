@@ -13,8 +13,8 @@ sealed record BlockFileCreateOptions
     /// <summary>The root the block indexes, stored in page 0 so the block names its own root.</summary>
     public required RootKey Root { get; init; }
 
-    /// <summary>NTFS volume serial number that the block represents.</summary>
-    public required uint VolumeSerial { get; init; }
+    /// <summary>Stamped into the header and compared in all 64 bits whenever the block is opened again.</summary>
+    public required ulong VolumeSerial { get; init; }
 
     /// <summary>Identifies the producer and row-number semantics recorded in the header.</summary>
     public required ProducerKind ProducerKind { get; init; }

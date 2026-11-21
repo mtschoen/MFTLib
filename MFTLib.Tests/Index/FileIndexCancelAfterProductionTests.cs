@@ -13,7 +13,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class FileIndexCancelAfterProductionTests
 {
-    const uint VolumeSerial = 0x5EED;
+    const ulong VolumeSerial = 0x5EED;
 
     public TestContext TestContext { get; set; } = null!;
 

@@ -66,16 +66,17 @@ public sealed class CacheDirectoryRejectionTests : IDisposable
         var foreign = new[]
         {
             WriteFile("t-invalid.mlix"),
-            WriteFile("u-00000002.mlix"),
-            WriteFile("V-0badf00d.mlix"),
-            WriteFile("W-ZZZZZZZZ.mlix"),
-            WriteFile("X_00000003.mlix")
+            WriteFile("S-0BADF00D.mlix"),
+            WriteFile("u-0000000000000002.mlix"),
+            WriteFile("V-000000000badf00d.mlix"),
+            WriteFile("W-ZZZZZZZZZZZZZZZZ.mlix"),
+            WriteFile("X_0000000000000003.mlix")
         };
         var ignored = new[]
         {
             WriteFile("notes.txt"),
-            WriteFile("Y-00000004.mlix.lock"),
-            WriteFile("Z-00000005.mlix.retired-test")
+            WriteFile("Y-0000000000000004.mlix.lock"),
+            WriteFile("Z-0000000000000005.mlix.retired-test")
         };
         var subdirectory = Path.Combine(_directory, "nested.mlix");
         Directory.CreateDirectory(subdirectory);

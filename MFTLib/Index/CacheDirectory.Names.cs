@@ -8,7 +8,7 @@ namespace MFTLib.Index;
 public static partial class CacheDirectory
 {
     const string BlockFileExtension = ".mlix";
-    const int SerialDigits = 8;
+    const int SerialDigits = 16;
     const int DirectoryHashHexDigits = 16;
     const char DirectoryStemPrefix = 'D';
     static readonly SearchValues<char> LowercaseHexDigits = SearchValues.Create("0123456789abcdef");
@@ -17,7 +17,7 @@ public static partial class CacheDirectory
     ///     A block file name recognised by shape alone. <see cref="Volume" /> is set for a volume name, which carries
     ///     its letter; a directory name carries only a hash of its key, so its root is read from the block.
     /// </summary>
-    internal readonly record struct ParsedBlockName(string Stem, RootKey? Volume, uint VolumeSerial);
+    internal readonly record struct ParsedBlockName(string Stem, RootKey? Volume, ulong VolumeSerial);
 
     /// <summary>A listed block file; <see cref="Root" /> is null only for an unselected directory-shaped name.</summary>
     internal sealed record CacheCandidate(ParsedBlockName Parsed, string Path, long Size, DateTime LastWriteUtc,
@@ -29,14 +29,14 @@ public static partial class CacheDirectory
     /// <summary>
     ///     Produces the canonical cache filename for a root. A volume uses its uppercase drive letter. A directory
     ///     uses <c>D</c> and the first sixteen lowercase hexadecimal digits of the SHA-256 of the key text encoded as
-    ///     UTF-8, uppercased first on a case-insensitive platform so the name is case-stable. Eight uppercase
+    ///     UTF-8, uppercased first on a case-insensitive platform so the name is case-stable. Sixteen uppercase
     ///     hexadecimal serial digits follow the stem.
     /// </summary>
     /// <param name="root">Root of the cached block.</param>
     /// <param name="volumeSerial">Serial number of the volume containing the root, encoded in the filename.</param>
     /// <returns>The filename without a directory component.</returns>
-    internal static string BlockFileName(RootKey root, uint volumeSerial) =>
-        $"{NameStem(root)}-{volumeSerial:X8}{BlockFileExtension}";
+    internal static string BlockFileName(RootKey root, ulong volumeSerial) =>
+        $"{NameStem(root)}-{volumeSerial:X16}{BlockFileExtension}";
 
     /// <summary>The part of the file name before the dash: the letter for a volume, <c>D</c> plus the key hash for a directory.</summary>
     internal static string NameStem(RootKey root)
@@ -101,7 +101,7 @@ public static partial class CacheDirectory
         if (fileName[0] != DirectoryStemPrefix || fileName[dashIndex] != '-' ||
             stem.AsSpan(1).ContainsAnyExcept(LowercaseHexDigits) ||
             !TryParseSerial(fileName, dashIndex + 1, out var serial) ||
-            !string.Equals($"{stem}-{serial:X8}{BlockFileExtension}", fileName, StringComparison.Ordinal))
+            !string.Equals($"{stem}-{serial:X16}{BlockFileExtension}", fileName, StringComparison.Ordinal))
         {
             return false;
         }
@@ -110,7 +110,7 @@ public static partial class CacheDirectory
         return true;
     }
 
-    static bool TryParseSerial(string fileName, int start, out uint serial) =>
-        uint.TryParse(fileName.AsSpan(start, SerialDigits), NumberStyles.AllowHexSpecifier,
+    static bool TryParseSerial(string fileName, int start, out ulong serial) =>
+        ulong.TryParse(fileName.AsSpan(start, SerialDigits), NumberStyles.AllowHexSpecifier,
             CultureInfo.InvariantCulture, out serial);
 }

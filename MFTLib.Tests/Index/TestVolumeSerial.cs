@@ -2,10 +2,11 @@ namespace MFTLib.Tests.Index;
 
 static class TestVolumeSerial
 {
-    static int _nextVolumeSerial = 0x0BADF00D;
+    // The upper half is nonzero so every test serial needs all 64 bits.
+    static long _nextVolumeSerial = 0x5EED_0000_0BAD_F00D;
 
-    public static uint GetNext()
+    public static ulong GetNext()
     {
-        return unchecked((uint)Interlocked.Increment(ref _nextVolumeSerial));
+        return unchecked((ulong)Interlocked.Increment(ref _nextVolumeSerial));
     }
 }

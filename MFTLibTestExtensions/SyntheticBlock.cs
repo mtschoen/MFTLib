@@ -18,7 +18,7 @@ public static class SyntheticBlock
     /// <param name="root">The drive letter.</param>
     /// <param name="volumeSerial">The volume serial number the index reports for the volume.</param>
     /// <returns>The full path of the root's block file.</returns>
-    public static string CachedPath(string cacheDirectory, RootKey root, uint volumeSerial)
+    public static string CachedPath(string cacheDirectory, RootKey root, ulong volumeSerial)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectory);
         return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(root, volumeSerial));
@@ -34,7 +34,7 @@ public static class SyntheticBlock
     /// <param name="options">The header values.</param>
     /// <param name="rows">The rows to write, including the root row named by <see cref="SyntheticBlockOptions.RootRow" />.</param>
     /// <returns>The full path of the block file.</returns>
-    public static string WriteCached(string cacheDirectory, RootKey root, uint volumeSerial,
+    public static string WriteCached(string cacheDirectory, RootKey root, ulong volumeSerial,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -51,7 +51,7 @@ public static class SyntheticBlock
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <param name="edit">The edit; the editor is valid only until it returns.</param>
     /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
-    public static void Edit(string blockPath, uint volumeSerial, Action<SyntheticBlockEditor> edit)
+    public static void Edit(string blockPath, ulong volumeSerial, Action<SyntheticBlockEditor> edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
         RequireExists(blockPath);
@@ -81,7 +81,7 @@ public static class SyntheticBlock
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <returns>The rows as they are stored.</returns>
     /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
-    internal static IReadOnlyList<SyntheticRow> ReadRows(string blockPath, uint volumeSerial)
+    internal static IReadOnlyList<SyntheticRow> ReadRows(string blockPath, ulong volumeSerial)
     {
         RequireExists(blockPath);
         using var owner = AcquireSlot(blockPath);
@@ -103,7 +103,7 @@ public static class SyntheticBlock
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <returns>The producer, row count and cache tag the header stores.</returns>
     /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
-    internal static SyntheticRootHeader ReadHeader(string blockPath, uint volumeSerial)
+    internal static SyntheticRootHeader ReadHeader(string blockPath, ulong volumeSerial)
     {
         RequireExists(blockPath);
         using var owner = AcquireSlot(blockPath);
@@ -116,7 +116,7 @@ public static class SyntheticBlock
     ///     values, and returns the open handle. Internal because the handle is not public surface:
     ///     <see cref="SyntheticMftProducer" /> and the MFTLib tests transfer it to an index.
     /// </summary>
-    internal static BlockFile Build(string path, RootKey root, uint volumeSerial, bool deleteOnClose,
+    internal static BlockFile Build(string path, RootKey root, ulong volumeSerial, bool deleteOnClose,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         var planned = rows as IReadOnlyList<SyntheticRow> ?? rows.ToList();
@@ -223,7 +223,7 @@ public static class SyntheticBlock
         }
     }
 
-    static BlockFile OpenExisting(string blockPath, uint volumeSerial)
+    static BlockFile OpenExisting(string blockPath, ulong volumeSerial)
     {
         return BlockFile.Open(blockPath, volumeSerial, out var validation) ?? throw new InvalidOperationException(
             $"The block {blockPath} failed validation: {validation}.");

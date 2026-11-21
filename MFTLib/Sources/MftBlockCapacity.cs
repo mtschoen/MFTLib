@@ -8,7 +8,7 @@ namespace MFTLib;
 /// </summary>
 static class MftBlockCapacity
 {
-    internal readonly record struct FileLocation(VolumeKey Volume, string Path, uint VolumeSerial, bool DeleteOnClose);
+    internal readonly record struct FileLocation(VolumeKey Volume, string Path, ulong VolumeSerial, bool DeleteOnClose);
 
     /// <summary>
     ///     Minimum row count floor used when volume information is unqueried.

@@ -21,9 +21,9 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
         };
 
     [TestMethod]
-    [DataRow(0x89ABCDEFu)]
-    [DataRow(0u)]
-    public async Task Status_ReportsResolvedVolumeSerialOrNull(uint serial)
+    [DataRow(0xFEDC_BA98_89AB_CDEFul)]
+    [DataRow(0ul)]
+    public async Task Status_ReportsResolvedVolumeSerialOrNull(ulong serial)
     {
         await using var index = await FileIndex.OpenAsync(
             Fixture.Options(volumeSerial: serial), TestContext.CancellationToken);
@@ -33,9 +33,9 @@ public sealed class FileIndexRootStatusTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    [DataRow(0x89ABCDEFu)]
-    [DataRow(0u)]
-    public async Task Status_FailedWithoutABlock_ReportsResolvedVolumeSerialOrNull(uint serial)
+    [DataRow(0xFEDC_BA98_89AB_CDEFul)]
+    [DataRow(0ul)]
+    public async Task Status_FailedWithoutABlock_ReportsResolvedVolumeSerialOrNull(ulong serial)
     {
         await using var index = await FileIndex.OpenAsync(
             Fixture.Options(volumeSerial: serial, cacheMode: CacheMode.ExistingOnly), TestContext.CancellationToken);

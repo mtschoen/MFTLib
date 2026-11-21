@@ -25,7 +25,7 @@ public sealed class DeletePendingPostingTests : IDisposable
     (BlockFile Block, BlockWriter Writer, RootBlock[] Snapshot) BuildRoot(uint? deltaCapacity = null)
     {
         // The snapshot owns the block and is released by each test.
-        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-00000001.mlix"), ProducerKind.Mft,
+        var block = TestBlocks.Create(Path.Combine(_directory.Path, "T-0000000000000001.mlix"), ProducerKind.Mft,
             slotCapacity: 8, namePoolCapacity: 1024, volumeSerial: 1, deltaCapacity: deltaCapacity);
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, Moment.Ticks, 0));

@@ -24,7 +24,7 @@ sealed record MftBlockProduceRequest
     ///     The volume serial number to stamp into the block header; a later open rejects a
     ///     cached block whose serial differs from the volume's.
     /// </summary>
-    public required uint VolumeSerial { get; init; }
+    public required ulong VolumeSerial { get; init; }
 
     /// <summary>Where the producer creates the block file, exactly: the cache slot, a private fallback beside it, or a temporary file, already chosen by the index.</summary>
     public required string BlockPath { get; init; }

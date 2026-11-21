@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace MFTLib.Index;
 
-readonly record struct VolumeScanKey(MftIndexSource? Source, VolumeKey Volume, uint VolumeSerial,
+readonly record struct VolumeScanKey(MftIndexSource? Source, VolumeKey Volume, ulong VolumeSerial,
     string? CacheDirectory, CacheTag CacheTag)
 {
     static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

@@ -35,7 +35,7 @@ public sealed class JournalMutatorMappingTests : IDisposable
     public void ChangePaths_AreReadOnTheWritersBlock_NotTheLineagesCurrentMapping()
     {
         // The lineage releases both blocks; disposing them again afterwards is a no-op.
-        using var written = TestBlocks.Create(Path.Combine(_directory.Path, "T-00000001.mlix"), ProducerKind.Mft,
+        using var written = TestBlocks.Create(Path.Combine(_directory.Path, "T-0000000000000001.mlix"), ProducerKind.Mft,
             slotCapacity: 8, namePoolCapacity: 1024, volumeSerial: 1);
         var writer = new BlockWriter(written);
         writer.TryWriteRow(0, "", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, Moment.Ticks, 0));
@@ -43,7 +43,7 @@ public sealed class JournalMutatorMappingTests : IDisposable
         writer.TryRenameRow(1, "a.txt", 0);
         writer.Complete(Moment, null);
         var rootBlock = new RootBlock(new VolumeKey('T'), written, rootDirectoryPath: TestRootDirectory.For('T'));
-        using var other = TestBlocks.Create(Path.Combine(_directory.Path, "T-00000001.mlix.other"), ProducerKind.Mft,
+        using var other = TestBlocks.Create(Path.Combine(_directory.Path, "T-0000000000000001.mlix.other"), ProducerKind.Mft,
             slotCapacity: 8, namePoolCapacity: 1024, volumeSerial: 1);
         try
         {

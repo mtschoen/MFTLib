@@ -33,7 +33,7 @@ public sealed partial class FileIndex
             // block came from a private scan while another index owned the slot) rescans privately
             // again and never touches the canonical file.
             var (target, retired) = await BeginProductionAsync(FindBlockForRescan,
-                () => Options.CacheMode != CacheMode.Disabled && EnsureCanonicalOwnership(),
+                () => CanOwnCanonicalSlot && EnsureCanonicalOwnership(),
                 cancellationToken).ConfigureAwait(false);
 
             PendingRootResult produced;

@@ -71,7 +71,7 @@ sealed class OpenScenario : IDisposable
 
     public void Dispose() => _fixture.Dispose();
 
-    static uint SerialOf(char driveLetter) => driveLetter;
+    static ulong SerialOf(char driveLetter) => driveLetter;
 
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {

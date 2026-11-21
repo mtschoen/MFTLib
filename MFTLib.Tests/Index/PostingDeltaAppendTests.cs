@@ -31,7 +31,7 @@ public sealed class PostingDeltaAppendTests : IDisposable
 
     void CreateBlock(uint slotCapacity = 64, uint deltaCapacity = 16, bool complete = true)
     {
-        _block = BlockFile.Create(TestBlocks.Options(Path.Combine(_directory.Path, "T-0BADF00D.mlix"),
+        _block = BlockFile.Create(TestBlocks.Options(Path.Combine(_directory.Path, "T-000000000BADF00D.mlix"),
             ProducerKind.Mft, slotCapacity, namePoolCapacity: 65536) with
         { DeltaCapacity = deltaCapacity });
         _writer = new BlockWriter(_block);

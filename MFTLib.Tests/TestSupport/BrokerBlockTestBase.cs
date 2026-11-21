@@ -10,7 +10,7 @@ public abstract class BrokerBlockTestBase
     internal static readonly UsnJournalCursor AdvancedCursor = new(71, 12500);
     internal static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
 
-    internal static BlockScanTarget Target(uint volumeSerial = 123) => TestBlockSections.Target(volumeSerial);
+    internal static BlockScanTarget Target(ulong volumeSerial = 123) => TestBlockSections.Target(volumeSerial);
 
     /// <summary>The connect callback of a producer that always runs on <paramref name="process" />.</summary>
     internal static Func<CancellationToken, Task<BrokerProcess>> Connect(BrokerProcess process) =>

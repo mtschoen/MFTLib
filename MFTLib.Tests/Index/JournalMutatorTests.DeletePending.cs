@@ -18,7 +18,7 @@ public partial class JournalMutatorTests
         CreateExtendDeletedFixture()
     {
         var directory = new TempDirectory("mftlib-delete-pending");
-        var blockPath = Path.Combine(directory.Path, "T-0BADF00D.mlix");
+        var blockPath = Path.Combine(directory.Path, "T-000000000BADF00D.mlix");
         var block = TestBlocks.Create(blockPath, ProducerKind.Mft, slotCapacity: 32, namePoolCapacity: 4096,
             rootRow: VolumeRootRow);
         var writer = new BlockWriter(block);
@@ -352,7 +352,7 @@ public partial class JournalMutatorTests
     public async Task DeletePending_PersistedAcrossBlockReopen_CompletesTombstoneAndReportsDeletedOnLaterFileDelete()
     {
         using var directory = new TempDirectory("mftlib-delete-pending-persist");
-        var blockPath = Path.Combine(directory.Path, "T-0BADF00D.mlix");
+        var blockPath = Path.Combine(directory.Path, "T-000000000BADF00D.mlix");
         var expectedPath = Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt");
 
         using (var initialBlock = TestBlocks.Create(blockPath, ProducerKind.Mft, slotCapacity: 32,
