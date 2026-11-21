@@ -6,7 +6,7 @@
       `QueryVolume`, and `GrowUsnJournal` replies; an id remains reserved until its reply arrives
       or the process ends. Opening a volume operation creates a client-owned pipe, sends its name
       on the control pipe, waits for both the host connection and `ChannelOpened`, and writes one
-      request. A VolumeScan owns one channel per production and one per watch instance; attached views share those
+      request. A VolumeScan owns one channel per production and one per watch instance; an inline content read opens one channel per chunk of requests ([inline content protocol](#inline-content-protocol)); attached views share those
       operations. Each scan or watch then owns that volume channel, so closing or faulting it cancels
       only that operation. Control EOF ends the process and every channel;
       the `BrokerProcess.Ended` task completes with the reason, and pending work fails with
@@ -149,6 +149,61 @@ The section name must match `mftlib-block-<root>-` followed by 32 ASCII hex digi
 section name, truncated fields, invalid flags and trailing data are malformed requests
 and write an `Error` frame on the scan channel before the host touches the volume or
 opens the named section.
+
+## Inline content protocol
+
+`BrokerInlineContentReader` is the broker source's `IInlineContentReader`, so `FileIndex.ReadInlineContentAsync` on a
+broker-backed index reads through the broker instead of answering `NotApplicable`. The host side is the existing
+`IVolumeAccess.ReadInlineContent` over `NativeInlineContentReader` on the elevated volume handle; nothing is parsed, so a
+read takes no part in the parse-thread budget.
+
+The client splits the ascending requests into chunks of at most `BrokerProtocol.MaximumInlineContentRequestsPerFrame`
+requests, one channel per chunk, run one after another in request order so the caller's sink is called serially. A
+request is 14 bytes on the wire (position `i32`, record number `i64`, sequence number `u16`), so the limit is
+`(16 MiB - 1 kind byte - 8 volume-serial bytes - 4 count bytes) / 14 = 1,198,371` requests, and a chunk of exactly
+that many is a frame of 16,777,207 bytes. A read of fewer requests is one chunk and one channel. No request, no channel.
+
+Frames: the client writes one `ReadInlineContent` (kind 19: expected volume serial `u64`, count `i32`, then the requests).
+The host opens the volume and verifies that handle's serial against the indexed block's serial before reading any record
+of the chunk: a failed open or a serial mismatch is an `Error` before that chunk's first batch. On the first chunk the
+caller's handler has then not been called; a later chunk opens and checks on its own channel after the earlier chunks'
+answers were delivered, so its refusal fails the read after those answers. A record whose own read fails after the open
+is an `Unreadable` answer in a batch.
+The host answers with zero
+or more `InlineContentBatch` (kind 20: count `i32` then per answer position `i32`, outcome byte, content length `i32`
+and the content bytes; the length is zero unless the outcome is `Returned`) and then one payload-free
+`InlineContentCompleted` (kind 21), after which it closes the channel. `Error` replaces any of these and fails the read
+with the host's message. The host flushes a batch before the next answer would push its encoded answers (9 fixed bytes plus content each, not
+counting the four-byte count) past 1 MiB, far under the 16 MiB frame limit because an answer is at most one MFT
+record. The request payload is validated on decode: a negative record
+number or a record number below its predecessor is a malformed request and the host writes `Error` before it reads
+anything.
+
+A native call answers nothing until it returns, so `ReadMftInlineContent` returns after at most one group read (one
+read of at most 8 MiB inside one `$MFT` run, plus one single-record reread of each record a short or failed group
+read did not deliver), and the host publishes progress for every answer that call produced. Every
+completed group read is therefore a chance to publish progress, whatever the layout: a fragmented `$MFT` splits groups at
+run boundaries into more calls, never into a longer one. The rereads of a short or failed group read are the exception:
+they run inside that group's call, so on failing media one call can spend up to one single-record read per requested
+record of an 8 MiB group (8,192 at 1 KiB records) before it publishes any answer: those rereads can run to the 30-second
+limit, and a call that exceeds it is stalled like any other slow step ([owner ruling](/schoen/MFTLib/issues/979#issuecomment-182389)). A call answers the requests that need no read on its way to its
+one group read, each with at most one binary search of the runs and no I/O ([run lookup](architecture.md)).
+The read runs on a thread-pool thread and queues each full batch behind four credits, so a slow client holds back only
+its own read; a failed pipe write cancels the read. The channel publishes `Processing` before it opens the volume (the
+open can spend time in layout discovery before any read) and for every answer, including answers still buffered in a
+partial batch, and every batch write restarts the processing progress clock. The deadline is the channel's no-progress
+watchdog, not a timer on one read: at a watchdog visit, a channel that has published no progress for 30 seconds is
+stalled, whether the time went to the open, one slow read, or anything else, and a visit is deferred while a write is
+in flight. A read that keeps answering is not stalled by the watchdog, except that a read held back by a slow client waits
+only behind an in-flight write, which defers the visit; heartbeats do not reset the clock.
+
+The client checks every answer: a position outside the chunk, a position answered more often than it was requested,
+a frame other than a batch or completion, and a completion with positions still unanswered are each a
+`BrokerChannelLostException`. Cancelling the caller's token, or an exception the sink throws, disposes the channel; the
+host reads EOF and cancels its read quietly, with no terminal frame, and no other channel or the control pipe is
+touched. A host `Error` frame on one volume faults only that read with `InvalidOperationException` carrying the host's text;
+a `Stalled` frame (no progress for 30 seconds) faults it with `BrokerChannelLostException` carrying the host's message.
+Control EOF still ends every channel with `BrokerChannelLostException`.
 
 ## Control requests
 

@@ -112,6 +112,68 @@ public sealed partial class InlineContentReaderStateTests : IDisposable
     }
 
     [TestMethod]
+    public void Read_EachNativeCall_MakesOneGroupReadAndAnswersOnlyThatGroup()
+    {
+        var path = WriteDump(1024, 4096, Files(4096, 64));
+        // 100-101 share a group; 228 and 356 are each their own; 4096 is past the end and needs no read.
+        InlineContentRequest[] requests =
+            [new(0, 100, 1), new(1, 101, 1), new(2, 228, 1), new(3, 356, 1), new(4, 4096, 1)];
+        var calls = new List<(ulong Start, ulong Next, ulong Reads)>();
+        var native = MFTLibNative.Hooks._readMftInlineContent;
+        MFTLibNative.Hooks._readMftInlineContent = (reader, ref call, out result) =>
+        {
+            native(reader, ref call, out result);
+            calls.Add((call.StartIndex, result.NextRequest, result.ReadCalls));
+        };
+        var outcomes = new InlineContentOutcome?[requests.Length];
+
+        using var input = MftDumpInput.Open(path);
+        using var reader = input.OpenInlineContentReader();
+        reader.Read(requests, (position, outcome, _) => outcomes[position] = outcome, CancellationToken.None);
+
+        Assert.AreSequenceEqual(new (ulong, ulong, ulong)[] { (0, 2, 1), (2, 3, 1), (3, 4, 1), (4, 5, 0) },
+            calls.Select(call => (call.Start, call.Next, call.Reads)),
+            "a call returns after its one read; the record past the end is answered by a call that reads nothing");
+        Assert.AreSequenceEqual(
+            [InlineContentOutcome.Returned, InlineContentOutcome.Returned, InlineContentOutcome.Returned,
+             InlineContentOutcome.Returned, InlineContentOutcome.Superseded],
+            outcomes.Select(outcome => outcome!.Value));
+    }
+
+    [TestMethod]
+    public void Read_ResumedCallWhoseRequestsWereReorderedAfterTheFirstCall_NeverGroupsADescendingRecord()
+    {
+        var records = Files(4096, 64);
+        var path = WriteDump(1024, 4096, records);
+        InlineContentRequest[] requests = [new(0, 100, 1), new(1, 2000, 1), new(2, 2001, 1)];
+        var native = MFTLibNative.Hooks._readMftInlineContent;
+        var reads = new List<ulong>();
+        MFTLibNative.Hooks._readMftInlineContent = (reader, ref call, out result) =>
+        {
+            if (call.StartIndex == 1)
+            {
+                // After the first call checked the order, the record after 2000 becomes 1999, one record before it.
+                SetRecordNumber(call.Requests, 2, 1999);
+            }
+
+            native(reader, ref call, out result);
+            reads.Add(result.ReadCalls);
+        };
+        var answers = new InlineAnswer[requests.Length];
+
+        using (var input = MftDumpInput.Open(path))
+        using (var reader = input.OpenInlineContentReader())
+        {
+            reader.Read(requests, (position, outcome, content) => answers[position] = new InlineAnswer(outcome, content.ToArray()),
+                CancellationToken.None);
+        }
+
+        Assert.AreSequenceEqual(new ulong[] { 1, 1, 1 }, reads, "1999 is not grouped behind 2000, so it is read on its own");
+        CollectionAssert.AreEqual(records[2000].Content, answers[1].Content);
+        CollectionAssert.AreEqual(records[1999].Content, answers[2].Content, "the record actually requested, read in bounds");
+    }
+
+    [TestMethod]
     public void Read_EveryRecordOfALargeMft_IsReadInBoundedPieces()
     {
         const int recordCount = 20 * 1024;
@@ -155,6 +217,107 @@ public sealed partial class InlineContentReaderStateTests : IDisposable
             Assert.AreEqual(InlineContentOutcome.Returned, answer.Outcome, $"record {number}");
             CollectionAssert.AreEqual(records[number].Content, answer.Content, $"record {number}");
         }
+    }
+
+    // Each native call reads one group, so a record in each of many runs is one call per run, and each call makes exactly
+    // one run lookup. Finding the run must stay a search of the sorted runs, not a walk of every run before it.
+    [TestMethod]
+    public void Read_OneRecordInEachOfAHundredRuns_FindsEachRunInLogarithmicallyManyProbes()
+    {
+        const int runCount = 100;
+        var records = Files(runCount * FragmentedNtfsImage.RecordsPerCluster, 40);
+        var mft = MftDumpFixture.Build(1024, runCount * FragmentedNtfsImage.RecordsPerCluster, records);
+        var path = Path.Combine(_directory.Path, "many-runs.img");
+        FragmentedNtfsImage.WriteOneClusterRuns(path, mft);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        // Runs 4 to 99: the first file record is 16, at the start of run 4.
+        var numbers = Enumerable.Range(4, runCount - 4).Select(run => (run * FragmentedNtfsImage.RecordsPerCluster) + 2)
+            .ToArray();
+        var requests = numbers.Select((number, position) => new InlineContentRequest(position, number, 1)).ToArray();
+        var answers = new InlineAnswer[requests.Length];
+
+        var calls = ReadCountingProbes(path, requests, answers);
+
+        // A binary search of 100 runs examines at most ceil(log2(101)) = 7. A walk from the first run on every call
+        // examines k + 1 runs for the record in run k.
+        Assert.HasCount(requests.Length, calls, "one call per run");
+        foreach (var call in calls)
+        {
+            Assert.AreEqual((1UL, 1UL), (call.Next - call.Start, call.Reads), $"call at {call.Start}: one lookup, one read");
+            Assert.IsInRange(1UL, 7UL, call.Probes, $"call at {call.Start}: runs examined by its one lookup");
+        }
+
+        for (var index = 0; index < numbers.Length; index++)
+        {
+            Assert.AreEqual(InlineContentOutcome.Returned, answers[index].Outcome, $"record {numbers[index]}");
+            CollectionAssert.AreEqual(records[numbers[index]].Content, answers[index].Content, $"record {numbers[index]}");
+        }
+    }
+
+    // 8 KiB records over 4 KiB clusters in runs of 3, 1 and 2 clusters: record 1 straddles the first two runs and cannot
+    // be read as one piece, and record 2 fills the last run. A call meets the straddling record, answers it without I/O,
+    // and goes on to its one group read, so it makes one lookup per distinct record it meets: a search of three runs
+    // examines exactly two, and repeated requests for the record just found straddling are answered without a search.
+    [TestMethod]
+    public void Read_StraddlingRecordRequestedThriceThenAReadableRun_OneCallWithOneLookupPerDistinctRecord()
+    {
+        const int recordSize = 8192;
+        var records = new Dictionary<int, DumpRecord>
+        {
+            [0] = new DumpRecord("$MFT", 5),
+            [2] = new DumpRecord("f.bin", 5) { Content = [0x41, 0x42, 0x43] }
+        };
+        var path = Path.Combine(_directory.Path, "straddling.img");
+        FragmentedNtfsImage.WriteRuns(path, MftDumpFixture.Build(recordSize, 3, records), [(3, 0), (1, 1), (2, 1)],
+            recordSize);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(recordSize);
+        InlineContentRequest[] requests = [new(0, 1, 1), new(1, 1, 1), new(2, 1, 1), new(3, 2, 1)];
+        var answers = new InlineAnswer[requests.Length];
+
+        var calls = ReadCountingProbes(path, requests, answers);
+
+        Assert.AreSequenceEqual(new (ulong, ulong, ulong, ulong)[] { (0, 4, 1, 4) },
+            calls.Select(call => (call.Start, call.Next, call.Reads, call.Probes)),
+            "one call: two lookups of two probes each (record 1 once, record 2), then the one read");
+        Assert.AreSequenceEqual(
+            [InlineContentOutcome.Unreadable, InlineContentOutcome.Unreadable, InlineContentOutcome.Unreadable,
+             InlineContentOutcome.Returned],
+            answers.Select(answer => answer.Outcome));
+        CollectionAssert.AreEqual(records[2].Content, answers[3].Content);
+    }
+
+    [TestMethod]
+    public void Read_WithoutArmedProbeCounting_PublishesNoProbes()
+    {
+        var path = WriteDump(1024, 4096, Files(4096, 32));
+
+        var answers = InlineContentDump.Read(path, (100, 1), (2100, 1), (4000, 1));
+
+        Assert.IsTrue(answers.All(answer => answer.Outcome == InlineContentOutcome.Returned), "every lookup ran");
+        Assert.AreEqual(0UL, NativeTestHooks.NativeGetInlineSegmentProbes(),
+            "an unarmed lookup counts only in a local, so production reads write no shared counter");
+    }
+
+    // Reads the requests from the image and returns, per native call, where it started, where it stopped, its reads and
+    // the run probes the lookups made inside it.
+    static List<(ulong Start, ulong Next, ulong Reads, ulong Probes)> ReadCountingProbes(string path,
+        InlineContentRequest[] requests, InlineAnswer[] answers)
+    {
+        var calls = new List<(ulong Start, ulong Next, ulong Reads, ulong Probes)>();
+        NativeTestHooks.NativeSetInlineSegmentProbeCounting(1);
+        var native = MFTLibNative.Hooks._readMftInlineContent;
+        MFTLibNative.Hooks._readMftInlineContent = (reader, ref call, out result) =>
+        {
+            var before = NativeTestHooks.NativeGetInlineSegmentProbes();
+            native(reader, ref call, out result);
+            calls.Add((call.StartIndex, result.NextRequest, result.ReadCalls,
+                NativeTestHooks.NativeGetInlineSegmentProbes() - before));
+        };
+        using var image = File.OpenHandle(path);
+        using var inlineReader = NativeInlineContentReader.Open(image);
+        inlineReader.Read(requests, (position, outcome, content) =>
+            answers[position] = new InlineAnswer(outcome, content.ToArray()), CancellationToken.None);
+        return calls;
     }
 
     [TestMethod]
@@ -356,6 +519,9 @@ public sealed partial class InlineContentReaderStateTests : IDisposable
 
     static unsafe void SetExpectedSequenceNumber(IntPtr requests, uint sequenceNumber) =>
         ((MftInlineRequest*)requests)[0].ExpectedSequenceNumber = sequenceNumber;
+
+    static unsafe void SetRecordNumber(IntPtr requests, int index, ulong recordNumber) =>
+        ((MftInlineRequest*)requests)[index].RecordNumber = recordNumber;
 
     static unsafe uint OutcomeAt(IntPtr requests, ulong index) => ((MftInlineRequest*)requests)[index].Outcome;
 

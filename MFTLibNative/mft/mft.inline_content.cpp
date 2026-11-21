@@ -206,25 +206,29 @@ struct Call {
     MftInlineReadResult* result = nullptr;
     uint64_t next = 0;
     uint64_t bytesUsed = 0;
-    size_t segmentIndex = 0;
 
     uint64_t RecordSize() const { return reader->geometry.recordSize; }
     uint64_t BufferRemaining() const { return bufferLength - bytesUsed; }
 };
 
 // The segment holding bytes [offset, offset + length), or null when they straddle segments or lie
-// outside them. Requests ascend, so the search resumes where the last one ended.
-const Segment* FindSegment(Call* call, uint64_t offset, uint64_t length) {
+// outside them. The segments ascend and are gap free, so this is a binary search for the last one
+// starting at or before offset: every call reads a single group, and a scan from the first run on
+// each call would cost every earlier run again.
+const Segment* FindSegment(const Call* call, uint64_t offset, uint64_t length) {
     const auto& segments = call->reader->segments;
-    while (call->segmentIndex < segments.size() &&
-           offset >= segments[call->segmentIndex].mftOffset + segments[call->segmentIndex].byteCount) {
-        call->segmentIndex++;
-    }
-    if (call->segmentIndex >= segments.size()) {
+    uint64_t probes = 0;  // counted locally; only an armed test hook publishes it
+    const auto after =
+        std::upper_bound(segments.begin(), segments.end(), offset, [&probes](uint64_t value, const Segment& segment) {
+            probes++;
+            return value < segment.mftOffset;
+        });
+    NoteInlineSegmentProbes(probes);
+    if (after == segments.begin()) {
         return nullptr;
     }
-    const Segment& segment = segments[call->segmentIndex];
-    return offset >= segment.mftOffset && offset + length <= segment.mftOffset + segment.byteCount ? &segment : nullptr;
+    const Segment& segment = *(after - 1);
+    return offset + length <= segment.mftOffset + segment.byteCount ? &segment : nullptr;
 }
 
 bool IsCancelRequested(const MftParseControl* control) {
@@ -232,7 +236,7 @@ bool IsCancelRequested(const MftParseControl* control) {
 }
 
 // The group that starts at the call's next request, which is below the end of the MFT.
-Group BuildGroup(Call* call) {
+Group BuildGroup(const Call* call) {
     const uint64_t recordSize = call->RecordSize();
     Group group;
     group.first = call->next;
@@ -246,7 +250,9 @@ Group BuildGroup(Call* call) {
     const uint64_t segmentEnd = group.segment->mftOffset + group.segment->byteCount;
     while (group.end < call->requestCount) {
         const uint64_t number = call->requests[group.end].recordNumber;
-        if (number >= call->reader->totalRecords) {
+        // A descending record ends the group, so every record answered from the scratch bytes lies inside them
+        // even when a resumed call's requests were reordered after its first call checked them.
+        if (number >= call->reader->totalRecords || number < call->requests[group.end - 1].recordNumber) {
             break;
         }
         const uint64_t start = number * recordSize;
@@ -346,8 +352,8 @@ void ResetAnswer(MftInlineRequest* request) {
     request->contentLength = 0;
 }
 
-bool IsAscending(const MftInlineRequest* requests, uint64_t first, uint64_t count) {
-    for (uint64_t index = first + 1; index < count; index++) {
+bool IsAscending(const MftInlineRequest* requests, uint64_t count) {
+    for (uint64_t index = 1; index < count; index++) {
         if (requests[index].recordNumber < requests[index - 1].recordNumber) {
             return false;
         }
@@ -355,13 +361,20 @@ bool IsAscending(const MftInlineRequest* requests, uint64_t first, uint64_t coun
     return true;
 }
 
+// Answers requests from startIndex until one group has been read, so a caller sees the answers of every read as soon
+// as it completes. Requests that need no read (past the end of the MFT, or straddling two runs) are answered on the
+// way, without I/O: a call makes one run lookup per distinct record it meets before its one group read, and a request
+// for the record just found straddling is answered without searching again. A short or failed group read adds one
+// bounded read per record it did not deliver, inside the same call. The first call of a request array (startIndex 0)
+// checks the order of the whole array once.
 void ReadRequests(Call* call, uint64_t startIndex) {
     MftInlineReadResult* result = call->result;
-    if (!IsAscending(call->requests, startIndex, call->requestCount)) {
+    if (startIndex == 0 && !IsAscending(call->requests, call->requestCount)) {
         result->failed = 1;
         SetErrorMessage(result->errorMessage, L"The requests are not in ascending record order");
         return;
     }
+    uint64_t straddlingRecord = (std::numeric_limits<uint64_t>::max)();
     while (call->next < call->requestCount) {
         if (IsCancelRequested(call->control)) {
             result->cancelled = 1;
@@ -374,12 +387,14 @@ void ReadRequests(Call* call, uint64_t startIndex) {
             call->next++;
             continue;
         }
-        if (call->next != startIndex && call->BufferRemaining() < call->RecordSize()) {
-            break;
+        if (request.recordNumber == straddlingRecord) {
+            call->next++;  // stays Unreadable, as its first request did
+            continue;
         }
         const Group group = BuildGroup(call);
         if (group.segment == nullptr) {
             // A record straddling two runs or outside every run cannot be read as one piece.
+            straddlingRecord = request.recordNumber;
             call->next++;
             continue;
         }
@@ -387,9 +402,7 @@ void ReadRequests(Call* call, uint64_t startIndex) {
             ResetAnswer(&call->requests[index]);
         }
         AnswerGroup(call, group, ReadGroup(call, group));
-        if (call->next < group.end) {
-            break;
-        }
+        break;
     }
     result->nextRequest = call->next;
     result->bytesUsed = call->bytesUsed;
@@ -401,8 +414,10 @@ extern "C" {
 // Answers the requests of one call from its startIndex on, in ascending record order, filling each
 // request's outcome and placing each returned content in the call's buffer. The buffer is at least
 // MFT_INLINE_MINIMUM_BUFFER_BYTES, so every call answers at least one request unless it is cancelled or fails.
-// Neighbouring wanted records are read together. result->nextRequest tells where the next call starts;
-// a call that reaches requestCount is the last.
+// Neighbouring wanted records are read together as one group, and a call makes at most one group read
+// (plus a single-record reread of each record a short or failed group read did not deliver) before it
+// returns, so the caller can report each completed call. result->nextRequest tells where the
+// next call starts; a call that reaches requestCount is the last.
 EXPORT void ReadMftInlineContent(MftInlineReader* reader, const MftInlineReadCall* request,
                                  MftInlineReadResult* result) {
     if (result == nullptr) {

@@ -106,18 +106,19 @@ sealed partial class BrokerProcess
     // frame, is a lost channel.
     sealed class ScanFrames(BrokerVolumeChannel channel, IProgress<BlockWriteProgress>? progress)
     {
+        readonly BrokerChannelFrames _frames = new(channel, "scan");
 
         public async Task<UsnJournalCursor> ReadArmedCursorAsync(CancellationToken cancellationToken)
         {
-            var frame = await ReadAsync("Cursor", cancellationToken).ConfigureAwait(false);
-            return frame.Kind == BrokerFrameKind.Cursor ? frame.Cursor : throw OutOfOrder(frame, "Cursor");
+            var frame = await _frames.ReadAsync("Cursor", cancellationToken).ConfigureAwait(false);
+            return frame.Kind == BrokerFrameKind.Cursor ? frame.Cursor : throw _frames.OutOfOrder(frame, "Cursor");
         }
 
         public async Task<BrokerFrame> ReadToScanReadyAsync(CancellationToken cancellationToken)
         {
             while (true)
             {
-                var frame = await ReadAsync("ScanReady", cancellationToken).ConfigureAwait(false);
+                var frame = await _frames.ReadAsync("ScanReady", cancellationToken).ConfigureAwait(false);
                 switch (frame.Kind)
                 {
                     case BrokerFrameKind.ScanProgress:
@@ -132,62 +133,22 @@ sealed partial class BrokerProcess
                         return frame;
 
                     default:
-                        throw OutOfOrder(frame, "ScanProgress or ScanReady");
+                        throw _frames.OutOfOrder(frame, "ScanProgress or ScanReady");
                 }
             }
         }
 
         public async Task<BrokerFrame> ReadTerminalAsync(CancellationToken cancellationToken)
         {
-            var terminal = await ReadAsync("ScanCompleted or CatchUpLost", cancellationToken).ConfigureAwait(false);
+            var terminal = await _frames.ReadAsync("ScanCompleted or CatchUpLost", cancellationToken)
+                .ConfigureAwait(false);
             if (terminal.Kind is not (BrokerFrameKind.ScanCompleted or BrokerFrameKind.CatchUpLost))
             {
-                throw OutOfOrder(terminal, "ScanCompleted or CatchUpLost");
+                throw _frames.OutOfOrder(terminal, "ScanCompleted or CatchUpLost");
             }
 
-            // The host closes the channel after its terminal frame; a frame instead is out of order,
-            // and so is a truncated or malformed one. The scan is complete once the terminal frame is
-            // read, so only this channel's own disposal (the process disposed, say) cutting off the
-            // wait for that close leaves the result in place.
-            BrokerFrame? extra;
-            try
-            {
-                extra = await ReadSkippingHeartbeatsAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (BrokerChannelLostException exception) when (channel.IsOwnClose(exception))
-            {
-                return terminal;
-            }
-
-            return extra is { } frame ? throw OutOfOrder(frame, $"the channel to close after {terminal.Kind}") : terminal;
-        }
-
-        async Task<BrokerFrame> ReadAsync(string expected, CancellationToken cancellationToken)
-        {
-            var frame = await ReadSkippingHeartbeatsAsync(cancellationToken).ConfigureAwait(false)
-                        ?? throw new BrokerChannelLostException(channel.Volume,
-                            $"Volume {channel.Volume} scan channel closed where {expected} was expected.");
-            return frame.Kind == BrokerFrameKind.Error
-                ? throw new InvalidOperationException(frame.RequireMessage())
-                : frame;
-        }
-
-        async Task<BrokerFrame?> ReadSkippingHeartbeatsAsync(CancellationToken cancellationToken)
-        {
-            while (true)
-            {
-                var frame = await channel.ReadAsync(cancellationToken).ConfigureAwait(false);
-                if (frame is not { Kind: BrokerFrameKind.Heartbeat })
-                {
-                    return frame;
-                }
-            }
-        }
-
-        BrokerChannelLostException OutOfOrder(BrokerFrame frame, string expected)
-        {
-            return new BrokerChannelLostException(channel.Volume,
-                $"Volume {channel.Volume} scan channel sent {frame.Kind} where {expected} was expected.");
+            await _frames.ReadClosureAsync(terminal, cancellationToken).ConfigureAwait(false);
+            return terminal;
         }
     }
 }

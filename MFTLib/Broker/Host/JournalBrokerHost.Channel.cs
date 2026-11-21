@@ -170,8 +170,9 @@ sealed partial class JournalBrokerHost
         {
             BrokerFrameKind.ArmAndScan => RunScanAsync(channel, request, blockSectionWriter, cancellationToken),
             BrokerFrameKind.StartWatch => StreamWatchAsync(channel, request.Cursor, cancellationToken),
+            BrokerFrameKind.ReadInlineContent => RunInlineContentAsync(channel, request, cancellationToken),
             _ => WriteChannelErrorAsync(channel,
-                $"{request.Kind} is not a volume channel request; expected ArmAndScan or StartWatch",
+                $"{request.Kind} is not a volume channel request; expected ArmAndScan, StartWatch or ReadInlineContent",
                 cancellationToken)
         };
     }

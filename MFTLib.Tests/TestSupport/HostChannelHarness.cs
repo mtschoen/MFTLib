@@ -114,6 +114,14 @@ sealed class HostChannelHarness : IAsyncDisposable
         return pipe;
     }
 
+    public async Task<Stream> OpenInlineContentChannelAsync(VolumeKey volume, InlineContentRequest[] requests)
+    {
+        var pipe = await OpenChannelAsync(volume);
+        await WriteFrameAsync(pipe,
+            writer => BrokerProtocol.WriteReadInlineContent(writer, BrokerFrame.ReadInlineContent(requests, 0xA1B2C3D4)));
+        return pipe;
+    }
+
     /// <summary>The client closing its end of the control pipe.</summary>
     public ValueTask CloseControlAsync() => _control.Client.DisposeAsync();
 

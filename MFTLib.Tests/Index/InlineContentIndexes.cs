@@ -77,7 +77,7 @@ static class InlineContentIndexes
     internal static FileEntry Entry(FileIndex index, uint record) =>
         index.Search(new SearchQuery(null, IncludeDeleted: true)).Single(entry => entry.RecordKey.RecordNumber == record);
 
-    static Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _) =>
+    internal static Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _) =>
         Task.FromResult(new MftBlockProduceResult(Build(request), SkippedRecordCount: 0));
 
     static BlockFile Build(MftBlockProduceRequest request) =>

@@ -66,7 +66,9 @@ sealed unsafe class NativeInlineContentReader : IDisposable
     /// <summary>
     ///     Answers every request exactly once through <paramref name="sink" />, serially on the calling thread.
     ///     The requests go to the native reader in batches of <see cref="BatchRequests" /> sharing one content
-    ///     buffer, and a batch whose content fills the buffer is answered across several native calls.
+    ///     buffer. A native call makes at most one group read (plus a single-record reread of each record a short or
+    ///     failed group read did not deliver), so a batch is answered across one call per group (and more when content
+    ///     fills the buffer), and the answers of each completed call reach the sink before the next group read starts.
     /// </summary>
     /// <param name="requests">The requests, ascending by record number.</param>
     /// <param name="sink">Receives each answer; an exception it throws propagates and stops the read.</param>

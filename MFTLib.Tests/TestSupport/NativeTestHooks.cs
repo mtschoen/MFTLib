@@ -61,6 +61,15 @@ static partial class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "SetVolumeRecordSizeOverride", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetVolumeRecordSizeOverride(uint recordSize);
 
+    // Arms (nonzero) or disarms the run-lookup probe count; NativeResetTestState disarms it.
+    [DllImport(LibraryName, EntryPoint = "SetInlineSegmentProbeCounting", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetInlineSegmentProbeCounting(int counting);
+
+    // How many $MFT runs inline content run lookups examined while counting was armed, since the last
+    // NativeResetTestState.
+    [DllImport(LibraryName, EntryPoint = "GetInlineSegmentProbes", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong NativeGetInlineSegmentProbes();
+
     // Makes sectorBytes the offset and length alignment and memoryBytes the destination address alignment (both
     // powers of two) of raw volumes opened after this call, and fails every volume read that breaks either; a zero
     // sectorBytes disarms.

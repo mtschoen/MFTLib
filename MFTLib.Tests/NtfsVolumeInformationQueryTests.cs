@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using MFTLib.Index;
 using MFTLib.NativeInterop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -23,6 +25,7 @@ public class NtfsVolumeInformationQueryTests
     {
         FileUtilities.Hooks.ResetToDefaults();
         Kernel32.Hooks.ResetToDefaults();
+        NativeTestHooks.NativeResetTestState();
     }
 
     [TestMethod]
@@ -63,6 +66,47 @@ public class NtfsVolumeInformationQueryTests
 
         FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default volume reached volume I/O.");
         Assert.ThrowsExactly<ArgumentException>(() => NtfsVolumeInformation.Query(default, isWindows: true));
+    }
+
+    [TestMethod]
+    [DataRow(0x12345678A1B2C3D4UL, "Volume is not NTFS")]
+    [DataRow(0x12345678A1B2C3D5UL, "Volume C does not have the expected serial.")]
+    [DataRow(0xA1B2C3D4UL, "Volume C does not have the expected serial.")]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
+    public void ReadInlineContent_OnlyAMatchingSerialReachesNativeReaderOpen(ulong indexedSerial, string expectedError)
+    {
+        // The native open rejects this image. A serial mismatch must be reported before that open.
+        using var file = new TempFile();
+        File.WriteAllBytes(file.Path, new byte[8192]);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        var path = file.Path;
+        var openedHandle = IntPtr.Zero;
+        var queried = false;
+        FileUtilities.Hooks._getVolumeHandle = _ =>
+        {
+            Assert.AreEqual(IntPtr.Zero, openedHandle, "Volume reopened.");
+            var handle = File.OpenHandle(path);
+            openedHandle = handle.DangerousGetHandle();
+            return handle;
+        };
+        Kernel32.Hooks._deviceIoControl = (device, code, _, _, output, _, out returned, _) =>
+        {
+            Assert.AreEqual(openedHandle, device.DangerousGetHandle());
+            Assert.AreEqual(0x00090064u, code);
+            queried = true;
+            Marshal.StructureToPtr(new NtfsVolumeDataBufferNative { VolumeSerialNumber = 0x12345678A1B2C3D4 },
+                output, false);
+            returned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
+            return true;
+        };
+
+        InlineContentRequest[] requests = [new(0, 1, 1)];
+        var error = Assert.ThrowsExactly<IOException>(() => LiveVolumeSources.ReadInlineContent('C', indexedSerial,
+            requests, (_, _, _) => Assert.Fail("Unexpected answer."), CancellationToken.None));
+
+        Assert.IsTrue(queried);
+        Assert.AreEqual(expectedError, error.Message);
     }
 
     [TestMethod]

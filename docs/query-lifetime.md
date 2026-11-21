@@ -119,7 +119,11 @@
       number, sequence number) into an array. When any entry needs a record read, those decided answers are
       delivered only once the reader hands over its first answer, which follows its open and its source check (the
       full 64-bit volume serial read from the opened handle, which must equal the nonzero serial the block records,
-      or the block's own dump file), so a refused read fails with no handler call;
+      or the block's own dump file), so a source refused at its open or identity check before the first answer fails
+      with no handler call. A direct or dump read checks once, before that answer; a broker read checks again for each
+      chunk of up to 1,198,371 requests, after the earlier chunks' answers were delivered, so a later chunk's refusal
+      fails the call after those answers. A record whose own read fails after the source opened is answered `Unreadable`, and
+      those decided answers are delivered with it, even when every requested record fails;
       a call with nothing to read delivers them at once without opening the source. The same borrow captures the reader. A dump block owns the open file
       its rows were parsed from (`DumpInlineContentReader`, released with the block), and the borrow takes a lease
       on it, so the read goes through that same file whatever happened to the path since: a rename, a deletion or a
@@ -137,7 +141,7 @@
       answered. The call observes its token before it checks the entries, then every 4,096 entries while it checks
       them and, linked with index disposal, while it maps them under the borrow, so an already cancelled token reads
       no entry and a long entry list never delays a cancellation by a whole pass. The read itself observes cancellation before the first batch of 65,536 requests, every 4,096 answers,
-      between native reads and inside one (the native control block), and once more before any result is reported
+      between native reads and inside one (the native control block; a broker-backed read closes its channel, and the broker cancels its own native read), and once more before any result is reported
       (`NotApplicable`, `Failed` or `Succeeded`), so a cancellation that the cadence skipped still ends the call; index
       disposal cancels it through the linked token: a cancellation observed before a result is reported throws
       `OperationCanceledException` instead of that result. A handler exception takes precedence: when the handler

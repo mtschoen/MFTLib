@@ -162,4 +162,36 @@ static partial class BrokerProtocol
         _ = frame;
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.ScanCompleted);
     }
+
+    // payload: [expectedVolumeSerial u64][count i32][count x ([position i32][recordNumber i64][sequenceNumber u16])]
+    internal static void WriteReadInlineContent(IBufferWriter<byte> writer, BrokerFrame frame)
+    {
+        var payload = new PayloadWriter().UInt64(frame.ExpectedVolumeSerial).Int32(frame.InlineContentRequests.Length);
+        foreach (var request in frame.InlineContentRequests.Span)
+        {
+            payload.InlineRequest(request);
+        }
+
+        payload.WriteTo(writer, BrokerFrameKind.ReadInlineContent);
+    }
+
+    // payload: [count i32][count x ([position i32][outcome byte][length i32][content bytes])]
+    // A length is zero unless the outcome is Returned.
+    internal static void WriteInlineContentBatch(IBufferWriter<byte> writer, BrokerFrame frame)
+    {
+        var payload = new PayloadWriter().Int32(frame.InlineContentAnswers.Length);
+        foreach (var answer in frame.InlineContentAnswers)
+        {
+            payload.InlineAnswer(answer, frame.InlineContent.Span.Slice(answer.Offset, answer.Length));
+        }
+
+        payload.WriteTo(writer, BrokerFrameKind.InlineContentBatch);
+    }
+
+    // No payload: every request of the channel was answered.
+    public static void WriteInlineContentCompleted(IBufferWriter<byte> writer, BrokerFrame frame)
+    {
+        _ = frame;
+        new PayloadWriter().WriteTo(writer, BrokerFrameKind.InlineContentCompleted);
+    }
 }

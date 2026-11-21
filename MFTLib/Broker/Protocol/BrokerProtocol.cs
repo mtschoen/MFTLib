@@ -109,6 +109,9 @@ static partial class BrokerProtocol
             BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadCursor(ref payload)),
             BrokerFrameKind.CaughtUp => BrokerFrame.CaughtUp(),
             BrokerFrameKind.ScanCompleted => BrokerFrame.ScanCompleted(),
+            BrokerFrameKind.ReadInlineContent => ReadReadInlineContentFrame(ref payload),
+            BrokerFrameKind.InlineContentBatch => ReadInlineContentBatchFrame(ref payload),
+            BrokerFrameKind.InlineContentCompleted => BrokerFrame.InlineContentCompleted(),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
 
@@ -175,6 +178,37 @@ static partial class BrokerProtocol
         }
 
         return BrokerFrame.JournalBatch(cursor, [.. entries]);
+    }
+
+    // Requests must ascend by record number, the order the native reader coalesces in, and name no negative record.
+    static BrokerFrame ReadReadInlineContentFrame(ref PayloadReader payload)
+    {
+        var expectedVolumeSerial = payload.UInt64();
+        var requests = new InlineContentRequest[payload.InlineContentRequestCount()];
+        for (var index = 0; index < requests.Length; index++)
+        {
+            requests[index] = payload.InlineRequest();
+            if (requests[index].RecordNumber < 0 || (index > 0 && requests[index].RecordNumber < requests[index - 1].RecordNumber))
+            {
+                throw new InvalidDataException(
+                    $"Inline content request {index} names record {requests[index].RecordNumber} out of ascending order");
+            }
+        }
+
+        return BrokerFrame.ReadInlineContent(requests, expectedVolumeSerial);
+    }
+
+    static BrokerFrame ReadInlineContentBatchFrame(ref PayloadReader payload)
+    {
+        var answerCount = payload.InlineContentAnswerCount();
+        var answers = new List<BrokerInlineContentAnswer>(answerCount);
+        var content = new ArrayBufferWriter<byte>();
+        while (answers.Count < answerCount)
+        {
+            answers.Add(payload.InlineAnswer(content));
+        }
+
+        return BrokerFrame.InlineContentBatch([.. answers], content.WrittenMemory);
     }
 
     static BrokerFrame ReadCatchUpLostFrame(ref PayloadReader payload)

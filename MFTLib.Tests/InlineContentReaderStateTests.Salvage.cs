@@ -75,6 +75,20 @@ public sealed partial class InlineContentReaderStateTests
     }
 
     [TestMethod]
+    public void Read_EveryRecordsOwnReadFails_AnswersEachUnreadableWithoutFailingTheRead()
+    {
+        var path = WriteDump(1024, 4096, Files(4096, 32));
+        // Records far apart are separate one-record groups, so each of the three reads is one record's own read.
+        NativeTestHooks.NativeSetReadFailMask(0b111);
+
+        var answers = InlineContentDump.Read(path, (100, 1), (2100, 1), (4000, 1));
+
+        Assert.AreSequenceEqual(
+            [InlineContentOutcome.Unreadable, InlineContentOutcome.Unreadable, InlineContentOutcome.Unreadable],
+            answers.Select(answer => answer.Outcome));
+    }
+
+    [TestMethod]
     public void Read_CancelledDuringTheRecordRetries_ThrowsOperationCanceled()
     {
         var path = WriteDump(SalvageRecordSize, 32, SalvageFiles());

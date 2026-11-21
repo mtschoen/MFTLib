@@ -37,6 +37,10 @@ std::atomic<int> g_interruptedIoRemaining{0};
 std::atomic<int> g_interruptedIoCalls{0};
 #endif
 uint32_t g_volumeRecordSizeOverride = 0;
+// Runs examined by inline content run lookups while counting is armed (SetInlineSegmentProbeCounting), since the last
+// ResetTestState. Unarmed, a lookup costs one relaxed load and writes nothing shared. Relaxed: readers only add.
+std::atomic<bool> g_inlineSegmentProbeCounting{false};
+std::atomic<uint64_t> g_inlineSegmentProbes{0};
 uint32_t g_volumeSectorAlignmentOverride = 0;
 uint32_t g_volumeMemoryAlignmentOverride = 0;
 std::atomic<uint64_t> g_bouncedVolumeReads{0};
@@ -177,6 +181,11 @@ bool ShouldFailPlatformRead() {
 
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
 uint32_t VolumeRecordSizeOverride() { return g_volumeRecordSizeOverride; }
+void NoteInlineSegmentProbes(const uint64_t probes) {
+    if (g_inlineSegmentProbeCounting.load(std::memory_order_relaxed)) {
+        g_inlineSegmentProbes.fetch_add(probes, std::memory_order_relaxed);
+    }
+}
 uint32_t VolumeSectorAlignmentOverride() { return g_volumeSectorAlignmentOverride; }
 uint32_t VolumeMemoryAlignmentOverride() { return g_volumeMemoryAlignmentOverride; }
 void NoteBouncedVolumeRead() { g_bouncedVolumeReads.fetch_add(1, std::memory_order_relaxed); }
@@ -318,6 +327,10 @@ EXPORT void SetInterruptedIo(int mode, int interruptionCount) {
 EXPORT int GetInterruptedIoCalls() { return g_interruptedIoCalls.load(); }
 #endif
 EXPORT void SetVolumeRecordSizeOverride(const uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
+// Arms (nonzero) or disarms the run-lookup probe count that GetInlineSegmentProbes reads; ResetTestState disarms it.
+EXPORT void SetInlineSegmentProbeCounting(const int counting) { g_inlineSegmentProbeCounting = counting != 0; }
+// How many runs inline content run lookups examined while counting was armed, since the last ResetTestState.
+EXPORT uint64_t GetInlineSegmentProbes() { return g_inlineSegmentProbes.load(std::memory_order_relaxed); }
 // Makes sectorBytes the offset and length alignment and memoryBytes the destination address alignment (both powers of
 // two) of every raw volume opened after it, and fails every volume read that breaks either, as a noncached volume
 // handle may. A zero sectorBytes disarms.
@@ -405,6 +418,8 @@ EXPORT void ResetTestState() {
             g_failPlatformReadCountdown = 0;
             g_failPlatformWrite = 0;
             g_volumeRecordSizeOverride = 0;
+            g_inlineSegmentProbeCounting = false;
+            g_inlineSegmentProbes = 0;
             g_volumeSectorAlignmentOverride = 0;
             g_volumeMemoryAlignmentOverride = 0;
             g_bouncedVolumeReads = 0;
@@ -443,6 +458,8 @@ EXPORT void ResetTestState() {
             g_interruptedIoRemaining = 0;
             g_interruptedIoCalls = 0;
             g_volumeRecordSizeOverride = 0;
+            g_inlineSegmentProbeCounting = false;
+            g_inlineSegmentProbes = 0;
             g_volumeSectorAlignmentOverride = 0;
             g_volumeMemoryAlignmentOverride = 0;
             g_bouncedVolumeReads = 0;

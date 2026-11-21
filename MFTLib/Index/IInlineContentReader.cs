@@ -13,9 +13,9 @@ readonly record struct InlineContentRequest(int Position, long RecordNumber, ush
 delegate void InlineContentSink(int position, InlineContentOutcome outcome, ReadOnlySpan<byte> content);
 
 /// <summary>
-///     Reads the resident <c>$DATA</c> of specific MFT records of one volume. A local volume source and a dump block
-///     implement this; a broker source has no reader. <see cref="FileIndex.ReadInlineContentAsync" /> is its only
-///     caller.
+///     Reads the resident <c>$DATA</c> of specific MFT records of one volume. A local volume source, a dump block and
+///     a broker source (through its broker's volume channels) implement this;
+///     <see cref="FileIndex.ReadInlineContentAsync" /> is its only caller.
 /// </summary>
 interface IInlineContentReader
 {

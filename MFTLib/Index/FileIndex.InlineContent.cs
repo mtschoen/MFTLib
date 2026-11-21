@@ -24,16 +24,21 @@ public sealed partial class FileIndex
     ///         after its path was renamed, deleted or replaced, until a successful rescan), so the bytes are as fresh
     ///         as the file system's own metadata. <b>The read does not consult file permissions:</b> a direct raw-volume
     ///         source requires an already elevated caller, and a dump source reads the dump without elevation.
-    ///         Broker-sourced indexes currently return <see cref="RootOperationOutcome.NotApplicable" />; the broker
-    ///         content operation is future work. See the permissions ruling in docs/api-decisions.md.
+    ///         A broker-backed source reads in the elevated broker and returns the bytes to its unelevated caller.
+    ///         See the permissions ruling in docs/api-decisions.md.
     ///     </para>
     ///     <para>
     ///         On <see cref="RootOperationOutcome.Succeeded" /> the handler has been called exactly once for every
     ///         position of <paramref name="entries" />, serially and in unspecified order, duplicates included. When
     ///         any entry needs a record read, no handler call happens before the source has been opened and checked,
-    ///         so a source that cannot be read, or cannot be confirmed as the one the index scanned, fails the call with no answer
-    ///         delivered. The
-    ///         handler runs on a thread-pool thread and must not call back into this index's lifecycle verbs. An
+    ///         so a failure before the first answer (a source that cannot be opened, or cannot be confirmed as the one
+    ///         the index scanned) fails the call with no answer delivered. A direct volume or dump read opens and checks
+    ///         its source once, before that first answer. A broker read opens and checks the volume again for each chunk
+    ///         of up to 1,198,371 requests and streams each chunk's answers before the next chunk opens, so a refusal of a
+    ///         later chunk fails the call after the earlier chunks' answers were delivered. The guarantee covers the
+    ///         source, not its records: once the source is open, a record whose own read fails is answered
+    ///         <see cref="InlineContentOutcome.Unreadable" />, even when every requested record fails. The handler runs
+    ///         on a thread-pool thread and must not call back into this index's lifecycle verbs. An
     ///         exception it throws stops the read and propagates unchanged from the returned task, even when a
     ///         cancellation was also requested.
     ///     </para>
@@ -50,8 +55,8 @@ public sealed partial class FileIndex
     /// <returns>
     ///     <see cref="RootOperationOutcome.Succeeded" /> when every entry was answered;
     ///     <see cref="RootOperationOutcome.NotApplicable" /> when the root has no MFT source that can read records
-    ///     (a directory-walk root, an index opened without a source, a broker-sourced index) and the handler was not
-    ///     called; <see cref="RootOperationOutcome.Failed" /> with the exception when the volume or dump failed
+    ///     (a directory-walk root, an index opened without a source) and the handler was not called;
+    ///     <see cref="RootOperationOutcome.Failed" /> with the exception when the volume, broker or dump failed
     ///     (some answers may already have been delivered).
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="entries" /> or <paramref name="handler" /> is null.</exception>
@@ -126,7 +131,10 @@ public sealed partial class FileIndex
 
     // Runs on a thread-pool thread, so no handler call happens on the caller's stack. With nothing to read, the answers
     // decided without I/O are delivered at once; otherwise they wait for the reader's first answer, which follows its
-    // open and its source check, so a read the reader refuses has called the handler for nothing. Deliveries check the
+    // open and its source check, so a source the reader refuses before its first answer has called the handler for
+    // nothing. A broker reader checks its source again for every later chunk, after earlier chunks' answers (and these
+    // decided ones) were delivered. A record read that fails after the source opened is an Unreadable answer, which
+    // releases the decided answers like any other. Deliveries check the
     // token only every few thousand answers, so a cancellation after the last check is observed here, before the read
     // can report success.
     static async Task DeliverInlineContentAsync(InlineContentTarget target, InlineContentPlan plan,

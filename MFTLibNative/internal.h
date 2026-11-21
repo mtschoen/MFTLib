@@ -163,6 +163,10 @@ enum class InterruptedIoMode : int {
 bool TryInjectInterruptedIo(int64_t& result);
 #endif
 uint32_t VolumeRecordSizeOverride();
+// Adds the $MFT runs one inline content run lookup examined to the count GetInlineSegmentProbes reads, when a test
+// armed it through SetInlineSegmentProbeCounting, so a test can bound the run lookup by operation count. Unarmed it
+// writes nothing.
+void NoteInlineSegmentProbes(uint64_t probes);
 // The offset and length alignment SetVolumeAlignmentOverride armed, or zero when it is not armed.
 uint32_t VolumeSectorAlignmentOverride();
 // The destination address alignment SetVolumeAlignmentOverride armed with it.

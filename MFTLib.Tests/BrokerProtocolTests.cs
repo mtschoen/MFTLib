@@ -83,7 +83,7 @@ public partial class BrokerProtocolTests
 
     [TestMethod]
     [DataRow((byte)0)]
-    [DataRow((byte)19)]
+    [DataRow((byte)22)]
     [DataRow((byte)99)]
     public void ReadFrame_UnknownKind_ThrowsInvalidDataException(byte kind)
     {
@@ -101,7 +101,7 @@ public partial class BrokerProtocolTests
     {
         var kinds = Enum.GetValues<BrokerFrameKind>().Select(kind => (int)kind).Order().ToArray();
 
-        Assert.AreSequenceEqual([.. Enumerable.Range(1, 18)], kinds, "The wire numbers kinds densely from 1.");
+        Assert.AreSequenceEqual([.. Enumerable.Range(1, 21)], kinds, "The wire numbers kinds densely from 1.");
     }
 
     // The Require* accessors guard a protocol invariant: every factory receives a real, non-null

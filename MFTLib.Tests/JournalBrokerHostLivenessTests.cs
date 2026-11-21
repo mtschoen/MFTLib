@@ -218,7 +218,8 @@ public partial class JournalBrokerHostLivenessTests
         public JournalBrokerHost Host(
             Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
             Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchVolume = null,
-            MftRecordBatchSource? scanVolume = null, int processorCount = 4)
+            MftRecordBatchSource? scanVolume = null, int processorCount = 4,
+            Action<VolumeKey, ulong, ReadOnlyMemory<InlineContentRequest>, InlineContentSink, CancellationToken>? readInlineContent = null)
         {
             var host = new JournalBrokerHost(
                 new ScriptedVolumeAccess
@@ -226,7 +227,8 @@ public partial class JournalBrokerHostLivenessTests
                     CursorQuery = _ => Tip,
                     RecordBatches = scanVolume ?? ((_, _, _, _, _, _) => []),
                     JournalRead = readJournal ?? ((_, since, _) => ([], since)),
-                    JournalWatch = watchVolume ?? ScriptedVolumeAccess.UnsupportedWatch
+                    JournalWatch = watchVolume ?? ScriptedVolumeAccess.UnsupportedWatch,
+                    InlineContentRead = readInlineContent ?? ScriptedVolumeAccess.UnsupportedInlineContentRead
                 },
                 processorCount: processorCount,
                 timeProvider: Clock)

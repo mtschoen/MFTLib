@@ -7,11 +7,17 @@ static class BrokerFrameStream
 {
     // The limit on a frame's kind byte plus payload, enforced by the writer before a prefix is
     // emitted and by the reader before a buffer is allocated. The largest frame the library
-    // itself produces is a watch JournalBatch. A watch batch from the native source is one 64 KiB
-    // read; a wire entry (46 fixed bytes plus its UTF-16 name) is smaller than the native
-    // USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte aligned), so such a
-    // batch is under 64 KiB plus its 21-byte header. ArmAndScan carries only a length-prefixed
-    // UTF-16 section name and a one-byte include-freed flag, far below the limit. Error and
+    // itself produces is a full ReadInlineContent request: the client chunks requests by
+    // BrokerProtocol.MaximumInlineContentRequestsPerFrame, so a chunk of exactly that many
+    // (1,198,371 requests of 14 bytes after the kind byte, 8-byte serial and 4-byte count) is
+    // 16,777,207 bytes before the length prefix. An InlineContentBatch closes before the next answer
+    // would push its encoded answers (9 fixed bytes plus content each, not counting the 4-byte
+    // count) past 1 MiB, and one answer is at most one MFT record. A watch batch from the native
+    // source is one 64 KiB read; a wire entry (46 fixed bytes plus its UTF-16 name) is smaller than
+    // the native USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte aligned), so
+    // such a JournalBatch is under 64 KiB plus its 21-byte header. ArmAndScan carries a
+    // length-prefixed UTF-16 section name, the include-freed and delete-on-close flags (one byte
+    // each) and the 8-byte expected volume serial, far below the limit. Error and
     // Stalled text is cut to 32,768 units. A custom journal source's batch over the limit ends
     // that watch with an Error frame. 16 MiB also bounds a garbled prefix to a modest allocation.
     internal const int MaximumFrameLength = 1 << 24;

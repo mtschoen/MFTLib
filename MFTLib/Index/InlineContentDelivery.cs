@@ -32,7 +32,9 @@ sealed class InlineContentDelivery(InlineContentHandler handler)
 
     /// <summary>
     ///     The sink a reader answers into, which first delivers <paramref name="decided" /> when the reader hands over
-    ///     its first answer: a reader opens and checks its source before answering, so a refused read delivers nothing.
+    ///     its first answer: a reader opens and checks its source before answering, so a source refused before the first
+    ///     answer delivers nothing (a broker reader's later chunk can still be refused after earlier answers), while a
+    ///     failed record read is itself an answer (<see cref="InlineContentOutcome.Unreadable" />).
     /// </summary>
     internal InlineContentSink SinkAfterDecided((int Position, InlineContentOutcome Outcome)[] decided,
         CancellationToken cancellationToken)

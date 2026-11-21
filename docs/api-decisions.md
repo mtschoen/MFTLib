@@ -1544,8 +1544,8 @@ once per input position with a `readonly ref struct InlineContentResult` (`Index
 `ReadOnlySpan<byte>` valid only during the call). The handler runs serially, in unspecified order, on a thread-pool
 thread, and an exception it throws propagates unchanged from the returned task, even when a cancellation was also
 requested. The call returns one `RootOperationResult`: `Succeeded` after every position was answered, `NotApplicable`
-when the root has no source that can read records (a directory walk, an index opened without a source, a
-broker-sourced index), `Failed` with the exception for a volume or dump fault.
+when the root has no source that can read records (a directory walk, an index opened without a source), `Failed`
+with the exception for a volume, broker or dump fault.
 The library has no `IAsyncEnumerable`.
 
 **Reason:** two outside opinions (Gemini `gemini-4-neon-high` and OpenAI `gpt-6-astra`, both at high effort, given one
@@ -1565,8 +1565,8 @@ permissions. The raw read of an MFT record does not consult access control lists
 **What changes:** before this member the library handed no caller file bytes past file permissions. Content passed through the elevated
 process's scan buffers and was discarded, and the cache block and the shared block section hold rows and names only.
 With it, a caller that is already elevated and reads a raw volume directly, or that reads a dump, receives the bytes
-of small files regardless of file permissions. Broker-sourced indexes currently report `NotApplicable`; the future
-broker content operation will carry the same behavior from its elevated process to an unelevated caller.
+of small files regardless of file permissions. A broker-sourced index reads in the elevated broker and returns those
+bytes to its unelevated caller.
 The sentence "file contents are never read" in the
 [no-privacy-promise ruling](#no-privacy-promise-full-mft-metadata-retention-is-the-default) is replaced accordingly.
 
@@ -1591,6 +1591,14 @@ process. This was established by reading those files, not by an attack attempt.
 
 **Revisit only if:** a consumer needs the content read to honour file permissions (it would have to open the file), or a
 session authenticates its broker and the content read should then be limited to that identity.
+
+## A reread that stalls on failing media is an accepted limit
+
+**Decision (owner ruling 2026-11-21, issue 979):** for 0.3, a reread that stalls on failing media is an accepted,
+documented limit of the broker's inline content read ([broker lifetime](broker-lifetime.md)). The channel watchdog ends
+the read after 30 seconds without progress and the read reports failure. There is no watchdog or reader change in 0.3.
+
+**Revisit only if:** the idea held in [issue 993](/schoen/MFTLib/issues/993) is taken up.
 
 ## The InlineContent family names the content read
 

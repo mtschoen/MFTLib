@@ -9,6 +9,20 @@ namespace MFTLib;
 // buffer so its length is known before the length prefix is written.
 static partial class BrokerProtocol
 {
+    // Position, record number and sequence number: one inline content request on the wire.
+    internal const int InlineContentRequestBytes = 4 + 8 + 2;
+
+    // Position, outcome and content length: the fixed part of one inline content answer on the wire.
+    const int InlineContentAnswerFixedBytes = 4 + 1 + 4;
+
+    // The most requests one ReadInlineContent frame can carry: its kind byte, volume serial and count field leave the
+    // rest of the frame limit to the requests.
+    internal const int MaximumInlineContentRequestsPerFrame =
+        (BrokerFrameStream.MaximumFrameLength - 1 - 8 - 4) / InlineContentRequestBytes;
+
+    /// <summary>The payload bytes one inline content answer with <paramref name="contentLength" /> content bytes takes.</summary>
+    internal static int InlineContentAnswerBytes(int contentLength) => InlineContentAnswerFixedBytes + contentLength;
+
     sealed class PayloadWriter
     {
         readonly ArrayBufferWriter<byte> _payload = new();
@@ -85,6 +99,19 @@ static partial class BrokerProtocol
         public void Entry(UsnJournalEntry entry)
         {
             WriteEntry(_payload, entry);
+        }
+
+        public void InlineRequest(InlineContentRequest request)
+        {
+            Int32(request.Position).Int64(request.RecordNumber);
+            BinaryPrimitives.WriteUInt16LittleEndian(_payload.GetSpan(2), request.SequenceNumber);
+            _payload.Advance(2);
+        }
+
+        public void InlineAnswer(BrokerInlineContentAnswer answer, ReadOnlySpan<byte> content)
+        {
+            Int32(answer.Position).Byte((byte)answer.Outcome).Int32(content.Length);
+            _payload.Write(content);
         }
 
         public void WriteTo(IBufferWriter<byte> writer, BrokerFrameKind kind)
@@ -196,6 +223,40 @@ static partial class BrokerProtocol
         }
 
         public int EntryCount() => Count(EntryFixedBytes);
+
+        public int InlineContentRequestCount() => Count(InlineContentRequestBytes);
+
+        public int InlineContentAnswerCount() => Count(InlineContentAnswerFixedBytes);
+
+        public InlineContentRequest InlineRequest()
+        {
+            var position = Int32();
+            var recordNumber = Int64();
+            var sequenceNumber = BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
+            return new InlineContentRequest(position, recordNumber, sequenceNumber);
+        }
+
+        // One answer's fixed part; its content bytes are appended to <paramref name="content" />.
+        public BrokerInlineContentAnswer InlineAnswer(ArrayBufferWriter<byte> content)
+        {
+            var position = Int32();
+            var outcomeRaw = Byte();
+            var outcome = (InlineContentOutcome)outcomeRaw;
+            if (!Enum.IsDefined(outcome))
+            {
+                throw new InvalidDataException($"Unknown inline content outcome: {outcomeRaw}");
+            }
+
+            var length = Length();
+            if (length != 0 && outcome != InlineContentOutcome.Returned)
+            {
+                throw new InvalidDataException($"Inline content outcome {outcome} carries {length} content bytes");
+            }
+
+            var offset = content.WrittenCount;
+            content.Write(Take(length));
+            return new BrokerInlineContentAnswer(position, outcome, offset, length);
+        }
 
         public readonly void RequireComplete()
         {

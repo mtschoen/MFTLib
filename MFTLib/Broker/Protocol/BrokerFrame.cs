@@ -7,8 +7,8 @@ namespace MFTLib;
 ///     request id (<see cref="OpenChannel" />, <see cref="QueryVolume" />,
 ///     <see cref="GrowUsnJournal" />) and their replies. A volume pipe carries one operation for
 ///     the volume its <see cref="OpenChannel" /> named: the client writes one request
-///     (<see cref="ArmAndScan" /> or <see cref="StartWatch" />) and every frame after it flows
-///     from the host.
+///     (<see cref="ArmAndScan" />, <see cref="StartWatch" /> or <see cref="ReadInlineContent" />) and every
+///     frame after it flows from the host.
 /// </summary>
 enum BrokerFrameKind : byte
 {
@@ -29,8 +29,18 @@ enum BrokerFrameKind : byte
     JournalBatch = 15,
     StartWatch = 16,
     CaughtUp = 17,
-    ScanCompleted = 18
+    ScanCompleted = 18,
+    ReadInlineContent = 19,
+    InlineContentBatch = 20,
+    InlineContentCompleted = 21
 }
+
+/// <summary>
+///     One answer of an <see cref="BrokerFrameKind.InlineContentBatch" /> frame. The content of every answer of a frame
+///     lies end to end in the frame's one content buffer; it is empty unless the outcome is
+///     <see cref="InlineContentOutcome.Returned" />.
+/// </summary>
+readonly record struct BrokerInlineContentAnswer(int Position, InlineContentOutcome Outcome, int Offset, int Length);
 
 /// <summary>
 ///     The journal facts a <see cref="BrokerFrameKind.CatchUpLost" /> frame carries: the fields of
@@ -82,8 +92,17 @@ readonly record struct BrokerFrame
 
     internal BrokerCatchUpLoss? CatchUpLoss { get; private init; }
 
-    /// <summary>The serial an <see cref="BrokerFrameKind.ArmAndScan" /> request expects of the volume handle the scan parses.</summary>
+    /// <summary>The serial an <see cref="BrokerFrameKind.ArmAndScan" /> or <see cref="BrokerFrameKind.ReadInlineContent" /> request expects of the volume handle it opens.</summary>
     internal ulong ExpectedVolumeSerial { get; private init; }
+
+    /// <summary>The records a <see cref="BrokerFrameKind.ReadInlineContent" /> request asks for.</summary>
+    internal ReadOnlyMemory<InlineContentRequest> InlineContentRequests { get; private init; }
+
+    /// <summary>The answers of an <see cref="BrokerFrameKind.InlineContentBatch" /> frame.</summary>
+    internal BrokerInlineContentAnswer[] InlineContentAnswers { get; private init; }
+
+    /// <summary>The content the answers of an <see cref="BrokerFrameKind.InlineContentBatch" /> frame index into.</summary>
+    internal ReadOnlyMemory<byte> InlineContent { get; private init; }
 
     internal const string PipeNamePrefix = "mftlib-broker-";
     const int PipeNameLength = 14 + 32;
@@ -296,13 +315,41 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.ScanCompleted, 0);
     }
 
+    // The client's one request on an inline content channel: the records to read, ascending by record number.
+    internal static BrokerFrame ReadInlineContent(ReadOnlyMemory<InlineContentRequest> requests, ulong expectedVolumeSerial)
+    {
+        return Empty(BrokerFrameKind.ReadInlineContent, 0) with
+        {
+            ExpectedVolumeSerial = expectedVolumeSerial,
+            InlineContentRequests = requests
+        };
+    }
+
+    // Some of a request's answers, with their content end to end in one buffer.
+    internal static BrokerFrame InlineContentBatch(BrokerInlineContentAnswer[] answers, ReadOnlyMemory<byte> content)
+    {
+        return Empty(BrokerFrameKind.InlineContentBatch, 0) with
+        {
+            InlineContentAnswers = answers,
+            InlineContent = content
+        };
+    }
+
+    // Every request of the channel has been answered.
+    public static BrokerFrame InlineContentCompleted()
+    {
+        return Empty(BrokerFrameKind.InlineContentCompleted, 0);
+    }
+
     static BrokerFrame Empty(BrokerFrameKind kind, uint requestId)
     {
         return new BrokerFrame
         {
             Kind = kind,
             RequestId = requestId,
-            Entries = []
+            Entries = [],
+            InlineContentRequests = default,
+            InlineContentAnswers = []
         };
     }
 }

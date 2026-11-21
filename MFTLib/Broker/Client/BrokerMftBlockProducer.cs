@@ -28,11 +28,13 @@ sealed class BrokerMftBlockProducer
     /// <summary>
     ///     The index source over this broker connection, to assign to
     ///     <see cref="FileIndexOptions.MftSource" />. Each volume scan runs on a broker obtained from
-    ///     the connect function, and each volume's watch runs on a pipe of its own.
+    ///     the connect function, each volume's watch runs on a pipe of its own, and inline content reads run on
+    ///     channels of their own.
     /// </summary>
     /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
     internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync),
-        includeFreed: _scanOptions?.IncludeFreed ?? false);
+        includeFreed: _scanOptions?.IncludeFreed ?? false,
+        inlineContentReader: new BrokerInlineContentReader(_connectAsync));
 
     // A result carrying a proven catch-up loss still transfers its block: the scan is complete,
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
