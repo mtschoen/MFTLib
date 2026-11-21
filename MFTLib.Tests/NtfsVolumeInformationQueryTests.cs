@@ -28,12 +28,13 @@ public class NtfsVolumeInformationQueryTests
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
-    public void Query_WithSyntheticVolumeData_MapsBothSizingFields()
+    public void Query_WithSyntheticVolumeData_MapsSizingAndIdentityFields()
     {
         var native = new NtfsVolumeDataBufferNative
         {
             MftValidDataLength = 8_192_000_000L,
-            BytesPerFileRecordSegment = 1024
+            BytesPerFileRecordSegment = 1024,
+            VolumeSerialNumber = unchecked((long)0x8111111122222222UL)
         };
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
@@ -57,6 +58,7 @@ public class NtfsVolumeInformationQueryTests
         Assert.AreEqual(@"\\.\C:", openedPath);
         Assert.AreEqual(8_192_000_000L, info.MftValidDataLength);
         Assert.AreEqual(1024u, info.BytesPerFileRecordSegment);
+        Assert.AreEqual(0x8111111122222222UL, info.VolumeSerialNumber);
         Assert.AreEqual(8_000_000L, info.MftRecordCount);
 
         FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default volume reached volume I/O.");

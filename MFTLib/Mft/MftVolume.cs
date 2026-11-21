@@ -154,6 +154,25 @@ sealed class MftVolume : IDisposable
             progress, parseThreads, this, MftRowValidation.None, cancellationToken);
     }
 
+    /// <summary>
+    ///     Opens a native reader of specific MFT records on this volume. The reader borrows the volume handle, so
+    ///     the caller disposes it before this volume.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
+    /// <exception cref="IOException">The volume is not a readable NTFS volume; the message says why.</exception>
+    internal NativeInlineContentReader OpenInlineContentReader()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return NativeInlineContentReader.Open(_volumeHandle);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal NtfsVolumeInformation QueryVolumeInformation()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return NtfsVolumeInformation.Query(_volumeHandle);
+    }
+
     // The one place a native parse is assembled, for a volume or a dump alike: the
     // progress adapter, the control block and its allowance and cancellation hooks, the null
     // check and the result wrapper. Only the native call differs.

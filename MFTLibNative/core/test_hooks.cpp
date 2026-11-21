@@ -23,6 +23,9 @@ int g_allocationFailureCountdown = 0;
 std::atomic g_exceptionMode{0};
 std::atomic g_threadStartCountdown{0};
 int g_readFailCountdown = 0;
+// SetReadFailMask: which reads fail, and how many reads ShouldFailRead has seen since it was armed.
+uint64_t g_readFailMask = 0;
+uint64_t g_readFailMaskCalls = 0;
 int g_failFileSize = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
@@ -148,6 +151,12 @@ bool ShouldForceCancel() {
 }
 
 bool ShouldFailRead() {
+    if (g_readFailMask != 0) {
+        const uint64_t call = g_readFailMaskCalls++;
+        if (call < 64 && ((g_readFailMask >> call) & 1) != 0) {
+            return true;
+        }
+    }
     if (g_readFailCountdown <= 0) {
         return false;
     }
@@ -284,6 +293,10 @@ EXPORT void SetAllocFailCountdown(const int countdown) {
     g_threadStartCountdown = 3;
 }
 EXPORT void SetReadFailCountdown(const int countdown) { g_readFailCountdown = countdown; }
+EXPORT void SetReadFailMask(const uint64_t mask) {
+    g_readFailMask = mask;
+    g_readFailMaskCalls = 0;
+}
 EXPORT void SetFailFileSize(const int fail) { g_failFileSize = fail; }
 EXPORT void SetFailPlatformRead(const int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(const int fail) { g_failPlatformWrite = fail; }
@@ -371,6 +384,8 @@ EXPORT void ResetTestState() {
             g_allocationFailureCountdown = 0;
             g_exceptionMode = 0;
             g_readFailCountdown = 0;
+            g_readFailMask = 0;
+            g_readFailMaskCalls = 0;
             g_failFileSize = 0;
             g_failPlatformReadCountdown = 0;
             g_failPlatformWrite = 0;
@@ -401,6 +416,8 @@ EXPORT void ResetTestState() {
             g_allocationFailureCountdown = 0;
             g_exceptionMode = 0;
             g_readFailCountdown = 0;
+            g_readFailMask = 0;
+            g_readFailMaskCalls = 0;
             g_failFileSize = 0;
             g_failPlatformReadCountdown = 0;
             g_failPlatformWrite = 0;

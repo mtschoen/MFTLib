@@ -270,107 +270,130 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
     return failure;
 }
 
-// Parses every allocated base record of a volume; request.includeFreed also emits freed base records,
-// and request.sink streams the slices instead of collecting them into the result.
-MftParseResult* ParseVolume(HANDLE volumeHandle, ParseRequest request, MftParseResult*& result) {
+// Where a volume's MFT is and how its records are laid out, found from the boot sector, record 0 and
+// record 0's attribute list. The runs are validated, with a cumulative size TryMeasureRuns accepted.
+struct VolumeLayout {
+    ParseGeometry geometry{};
+    uint32_t bytesPerCluster = 0;
+    std::vector<DataRun> mftRuns;
+    uint64_t totalMftBytes = 0;
+};
+
+// Reads the volume's MFT layout. False, with errorMessage saying why, when the handle is not an NTFS
+// volume or image, or its MFT cannot be located and validated.
+// NOLINTNEXTLINE(modernize-avoid-c-arrays): the fixed C-ABI message buffer of a result struct
+bool LoadVolumeLayout(HANDLE volumeHandle, VolumeLayout* layout,
+                      MftMessageChar (&errorMessage)[MFT_ERROR_MESSAGE_UNITS]) {
     if (volumeHandle == INVALID_HANDLE_VALUE) {
-        SetErrorMessage(result->errorMessage, L"Volume handle is invalid");
-        return result;
+        SetErrorMessage(errorMessage, L"Volume handle is invalid");
+        return false;
     }
 
     auto geometry = QueryVolumeRecordSize(volumeHandle);
     if (!geometry.has_value()) {
-        SetErrorMessage(result->errorMessage, L"Failed to query volume record size or unsupported record size");
-        return result;
+        SetErrorMessage(errorMessage, L"Failed to query volume record size or unsupported record size");
+        return false;
     }
+    layout->geometry = *geometry;
 
     NTFS_BPB bpb;
     DWORD bytesRead;
     if ((Read(volumeHandle, &bpb, VolumeOffset{0}, 512, &bytesRead) == 0) || bytesRead != 512) {
-        SetErrorMessage(result->errorMessage, L"Failed to read boot sector. Error: %lu",
+        SetErrorMessage(errorMessage, L"Failed to read boot sector. Error: %lu",
                         static_cast<unsigned long>(mftlib::platform::last_error()));
-        return result;
+        return false;
     }
     if (bpb.name[0] != 'N' || bpb.name[1] != 'T' || bpb.name[2] != 'F' || bpb.name[3] != 'S') {
-        SetErrorMessage(result->errorMessage, L"Volume is not NTFS");
-        return result;
+        SetErrorMessage(errorMessage, L"Volume is not NTFS");
+        return false;
     }
 
-    uint32_t bytesPerCluster = bpb.bytesPerSector * bpb.sectorsPerCluster;
+    layout->bytesPerCluster = bpb.bytesPerSector * bpb.sectorsPerCluster;
 
     uint64_t mftStartOffset = 0;
-    if (!TryClusterByteOffset(bpb.mftStart, bytesPerCluster, &mftStartOffset)) {
-        SetErrorMessage(result->errorMessage, L"The MFT start is outside the volume");
-        return result;
+    if (!TryClusterByteOffset(bpb.mftStart, layout->bytesPerCluster, &mftStartOffset)) {
+        SetErrorMessage(errorMessage, L"The MFT start is outside the volume");
+        return false;
     }
 
     std::vector<uint8_t> record0(geometry->recordSize);
     if ((Read(volumeHandle, record0.data(), VolumeOffset{mftStartOffset}, geometry->recordSize, &bytesRead) == 0) ||
         bytesRead != geometry->recordSize) {
-        SetErrorMessage(result->errorMessage, L"Failed to read MFT record 0");
-        return result;
+        SetErrorMessage(errorMessage, L"Failed to read MFT record 0");
+        return false;
     }
 
     const auto* fileRecord0 = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record0.data());
     if (fileRecord0->MultiSectorHeader.Magic != kFileRecordMagic) {
-        SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
-        return result;
+        SetErrorMessage(errorMessage, L"Invalid MFT record 0 magic");
+        return false;
     }
 
     if (!ApplyFixup(record0.data(), geometry->recordSize)) {
-        SetErrorMessage(result->errorMessage, L"MFT record 0 has an invalid fixup");
-        return result;
+        SetErrorMessage(errorMessage, L"MFT record 0 has an invalid fixup");
+        return false;
     }
 
     const auto dataSearch = FindAttribute(record0.data(), geometry->recordSize, Data);
     if (dataSearch.malformed) {
-        SetErrorMessage(result->errorMessage, kMalformedRecordZeroMessage);
-        return result;
+        SetErrorMessage(errorMessage, kMalformedRecordZeroMessage);
+        return false;
     }
     if (dataSearch.attribute == nullptr) {
-        SetErrorMessage(result->errorMessage, L"No Data attribute in MFT record 0");
-        return result;
+        SetErrorMessage(errorMessage, L"No Data attribute in MFT record 0");
+        return false;
     }
-    auto mftRuns = ParseDataRuns(dataSearch.attribute);
-    if (mftRuns.empty()) {
-        SetErrorMessage(result->errorMessage, L"MFT record 0 has no data runs");
-        return result;
+    layout->mftRuns = ParseDataRuns(dataSearch.attribute);
+    if (layout->mftRuns.empty()) {
+        SetErrorMessage(errorMessage, L"MFT record 0 has no data runs");
+        return false;
     }
-    uint64_t totalMftBytes = 0;
-    if (!TryMeasureRuns(mftRuns, bytesPerCluster, &totalMftBytes)) {
-        SetErrorMessage(result->errorMessage, kRunsOutsideVolumeMessage);
-        return result;
+    if (!TryMeasureRuns(layout->mftRuns, layout->bytesPerCluster, &layout->totalMftBytes)) {
+        SetErrorMessage(errorMessage, kRunsOutsideVolumeMessage);
+        return false;
     }
 
     const auto attributeListSearch = FindAttribute(record0.data(), geometry->recordSize, AttributeList);
     if (attributeListSearch.malformed) {
-        SetErrorMessage(result->errorMessage, kMalformedRecordZeroMessage);
-        return result;
+        SetErrorMessage(errorMessage, kMalformedRecordZeroMessage);
+        return false;
     }
     if (attributeListSearch.attribute != nullptr) {
-        const auto* failure = MergeExtensionDataRuns(volumeHandle, attributeListSearch.attribute, bytesPerCluster,
-                                                     *geometry, mftRuns, totalMftBytes);
+        const auto* failure =
+            MergeExtensionDataRuns(volumeHandle, attributeListSearch.attribute, layout->bytesPerCluster, *geometry,
+                                   layout->mftRuns, layout->totalMftBytes);
         if (failure != nullptr) {
-            SetErrorMessage(result->errorMessage, failure);
-            return result;
+            SetErrorMessage(errorMessage, failure);
+            return false;
         }
     }
-    uint64_t totalRecords = totalMftBytes / geometry->recordSize;
+    return true;
+}
+
+// Parses every allocated base record of a volume; request.includeFreed also emits freed base records,
+// and request.sink streams the slices instead of collecting them into the result.
+MftParseResult* ParseVolume(HANDLE volumeHandle, ParseRequest request, MftParseResult*& result) {
+    VolumeLayout layout;
+    if (!LoadVolumeLayout(volumeHandle, &layout, result->errorMessage)) {
+        return result;
+    }
+    const uint64_t totalRecords = layout.totalMftBytes / layout.geometry.recordSize;
 
     VolumeReadContext readContext;
     readContext.volumeHandle = volumeHandle;
-    readContext.mftRuns = &mftRuns;
-    readContext.bytesPerCluster = bytesPerCluster;
-    readContext.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / geometry->recordSize;
-    readContext.bufferSizeRecords = ClampChunkRecords(request.bufferSizeRecords, totalRecords, geometry->recordSize);
-    readContext.geometry = *geometry;
+    readContext.mftRuns = &layout.mftRuns;
+    readContext.bytesPerCluster = layout.bytesPerCluster;
+    readContext.filesRemaining = layout.mftRuns[0].clusterCount * layout.bytesPerCluster / layout.geometry.recordSize;
+    readContext.bufferSizeRecords =
+        ClampChunkRecords(request.bufferSizeRecords, totalRecords, layout.geometry.recordSize);
+    readContext.geometry = layout.geometry;
 
     free(result);
     result = nullptr;
     const ParseSource source{VolumeReadChunk,
                              &readContext,
                              totalRecords,
-                             *geometry,
+                             layout.geometry,
                              VolumeReadIncomplete,
                              false,
                              kIncompleteVolumeReadMessage};

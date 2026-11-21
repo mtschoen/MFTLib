@@ -15,10 +15,13 @@ interface IVolumeAccess
     /// <summary>
     ///     Opens the volume for a scan whose slices <see cref="MftBlockRowWriter" /> writes while it parses. The scan
     ///     starts when its slices are enumerated; disposing the source waits for it to end and closes the volume.
+    ///     <paramref name="expectedVolumeSerial" /> is the full serial the block being written records; it is required
+    ///     so that every scan checks it on the handle it parses, and a mismatch throws <see cref="IOException" />
+    ///     before any row.
     /// </summary>
     IMftSliceSource OpenVolumeScan(
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
-        MftScanOptions scanOptions, CancellationToken cancellationToken);
+        MftScanOptions scanOptions, ulong expectedVolumeSerial, CancellationToken cancellationToken);
 
     (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads);
@@ -26,6 +29,24 @@ interface IVolumeAccess
         VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
         CancellationToken cancellationToken);
     NtfsVolumeInformation QueryVolumeInformation(VolumeKey volume);
+
+    /// <summary>
+    ///     Reads the resident <c>$DATA</c> of the requested records of the volume's MFT, which needs the same
+    ///     access as a scan. Answers every request exactly once through <paramref name="sink" />, serially and in
+    ///     unspecified order, on the calling thread; an exception the sink throws propagates. The volume is opened
+    ///     for the call and closed before it returns.
+    /// </summary>
+    /// <param name="volume">The volume to read.</param>
+    /// <param name="volumeSerial">
+    ///     The full serial the scanned block records. The read is refused with <see cref="IOException" /> before any
+    ///     answer when it is zero or differs from the serial of the opened volume.
+    /// </param>
+    /// <param name="requests">The requests, ascending by record number.</param>
+    /// <param name="sink">Receives each answer.</param>
+    /// <param name="cancellationToken">Stops the read with <see cref="OperationCanceledException" />.</param>
+    void ReadInlineContent(VolumeKey volume, ulong volumeSerial, ReadOnlyMemory<InlineContentRequest> requests,
+        InlineContentSink sink, CancellationToken cancellationToken);
+
     UsnJournalGrowthResult GrowUsnJournal(
         VolumeKey volume,
         long maximumSize,

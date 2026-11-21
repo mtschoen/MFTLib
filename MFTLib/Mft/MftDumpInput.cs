@@ -158,6 +158,18 @@ BufferSizeRecords: 0, CancellationToken: cancellationToken));
             progress, parseThreads, null, MftRowValidation.Dump, cancellationToken);
     }
 
+    /// <summary>
+    ///     Opens a native reader of specific records of the opened file, never of the live volume that shares the
+    ///     dump's drive letter. The reader borrows this input, so the caller disposes it before this input.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">This input has been closed.</exception>
+    /// <exception cref="IOException">The native open failed; the message says why.</exception>
+    internal NativeInlineContentReader OpenInlineContentReader()
+    {
+        ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
+        return NativeInlineContentReader.Open(_handle);
+    }
+
     /// <summary>Closes the file. Safe to call more than once.</summary>
     public void Dispose()
     {

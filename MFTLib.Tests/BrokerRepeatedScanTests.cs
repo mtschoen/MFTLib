@@ -37,7 +37,7 @@ public sealed class BrokerRepeatedScanTests
             {
                 var pipe = await harness.OpenChannelAsync('T');
                 await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteArmAndScan(writer,
-                    BrokerFrame.ArmAndScan(sectionName, includeFreed: false, deleteOnClose: false)));
+                    BrokerFrame.ArmAndScan(sectionName, includeFreed: false, deleteOnClose: false, expectedVolumeSerial: 0)));
                 var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
                 Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);

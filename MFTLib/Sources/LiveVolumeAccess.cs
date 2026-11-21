@@ -10,8 +10,8 @@ sealed class LiveVolumeAccess : IVolumeAccess
     public UsnJournalCursor QueryCursor(VolumeKey volume) => LiveVolumeSources.QueryCursor(volume);
     public IMftSliceSource OpenVolumeScan(
         VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
-        MftScanOptions scanOptions, CancellationToken cancellationToken) =>
-        LiveVolumeSources.OpenVolumeScan(volume, parseThreads, reporting, scanOptions, cancellationToken);
+        MftScanOptions scanOptions, ulong expectedVolumeSerial, CancellationToken cancellationToken) =>
+        LiveVolumeSources.OpenVolumeScan(volume, parseThreads, reporting, scanOptions, expectedVolumeSerial, cancellationToken);
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
         VolumeKey volume, UsnJournalCursor since, int maximumBufferReads) =>
         LiveVolumeSources.ReadJournal(volume, since, maximumBufferReads);
@@ -21,6 +21,10 @@ sealed class LiveVolumeAccess : IVolumeAccess
         LiveVolumeSources.WatchAndDisposeAsync(volume, since, operation, cancellationToken);
     public NtfsVolumeInformation QueryVolumeInformation(VolumeKey volume) =>
         LiveVolumeSources.QueryVolumeInfo(volume);
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public void ReadInlineContent(VolumeKey volume, ulong volumeSerial, ReadOnlyMemory<InlineContentRequest> requests,
+        InlineContentSink sink, CancellationToken cancellationToken) =>
+        LiveVolumeSources.ReadInlineContent(volume, volumeSerial, requests, sink, cancellationToken);
     public UsnJournalGrowthResult GrowUsnJournal(
         VolumeKey volume,
         long maximumSize,

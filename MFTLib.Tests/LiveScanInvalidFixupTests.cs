@@ -73,7 +73,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         using var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(2),
-            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), CancellationToken.None);
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), expectedVolumeSerial: 0, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
             new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
@@ -126,7 +126,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         using var source = LiveVolumeSources.OpenVolumeScan('C', new ParseThreadAllowance(1),
-            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), CancellationToken.None);
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), expectedVolumeSerial: 0, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), source,
             new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 

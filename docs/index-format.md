@@ -213,10 +213,14 @@ from the stored `S`, `E`, delta capacity `D` and pool capacity `P`. The posting 
 | 160 | delta entry count | u32 | Published delta entries, excluding entry zero; at most `D` |
 | 164 | delta capacity | u32 | `D`, the allocatable delta entries, excluding entry zero; at least 1 |
 
-The format version is 11. The declared header ends at byte 168 within a
+The format version is 12. The declared header ends at byte 168 within a
 4096-byte header page; the root key text follows it. A version mismatch rejects the block as `WrongFormatVersion`
 before any later field is trusted: normal opens rebuild it, and cache-only opens decline the root and leave the block in
-place. The capacity-exhausted flag means a change could not be stored ([Capacity](#capacity)).
+place. The capacity-exhausted flag means a change could not be stored ([Capacity](#capacity)). Every MFT block of this
+version that a live scan produced, direct or through the broker, was scanned through a volume handle whose full 64-bit
+serial matched the header's volume serial, checked before the first row was accepted, so that header serial is proof of
+the volume the rows came from. A dump block opens no volume and obtains no serial (its header serial is zero): its
+provenance is the dump file it was parsed from, which the block holds open until it is released.
 
 ## Root key text
 

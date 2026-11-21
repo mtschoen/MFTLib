@@ -156,6 +156,34 @@ static class CallerGateGeneratedAssembly
         return method;
     }
 
+    // The namespace of the class whose method the runtime claims to implement.
+    public const string RuntimeNamespace = "CallerGateRuntime";
+
+    /// <summary>
+    ///     A public class, not a delegate, declaring a method whose implementation flags say the runtime provides it, and
+    ///     a delegate type beside it with the same kind of member. Only the delegate's member is not authored.
+    /// </summary>
+    public static byte[] BuildRuntimeImplementedMethods()
+    {
+        var assembly = new PersistedAssemblyBuilder(new AssemblyName("CallerGateRuntimeLibrary"), typeof(object).Assembly);
+        var module = assembly.DefineDynamicModule("CallerGateRuntimeLibrary");
+        var plain = module.DefineType(RuntimeNamespace + ".PlainClass", TypeAttributes.Public | TypeAttributes.Class);
+        plain.DefineMethod("Claimed", MethodAttributes.Public | MethodAttributes.HideBySig, typeof(void), Type.EmptyTypes)
+            .SetImplementationFlags(MethodImplAttributes.Runtime);
+        plain.CreateType();
+        var callback = module.DefineType(RuntimeNamespace + ".Callback",
+            TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, typeof(MulticastDelegate));
+        callback.DefineConstructor(MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.RTSpecialName | MethodAttributes.SpecialName,
+            CallingConventions.Standard, [typeof(object), typeof(IntPtr)])
+            .SetImplementationFlags(MethodImplAttributes.Runtime);
+        callback.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            typeof(void), Type.EmptyTypes).SetImplementationFlags(MethodImplAttributes.Runtime);
+        callback.CreateType();
+        using var stream = new MemoryStream();
+        assembly.Save(stream);
+        return stream.ToArray();
+    }
+
     // The namespace of the hand-built record shapes.
     public const string HandNamespace = "CallerGateHand";
 

@@ -116,14 +116,31 @@ public sealed class MftDumpRescanTests : IDisposable
     {
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var cancellation = new CancellationTokenSource();
-        var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancelOnTheSecondScan(cancellation));
-        await using var index = await OpenAsync(Source(producer, path));
+        var inputs = new ConcurrentQueue<MftDumpInput>();
+        var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancelOnTheSecondScan(cancellation, inputs));
+        var index = await OpenAsync(Source(producer, path));
+        MftDumpInput[] scanned;
+        try
+        {
+            await Assert.ThrowsAsync<OperationCanceledException>(
+                () => index.RescanAsync(cancellation.Token));
+            Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
+            scanned = inputs.ToArray();
+            Assert.HasCount(2, scanned);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => scanned[1].OpenInlineContentReader(),
+                "the cancelled scan closed its input");
+            scanned[0].OpenInlineContentReader().Dispose();
+        }
+        finally
+        {
+            // Disposed here even when a check fails, so the fixture's cleanup never meets an open dump handle.
+            await index.DisposeAsync();
+        }
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => index.RescanAsync(cancellation.Token));
-        Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => scanned[0].OpenInlineContentReader(),
+            "disposing the index released the published block's file");
         await using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        Assert.IsGreaterThan(0, exclusive.Length, "the cancelled scan closed its input");
+        Assert.IsGreaterThan(0, exclusive.Length);
     }
 
     [TestMethod]
@@ -170,11 +187,13 @@ public sealed class MftDumpRescanTests : IDisposable
         await RootResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
     }
 
-    static MftDumpRecordSource CancelOnTheSecondScan(CancellationTokenSource cancellation)
+    static MftDumpRecordSource CancelOnTheSecondScan(CancellationTokenSource cancellation,
+        ConcurrentQueue<MftDumpInput> inputs)
     {
         var scans = 0;
         return (input, progress, token) =>
         {
+            inputs.Enqueue(input);
             if (Interlocked.Increment(ref scans) == 2)
             {
                 cancellation.Cancel();

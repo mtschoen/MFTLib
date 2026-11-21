@@ -28,6 +28,10 @@ static partial class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "SetReadFailCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetReadFailCountdown(int countdown);
 
+    // Fails read N since this call (1-based, up to 64) when bit N-1 of mask is set; zero disarms.
+    [DllImport(LibraryName, EntryPoint = "SetReadFailMask", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetReadFailMask(ulong mask);
+
     [DllImport(LibraryName, EntryPoint = "SetFailFileSize", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetFailFileSize(int fail);
 

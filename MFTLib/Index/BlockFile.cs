@@ -311,7 +311,8 @@ sealed unsafe partial class BlockFile : IDisposable
     ///     new writer scopes closes first; then this waits, outside the access gate because a
     ///     writer hands its access back through that gate, for the outstanding ones, bounded by
     ///     one writer operation or journal batch (including its event path reads);
-    ///     only then is the pointer released and the view unmapped. A call after disposal has
+    ///     only then is the pointer released and the view unmapped, and a dump block's reader
+    ///     released (a read that leased it keeps the dump open until it ends). A call after disposal has
     ///     begun returns without waiting, matching the long-standing contract that disposal is
     ///     idempotent and owned by a single disposer.
     /// </summary>
@@ -349,6 +350,7 @@ sealed unsafe partial class BlockFile : IDisposable
         ReleaseView();
         _mappedFile.Dispose();
         drained?.Dispose();
+        DumpContentReader?.Dispose();
 
         // File deletion follows the operating system contract. When created with
         // FileOptions.DeleteOnClose, the last handle closure removes the backing file.

@@ -15,6 +15,7 @@ sealed record BrokerHostOptions
     { get; init; }
     public Func<VolumeKey, NtfsVolumeInformation>? QueryVolumeInformation { get; init; }
     public Func<VolumeKey, long, long, bool, UsnJournalGrowthResult>? GrowUsnJournal { get; init; }
+    public Action<VolumeKey, ulong>? ScanOpened { get; init; }
     public int? ProcessorCount { get; init; } = 4;
     public TimeProvider? TimeProvider { get; init; }
 }
@@ -32,6 +33,7 @@ static class BrokerHostFactory
             JournalRead = options.ReadJournal ?? ((_, since, _) => ([], since)),
             JournalWatch = options.WatchVolume ?? ScriptedVolumeAccess.UnsupportedWatch,
             VolumeInformation = options.QueryVolumeInformation ?? (_ => new NtfsVolumeInformation(1024 * 1000, 1024)),
+            ScanOpened = options.ScanOpened,
             JournalGrow = options.GrowUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
         }, options.ProcessorCount, options.TimeProvider);
     }

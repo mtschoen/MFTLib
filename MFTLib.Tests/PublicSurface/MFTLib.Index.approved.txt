@@ -150,6 +150,7 @@ MFTLib.Index.FileIndex :: method public Enumerate(MFTLib.Index.SearchQuery query
 MFTLib.Index.FileIndex :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable
 MFTLib.Index.FileIndex :: method public Find(string path, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
 MFTLib.Index.FileIndex :: method public QueryUsnJournalSettings() : MFTLib.UsnJournalSettings
+MFTLib.Index.FileIndex :: method public ReadInlineContentAsync(System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry> entries, MFTLib.Index.InlineContentHandler handler, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.RootOperationResult>
 MFTLib.Index.FileIndex :: method public ReleaseResidentPages() : bool
 MFTLib.Index.FileIndex :: method public RescanAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.RootOperationResult>
 MFTLib.Index.FileIndex :: method public Root(System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry
@@ -238,6 +239,20 @@ MFTLib.Index.IndexScanProgress :: property public Phase { get; init; } : MFTLib.
 MFTLib.Index.IndexScanProgress :: property public Root { get; init; } : MFTLib.Index.RootKey
 MFTLib.Index.IndexScanProgress :: property public WrittenRowCount { get; init; } : uint
 MFTLib.Index.IndexScanProgress :: type public sealed class : System.IEquatable<MFTLib.Index.IndexScanProgress>
+MFTLib.Index.InlineContentHandler :: constructor public (object object, System.IntPtr method)
+MFTLib.Index.InlineContentHandler :: method public virtual BeginInvoke(MFTLib.Index.InlineContentResult result, System.AsyncCallback callback, object object) : System.IAsyncResult
+MFTLib.Index.InlineContentHandler :: method public virtual EndInvoke(System.IAsyncResult result) : void
+MFTLib.Index.InlineContentHandler :: method public virtual Invoke(MFTLib.Index.InlineContentResult result) : void
+MFTLib.Index.InlineContentHandler :: type public delegate : System.ICloneable, System.Runtime.Serialization.ISerializable
+MFTLib.Index.InlineContentOutcome :: field public const NotInline : MFTLib.Index.InlineContentOutcome = 1
+MFTLib.Index.InlineContentOutcome :: field public const Returned : MFTLib.Index.InlineContentOutcome = 0
+MFTLib.Index.InlineContentOutcome :: field public const Superseded : MFTLib.Index.InlineContentOutcome = 2
+MFTLib.Index.InlineContentOutcome :: field public const Unreadable : MFTLib.Index.InlineContentOutcome = 3
+MFTLib.Index.InlineContentOutcome :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLib.Index.InlineContentResult :: property public Content { get; } : System.ReadOnlySpan<byte>
+MFTLib.Index.InlineContentResult :: property public Index { get; } : int
+MFTLib.Index.InlineContentResult :: property public Outcome { get; } : MFTLib.Index.InlineContentOutcome
+MFTLib.Index.InlineContentResult :: type public readonly ref struct
 MFTLib.Index.JournalCatchUpLostException :: property public IsRecoveryStopped { get; } : bool
 MFTLib.Index.JournalCatchUpLostException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
 MFTLib.Index.JournalCheckpointLoss :: method public <Clone>$() : MFTLib.Index.JournalCheckpointLoss

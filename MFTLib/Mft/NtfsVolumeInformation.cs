@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.NativeInterop;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
 
@@ -16,7 +17,8 @@ namespace MFTLib;
 /// </summary>
 readonly record struct NtfsVolumeInformation(
     long MftValidDataLength,
-    uint BytesPerFileRecordSegment)
+    uint BytesPerFileRecordSegment,
+    ulong VolumeSerialNumber = 0)
 {
     /// <summary>
     ///     The MFT's approximate record count, derived from the bytes NTFS reports as
@@ -52,7 +54,12 @@ readonly record struct NtfsVolumeInformation(
 
         var normalizedPath = MFTUtilities.GetVolumePath(volume);
         using var handle = FileUtilities.Hooks._getVolumeHandle(normalizedPath);
+        return Query(handle);
+    }
 
+    [SupportedOSPlatform("windows")]
+    internal static NtfsVolumeInformation Query(SafeFileHandle handle)
+    {
         var bufferSize = Marshal.SizeOf<NtfsVolumeDataBufferNative>();
         var buffer = Marshal.AllocHGlobal(bufferSize);
         try
@@ -65,7 +72,8 @@ readonly record struct NtfsVolumeInformation(
             }
 
             var native = Marshal.PtrToStructure<NtfsVolumeDataBufferNative>(buffer);
-            return new NtfsVolumeInformation(native.MftValidDataLength, native.BytesPerFileRecordSegment);
+            return new NtfsVolumeInformation(native.MftValidDataLength, native.BytesPerFileRecordSegment,
+                unchecked((ulong)native.VolumeSerialNumber));
         }
         finally
         {

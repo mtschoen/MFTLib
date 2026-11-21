@@ -18,6 +18,7 @@ set(SOURCES
     core/test_hooks.cpp
     mft/mft.cpp
     mft/mft.dump_input.cpp
+    mft/mft.inline_content.cpp
     mft/mft_synthetic.cpp
 )
 

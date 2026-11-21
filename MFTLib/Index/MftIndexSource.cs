@@ -26,10 +26,15 @@ public sealed class MftIndexSource
     ///     Whether the producer writes freed records, taken from its scan options. Part of the scan shape an MFT
     ///     block must carry.
     /// </param>
+    /// <param name="inlineContentReader">
+    ///     Reads the resident <c>$DATA</c> of specific records for <see cref="FileIndex.ReadInlineContentAsync" />.
+    ///     Dump producers supply a reader on each produced block instead.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="producer" /> is null.</exception>
     /// <exception cref="ArgumentException">A dump source was given a watch source.</exception>
     internal MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null,
-        MftDumpSourceIdentity? dumpIdentity = null, bool includeFreed = false)
+        MftDumpSourceIdentity? dumpIdentity = null, bool includeFreed = false,
+        IInlineContentReader? inlineContentReader = null)
     {
         ArgumentNullException.ThrowIfNull(producer);
         if (dumpIdentity is not null && watchSource is not null)
@@ -41,7 +46,10 @@ public sealed class MftIndexSource
         WatchSource = watchSource;
         DumpIdentity = dumpIdentity;
         IncludeFreed = includeFreed;
+        InlineContentReader = inlineContentReader;
     }
+
+    internal IInlineContentReader? InlineContentReader { get; }
 
 
     internal MftBlockProducer Producer { get; }

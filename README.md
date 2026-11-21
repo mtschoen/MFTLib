@@ -228,7 +228,7 @@ and block generation and checkpoint facts are shared. Walks and dumps own privat
 ## Samples
 
 `SampleProgram.Direct` runs one-shot queries over a live volume or a saved dump: `search`,
-`tree`, `children`, `open`, `largest`, `duplicate-names` and `scan`. `SampleProgram.Watch` uses the broker:
+`tree`, `children`, `open`, `content`, `largest`, `duplicate-names` and `scan`. `SampleProgram.Watch` uses the broker:
 `scan`, `watch`, `rescan`, `journal`, `cache` and `elevation-status`. With no arguments
 it watches every ready local NTFS volume until Enter. During an attended watch, type `add-root C:\Windows` to attach
 another root. An empty line or end of input stops; `--seconds N` keeps a timed run free of input reads.

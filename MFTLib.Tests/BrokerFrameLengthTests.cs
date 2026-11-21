@@ -12,14 +12,14 @@ namespace MFTLib.Tests;
 public class BrokerFrameLengthTests
 {
     [TestMethod]
-    public void ArmAndScan_FrameLengthIsKindSectionAndFlags()
+    public void ArmAndScan_FrameLengthIsKindSectionFlagsAndSerial()
     {
         const string sectionName = "section-C";
         var buffer = new ArrayBufferWriter<byte>();
 
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, includeFreed: true, deleteOnClose: false));
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, includeFreed: true, deleteOnClose: false, expectedVolumeSerial: 0));
 
-        var expectedLength = 1 + 4 + (2 * sectionName.Length) + 1 + 1;
+        var expectedLength = 1 + 4 + (2 * sectionName.Length) + 1 + 1 + 8;
         Assert.AreEqual(expectedLength, BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan));
         Assert.AreEqual(expectedLength + 4, buffer.WrittenCount);
     }

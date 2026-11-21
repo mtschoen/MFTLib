@@ -8,6 +8,7 @@
 #include "mft.records.cpp"
 #include "mft.parse_core.cpp"
 #include "mft.parse.cpp"
+#include "mft.inline_volume.cpp"
 // ReSharper restore CppUnusedIncludeDirective
 // NOLINTEND(bugprone-suspicious-include)
 #undef AISLOP_TU_FRAGMENT

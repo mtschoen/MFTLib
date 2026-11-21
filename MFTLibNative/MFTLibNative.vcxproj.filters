@@ -48,6 +48,9 @@
     <ClInclude Include="mft\mft.internal.h">
       <Filter>Source Files\mft</Filter>
     </ClInclude>
+    <ClInclude Include="mft\mft.inline_content.h">
+      <Filter>Source Files\mft</Filter>
+    </ClInclude>
     <ClInclude Include="mft\mft_fixture.h">
       <Filter>Source Files\mft</Filter>
     </ClInclude>
@@ -80,6 +83,12 @@
     <ClCompile Include="mft\mft.dump_input.cpp">
       <Filter>Source Files\mft</Filter>
     </ClCompile>
+    <ClCompile Include="mft\mft.inline_content.cpp">
+      <Filter>Source Files\mft</Filter>
+    </ClCompile>
+    <ClCompile Include="mft\mft.inline_volume.cpp">
+      <Filter>Source Files\mft</Filter>
+    <ExcludedFromBuild>true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="usn\usn_journal.cpp">
       <Filter>Source Files\usn</Filter>
     </ClCompile>

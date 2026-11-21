@@ -107,8 +107,9 @@ sealed partial class JournalBrokerHost
             var scanOptions = new MftScanOptions { IncludeFreed = request.IncludeFreed };
             var reporting = new BlockWriteReporting(progressReporter, channel.Pipe);
             // The section is written while the volume is parsed; disposing the source waits for the parse to return.
+            // The serial the client stamped on its block is checked on the handle this scan parses, before any row.
             using var source = _volumeAccess.OpenVolumeScan(channel.Volume, parseThreads, reporting, scanOptions,
-                cancellationToken);
+                request.ExpectedVolumeSerial, cancellationToken);
             var result = blockSectionWriter.Write(new BlockSectionTarget(request.RequireSectionName(channel.Volume), request.DeleteOnClose), cursor, source,
                 scanOptions, reporting, cancellationToken);
             return new ScanOutput(cursor, result);

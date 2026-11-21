@@ -82,6 +82,9 @@ readonly record struct BrokerFrame
 
     internal BrokerCatchUpLoss? CatchUpLoss { get; private init; }
 
+    /// <summary>The serial an <see cref="BrokerFrameKind.ArmAndScan" /> request expects of the volume handle the scan parses.</summary>
+    internal ulong ExpectedVolumeSerial { get; private init; }
+
     internal const string PipeNamePrefix = "mftlib-broker-";
     const int PipeNameLength = 14 + 32;
 
@@ -236,13 +239,16 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.Stalled, 0) with { Message = message };
     }
 
-    public static BrokerFrame ArmAndScan(string sectionName, bool includeFreed, bool deleteOnClose)
+    // The host checks expectedVolumeSerial on the very handle the scan parses, before it accepts a row.
+    public static BrokerFrame ArmAndScan(string sectionName, bool includeFreed, bool deleteOnClose,
+        ulong expectedVolumeSerial)
     {
         return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
             SectionName = sectionName,
             IncludeFreed = includeFreed,
-            DeleteOnClose = deleteOnClose
+            DeleteOnClose = deleteOnClose,
+            ExpectedVolumeSerial = expectedVolumeSerial
         };
     }
 

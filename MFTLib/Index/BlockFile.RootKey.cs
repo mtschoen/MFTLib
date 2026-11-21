@@ -15,6 +15,12 @@ sealed unsafe partial class BlockFile
     /// </summary>
     internal RootKey Root { get; }
 
+    /// <summary>
+    ///     A dump's reader, which holds open the file that produced this uncached block until <see cref="Dispose" />
+    ///     releases it.
+    /// </summary>
+    internal IBlockContentReader? DumpContentReader { get; set; }
+
     /// <summary>Stores <paramref name="root" /> after the header: a ushort code-unit count, then the code units.</summary>
     void WriteRootKey(RootKey root)
     {

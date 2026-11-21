@@ -20,6 +20,7 @@
 #include "../internal.h"
 #include "../core/platform.h"
 #include "mft.internal.h"
+#include "mft.inline_content.h"
 
 // One opened dump file with the length and record size inspection found. A parse reads this
 // file and no other, so replacing the path after the open cannot change what is parsed.
@@ -85,9 +86,10 @@ struct DumpReadContext {
     std::vector<mftlib::platform::File*> partFiles;
 };
 
-// Reads exactly byteCount bytes at offset, in calls small enough for every platform read.
-// False when a read fails or the file ends first.
-bool ReadExactly(const mftlib::platform::File* file, uint8_t* target, const size_t byteCount, const int64_t offset) {
+// Reads up to byteCount bytes at offset, in calls small enough for every platform read, and returns how many arrived
+// before the file ended or a read failed. Every returned byte is valid.
+size_t ReadAvailable(const mftlib::platform::File* file, uint8_t* target, const size_t byteCount,
+                     const int64_t offset) {
     constexpr size_t kMaximumReadBytes = size_t{1} << 30;
     size_t bytesDone = 0;
     while (bytesDone < byteCount) {
@@ -95,11 +97,16 @@ bool ReadExactly(const mftlib::platform::File* file, uint8_t* target, const size
         const int64_t bytesRead = mftlib::platform::pread_at(
             file, target + bytesDone, wanted, mftlib::platform::FileOffset{offset + static_cast<int64_t>(bytesDone)});
         if (bytesRead <= 0) {
-            return false;
+            break;
         }
         bytesDone += static_cast<size_t>(bytesRead);
     }
-    return true;
+    return bytesDone;
+}
+
+// Reads exactly byteCount bytes at offset. False when a read fails or the file ends first.
+bool ReadExactly(const mftlib::platform::File* file, uint8_t* target, const size_t byteCount, const int64_t offset) {
+    return ReadAvailable(file, target, byteCount, offset) == byteCount;
 }
 
 constexpr size_t kDumpReadParts = 8;
@@ -174,6 +181,13 @@ bool DumpReadIncomplete(const void* context) {
     const auto* dump = static_cast<const DumpReadContext*>(context);
     return dump->readFailed || dump->recordsRemaining != 0 ||
            mftlib::platform::size_of(dump->input->file) != static_cast<int64_t>(dump->input->lengthBytes);
+}
+
+// Reads from the dump's open file, which the reader borrowed. A read the failure hook arms fails like a failed
+// chunk read.
+size_t ReadDumpBytes(const MftInlineReader& reader, const uint64_t sourceOffset, uint8_t* target,
+                     const size_t byteCount) {
+    return ShouldFailRead() ? 0 : ReadAvailable(reader.dumpFile, target, byteCount, static_cast<int64_t>(sourceOffset));
 }
 
 // Parses every record of an inspected input. The chunk buffer never exceeds the file.
@@ -269,6 +283,40 @@ EXPORT MftParseResult* ParseMftDumpInputStreaming(const MftDumpInput* input, con
             return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, callbackContext, sink});
         },
         [](const wchar_t*) -> MftParseResult* { return nullptr; });
+}
+
+// Opens a reader on the records of an opened dump: the whole file is one run of the MFT. The reader
+// borrows the input, which must stay open until CloseMftInlineReader.
+EXPORT MftInlineReader* OpenMftDumpInlineReader(const MftDumpInput* input, MftInlineReaderInfo* info) {
+    if (info == nullptr) {
+        return nullptr;
+    }
+    *info = MftInlineReaderInfo{};
+    return NativeBoundary(
+        [&]() -> MftInlineReader* {
+            if (input == nullptr) {
+                SetErrorMessage(info->errorMessage, L"Dump input is invalid");
+                return nullptr;
+            }
+            std::unique_ptr<MftInlineReader> reader(ShouldFailAllocation() ? nullptr
+                                                                           : new (std::nothrow) MftInlineReader());
+            if (reader == nullptr) {
+                SetErrorMessage(info->errorMessage, L"Failed to allocate inline content reader");
+                return nullptr;
+            }
+            reader->segments.push_back({0, input->lengthBytes, 0});
+            reader->geometry = input->geometry;
+            reader->totalRecords = input->lengthBytes / input->geometry.recordSize;
+            reader->read = ReadDumpBytes;
+            reader->dumpFile = input->file;
+            info->totalRecords = reader->totalRecords;
+            info->recordSize = input->geometry.recordSize;
+            return reader.release();
+        },
+        [&](const wchar_t* message) -> MftInlineReader* {
+            SetErrorMessage(info->errorMessage, message);
+            return nullptr;
+        });
 }
 
 // Closes the file and frees the input. Safe with null.

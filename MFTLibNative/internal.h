@@ -122,6 +122,8 @@ class ParseThreadRecording {
 extern "C" {
 EXPORT void SetAllocFailCountdown(int countdown);
 EXPORT void SetReadFailCountdown(int countdown);
+// Fails read N (counted from the call, 1-based, up to 64) when bit N-1 of mask is set; zero disarms.
+EXPORT void SetReadFailMask(uint64_t mask);
 EXPORT void SetMaxThreads(unsigned maximumThreads);
 EXPORT void ResetTestState();
 }

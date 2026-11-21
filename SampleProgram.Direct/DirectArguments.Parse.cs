@@ -69,6 +69,7 @@ sealed partial record DirectArguments
             _ when candidate.IncludeFreed && candidate.Source is SourceKind.Dump => "--include-freed cannot be used with --source dump: a dump never yields freed rows.",
             _ when bothKinds => "--directories and --files exclude each other.",
             _ when candidate is { Verb: DirectVerb.Open, Path: null } => "open needs --path P.",
+            _ when candidate is { Verb: DirectVerb.Content, Path: null } => "content needs --path P.",
             _ => null
         };
     }

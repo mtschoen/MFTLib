@@ -13,8 +13,9 @@ delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftDumpInput 
 ///     Builds an index block from an MFT dump file, in process and without a broker. Each request
 ///     opens the file once and takes the block's sizing and every record from that one open file,
 ///     so a path replaced during a scan cannot mix two files, and the next request opens whatever
-///     the path then names. It never touches the live volume that shares the dump's drive letter:
-///     the block carries a zero journal cursor and the request's volume serial.
+///     the path then names. The block keeps that open file for its inline content reads until it
+///     is released. It never touches the live volume that shares the dump's drive letter: the
+///     block carries a zero journal cursor and the request's volume serial.
 ///     Dump and local-volume scans share the process's parse-thread allocator; cancellation,
 ///     failure and completion release each request's registration.
 /// </summary>
@@ -50,19 +51,28 @@ sealed class MftDumpBlockProducer
     MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
         CancellationToken cancellationToken)
     {
-        using var input = MftDumpInput.Open(_dumpFilePath);
-
-        // The block is created before the parse starts, so its rows are written while later chunks are parsed; a
-        // dump the parser rejects leaves the block as that failed scan's scratch space.
-        var blockProgress = MftBlockProgressAdapter.Create(request);
-        var progress = MftBlockProgressAdapter.CreateParse(blockProgress, null);
-        // A dump has no journal: the zero cursor says nothing can be resumed from this block.
-        var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
-            new BlockStamp(default, _timeProvider), new MftScanOptions());
-        return MftBlockProducerPipeline.Write(request, plan,
-            // ReSharper disable once AccessToDisposedClosure
-            () => OpenSource(input, progress, allowance, cancellationToken),
-            blockProgress, cancellationToken);
+        var input = MftDumpInput.Open(_dumpFilePath);
+        var unowned = input;
+        try
+        {
+            // The block is created before the parse starts, so its rows are written while later chunks are parsed; a
+            // dump the parser rejects leaves the block as that failed scan's scratch space.
+            var blockProgress = MftBlockProgressAdapter.Create(request);
+            var progress = MftBlockProgressAdapter.CreateParse(blockProgress, null);
+            // A dump has no journal: the zero cursor says nothing can be resumed from this block.
+            var plan = new MftBlockProducerPipeline.WritePlan(input.VolumeInformation,
+                new BlockStamp(default, _timeProvider), new MftScanOptions());
+            var result = MftBlockProducerPipeline.Write(request, plan,
+                () => OpenSource(input, progress, allowance, cancellationToken), blockProgress, cancellationToken);
+            // The block keeps the file it was parsed from open for its inline content reads and closes it on release.
+            result.Block.DumpContentReader = new DumpInlineContentReader(input);
+            unowned = null;
+            return result;
+        }
+        finally
+        {
+            unowned?.Dispose();
+        }
     }
 
     IMftSliceSource OpenSource(MftDumpInput input, IProgress<MftScanProgress>? progress,

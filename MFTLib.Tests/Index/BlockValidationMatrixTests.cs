@@ -59,15 +59,15 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
     }
 
     /// <summary>
-    ///     A version 10 block, whose 32-bit serial sat at offset 16 and root row at offset 20, is rejected by the
-    ///     version check before any moved field is read.
+    ///     A version 11 block was written by a scan that may not have checked the volume serial on its scan handle, so
+    ///     its header serial proves nothing about the volume its rows came from: the version check rejects it.
     /// </summary>
     [TestMethod]
-    public async Task FormatVersionTen_ColdScans()
+    public async Task FormatVersionEleven_ColdScans()
     {
         await SeedCacheAsync();
         var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
-        BitConverter.GetBytes(10u).CopyTo(bytes, 4);
+        BitConverter.GetBytes(11u).CopyTo(bytes, 4);
         await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongFormatVersion);

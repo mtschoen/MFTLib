@@ -112,6 +112,37 @@
       `GetEnumerator` checks cancellation and index disposal; `MoveNext` checks cancellation during
       scanning and can reject an unresolved parent chain while applying a subtree restriction.
 
+    - **Inline content read**: `FileIndex.ReadInlineContentAsync` borrows the current snapshot (`BorrowCurrentSnapshot`, which
+      takes no directory-view admission, so a view whose directory moved still answers for the entries it minted) only
+      long enough to map its entries: it checks each entry's root block against the borrowed one, decides a deleted or
+      superseded entry (`Superseded`) and a directory (`NotInline`) from the pinned rows, and copies (position, record
+      number, sequence number) into an array. When any entry needs a record read, those decided answers are
+      delivered only once the reader hands over its first answer, which follows its open and its source check (the
+      full 64-bit volume serial read from the opened handle, which must equal the nonzero serial the block records,
+      or the block's own dump file), so a refused read fails with no handler call;
+      a call with nothing to read delivers them at once without opening the source. The same borrow captures the reader. A dump block owns the open file
+      its rows were parsed from (`DumpInlineContentReader`, released with the block), and the borrow takes a lease
+      on it, so the read goes through that same file whatever happened to the path since: a rename, a deletion or a
+      replacement (even one that recycles the file's inode) never substitutes another file's bytes, a write into the
+      scanned file itself is read as it is now, and only a successful rescan, which opens the path anew, moves reads
+      to a new file. Another open or an unpublished rescan cannot change it. The lease keeps the file open until the
+      read ends, after the block's release if a rescan or disposal released it meanwhile; each dump block holds one
+      open file handle. Direct scans, broker scans and live reads all check the full volume serial on the handle
+      supplying the records, so every MFT block at the current format version that a live direct or broker scan
+      produced was scanned through a handle whose full serial matched its header, and a live read whose handle matches
+      that header reads the volume the rows came from. A dump block opens no volume and records no serial; its
+      provenance is the dump file it holds open.
+      The borrow is returned before any I/O and before the requests are sorted, so a slow volume read never holds the
+      mapping, a rescan never waits for it, and an entry whose block a rescan replaces after the call started is still
+      answered. The call observes its token before it checks the entries, then every 4,096 entries while it checks
+      them and, linked with index disposal, while it maps them under the borrow, so an already cancelled token reads
+      no entry and a long entry list never delays a cancellation by a whole pass. The read itself observes cancellation before the first batch of 65,536 requests, every 4,096 answers,
+      between native reads and inside one (the native control block), and once more before any result is reported
+      (`NotApplicable`, `Failed` or `Succeeded`), so a cancellation that the cadence skipped still ends the call; index
+      disposal cancels it through the linked token: a cancellation observed before a result is reported throws
+      `OperationCanceledException` instead of that result. A handler exception takes precedence: when the handler
+      cancels the token and then throws, its own exception propagates. The handler holds no borrow and receives bytes copied into the read's
+      own buffer, valid only during each call.
     - **Resident page release**: `FileIndex.ReleaseResidentPages()` is the consumer's explicit, advisory way to drop the
       block's mapped pages (the whole view) from the process working set; MFTLib never calls it itself and no query,
       watch or rescan trims. It takes no query borrow: `BlockFile.TryReleaseResidentPages` pairs `TryTakeAccess` with

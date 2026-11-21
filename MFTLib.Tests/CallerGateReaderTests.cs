@@ -231,6 +231,49 @@ public class CallerGateReaderTests
     }
 
     [TestMethod]
+    public void ADelegateType_NeedsItsConstructorButNotItsOtherRuntimeImplementedMembers()
+    {
+        var surface = FixtureSurface();
+        var name = Name(typeof(CallerGateFixtureCallback));
+        var displays = surface.Members.Select(member => member.Display).ToList();
+        string Report() => string.Join("; ", displays);
+        var constructor = Method(surface, typeof(CallerGateFixtureCallback),
+            ".ctor(System.Object, System.IntPtr) : System.Void");
+        var references = Collect(new Dictionary<string, Action<MethodBuilder>>
+        {
+            ["TypeOnly"] = method =>
+            {
+                var il = method.GetILGenerator();
+                il.Emit(OpCodes.Ldtoken, typeof(CallerGateFixtureCallback));
+                il.Emit(OpCodes.Pop);
+                il.Emit(OpCodes.Ret);
+            },
+            ["Constructed"] = Construct(Constructor(typeof(CallerGateFixtureCallback), typeof(object), typeof(IntPtr)))
+        });
+
+        Assert.Contains($"type {name}", displays, Report());
+        Assert.AreEqual(1, displays.Count(display => display.StartsWith($"method {name}.", StringComparison.Ordinal)),
+            "only the constructor is an authored caller requirement: " + Report());
+        Assert.IsFalse(constructor.IsReferencedBy(references["TypeOnly"]), "naming the delegate does not construct it");
+        Assert.IsTrue(constructor.IsReferencedBy(references["Constructed"]));
+    }
+
+    [TestMethod]
+    public void ARuntimeImplementedMethod_IsSkippedOnlyOnADelegateType()
+    {
+        var surface = ReadSurfaceFromImage(BuildRuntimeImplementedMethods(), [RuntimeNamespace]);
+        var displays = surface.Members.Select(member => member.Display).ToList();
+        string Report() => string.Join("; ", displays);
+
+        Assert.Contains($"method {RuntimeNamespace}.PlainClass.Claimed() : System.Void", displays,
+            "a non-delegate class authors its methods whatever their implementation flags say: " + Report());
+        Assert.Contains($"method {RuntimeNamespace}.Callback..ctor(System.Object, System.IntPtr) : System.Void", displays,
+            "the constructor still needs a caller: " + Report());
+        Assert.DoesNotContain(display => display.StartsWith($"method {RuntimeNamespace}.Callback.Invoke", StringComparison.Ordinal),
+            displays, "the other members are still runtime-implemented: " + Report());
+    }
+
+    [TestMethod]
     public void AConstructorStoringThis_IsNotStoringAnArgument()
     {
         var surface = ReadSurfaceFromImage(BuildHandWrittenConstructors(), [HandNamespace]);

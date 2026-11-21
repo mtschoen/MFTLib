@@ -16,6 +16,54 @@ sealed record DumpRecord(string Name, ulong Parent)
     public long ModifiedFileTime { get; init; } = MftDumpFixture.BaseFileTime;
 
     public ushort SequenceNumber { get; init; } = 1;
+
+    /// <summary>
+    ///     The resident data bytes; when set they replace <see cref="Size" />, which then reads as their length.
+    ///     Without them a resident data attribute holds <see cref="Size" /> zero bytes.
+    /// </summary>
+    public byte[]? Content { get; init; }
+
+    /// <summary>The data attribute is nonresident, with <see cref="Size" /> as its file size.</summary>
+    public bool NonResidentData { get; init; }
+
+    /// <summary>The flags word of the data attribute: 1 compressed, 0x4000 encrypted, 0x8000 sparse.</summary>
+    public ushort DataFlags { get; init; }
+
+    /// <summary>The record carries a reparse point attribute after its data.</summary>
+    public bool ReparsePoint { get; init; }
+
+    /// <summary>The base file reference in the record header: nonzero makes it an extension record.</summary>
+    public ulong BaseReference { get; init; }
+
+    /// <summary>The only data attribute is a named stream; the record has no unnamed data.</summary>
+    public bool NamedStreamOnly { get; init; }
+
+    /// <summary>How many bytes the data attribute's value length claims beyond what the attribute holds.</summary>
+    public uint ValueLengthExcess { get; init; }
+
+    /// <summary>The record carries an <c>$ATTRIBUTE_LIST</c> attribute, as a file whose attributes spill into extension records does.</summary>
+    public bool AttributeList { get; init; }
+
+    /// <summary>The record carries a second unnamed data attribute after the first.</summary>
+    public bool SecondUnnamedData { get; init; }
+
+    /// <summary>A named data stream precedes the unnamed data attribute.</summary>
+    public bool NamedStreamBeforeData { get; init; }
+
+    /// <summary>
+    ///     The file attributes word of <c>$STANDARD_INFORMATION</c> and <c>$FILE_NAME</c> also carries
+    ///     <c>FILE_ATTRIBUTE_REPARSE_POINT</c>, with no reparse attribute in the record.
+    /// </summary>
+    public bool ReparseFileAttribute { get; init; }
+
+    /// <summary>The form code the resident unnamed data attribute declares; 0 is resident and 1 nonresident.</summary>
+    public byte DataFormCode { get; init; }
+
+    /// <summary>
+    ///     The value offset the unnamed data attribute declares; the bytes always sit directly after the 24-byte
+    ///     resident header, which is what the default declares.
+    /// </summary>
+    public ushort ValueOffset { get; init; } = 0x18;
 }
 
 /// <summary>
@@ -92,10 +140,32 @@ static class MftDumpFixture
         var offset = firstAttributeOffset;
         offset += WriteStandardInformation(record[offset..], values);
         offset += WriteFileName(record[offset..], values);
-        if (!values.IsDirectory && values.Size is { } size)
+        if (values.NamedStreamBeforeData)
         {
-            offset += WriteResidentData(record[offset..], size);
+            offset += WriteResidentData(record[offset..], values with { Content = [0xAA, 0xBB], ValueLengthExcess = 0 }, name: "ads");
         }
+
+        if (!values.IsDirectory || values.Content is not null)
+        {
+            offset += WriteData(record[offset..], values);
+        }
+
+        if (values.SecondUnnamedData)
+        {
+            offset += WriteResidentData(record[offset..], values with { Content = [9, 9], ValueLengthExcess = 0 }, name: "");
+        }
+
+        if (values.AttributeList)
+        {
+            offset += WriteAttributeList(record[offset..]);
+        }
+
+        if (values.ReparsePoint)
+        {
+            offset += WriteReparsePoint(record[offset..]);
+        }
+
+        BinaryPrimitives.WriteUInt64LittleEndian(record[0x20..], values.BaseReference);
 
         BinaryPrimitives.WriteUInt32LittleEndian(record[offset..], uint.MaxValue);
         BinaryPrimitives.WriteUInt32LittleEndian(record[0x18..], (uint)(offset + 8));
@@ -150,10 +220,64 @@ static class MftDumpFixture
         return length;
     }
 
-    static int WriteResidentData(Span<byte> attribute, long size)
+    // The data attribute a record carries; none for a file whose size is unknown.
+    static int WriteData(Span<byte> attribute, DumpRecord values)
     {
-        WriteResidentHeader(attribute, 0x80, 0x18, (uint)size);
-        return 0x18;
+        if (values.NamedStreamOnly)
+        {
+            return WriteResidentData(attribute, values, name: "ads");
+        }
+
+        if (values.NonResidentData)
+        {
+            return WriteNonResidentData(attribute, values);
+        }
+
+        return values.Content is not null || values.Size is not null ? WriteResidentData(attribute, values, name: "") : 0;
+    }
+
+    static int WriteResidentData(Span<byte> attribute, DumpRecord values, string name)
+    {
+        var content = values.Content ?? new byte[values.Size ?? 0];
+        var nameBytes = Encoding.Unicode.GetBytes(name);
+        var valueStart = 0x18 + nameBytes.Length;
+        var length = (valueStart + content.Length + 7) & ~7;
+        WriteResidentHeader(attribute, 0x80, length, (uint)content.Length + values.ValueLengthExcess);
+        attribute[8] = name.Length == 0 ? values.DataFormCode : (byte)0;
+        attribute[9] = (byte)name.Length;
+        BinaryPrimitives.WriteUInt16LittleEndian(attribute[0x0A..], 0x18);
+        BinaryPrimitives.WriteUInt16LittleEndian(attribute[0x0C..], values.DataFlags);
+        BinaryPrimitives.WriteUInt16LittleEndian(attribute[0x14..], name.Length == 0 ? values.ValueOffset : (ushort)valueStart);
+        nameBytes.CopyTo(attribute[0x18..]);
+        content.CopyTo(attribute[valueStart..]);
+        return length;
+    }
+
+    static int WriteNonResidentData(Span<byte> attribute, DumpRecord values)
+    {
+        const int length = 0x48;
+        BinaryPrimitives.WriteUInt32LittleEndian(attribute, 0x80);
+        BinaryPrimitives.WriteUInt32LittleEndian(attribute[4..], length);
+        attribute[8] = 1;
+        BinaryPrimitives.WriteUInt16LittleEndian(attribute[0x0C..], values.DataFlags);
+        BinaryPrimitives.WriteUInt16LittleEndian(attribute[0x20..], 0x40);
+        BinaryPrimitives.WriteInt64LittleEndian(attribute[0x30..], values.Size ?? 0);
+        BinaryPrimitives.WriteInt64LittleEndian(attribute[0x38..], values.Size ?? 0);
+        return length;
+    }
+
+    static int WriteAttributeList(Span<byte> attribute)
+    {
+        const int length = 0x20;
+        WriteResidentHeader(attribute, 0x20, length, 8);
+        return length;
+    }
+
+    static int WriteReparsePoint(Span<byte> attribute)
+    {
+        const int length = 0x20;
+        WriteResidentHeader(attribute, 0xC0, length, 8);
+        return length;
     }
 
     static void WriteResidentHeader(Span<byte> attribute, uint typeCode, int length, uint valueLength)
@@ -165,5 +289,6 @@ static class MftDumpFixture
     }
 
     static uint FileAttributesOf(DumpRecord values) =>
-        (uint)(values.IsDirectory ? FileAttributes.Directory : FileAttributes.Archive);
+        (uint)((values.IsDirectory ? FileAttributes.Directory : FileAttributes.Archive) |
+               (values.ReparseFileAttribute ? FileAttributes.ReparsePoint : 0));
 }

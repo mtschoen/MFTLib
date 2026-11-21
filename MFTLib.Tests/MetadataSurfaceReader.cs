@@ -367,7 +367,7 @@ static partial class MetadataSurfaceReader
             var method = reader.GetMethodDefinition(handle);
             var name = reader.GetString(method.Name);
             if (accessors.Contains(handle) || !IsExposed(method.Attributes) ||
-                IsCompilerGenerated(reader, method.GetCustomAttributes()) ||
+                IsCompilerGenerated(reader, method.GetCustomAttributes()) || IsRuntimeImplementedDelegateMember(reader, type, method) ||
                 IsPrimaryConstructor(reader, provider, method, name, primaryParameters))
             {
                 continue;
@@ -381,6 +381,16 @@ static partial class MetadataSurfaceReader
             });
         }
     }
+
+    // A delegate's Invoke, BeginInvoke and EndInvoke need no direct caller: whoever holds the delegate calls Invoke.
+    // Its constructor remains a requirement, so a type reference alone does not satisfy the gate.
+    static bool IsRuntimeImplementedDelegateMember(MetadataReader reader, TypeDefinition type, MethodDefinition method) =>
+        IsDelegate(reader, type) && reader.GetString(method.Name) != ".ctor" &&
+        ((int)method.ImplAttributes & (int)MethodImplAttributes.CodeTypeMask) == (int)MethodImplAttributes.Runtime;
+
+    static bool IsDelegate(MetadataReader reader, TypeDefinition type) =>
+        type.BaseType.Kind == HandleKind.TypeReference &&
+        reader.GetString(reader.GetTypeReference((TypeReferenceHandle)type.BaseType).Name) is "MulticastDelegate" or "Delegate";
 
     // The constrained call reaches the method only when it reuses a slot that provably starts at System.Object: it is
     // virtual without a new slot, and walking up the base chain no ancestor introduces a method of the same name and

@@ -188,6 +188,17 @@ public partial class JournalBrokerHostTests
         await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }
 
+    [TestMethod]
+    public void ReadInlineContent_WithoutASource_ReportsNotSupported()
+    {
+        var access = new MFTLibTestExtensions.ScriptedVolumeAccess();
+
+        var failure = Assert.ThrowsExactly<NotSupportedException>(() =>
+            access.ReadInlineContent('C', 0, default, static (_, _, _) => { }, CancellationToken.None));
+
+        Assert.AreEqual("Broker has no inline content source", failure.Message);
+    }
+
     // The failed channel ended without ending the session: a sibling channel still delivers a batch
     // released after the failure, and the control pipe still answers.
     static async Task AssertOnlyThatChannelEndedAsync(HostChannelHarness harness, Stream failed, Stream sibling,

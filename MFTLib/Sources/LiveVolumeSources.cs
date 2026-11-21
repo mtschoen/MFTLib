@@ -18,9 +18,11 @@ static class LiveVolumeSources
 
     // Opens the volume and prepares its streaming parse for the block writer, without resolving paths. The scan's
     // allowance and token reach the native parse, so a rebalance takes effect at its next chunk and a closed pipe
-    // stops it. The returned source owns the volume.
+    // stops it. The returned source owns the volume. The full serial of the scan handle must equal the one the block
+    // records, so the block's header serial proves which volume its rows came from.
     internal static IMftSliceSource OpenVolumeScan(VolumeKey volume, ParseThreadAllowance parseThreads,
-        BlockWriteReporting reporting, MftScanOptions scanOptions, CancellationToken cancellationToken)
+        BlockWriteReporting reporting, MftScanOptions scanOptions, ulong expectedVolumeSerial,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         reporting.Operation?.WaitingOnVolume();
@@ -29,6 +31,10 @@ static class LiveVolumeSources
         var mftVolume = MftVolume.Open(volume, HostScanChunkRecords(bytesPerFileRecordSegment));
         try
         {
+            if (OperatingSystem.IsWindows())
+            {
+                RequireVolumeSerial(mftVolume, volume, expectedVolumeSerial);
+            }
             reporting.Operation?.Processing("MFT parse");
             var mftProgress = MftBlockProgressAdapter.CreateParse(reporting.Progress, reporting.Operation);
             return mftVolume.OpenSliceStream(mftProgress, parseThreads, scanOptions, cancellationToken);
@@ -37,6 +43,35 @@ static class LiveVolumeSources
         {
             mftVolume.Dispose();
             throw;
+        }
+    }
+
+    // Opens the volume, reads the resident content of the requested records through the native reader and closes
+    // the volume. The reader is disposed before the volume it borrows. A block that records no serial cannot prove
+    // which volume it was scanned from, so its read is refused before the volume is opened.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal static void ReadInlineContent(VolumeKey volume, ulong volumeSerial,
+        ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (volumeSerial == 0)
+        {
+            throw new IOException(
+                $"The block of volume {volume} records no volume serial, so the volume cannot be confirmed as the one scanned.");
+        }
+
+        using var mftVolume = MftVolume.Open(volume);
+        RequireVolumeSerial(mftVolume, volume, volumeSerial);
+        using var reader = mftVolume.OpenInlineContentReader();
+        reader.Read(requests.Span, sink, cancellationToken);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    static void RequireVolumeSerial(MftVolume opened, VolumeKey volume, ulong expected)
+    {
+        if (opened.QueryVolumeInformation().VolumeSerialNumber != expected)
+        {
+            throw new IOException($"Volume {volume} does not have the expected serial.");
         }
     }
 

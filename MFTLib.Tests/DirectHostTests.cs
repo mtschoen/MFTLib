@@ -250,6 +250,32 @@ public sealed class DirectHostTests : IDisposable
     }
 
     [TestMethod]
+    public void Run_OpenInAnElevatedRun_LogsTheLengthButNoBytes()
+    {
+        var path = Path.Combine(TemporaryDirectoryPath, "a.txt");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath) { _isElevated = () => true };
+        var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+            [new SyntheticRow(5, ".", 5) { IsDirectory = true }, new SyntheticRow(7, "a.txt", 5) { Size = 3 }]));
+        FileEntry.Dependencies._openById = (_, _, _, access) =>
+            new FileStream(path, FileMode.Open, access, FileShare.Read);
+        Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
+
+        var result = host.RunWithElevation(["open", "C", "--path", path], ElevationNeed.SelfElevate, () =>
+        {
+            host.RunSourceAsync(parsed!, source, new VolumeKey('C'), options => SyntheticRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242).Apply(options), CancellationToken.None).GetAwaiter().GetResult();
+            return 0;
+        });
+
+        Assert.AreEqual(0, result);
+        Assert.AreEqual(string.Empty, output.ToString(), "Elevated output goes to output.log.");
+        var log = File.ReadAllText(host.OutputLogPath);
+        Assert.Contains($"{Environment.NewLine}3 bytes{Environment.NewLine}", log);
+        Assert.DoesNotContain("010203", log, "the elevated run's log never holds file content");
+    }
+
+    [TestMethod]
     public void Run_PathThatIsNotIndexed_ReportsNoEntry()
     {
         var lines = new List<string>();

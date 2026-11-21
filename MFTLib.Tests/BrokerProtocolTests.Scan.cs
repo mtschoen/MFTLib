@@ -20,7 +20,7 @@ public partial class BrokerProtocolTests
     [DataRow(true, true)]
     public void ArmAndScan_RoundTripsSectionAndFlags(bool includeFreed, bool deleteOnClose)
     {
-        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed, deleteOnClose), BrokerProtocol.WriteArmAndScan);
+        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", includeFreed, deleteOnClose, expectedVolumeSerial: 0), BrokerProtocol.WriteArmAndScan);
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
@@ -34,7 +34,7 @@ public partial class BrokerProtocolTests
     public void ReadFrame_ArmAndScan_UnknownIncludeFreedValue_ThrowsInvalidDataException()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true, deleteOnClose: false));
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", includeFreed: true, deleteOnClose: false, expectedVolumeSerial: 0));
         var bytes = buffer.WrittenSpan.ToArray();
 
         // length prefix 4 + kind 1 + section (4 + 2) = the flag's offset.
@@ -242,14 +242,49 @@ public partial class BrokerProtocolTests
     [DataRow(false, true, (byte)0, (byte)1)]
     public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, bool deleteOnClose, byte expectedFreedByte, byte expectedDeleteByte)
     {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed, deleteOnClose)),
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", includeFreed, deleteOnClose, expectedVolumeSerial: 0)),
         [
-            0x09, 0x00, 0x00, 0x00, // totalLength = 9
+            0x11, 0x00, 0x00, 0x00, // totalLength = 17
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
             expectedFreedByte, // includeFreed
-            expectedDeleteByte // deleteOnClose
+            expectedDeleteByte, // deleteOnClose
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // expectedVolumeSerial = 0
         ]);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_ArmAndScanFrame_CarriesTheExpectedVolumeSerialLittleEndian()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, BrokerFrame.ArmAndScan("C", false, false, 0x11223344A1B2C3D4UL)),
+        [
+            0x11, 0x00, 0x00, 0x00, 0x0A, 0x02, 0x00, 0x00, 0x00, 0x43, 0x00, 0x00, 0x00,
+            0xD4, 0xC3, 0xB2, 0xA1, 0x44, 0x33, 0x22, 0x11
+        ]);
+    }
+
+    [TestMethod]
+    [DataRow(0UL)]
+    [DataRow(1UL)]
+    [DataRow(0xA1B2C3D4UL)]
+    [DataRow(0x1111111122222222UL)]
+    [DataRow(ulong.MaxValue)]
+    public void ArmAndScan_RoundTripsTheExpectedVolumeSerial(ulong serial)
+    {
+        var frame = RoundTrip(BrokerFrame.ArmAndScan("mftlib-scan-C", false, true, serial), BrokerProtocol.WriteArmAndScan);
+
+        Assert.AreEqual(frame.ExpectedVolumeSerial, serial);
+    }
+
+    [TestMethod]
+    public void ReadFrame_ArmAndScan_MissingSerial_ThrowsInvalidDataException()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", true, false, 7));
+        var bytes = buffer.WrittenSpan[..^8].ToArray();
+        bytes[0] -= 8;
+
+        Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
     }
 
     [TestMethod]

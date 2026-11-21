@@ -11,7 +11,7 @@ static partial class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 12;
+    internal const uint ExpectedMftNativeAbiVersion = 13;
     internal const uint NativeCompactEntrySize = 52;
 
     internal static readonly NativeHooks Hooks = new();
@@ -24,9 +24,11 @@ static partial class MFTLibNative
         internal Func<SafeHandle, bool, uint, IntPtr, NativeProgressCallback, IntPtr, IntPtr>
             _parseMftRecordsStreaming = NativeParseMFTRecordsStreamingDefault;
         internal Action<IntPtr> _freeMftResult = NativeFreeMftResult;
+        internal ReadInlineContentFunction _readMftInlineContent = NativeReadMftInlineContentDefault;
 
         internal void ResetToDefaults()
         {
+            _readMftInlineContent = NativeReadMftInlineContentDefault;
             _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
             _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
             _parseMftRecordsStreaming = NativeParseMFTRecordsStreamingDefault;

@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 12;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 13;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -135,6 +135,85 @@ struct MftDumpInputInfo {
     MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
+// What a read of one MFT record's resident content found. The values are the managed
+// InlineContentOutcome order.
+enum MftInlineOutcome : uint8_t {
+    // The complete unnamed resident $DATA of the base record, possibly empty.
+    MftInlineReturned = 0,
+    // Nonresident, compressed, encrypted or sparse data, a directory, a reparse point, an extension
+    // record, an $ATTRIBUTE_LIST, or no unnamed $DATA or more than one in the base record.
+    MftInlineNotInline = 1,
+    // The record is free, past the end of the MFT, or carries another sequence number.
+    MftInlineSuperseded = 2,
+    // The record failed its fixup or structure checks, its own read failed or came up short, or it
+    // does not lie inside one run of the $MFT and so cannot be read as one piece.
+    MftInlineUnreadable = 3
+};
+
+// One wanted record. The caller fills recordNumber and expectedSequenceNumber; the read fills
+// outcome and, for MftInlineReturned, the content's place in the caller's buffer.
+struct MftInlineRequest {
+    uint64_t recordNumber;
+    uint32_t expectedSequenceNumber;
+    uint32_t outcome;
+    uint64_t contentOffset;
+    uint32_t contentLength;
+    uint32_t reserved;
+};
+
+static_assert(sizeof(MftInlineRequest) == 32, "MftInlineRequest is the 32-byte request the managed side fills");
+static_assert(offsetof(MftInlineRequest, outcome) == 12, "outcome follows expectedSequenceNumber");
+static_assert(offsetof(MftInlineRequest, contentOffset) == 16, "contentOffset follows outcome");
+
+// An opened reader of specific MFT records: built by OpenMftInlineReader for a volume or image
+// handle, or by OpenMftDumpInlineReader for an opened dump, used by one thread at a time, and
+// released by CloseMftInlineReader. It borrows the handle or the dump input, which must outlive it.
+struct MftInlineReader;
+
+// What opening a reader found. errorMessage is empty exactly when the open returned a reader.
+struct MftInlineReaderInfo {
+    uint64_t totalRecords;
+    uint32_t recordSize;
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
+};
+
+// What one ReadMftInlineContent call is asked: answer requests[startIndex, requestCount) in ascending
+// record order, placing returned content in buffer (at least MFT_INLINE_MINIMUM_BUFFER_BYTES). control
+// may be null; its cancelRequested ends the call between reads.
+struct MftInlineReadCall {
+    MftInlineRequest* requests;
+    uint64_t requestCount;
+    uint64_t startIndex;
+    uint8_t* buffer;
+    uint64_t bufferLength;
+    const MftParseControl* control;
+};
+
+// What one ReadMftInlineContent call did. nextRequest is the first request not yet answered:
+// requestCount when the call finished, less when the buffer filled, the call was cancelled or it failed.
+struct MftInlineReadResult {
+    uint64_t nextRequest;
+    uint64_t bytesUsed;
+    uint64_t readCalls;
+    uint64_t bytesRead;
+    uint32_t cancelled;
+    // 1 when the call failed (invalid arguments, unordered requests or a native fault); errorMessage says why.
+    uint32_t failed;
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
+};
+
+// The smallest content buffer a read accepts: no resident value is larger than one record.
+constexpr uint64_t MFT_INLINE_MINIMUM_BUFFER_BYTES = 65536;
+
+static_assert(sizeof(MftInlineReadCall) == 3 * sizeof(uint64_t) + 3 * sizeof(void*),
+              "MftInlineReadCall is three pointers and three 64-bit fields, packed");
+static_assert(sizeof(MftInlineReaderInfo) == 12 + 2 * MFT_ERROR_MESSAGE_UNITS,
+              "MftInlineReaderInfo is a 64-bit count, a 32-bit field and 256 UTF-16 message units");
+static_assert(sizeof(MftInlineReadResult) == 40 + 2 * MFT_ERROR_MESSAGE_UNITS,
+              "MftInlineReadResult is four 64-bit counters, two 32-bit fields and 256 UTF-16 message units");
+
 struct UsnJournalEntry {
     uint64_t recordNumber;        // file reference number (lower 48 bits)
     uint64_t parentRecordNumber;  // parent file reference number (lower 48 bits)
@@ -187,6 +266,10 @@ EXPORT MftParseResult* ParseMftDumpInputStreaming(const MftDumpInput* input, uin
                                                   const MftParseControl* control, MftProgressCallback callback,
                                                   void* callbackContext, const MftParseSink* sink);
 EXPORT void CloseMftDumpInput(MftDumpInput* input);
+EXPORT MftInlineReader* OpenMftInlineReader(void* volumeHandle, MftInlineReaderInfo* info);
+EXPORT MftInlineReader* OpenMftDumpInlineReader(const MftDumpInput* input, MftInlineReaderInfo* info);
+EXPORT void ReadMftInlineContent(MftInlineReader* reader, const MftInlineReadCall* call, MftInlineReadResult* result);
+EXPORT void CloseMftInlineReader(MftInlineReader* reader);
 EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                           uint32_t recordSize);
 EXPORT bool GenerateFixtureMFTUtf8(const char* filePath);

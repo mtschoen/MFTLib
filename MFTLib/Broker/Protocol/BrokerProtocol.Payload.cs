@@ -39,7 +39,7 @@ static partial class BrokerProtocol
             return this;
         }
 
-        PayloadWriter UInt64(ulong value)
+        public PayloadWriter UInt64(ulong value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(_payload.GetSpan(8), value);
             _payload.Advance(8);

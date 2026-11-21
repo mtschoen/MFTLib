@@ -106,6 +106,7 @@
     <ClInclude Include="core\platform.h" />
     <ClInclude Include="core\exception_barrier.h" />
     <ClInclude Include="mft\mft.internal.h" />
+    <ClInclude Include="mft\mft.inline_content.h" />
     <ClInclude Include="mft\mft_fixture.h" />
   </ItemGroup>
   <ItemGroup>
@@ -129,6 +130,11 @@
     </ClCompile>
     <ClCompile Include="mft\mft_synthetic.cpp" />
     <ClCompile Include="mft\mft.dump_input.cpp" />
+    <ClCompile Include="mft\mft.inline_content.cpp" />
+    <ClCompile Include="mft\mft.inline_volume.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="usn\usn_journal.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

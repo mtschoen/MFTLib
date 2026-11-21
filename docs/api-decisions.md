@@ -781,7 +781,10 @@ retention is their default. `DirectoryWalkOptions.PrunedDirectoryPaths` and the 
 pruning rules can skip enumeration subtrees. These rules are not privacy boundaries. What MFTLib
 does do: `CacheDirectory.EnsureCreated`, which every cached open calls, gives the cache directory an
 access list of the current user plus SYSTEM with inheritance removed (owner-only mode on Unix), and
-file contents are never read.
+a scan never stores file contents: the cache block and the shared block section hold names and metadata only. The one
+read of content is `FileIndex.ReadInlineContentAsync`, which returns the resident bytes of the entries a caller
+names and does not consult file permissions
+([ruling](#inline-file-content-is-returned-regardless-of-file-permissions)).
 
 **Reason:** a scan reads the raw MFT, through the elevated broker or an elevated process, and that
 read applies no per-file access checks. With default retention, the index and its cache file hold
@@ -1492,3 +1495,112 @@ before transfer starts see the phase flip back and forth. Neither consumer displ
 `IndexVolumeChangeSource.ScanProgress.cs`.
 
 **Revisit only if:** a consumer needs a count during `Indexing`, or a fault order it can act on.
+
+## MFTLib returns file bytes; the consumer hashes them
+
+**Decision (owner ruling 2026-11-19, issue 979):** `FileIndex.ReadInlineContentAsync(IReadOnlyList<FileEntry>,
+InlineContentHandler, CancellationToken)` returns the bytes of small files, the unnamed resident `$DATA` of each entry's
+base record, and does nothing else with them. It computes no hash and keeps no digest, and no hashing option is added.
+
+Only a base record that states its whole content is trusted: a record with an `$ATTRIBUTE_LIST`, a second unnamed
+`$DATA`, or `FILE_ATTRIBUTE_REPARSE_POINT` set in `$STANDARD_INFORMATION` is `NotInline` even when its first unnamed
+`$DATA` is resident, because the attribute list or the reparse data can change what the file's bytes are, and a resident
+value that is only part of them would be hashed as the whole.
+
+**Reason:** the owner's words were that hashing "is a bit too fw-specific", and that the API should be a generic "get file
+bytes" call with file-wizard still doing the hashing. The consumer production caller is file-wizard
+`FileWizard/ContentHashRun.cs`, added by file-wizard's pin-bump pull request; the sample caller is the Direct sample's
+`content` verb.
+
+**Revisit only if:** two consumers need the same digest and neither can compute it as cheaply from the lent span.
+
+## Inline content is read on demand, not stored in the block
+
+**Decision (owner ruling 2026-11-19, issue 979):** the cached block holds no file content and has no residency flag.
+The consumer passes entries and the source re-reads their MFT records: the records are sorted by number, neighbours are
+read together in bounded pieces, each record is fixed up and checked, and the value is copied out. The row layout is
+unchanged: `MftCompactEntry` and the block's row columns gain no content field and no residency field. The block format
+version is 12 with that unchanged layout, because every scan now checks the volume serial on its scan handle before
+the first row and a version 11 block carries no such proof (owner ruling 2026-11-20, issue 979: every block written
+before the check cold-scans once, and no "scan verified" header field is added). A normal open discards a version 11
+block and cold-scans; a cache-only (`ExistingOnly`) open declines the root and leaves the block in place. A consumer submits its small candidates and
+partitions by `InlineContentOutcome`.
+
+**Reason:** a content region in the block would add about 1.37 GB of cache on the owner's machine, and a stored
+residency flag goes stale on journal events that do not invalidate size (a size does not predict residency). Reading
+on demand stays as fresh as the file system's own metadata: a spike overwrote 50 resident files per volume without a
+flush and both read mechanisms returned the new content at once, and a file grown to 4,000 bytes read as nonresident at
+once. Dump sources are read the same way from their own saved records and never touch the live volume, which is also
+what lets the Linux tests and the unattended sample exercise the member. The coalescing gap of those reads (64 KiB) was
+chosen by measurement: a 1 MiB gap makes a sparse request read most of the MFT.
+
+**Revisit only if:** a consumer needs the content of most files on a volume often enough that rereading the MFT per
+call costs more than a stored region, or a Windows record-level call is measured faster for sparse requests.
+
+## Inline content is delivered by a callback that lends a span
+
+**Decision (owner ruling 2026-11-19, issue 979):** answers reach the consumer through `InlineContentHandler`, called
+once per input position with a `readonly ref struct InlineContentResult` (`Index`, `Outcome`, and `Content` as a
+`ReadOnlySpan<byte>` valid only during the call). The handler runs serially, in unspecified order, on a thread-pool
+thread, and an exception it throws propagates unchanged from the returned task, even when a cancellation was also
+requested. The call returns one `RootOperationResult`: `Succeeded` after every position was answered, `NotApplicable`
+when the root has no source that can read records (a directory walk, an index opened without a source, a
+broker-sourced index), `Failed` with the exception for a volume or dump fault.
+The library has no `IAsyncEnumerable`.
+
+**Reason:** two outside opinions (Gemini `gemini-4-neon-high` and OpenAI `gpt-6-astra`, both at high effort, given one
+neutral brief) each picked the callback over a materialized list and two async-stream shapes, as the closest fit to
+`FileIndex`: Task-returning verbs that report one `RootOperationResult`, plus `IndexRow`-style borrowed data. A lent span
+lets the consumer hash or parse in place with no per-file allocation.
+
+**Revisit only if:** the library adopts `IAsyncEnumerable` elsewhere, or a consumer needs to pull answers at its own pace.
+
+## Inline file content is returned regardless of file permissions
+
+**Decision (owner ruling 2026-11-19, issue 979):** `ReadInlineContentAsync` returns the bytes of small files whatever
+their access control lists say, and it is the only place MFTLib hands out file content read from raw MFT records.
+`FileEntry.Open` is distinct: it opens a stream through the operating system, which applies the file's ordinary
+permissions. The raw read of an MFT record does not consult access control lists, so a file the caller's account cannot open is returned too when its data is resident.
+
+**What changes:** before this member the library handed no caller file bytes past file permissions. Content passed through the elevated
+process's scan buffers and was discarded, and the cache block and the shared block section hold rows and names only.
+With it, a caller that is already elevated and reads a raw volume directly, or that reads a dump, receives the bytes
+of small files regardless of file permissions. Broker-sourced indexes currently report `NotApplicable`; the future
+broker content operation will carry the same behavior from its elevated process to an unelevated caller.
+The sentence "file contents are never read" in the
+[no-privacy-promise ruling](#no-privacy-promise-full-mft-metadata-retention-is-the-default) is replaced accordingly.
+
+**Reason:** metadata scans already bypass per-file access checks for the same reason, and the owner chose to carry that
+property to content so a consumer can hash every small file, including ones its user cannot open. A same-user process
+cannot attach to a live broker session by the pipes' construction. The broker never listens: the unelevated library
+creates the control pipe and every volume-channel pipe as the server, and the elevated broker is the only client
+(`MFTLib/Broker/Client/BrokerProcess.Launch.cs` creates the control pipe, `MFTLib/Broker/Client/BrokerProcess.Channels.cs`
+and `MFTLib/Broker/Client/BrokerPipes.cs` each channel pipe, and `MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs`
+connects to them). Each server pipe is created
+by `BrokerPipeAccess.CreateServer` (`MFTLib/Broker/Client/BrokerPipeAccess.cs`) with one instance and a security
+descriptor whose only rule allows the library process's own user SID, and `PipeOptions.CurrentUserOnly` on other
+platforms; the broker checks that descriptor after it connects (`VerifyServerRestrictedToCurrentUser`). Each pipe name
+is `mftlib-broker-` plus a fresh random GUID, which the broker's command line shows to any same-user process. What a
+session does not do is authenticate which same-user process connects: the library accepts the first client of the single
+instance and does not compare the client's process or integrity level, so a same-user process that connects before
+the real broker would play the broker and the real broker would fail to connect. That process receives the requests (volume
+letters and, for content, record numbers with sequence numbers) and can answer with invented rows or bytes, but it
+reads no file and sees no content, because content flows from the broker to the library and the library end is held by
+the library process itself, which a same-user process can only reach by already reading or duplicating handles from that
+process. This was established by reading those files, not by an attack attempt.
+
+**Revisit only if:** a consumer needs the content read to honour file permissions (it would have to open the file), or a
+session authenticates its broker and the content read should then be limited to that identity.
+
+## The InlineContent family names the content read
+
+**Decision (owner ruling 2026-11-19, issue 979):** the public names are `FileIndex.ReadInlineContentAsync`,
+`InlineContentHandler`, `InlineContentResult` and `InlineContentOutcome` (`Returned`, `NotInline`, `Superseded`,
+`Unreadable`), all in `MFTLib.Index`. Doc comments call the bytes "resident `$DATA`".
+
+**Reason:** "resident" already names page residency on `FileIndex` (`ReleaseResidentPages`), so a `Resident` family would
+mean two things on one type. "Inline" says the bytes sit inside the MFT record, and the outcome names say what a
+consumer does next: take the bytes, open the file, drop the entry, or report a damaged record.
+
+**Revisit only if:** NTFS terminology or a second kind of inline data (for example in an attribute list) makes the name
+ambiguous.

@@ -16,6 +16,12 @@ partial class SampleHost
         RootKey? root, Func<FileIndexOptions, FileIndexOptions> prepareOptions, CancellationToken cancellationToken)
     {
         await using var index = await OpenIndexAsync(source, root, prepareOptions, cancellationToken).ConfigureAwait(false);
+        if (parsed.Verb is DirectVerb.Content)
+        {
+            await ReadContentAsync(index, parsed, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         WriteVerb(index, parsed, cancellationToken);
     }
 
@@ -175,6 +181,7 @@ partial class SampleHost
     }
 
     // Describes the entry, then opens it: a live entry opens through the volume, a dump entry cannot be opened and the library says so.
+    // The first bytes are shown only on the console; output.log, an elevated run's ordinary file, gets the length alone.
     void OpenFile(FileEntry entry)
     {
         var key = entry.RecordKey;
@@ -183,6 +190,12 @@ partial class SampleHost
             : "<unknown>";
         _output.WriteLine($"{entry.ToString()}: record {key.RecordNumber} on {key.Root} ({key.ProducerKind}), {entry.Attributes}, modified {lastWriteTime}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = entry.Open(FileAccess.Read);
+        if (_outputRedirectedToFile)
+        {
+            _output.WriteLine($"{stream.Length} bytes");
+            return;
+        }
+
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);
         _output.WriteLine($"{stream.Length} bytes, first {read}: {Convert.ToHexString(buffer, 0, read)}");

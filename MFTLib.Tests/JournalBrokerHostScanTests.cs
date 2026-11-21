@@ -246,7 +246,7 @@ public class JournalBrokerHostScanTests
             writer =>
             {
                 var buffer = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false, deleteOnClose: false));
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", includeFreed: false, deleteOnClose: false, expectedVolumeSerial: 0));
                 var bytes = buffer.WrittenSpan.ToArray();
                 bytes[23] = 99;
                 var destination = writer.GetSpan(bytes.Length);
@@ -705,7 +705,7 @@ public class JournalBrokerHostScanTests
         var pipe = await harness.OpenChannelAsync('C');
 
         await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteArmAndScan(writer,
-            BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'), includeFreed: false, deleteOnClose)));
+            BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'), includeFreed: false, deleteOnClose, expectedVolumeSerial: 0)));
         await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(deleteOnClose, blockWriter.DeleteOnClose);

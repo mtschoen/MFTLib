@@ -143,7 +143,7 @@ declared frame length belong to subsequent frames in a combined input. A native-
 `Error` and `Stalled` text is truncated to 32,768 UTF-16 units. An oversized journal
 batch fails that watch with `Error`, like any source failure.
 
-`ArmAndScan` encodes the section name, then a 1-byte include-freed flag (0 or 1), then a 1-byte delete-on-close flag (0 or 1) that is the client block's mode.
+`ArmAndScan` encodes the section name, then a 1-byte include-freed flag (0 or 1), then a 1-byte delete-on-close flag (0 or 1) that is the client block's mode, then the 8-byte expected volume serial: the serial the client stamped on its block. The host checks it on the volume handle the scan parses (the same guard a direct scan and an inline content read use, `LiveVolumeSources.RequireVolumeSerial`) before it accepts a row, and a mismatch fails the scan with an `Error` frame.
 The section name must match `mftlib-block-<root>-` followed by 32 ASCII hex digits
 (`0-9`, `a-f`, `A-F`) for the scan channel's volume letter (47 UTF-16 units); any other
 section name, truncated fields, invalid flags and trailing data are malformed requests

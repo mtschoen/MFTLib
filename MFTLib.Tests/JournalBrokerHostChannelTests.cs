@@ -254,7 +254,7 @@ public partial class JournalBrokerHostChannelTests
         if (malformation != "truncated section name")
         {
             payload.Add(0); // IncludeFreed
-            payload.AddRange([0, 0, 0, 0, 1]);
+            payload.AddRange([0, 0, 0, 0, 0, 1]); // DeleteOnClose, ExpectedVolumeSerial, one trailing byte
         }
         else
         {

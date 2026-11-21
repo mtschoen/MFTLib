@@ -16,7 +16,8 @@ sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? sc
 
 
     /// <summary>The index source over this producer: scans fill the requested block directly, and no watch is offered.</summary>
-    internal MftIndexSource CreateIndexSource() => new(ProduceAsync, includeFreed: scanOptions?.IncludeFreed ?? false);
+    internal MftIndexSource CreateIndexSource() => new(ProduceAsync, includeFreed: scanOptions?.IncludeFreed ?? false,
+        inlineContentReader: new VolumeInlineContentReader(_volumeAccess));
 
     Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken) =>
         MftBlockProducerPipeline.RunAsync(request, _allocator,
@@ -34,7 +35,7 @@ sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? sc
         // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
         return MftBlockProducerPipeline.Write(request, plan,
             () => _volumeAccess.OpenVolumeScan(volume, allowance, new BlockWriteReporting(progress, null), options,
-                cancellationToken),
+                request.VolumeSerial, cancellationToken),
             progress, cancellationToken);
     }
 }
