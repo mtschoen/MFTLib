@@ -304,6 +304,24 @@ public class JournalMutatorCloseCoalescingTests
     }
 
     [TestMethod]
+    public async Task HardLinkChangeNamingAnotherLink_DoesNotMoveTheRowsSelectedLink_Issue1008()
+    {
+        await using var fixture = new MutatorFixture();
+        fixture.Apply([CreateEntry(10, 5, "destination", UsnReason.FileCreate, fixture.Timestamp,
+            sequenceNumber: 1, FileAttributes.Directory)]);
+
+        fixture.Apply(
+        [
+            CreateEntry(7, 10, "surviving.txt", UsnReason.HardLinkChange, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(7, 10, "surviving.txt", UsnReason.HardLinkChange | UsnReason.Close,
+                fixture.Timestamp, sequenceNumber: 1)
+        ]);
+
+        Assert.AreEqual(6u, fixture.Block.Rows[7].ParentRow);
+        Assert.AreEqual("notes.txt", NamePool.ReadRowName(fixture.Block, 7).ToString());
+    }
+
+    [TestMethod]
     public async Task SequenceNumberChange_ResetsTheOpenCycleAndReportsTheNewIncarnation()
     {
         await using var fixture = new MutatorFixture();
