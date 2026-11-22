@@ -18,6 +18,8 @@ on:
   push:
     # pr-crew merge train pushes its synthetic batch commit to this branch and polls this run's statuses before landing the batch.
     branches: [main, 'pr-crew/merge-train/**']
+    # Report-only pushes skip the generated Markdown's standalone scan; it may still be checked on the next eligible run. Push only: a pull_request path filter would leave the required check pending.
+    paths-ignore: ['TEST-REPORT.md']
   workflow_dispatch:
 
 # A newer commit on a pull request supersedes the run in flight. Never cancel a
