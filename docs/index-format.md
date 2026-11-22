@@ -369,7 +369,13 @@ row. Any other freed row is detached: its parent column holds `uint.MaxValue`, n
 so it is nobody's child, its parent walk ends at once and its path is its bare name.
 Every descendant of a detached row also renders without the root prefix: `detached/child.bin`
 for a dump, or the same name chain with host separators for a host root. Any out-of-range parent
-link ends path rooting this way, so no path claims ancestors above the broken link.
+link ends path rooting this way, so no path claims ancestors above the broken link. A reader
+treats a parent link as broken in the same way when the row it names lacks the in-use flag or the
+directory flag. Every row a producer writes carries the in-use flag, deleted and freed rows
+included, so this rejects exactly a slot no producer wrote, whose zero parent column would
+otherwise lead to row 0, and a live file a child still names, while the walk keeps passing
+through tombstoned, delete-pending and trusted freed directories. The rule applies at read time,
+so blocks already on disk render this way without a rescan.
 A held-handle delete into `$Extend\$Deleted` interns the pre-move full path into the row's name column and sets the delete-pending flag (64), hiding the row from every query and `LiveRowCount`, and completes to a tombstone on the later `FileDelete` record (materializing the deleted path verbatim from that column and restoring the bare file name from its last segment without walking the parent chain); a row is delete-pending only when its name column holds the full pre-move path, and if interning fails, or the posting delta has no room for the new name's association, the writer refuses the transition without changing the row (the journal caller flags or grows the block and emits no `DeletePending`). Each name change here, the full path on the way in and the restored bare name on the tombstone, appends a delta entry like a rename, so a tombstoned row stays reachable by its name even after a posting rebuild while it was pending; the integrity check still skips delete-pending rows. Only a create
 reuses a deleted row's slot; the journal never edits or renames a delete-pending or tombstoned row, and never deletes a tombstoned row again.
 

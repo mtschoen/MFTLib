@@ -297,7 +297,8 @@ public sealed class FileIndexWatchGrowthTests : IndexTreeTestBase
         Assert.IsNull(top.Parent, "the view's root is its top");
         var before = view.CurrentBlock!.Block;
 
-        await volume.ApplyAsync(5000, Create(100, "far.txt", 4200), Create(30, "sub", 4300, DirectoryRow),
+        await volume.ApplyAsync(5000, Create(100, "far.txt", 4200), Entry(30, DirectoryRow, "sub",
+            UsnReason.FileCreate | UsnReason.Close, 4300, FileAttributes.Directory),
             Create(31, "c.txt", 4400, 30));
 
         Assert.AreNotSame(before, view.CurrentBlock!.Block, "the view shares the volume's lineage");

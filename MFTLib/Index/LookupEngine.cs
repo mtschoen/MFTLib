@@ -105,7 +105,10 @@ static class LookupEngine
             }
 
             var parent = row;
-            if (!TryFindChild(in descent, parent, segment, out row))
+            // Only a directory has children, the rule the parent walk applies, so no path resolves here that
+            // FileEntry.Path would not render.
+            if (!IndexNavigation.IsParentRow(in descent.Block.Rows[(int)parent]) ||
+                !TryFindChild(in descent, parent, segment, out row))
             {
                 row = parent;
                 trace?.Levels.Add(new DescentLevel(parent, segment.ToString(), null));

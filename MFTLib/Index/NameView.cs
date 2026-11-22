@@ -49,6 +49,17 @@ readonly ref struct NameView
 
     internal char this[int index] => IsUtf16 ? Utf16Characters[index] : (char)_bytes[index];
 
+    internal NameView TerminalSegment
+    {
+        get
+        {
+            var byteOffset = IsUtf16
+                ? (Utf16Characters.LastIndexOfAny('\\', '/') + 1) * sizeof(char)
+                : _bytes.LastIndexOfAny((byte)'\\', (byte)'/') + 1;
+            return new NameView(_bytes[byteOffset..], IsUtf16);
+        }
+    }
+
     /// <summary>Whether the name's characters equal <paramref name="name" /> exactly.</summary>
     public bool EqualsOrdinal(ReadOnlySpan<char> name)
     {

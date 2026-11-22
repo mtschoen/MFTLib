@@ -6,12 +6,28 @@ namespace MFTLib.Index;
 ///     never revisits a row already seen on this walk, so a cyclic parent column yields a
 ///     truncated path instead of a hang. Depth exhaustion throws <see cref="InvalidDataException" />
 ///     from <see cref="BuildPath" /> and degrades to the bare name in <see cref="BuildChangePath" />.
+///     A parent link is followed only into a row that <see cref="IsParentRow" /> accepts; any other
+///     link is broken, exactly like an out-of-range one.
 /// </summary>
 static class IndexNavigation
 {
-    static bool IsRootRow(BlockFile block, uint rowIndex)
+    const RowFlags ParentRowFlags = RowFlags.InUse | RowFlags.Directory;
+
+    /// <summary>
+    ///     Whether a row can be a parent: a producer wrote it and it is a directory. Every written row carries
+    ///     <see cref="RowFlags.InUse" />, deleted and freed rows included, so a slot no producer wrote (all zero,
+    ///     which would otherwise lead the walk to row 0) and a live file whose record number a child still names are
+    ///     both rejected, while tombstoned, delete-pending and trusted freed directories are accepted.
+    ///     Reads the flags alone, which <see cref="FileRow.ReadDescriptorWord" /> permits.
+    /// </summary>
+    internal static bool IsParentRow(ref readonly FileRow row)
     {
-        return block.Rows[(int)rowIndex].ParentRow == rowIndex;
+        return IsParentFlags(row.Flags);
+    }
+
+    static bool IsParentFlags(RowFlags flags)
+    {
+        return (flags & ParentRowFlags) == ParentRowFlags;
     }
 
     /// <summary>
@@ -19,11 +35,13 @@ static class IndexNavigation
     ///     row keeps its name and parent link so the upward walk can still resolve a full path
     ///     for a deleted file, or for a live file under a deleted directory; only <see cref="GetChildren" />
     ///     filters tombstoned rows out, because a listing should show live children only.
+    ///     False for a root, and for a broken link: out of range, or a row that is not <see cref="IsParentRow" />.
     /// </summary>
     internal static bool TryGetParentRow(BlockFile block, uint rowIndex, out uint parentRow)
     {
         parentRow = block.Rows[(int)rowIndex].ParentRow;
-        return parentRow != rowIndex && parentRow < block.Header.RowCount;
+        return parentRow != rowIndex && parentRow < block.Header.RowCount &&
+               IsParentRow(in block.Rows[(int)parentRow]);
     }
 
     /// <summary>
@@ -101,24 +119,23 @@ static class IndexNavigation
     /// </summary>
     internal static string LastPathSegmentString(NameView name)
     {
-        if (name.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        var full = name.ToString();
-        var separatorIndex = full.AsSpan().LastIndexOfAny('\\', '/');
-        return separatorIndex < 0 ? full : full[(separatorIndex + 1)..];
+        return name.TerminalSegment.ToString();
     }
 
     /// <summary>
     ///     Direct live children only. A tombstoned row is excluded here even though
-    ///     <see cref="TryGetParentRow" /> and the path walk still pass through it.
+    ///     <see cref="TryGetParentRow" /> and the path walk still pass through it. A row that is not
+    ///     <see cref="IsParentRow" /> has none: a child naming it is detached.
     /// </summary>
     internal static List<FileEntry> GetChildren(PinnedRootBlock pinned, uint rowIndex,
         CancellationToken cancellationToken = default)
     {
         var children = new List<FileEntry>();
+        if (rowIndex >= pinned.Block.Header.RowCount || !IsParentRow(in pinned.Block.Rows[(int)rowIndex]))
+        {
+            return children;
+        }
+
         var scanner = new RowScanner(pinned.Block, cancellationToken);
         while (scanner.MoveNext())
         {
@@ -133,8 +150,8 @@ static class IndexNavigation
         return children;
     }
 
-    // Collects the name chain upward until a root, an out-of-range parent or a repeated row ends it; false when the
-    // chain is still made of new rows after the depth limit.
+    // Collects the name chain upward until a root, a broken link (an out-of-range parent or a row that cannot be a
+    // parent) or a repeated row ends it; false when the chain is still made of new rows after the depth limit.
     static bool TryCollectSegments(BlockFile block, uint rowIndex, ref ParentChainBuffer segments,
         out bool isDetached)
     {
@@ -143,9 +160,26 @@ static class IndexNavigation
         var rowCount = block.Header.RowCount;
         for (var depth = 0; depth <= BlockLayout.MaximumPathDepth; depth++)
         {
-            if (current >= rowCount || visited.Contains(current) || IsRootRow(block, current))
+            if (current >= rowCount)
             {
-                isDetached = current >= rowCount;
+                isDetached = true;
+                return true;
+            }
+
+            ref readonly var row = ref block.Rows[(int)current];
+            // Capture the descriptor once: names remain immutable even if the row is renamed before copying.
+            var descriptor = FileRow.ReadDescriptorWord(in row);
+            var flags = FileRow.DescriptorFlags(descriptor);
+            if (depth != 0 && !IsParentFlags(flags))
+            {
+                isDetached = true;
+                return true;
+            }
+
+            var parentRow = row.ParentRow;
+            if (visited.Contains(current) || parentRow == current)
+            {
+                isDetached = false;
                 return true;
             }
 
@@ -155,9 +189,20 @@ static class IndexNavigation
             }
 
             visited.Add(current);
-            // Capture the descriptor once: names remain immutable even if the row is renamed before copying.
-            segments.Add(FileRow.DescriptorNameId(FileRow.ReadDescriptorWord(in block.Rows[(int)current])));
-            current = block.Rows[(int)current].ParentRow;
+            var nameId = FileRow.DescriptorNameId(descriptor);
+            if ((nameId & RootKind.TerminalSegmentFlag) != 0)
+            {
+                // The scratch flag shares bit 31, so an on-disk identifier carrying it is rejected by the pool before tagging.
+                NamePool.Read(block, nameId);
+            }
+
+            if (depth != 0 && (flags & RowFlags.DeletePending) != 0)
+            {
+                nameId |= RootKind.TerminalSegmentFlag;
+            }
+
+            segments.Add(nameId);
+            current = parentRow;
         }
 
         isDetached = false;

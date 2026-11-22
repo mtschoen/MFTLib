@@ -20,7 +20,8 @@ public class SubtreeMembershipTests
 
     // The oracle is a climb written independently of the production one: it follows parents with a visited set,
     // and reports the three outcomes the cache must preserve (inside, outside, and a chain still going after the cap,
-    // which includes a tail that enters a cycle only beyond the cap).
+    // which includes a tail that enters a cycle only beyond the cap). A parent that is not an in-use directory is a
+    // broken link, so every third row below, a file with children, ends its children's chains (issue 980).
     static bool? Oracle(BlockFile block, uint row, uint anchor)
     {
         var visited = new HashSet<uint>();
@@ -38,7 +39,8 @@ public class SubtreeMembershipTests
             }
 
             var parent = block.Rows[(int)current].ParentRow;
-            if (parent == current || parent >= block.Header.RowCount)
+            if (parent == current || parent >= block.Header.RowCount ||
+                (block.Rows[(int)parent].Flags & Directory) != Directory)
             {
                 return false;
             }

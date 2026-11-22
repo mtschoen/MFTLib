@@ -64,6 +64,58 @@ public partial class JournalMutatorTests
     }
 
     [TestMethod]
+    [DataRow("notes.txt", null)]
+    [DataRow("資料", @"T:\$MFT\documents\資料")]
+    public async Task DeletePending_DescendantUsesTerminalNameBeforeAndAfterCompaction(string name, string? historicalPath)
+    {
+        var (directory, block, writer, rootBlock, snapshot) = CreateExtendDeletedFixture();
+        try
+        {
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(UserDirectoryRow, "documents",
+                new RowColumns(9, RowFlags.InUse | RowFlags.Directory, 0, 0, ChangeMoment.Ticks, 1)));
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(NotesFileRow, name,
+                new RowColumns(UserDirectoryRow, RowFlags.InUse | RowFlags.Directory, 0, 0, ChangeMoment.Ticks, 1)));
+            const uint survivorRow = 8;
+            Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(survivorRow, "survivor.bin",
+                new RowColumns(NotesFileRow, RowFlags.InUse, 0, 3, ChangeMoment.Ticks, 1)));
+            var capturedPath = historicalPath ?? Path.Combine("documents", name);
+            if (historicalPath is null)
+            {
+                var changes = new JournalMutator(writer).ApplyWhole(rootBlock,
+                [
+                    CreateEntry(NotesFileRow, UserDirectoryRow, name, UsnReason.RenameOldName, ChangeMoment,
+                        sequenceNumber: 1, FileAttributes.Directory),
+                    CreateEntry(NotesFileRow, DeletedDirectoryRow, "0000000000000001", UsnReason.RenameNewName,
+                        ChangeMoment, sequenceNumber: 1, FileAttributes.Directory)
+                ], journalIdentifier: 7, nextUsn: 2000);
+                Assert.HasCount(1, changes);
+                Assert.AreEqual(capturedPath, changes[0].Path);
+            }
+            else
+            {
+                Assert.AreEqual(WriteRefusal.None, writer.MarkDeletePending(NotesFileRow, historicalPath));
+            }
+
+            var survivor = FileEntry.Create(rootBlock, survivorRow);
+            var expectedPath = Path.Combine("documents", name, "survivor.bin");
+            Assert.AreEqual(expectedPath, survivor.Path);
+            using var target = TestBlocks.Create(producer: ProducerKind.Mft, slotCapacity: 64, namePoolCapacity: 8192);
+            using var references = NameReferences.Count(block);
+            BlockCopier.CopyCompacting(block, target, references, CancellationToken.None);
+            rootBlock.Mapped.Replace(target);
+
+            Assert.IsFalse(NamePool.TryFindOrdinal(target, name, out _));
+            Assert.AreEqual(capturedPath, FileEntry.Create(rootBlock, NotesFileRow).Path);
+            Assert.AreEqual(expectedPath, survivor.Path);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+            directory.Dispose();
+        }
+    }
+
+    [TestMethod]
     public async Task DeletePending_AncestorDeletedAndSlotReusedBetweenEvents_RetainsOriginalPathAndNameOnDeleted()
     {
         var (directory, block, writer, rootBlock, snapshot) = CreateExtendDeletedFixture();

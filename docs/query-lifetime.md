@@ -208,11 +208,17 @@
       filesystem path, and `FileIndex.Find` accepts it back, resolving a native path against the
       longest matching indexed root directory (on a `FileIndexSet`, the outermost available member whose root contains the path). A dump entry renders a virtual `dump:/X` path that
       `Open` refuses. A detached row renders its bare name; its descendants extend that name with
-      the root kind's separator and no root prefix. `Find` skips deleted
+      the root kind's separator and no root prefix. A row whose parent link is broken is detached in
+      this sense, whatever its stored column says: the link is broken when it is out of range or names a
+      row that is not an in-use directory, either a slot no producer wrote or a live file
+      ([Row](index-format.md#row)). `Parent`, `Children`, subtree membership and `Find` apply the same rule, so
+      such a row has no parent, a file has no children, and `Find` descends through directories only. `Find` skips deleted
        entries, so a deleted entry's path does not resolve.
        Path construction keeps at most 128 captured name identifiers and visited rows in per-call
        stack scratch, sizes the result from immutable pool names, then copies ASCII or UTF-16
-       directly into the returned string. No borrowed name span escapes the call and no
+       directly into the returned string. A delete-pending directory keeps its captured path for its own
+       entry and event; a descendant uses only the terminal segment of that stored path, even after name
+       compaction removes the original bare name. No borrowed name span escapes the call and no
        intermediate ancestor strings or retained path cache are created.
 
     - **Writer lifetime**: every internal `BlockWriter` operation holds a `BlockAccessScope` on its

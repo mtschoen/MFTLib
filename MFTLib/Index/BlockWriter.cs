@@ -268,8 +268,9 @@ sealed partial class BlockWriter
     ///     row count: <see cref="DeletedChildLinks" /> indexes deleted rows by parent once per
     ///     block and every writer mutation keeps the index current, so a create on a fresh slot or
     ///     on an all-live index costs one lookup. A deleted row whose chain reaches the slot only
-    ///     through a live row keeps its parent; a live row that names a deleted or never-written
-    ///     slot as its parent is a shape only a corrupt image or journal produces.
+    ///     through a live row keeps its parent; a live row that names a deleted slot as its parent is
+    ///     a shape only a corrupt image or journal produces, and one that names a never-written slot
+    ///     needs nothing here because readers already treat that link as broken.
     /// </summary>
     public void InvalidateDeletedDescendants(uint ancestorRow)
     {

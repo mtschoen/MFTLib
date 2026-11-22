@@ -2,6 +2,15 @@ namespace MFTLib.Index;
 
 sealed partial class RootKind
 {
+    // BlockLayout.MaximumNameEntryCapacity leaves the high bit free in the walk's scratch identifiers.
+    internal const uint TerminalSegmentFlag = 1u << 31;
+
+    static NameView ReadSegment(BlockFile block, uint segment)
+    {
+        var name = NamePool.Read(block, segment & ~TerminalSegmentFlag);
+        return (segment & TerminalSegmentFlag) == 0 ? name : name.TerminalSegment;
+    }
+
     /// <summary>Copies immutable pool names directly into one result, with bounded caller-owned scratch.</summary>
     internal string JoinPath(BlockFile block, string root, ReadOnlySpan<uint> segments)
     {
@@ -12,7 +21,7 @@ sealed partial class RootKind
         var first = segments.Length - 1;
         for (var index = first; index >= 0; index--)
         {
-            var name = NamePool.Read(block, segments[index]);
+            var name = ReadSegment(block, segments[index]);
             if (name.IsEmpty)
             {
                 continue;
@@ -38,7 +47,7 @@ sealed partial class RootKind
                 var written = state.Prefix.Length;
                 for (var index = state.Segments.Length - 1; index >= 0; index--)
                 {
-                    var name = NamePool.Read(state.Block, state.Segments[index]);
+                    var name = ReadSegment(state.Block, state.Segments[index]);
                     if (name.IsEmpty)
                     {
                         continue;
