@@ -35,7 +35,7 @@ internal static class CommandLauncher
             "/d /v:off /s /c \"\"%MFTLIB_PROVISIONER_PATH%\" {0}\"", quotedArguments);
     }
 
-    internal static int Run(string path, IReadOnlyList<string> arguments)
+    internal static ProcessStartInfo CreateStartInfo(string path, IReadOnlyList<string> arguments)
     {
         var start = new ProcessStartInfo(path)
         {
@@ -56,6 +56,12 @@ internal static class CommandLauncher
         {
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
         }
+        return start;
+    }
+
+    internal static int Run(string path, IReadOnlyList<string> arguments)
+    {
+        var start = CreateStartInfo(path, arguments);
         using var process = Process.Start(start)
             ?? throw new IOException("Could not start the selected provisioner");
         var output = process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardError());

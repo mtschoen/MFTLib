@@ -117,7 +117,6 @@ internal sealed class ProcessFixture : IDisposable
     internal static int FakeCommand(string[] arguments)
     {
         var command = Path.GetFileNameWithoutExtension(Environment.ProcessPath!);
-        if (command == "fixture-preferred") command = "schoen-lab-onboard";
         File.AppendAllText(Environment.GetEnvironmentVariable("MFTLIB_INIT_LOG")!,
             JsonSerializer.Serialize(new[] { command }.Concat(arguments)) + Environment.NewLine);
         switch (command)
@@ -154,6 +153,7 @@ internal sealed class ProcessFixture : IDisposable
             case "pwsh":
             case "powershell":
                 return Forward(Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_SHELL")!, arguments);
+            case "fixture-shell": return 37;
             case "vswhere": Console.WriteLine(Environment.GetEnvironmentVariable("MFTLIB_INIT_VISUAL_STUDIO")); return 0;
             case "aislop" when arguments.SequenceEqual(new[] { "--version" }): Console.WriteLine("fixture"); return 0;
             case "aislop" when arguments.SequenceEqual(new[] { "hook", "install", "claude", "--project" }):

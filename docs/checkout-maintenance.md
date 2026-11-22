@@ -103,8 +103,21 @@ installed provisioner. Run the same host gate with:
 
 The harness builds `OptionalProvisioning.csproj` once per process into a shared temporary directory, and the
 fixtures' fake `dotnet run` executes that build with the arguments after `--`, still logging the `dotnet run` argv.
-One fixture per entry point (installed provisioners, exit 0) runs the real `dotnet run` from its fixture copy,
-so the copied helper file list and the entry point's delegation stay verified end to end.
+Each launch starts a fresh shell, so launches are spent only where an entry point's own behavior is the subject.
+The helper's policy runs in process: `TestProgram.Policy` asserts every installed-provisioner by exit-code cell
+of `ProvisioningDispatcher`, and `LauncherTests` asserts `CommandLauncher` discovery over a temporary `PATH`
+(preferred, fallback, absent, the unqualified `onboard` never run, a non-executable file skipped on Linux, `.cmd`
+and `.bat` through `PATHEXT`) and, on Windows, both batch start-info shapes in process plus one real `cmd.exe` shim.
+That shim combines spaces, a literal `%NAME%` with a hostile value, `!`, `^` and `&` in one path and checks the
+complete argument vector and exit code. The entry point (`init.ps1` on Windows, `init.sh` on Linux) is launched for:
+the real `dotnet run` from the fixture copy (installed provisioners, exit 0; this verifies the copied helper file list,
+the delegation and the completion summary), no provisioner installed, a failing provisioner with `-Build`/`--build`
+forwarding, launcher failure, required restore failure, required build failure, and worktree-only mode (without and
+with build, restore failure, and on Linux a missing dotnet). Windows adds the `PSNativeCommandUseErrorActionPreference`
+case and three `init.bat` launches. With only `-WorktreeOnly`, the Windows PowerShell fallback restores the solution
+without a managed or native build. With `-Build -WorktreeOnly`, the preferred `pwsh` double returns exit code 37
+through the wrapper. Those two check the exact arguments received by the selected shell. The third runs a full init under
+Windows PowerShell with no `pwsh` and a failing optional provisioner, and requires exit 0 with the diagnostics.
 
 Local CI preflight includes this gate under `--only init` and under the matching
 `windows` or `linux` scope. The other platform is reported as unavailable.
