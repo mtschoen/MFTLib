@@ -64,6 +64,15 @@ sealed record DumpRecord(string Name, ulong Parent)
     ///     resident header, which is what the default declares.
     /// </summary>
     public ushort ValueOffset { get; init; } = 0x18;
+
+    /// <summary>The record carries no <c>$STANDARD_INFORMATION</c>, as an extension record does not.</summary>
+    public bool OmitStandardInformation { get; init; }
+
+    /// <summary>The record carries no <c>$FILE_NAME</c>, as a base whose names spilled into extension records does not.</summary>
+    public bool OmitFileName { get; init; }
+
+    /// <summary>The <c>$FILE_NAME</c> namespace: 0 POSIX, 1 Win32, 2 DOS, 3 Win32 and DOS.</summary>
+    public byte FileNameNamespace { get; init; } = 1;
 }
 
 /// <summary>
@@ -138,8 +147,16 @@ static class MftDumpFixture
         BinaryPrimitives.WriteUInt32LittleEndian(record[0x1C..], (uint)record.Length);
 
         var offset = firstAttributeOffset;
-        offset += WriteStandardInformation(record[offset..], values);
-        offset += WriteFileName(record[offset..], values);
+        if (!values.OmitStandardInformation)
+        {
+            offset += WriteStandardInformation(record[offset..], values);
+        }
+
+        if (!values.OmitFileName)
+        {
+            offset += WriteFileName(record[offset..], values);
+        }
+
         if (values.NamedStreamBeforeData)
         {
             offset += WriteResidentData(record[offset..], values with { Content = [0xAA, 0xBB], ValueLengthExcess = 0 }, name: "ads");
@@ -215,7 +232,7 @@ static class MftDumpFixture
         BinaryPrimitives.WriteInt64LittleEndian(value[16..], values.ModifiedFileTime);
         BinaryPrimitives.WriteUInt32LittleEndian(value[56..], FileAttributesOf(values));
         value[64] = (byte)values.Name.Length;
-        value[65] = 1;
+        value[65] = values.FileNameNamespace;
         name.CopyTo(value[66..]);
         return length;
     }

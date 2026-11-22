@@ -3,7 +3,8 @@ using MFTLib.NativeInterop;
 namespace MFTLib;
 
 /// <summary>
-///     The parsed slices of one scan, in record order, for <see cref="MftBlockRowWriter" />. Enumerating
+///     The parsed slices of one scan, in record order except a native scan's last slice, which holds the bases named
+///     only by an extension record, for <see cref="MftBlockRowWriter" />. Enumerating
 ///     <see cref="Slices" /> starts the scan; <see cref="Finish" /> waits for it to end and throws what stopped it;
 ///     disposing stops a scan the writer abandoned and releases what the source holds, such as the volume.
 /// </summary>

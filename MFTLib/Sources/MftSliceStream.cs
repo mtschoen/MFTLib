@@ -56,7 +56,10 @@ sealed unsafe class MftSliceStream : IMftSliceSource
 
     public MftRowValidation Validation { get; }
 
-    /// <summary>Starts the parse thread and returns the slices in record order, ending when the parse returns.</summary>
+    /// <summary>
+    ///     Starts the parse thread and returns the slices in record order, with an optional final slice naming base
+    ///     records from extension records, ending when the parse returns.
+    /// </summary>
     /// <exception cref="InvalidOperationException">The stream was already started.</exception>
     public IEnumerable<MftParsedSlice> Slices()
     {

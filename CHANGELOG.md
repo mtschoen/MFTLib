@@ -66,6 +66,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - A directory-walk block that runs out of rows, name entries or name pool grows in place by doubling only the exhausted region while the walk continues, so the index is never silently truncated and no directory is read twice.
 - A native failure inside the parser, including a failed allocation or thread start, fails the scan instead of terminating the host process.
 - A volume scan fails instead of returning a partial inventory when the `$MFT` attribute list or a `$DATA` extension record is unreadable or invalid.
+- A scan writes a row for a base record whose only Win32 or POSIX `$FILE_NAME` lives in an extension record (as NTFS leaves a large or heavily linked directory or file), taking the name from the lowest-numbered in-use extension of the same base sequence, so the rows under such a directory are no longer left without a parent.
 - The parser validates each record's update sequence array before decoding it, so a record with an invalid fixup is never read as data.
 - Raw volume reads keep the sector alignment a noncached volume handle may require (destination address, offset and length), which Windows can impose on a volume handle even without `FILE_FLAG_NO_BUFFERING`.
 - `Microsoft.SourceLink.GitHub` 10.0.401 moves the transitive `Microsoft.Build.Tasks.Git` past CVE-2026-62900.

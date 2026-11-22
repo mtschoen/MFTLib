@@ -176,12 +176,43 @@ struct ExtensionDataSize {
     int64_t size;
 };
 
+// What a row takes from a $FILE_NAME: the name, its parent, and the attributes and time a record
+// without $STANDARD_INFORMATION falls back to.
+struct FileNameFacts {
+    uint64_t parentRecordNumber = 0;
+    int64_t modifiedTime = 0;
+    uint32_t fileAttributes = 0;
+    uint16_t parentSequenceNumber = 0;
+    const WCHAR* name = nullptr;
+    uint16_t nameLength = 0;
+};
+
+// A non-DOS $FILE_NAME an in-use extension record carries for its base. NTFS moves a base's names
+// into extension records when the base fills up, so the base may hold none of its own. The name is
+// copied out because the record buffer is reused by the next read.
+struct ExtensionName {
+    uint64_t baseRecordNumber = 0;
+    uint64_t extensionRecordNumber = 0;
+    uint16_t baseSequenceNumber = 0;
+    FileNameFacts facts{};
+    std::vector<WCHAR> name;
+};
+
+// An eligible base record whose own attributes hold no non-DOS $FILE_NAME. Its row is complete except
+// for the name and parent, which an extension record may supply once every record is scanned.
+struct NamelessBase {
+    ParsedEntry entry{};
+    bool standardInformationPresent = false;
+};
+
 // Per-worker accumulator. Uses std::vector so growth is exception-safe;
 // the merge step copies entries and strings out.
 struct SliceResult {
     std::vector<MftCompactEntry> entries;
     std::vector<uint16_t> strings;
     std::vector<ExtensionDataSize> extensionDataSizes;
+    std::vector<ExtensionName> extensionNames;
+    std::vector<NamelessBase> namelessBases;
     // Allocated records this worker passed over because their fixup was invalid.
     uint64_t invalidFixupRecords = 0;
 
@@ -208,6 +239,8 @@ struct CompactOutput {
     uint64_t stringUnits = 0;
     uint64_t stringCapacity = 0;
     std::vector<ExtensionDataSize> extensionDataSizes;
+    std::vector<ExtensionName> extensionNames;
+    std::vector<NamelessBase> namelessBases;
 };
 
 // Read-only inputs that steer record scanning, threaded through the scan pipeline as one
@@ -223,6 +256,14 @@ struct ScanContext {
 };
 
 bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage);
+// Keeps what a slice's extension records said about their bases, for the fix-ups after the last chunk.
+void KeepExtensionFacts(CompactOutput& output, const SliceResult& slice);
+// The rows of the nameless bases an in-use extension of the same base sequence names, in record order.
+// Of several naming extensions the lowest-numbered one wins.
+SliceResult NameBasesFromExtensions(CompactOutput& output);
+// Appends NameBasesFromExtensions to the collected entries and keeps them in record order. False when
+// the entry array or string pool cannot grow (error set).
+bool AppendNamedBases(CompactOutput& output, MftMessageChar* errorMessage);
 void ApplyExtensionDataSizes(CompactOutput& output);
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);

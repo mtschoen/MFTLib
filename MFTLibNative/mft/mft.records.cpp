@@ -3,10 +3,13 @@
     #error "mft.records.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include "../framework.h"
 #include "../ntfs.h"
@@ -29,6 +32,7 @@ struct RecordAttributes {
     StandardInformationValues standardInformation{};
     int64_t dataSize = 0;
     bool dataPresent = false;
+    bool attributeListPresent = false;
 };
 
 bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, StandardInformationValues* values) {
@@ -124,15 +128,85 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
                 return false;
             }
             recordAttributes->dataPresent = dataSizeResult == DataSizeExtractionResult::Present;
+        } else if (attribute->TypeCode == AttributeList) {
+            recordAttributes->attributeListPresent = true;
         }
     }
     return step == AttributeStep::End;
 }
 
-// Scan one eligible base record. If it has a validated non-DOS FileName, fill *outEntry
-// and return true. A freed base record is eligible only when the scan includes freed rows.
+FileNameFacts FactsOf(const FILE_NAME* nameAttribute) {
+    FileNameFacts facts;
+    facts.parentRecordNumber = static_cast<uint64_t>(nameAttribute->ParentDirectory.SegmentNumberLowPart) |
+                               (static_cast<uint64_t>(nameAttribute->ParentDirectory.SegmentNumberHighPart) << 32);
+    facts.parentSequenceNumber = nameAttribute->ParentDirectory.SequenceNumber;
+    facts.fileAttributes = nameAttribute->FileAttributes;
+    facts.modifiedTime = static_cast<int64_t>(nameAttribute->ModificationTime);
+    facts.name = nameAttribute->FileName;
+    facts.nameLength = nameAttribute->FileNameLength;
+    return facts;
+}
+
+// Fill what a base record's header and own attributes decide; the name and parent come from a $FILE_NAME.
+void FillBaseEntry(const FILE_RECORD_SEGMENT_HEADER* recordHeader, uint64_t recordIndex,
+                   const RecordAttributes& attributes, ParsedEntry* outEntry) {
+    outEntry->flags = recordHeader->Flags;
+    if ((recordHeader->Flags & kRecordDirectory) != 0) {
+        outEntry->size = 0;
+    } else if (attributes.dataPresent) {
+        outEntry->size = attributes.dataSize;
+    } else {
+        outEntry->size = 0;
+        outEntry->flags |= MFT_ENTRY_FLAG_SIZE_UNKNOWN;
+    }
+    outEntry->recordNumber = recordIndex;
+    outEntry->sequenceNumber = recordHeader->SequenceNumber;
+    outEntry->fileAttributes = attributes.standardInformation.fileAttributes;
+    outEntry->modifiedTime = attributes.standardInformation.modifiedTime;
+}
+
+// Fill the name and parent, and the attributes and time of a record without $STANDARD_INFORMATION.
+void ApplyFileName(const FileNameFacts& facts, bool standardInformationPresent, ParsedEntry* outEntry) {
+    outEntry->parentRecordNumber = facts.parentRecordNumber;
+    outEntry->parentSequenceNumber = facts.parentSequenceNumber;
+    if (!standardInformationPresent) {
+        outEntry->fileAttributes = facts.fileAttributes;
+        outEntry->modifiedTime = facts.modifiedTime;
+    }
+    outEntry->name = facts.name;
+    outEntry->nameLength = facts.nameLength;
+}
+
+// Keep what an in-use extension record says about its base: an unnamed $DATA size and a non-DOS name.
+void KeepExtensionRecord(PFILE_RECORD_SEGMENT_HEADER recordHeader, uint64_t recordIndex, const ScanContext& scan,
+                         SliceResult* slice) {
+    RecordAttributes attributes{};
+    if ((recordHeader->Flags & kRecordInUse) == 0 || !ScanRecordAttributes(recordHeader, scan.geometry, &attributes)) {
+        return;
+    }
+    const uint64_t baseReference =
+        static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberLowPart) |
+        (static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
+    const uint16_t baseSequence = recordHeader->BaseFileRecordSegment.SequenceNumber;
+    if (attributes.dataPresent) {
+        slice->extensionDataSizes.push_back({baseReference, baseSequence, attributes.dataSize});
+    }
+    if (attributes.nameAttribute != nullptr) {
+        ExtensionName extensionName;
+        extensionName.baseRecordNumber = baseReference;
+        extensionName.extensionRecordNumber = recordIndex;
+        extensionName.baseSequenceNumber = baseSequence;
+        extensionName.facts = FactsOf(attributes.nameAttribute);
+        extensionName.name.assign(extensionName.facts.name, extensionName.facts.name + extensionName.facts.nameLength);
+        slice->extensionNames.push_back(std::move(extensionName));
+    }
+}
+
+// Scan one eligible base record. If it has a validated non-DOS FileName, fill *outEntry and return
+// true; a base whose names all live in extension records is kept in slice->namelessBases instead. A
+// freed base record is eligible only when the scan includes freed rows.
 bool ScanRecordForEntry(uint8_t* recordPointer, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry,
-                        std::vector<ExtensionDataSize>& extensionDataSizes) {
+                        SliceResult* slice) {
     auto* recordHeader = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recordPointer);
 
     if (recordHeader->MultiSectorHeader.Magic != kFileRecordMagic) {
@@ -142,50 +216,30 @@ bool ScanRecordForEntry(uint8_t* recordPointer, uint64_t recordIndex, const Scan
         return false;
     }
 
-    uint64_t baseReference = static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberLowPart) |
-                             (static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
-    if (baseReference != 0 || recordHeader->BaseFileRecordSegment.SequenceNumber != 0) {
-        RecordAttributes attributes{};
-        if ((recordHeader->Flags & kRecordInUse) != 0 &&
-            ScanRecordAttributes(recordHeader, scan.geometry, &attributes) && attributes.dataPresent) {
-            extensionDataSizes.push_back(
-                {baseReference, recordHeader->BaseFileRecordSegment.SequenceNumber, attributes.dataSize});
-        }
+    if (recordHeader->BaseFileRecordSegment.SegmentNumberLowPart != 0 ||
+        recordHeader->BaseFileRecordSegment.SegmentNumberHighPart != 0 ||
+        recordHeader->BaseFileRecordSegment.SequenceNumber != 0) {
+        KeepExtensionRecord(recordHeader, recordIndex, scan, slice);
         return false;
     }
 
     RecordAttributes attributes{};
-    if (!ScanRecordAttributes(recordHeader, scan.geometry, &attributes) || attributes.nameAttribute == nullptr) {
+    if (!ScanRecordAttributes(recordHeader, scan.geometry, &attributes)) {
         return false;
     }
-    auto* nameAttribute = attributes.nameAttribute;
-
-    bool isDirectory = (recordHeader->Flags & kRecordDirectory) != 0;
-    outEntry->flags = recordHeader->Flags;
-    if (isDirectory) {
-        outEntry->size = 0;
-    } else if (attributes.dataPresent) {
-        outEntry->size = attributes.dataSize;
-    } else {
-        outEntry->size = 0;
-        outEntry->flags |= MFT_ENTRY_FLAG_SIZE_UNKNOWN;
+    FillBaseEntry(recordHeader, recordIndex, attributes, outEntry);
+    if (attributes.nameAttribute == nullptr) {
+        if (attributes.attributeListPresent) {
+            slice->namelessBases.push_back({*outEntry, attributes.standardInformation.present});
+        }
+        return false;
     }
-
-    uint64_t parent = static_cast<uint64_t>(nameAttribute->ParentDirectory.SegmentNumberLowPart) |
-                      (static_cast<uint64_t>(nameAttribute->ParentDirectory.SegmentNumberHighPart) << 32);
-
-    outEntry->recordNumber = recordIndex;
-    outEntry->parentRecordNumber = parent;
-    outEntry->fileAttributes = attributes.standardInformation.present ? attributes.standardInformation.fileAttributes
-                                                                      : nameAttribute->FileAttributes;
-    outEntry->sequenceNumber = recordHeader->SequenceNumber;
-    outEntry->parentSequenceNumber = nameAttribute->ParentDirectory.SequenceNumber;
-    outEntry->modifiedTime = attributes.standardInformation.present
-                                 ? attributes.standardInformation.modifiedTime
-                                 : static_cast<int64_t>(nameAttribute->ModificationTime);
-    outEntry->name = nameAttribute->FileName;
-    outEntry->nameLength = nameAttribute->FileNameLength;
+    ApplyFileName(FactsOf(attributes.nameAttribute), attributes.standardInformation.present, outEntry);
     return true;
+}
+
+bool RecordNumberBefore(const MftCompactEntry& left, const MftCompactEntry& right) {
+    return left.recordNumber < right.recordNumber;
 }
 
 struct CapacityMessages {
@@ -225,9 +279,61 @@ bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t 
 
 }  // namespace
 
-bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage) {
+void KeepExtensionFacts(CompactOutput& output, const SliceResult& slice) {
     output.extensionDataSizes.insert(output.extensionDataSizes.end(), slice.extensionDataSizes.begin(),
                                      slice.extensionDataSizes.end());
+    output.extensionNames.insert(output.extensionNames.end(), slice.extensionNames.begin(), slice.extensionNames.end());
+    output.namelessBases.insert(output.namelessBases.end(), slice.namelessBases.begin(), slice.namelessBases.end());
+}
+
+SliceResult NameBasesFromExtensions(CompactOutput& output) {
+    SliceResult named;
+    auto& names = output.extensionNames;
+    auto& bases = output.namelessBases;
+    if (names.empty() || bases.empty()) {
+        return named;
+    }
+    std::sort(names.begin(), names.end(), [](const ExtensionName& left, const ExtensionName& right) {
+        return left.baseRecordNumber != right.baseRecordNumber
+                   ? left.baseRecordNumber < right.baseRecordNumber
+                   : left.extensionRecordNumber < right.extensionRecordNumber;
+    });
+    std::sort(bases.begin(), bases.end(), [](const NamelessBase& left, const NamelessBase& right) {
+        return left.entry.recordNumber < right.entry.recordNumber;
+    });
+    for (const auto& base : bases) {
+        auto candidate =
+            std::lower_bound(names.begin(), names.end(), base.entry.recordNumber,
+                             [](const ExtensionName& name, uint64_t number) { return name.baseRecordNumber < number; });
+        while (candidate != names.end() && candidate->baseRecordNumber == base.entry.recordNumber &&
+               candidate->baseSequenceNumber != base.entry.sequenceNumber) {
+            ++candidate;
+        }
+        if (candidate == names.end() || candidate->baseRecordNumber != base.entry.recordNumber) {
+            continue;
+        }
+        ParsedEntry entry = base.entry;
+        FileNameFacts facts = candidate->facts;
+        facts.name = candidate->name.data();
+        ApplyFileName(facts, base.standardInformationPresent, &entry);
+        named.append(entry);
+    }
+    return named;
+}
+
+bool AppendNamedBases(CompactOutput& output, MftMessageChar* errorMessage) {
+    const SliceResult named = NameBasesFromExtensions(output);
+    const uint64_t scannedEntries = output.entryCount;
+    if (!AppendSlice(output, named, errorMessage)) {
+        return false;
+    }
+    std::inplace_merge(output.entries, output.entries + scannedEntries, output.entries + output.entryCount,
+                       RecordNumberBefore);
+    return true;
+}
+
+bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage) {
+    KeepExtensionFacts(output, slice);
     if (slice.entries.empty()) {
         return true;
     }
@@ -284,7 +390,7 @@ void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, 
     for (uint64_t i = range.start; i < range.end; i++) {
         ParsedEntry entry{};
         if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordBase + i, scan,
-                               &entry, slice->extensionDataSizes)) {
+                               &entry, slice)) {
             slice->append(entry);
         }
     }

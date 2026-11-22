@@ -814,6 +814,13 @@ found in the base record, including data in an extension record that the parser
 does not follow or a negative non-resident data size. A known zero size means an
 empty file or a directory.
 
+A row takes its name and parent from the base record's first non-DOS `$FILE_NAME`.
+When a base with an `$ATTRIBUTE_LIST` holds none, because NTFS moved its names into
+extension records, they come from the lowest-numbered in-use extension record whose
+reverse base reference names the row with the same sequence number. Selection does
+not check the base's individual list entries. With no such extension the base gets
+no row.
+
 The non-elevated client plans capacities from `NtfsVolumeInformation` and creates
 the block file and its named section. The elevated broker opens that section and
 writes rows and names directly from parse batches, without resolving full paths.

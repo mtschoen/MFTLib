@@ -108,7 +108,8 @@ static_assert(sizeof(MftExtensionDataSize) == 18, "MftExtensionDataSize is the 1
 
 // A streaming parse hands each parsed slice to slice, in record order, instead of collecting it
 // into the result. entries and strings are valid only for the duration of the call; a string
-// offset counts UTF-16 units from strings. Once every chunk is parsed, extensions receives the
+// offset counts UTF-16 units from strings. Once every chunk is parsed, one last slice carries the
+// bases whose only non-DOS name lives in an extension record, then extensions receives the
 // extension data sizes. Either function returns nonzero to stop the parse, which then reports
 // cancelled. Both run on the thread that called the parse.
 using MftSliceSinkFunction = int32_t (*)(void* context, const MftCompactEntry* entries, uint64_t entryCount,

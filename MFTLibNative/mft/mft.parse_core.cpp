@@ -41,8 +41,7 @@ bool DeliverSlice(ParseState& state, const SliceResult& slice, MftMessageChar* e
     if (state.sink == nullptr) {
         return AppendSlice(state.output, slice, errorMessage);
     }
-    state.output.extensionDataSizes.insert(state.output.extensionDataSizes.end(), slice.extensionDataSizes.begin(),
-                                           slice.extensionDataSizes.end());
+    KeepExtensionFacts(state.output, slice);
     if (slice.entries.empty()) {
         return true;
     }
@@ -341,6 +340,15 @@ MftParseResult* FinishCancelled(ParseState& state, MftParseResult* result) {
     return result;
 }
 
+// Hand back the entries a failed parse collected, with the error already set.
+MftParseResult* FinishFailed(ParseState& state, MftParseResult* result) {
+    result->entries = state.output.entries;
+    result->usedRecords = state.output.entryCount;
+    result->entryStrings = state.output.strings;
+    result->entryStringUnits = state.output.stringUnits;
+    return result;
+}
+
 // Free the partial output of a parse whose input ended early, failed or changed size.
 MftParseResult* FinishIncomplete(ParseState& state, MftParseResult* result, const ParseSource& source) {
     DiscardOutput(state);
@@ -412,17 +420,18 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
                 return FinishIncomplete(state, result, source);
             }
             if (outcome == ParseOutcome::Failed) {
-                result->entries = state.output.entries;
-                result->usedRecords = state.output.entryCount;
-                result->entryStrings = state.output.strings;
-                result->entryStringUnits = state.output.stringUnits;
-                return result;
+                return FinishFailed(state, result);
             }
 
+            // Bases named only by an extension record get their rows before the extension sizes apply.
             auto fixupStart = SteadyClock::now();
             if (state.sink == nullptr) {
+                if (!AppendNamedBases(state.output, result->errorMessage)) {
+                    return FinishFailed(state, result);
+                }
                 ApplyExtensionDataSizes(state.output);
-            } else if (!DeliverExtensionDataSizes(state)) {
+            } else if (!DeliverSlice(state, NameBasesFromExtensions(state.output), result->errorMessage) ||
+                       !DeliverExtensionDataSizes(state)) {
                 return FinishCancelled(state, result);
             } else {
                 // Every entry already went to the sink, so a streamed result carries none.
