@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Platform contract: Windows (Git Bash) and Linux; unavailable gates are SKIP.
 set -uo pipefail
+preflight_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || exit 2
 
 preflight_platform() {
     case "$(uname -s)" in
@@ -51,10 +52,14 @@ preflight_execute() {
 }
 
 preflight_gate() {
+    # filtered: no (always runs), yes (docs-only filter) or a path scope (docs-only filter, then path scope).
     local scope="$1" gate="$2" required_platform="$3" filtered="$4"
     if [[ "$mode" == only && " ${scopes[*]} " != *" $scope "* ]]; then return; fi
     if [[ "$filtered" == yes && "$skip_build" == true ]]; then
         printf 'SKIP %s: workflow docs-only/pin-only filter\n' "$gate"
+    elif [[ "$filtered" != no && "$filtered" != yes && "$path_scopes" != all &&
+            " $path_scopes " != *" $filtered "* ]]; then
+        printf 'SKIP %s: changed paths exercise none of its inputs\n' "$gate"
     elif [[ "$required_platform" != any && "$required_platform" != "$platform" ]]; then
         printf 'SKIP %s: requires %s (host %s)\n' "$gate" "$required_platform" "$platform"
         unavailable=$((unavailable + 1))
@@ -73,7 +78,7 @@ preflight_gate() {
 }
 
 preflight_main() {
-    local mode='' base='' platform skip_build=false changed classification classifier_script
+    local mode='' base='' platform skip_build=false path_scopes=all changed classification selection skip_result
     local passed=0 failed=0 unavailable=0
     local -a scopes=()
     while [[ $# -gt 0 ]]; do
@@ -101,12 +106,21 @@ preflight_main() {
     platform="$(preflight_platform)"
     printf 'Preflight; host %s; selection %s\n' "$platform" "$mode"
     if [[ "$mode" == changed ]]; then
-        classifier_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/changed-files.sh"
         if changed="$(preflight_changed_paths "$base")"; then
-            if classification="$(printf '%s' "$changed" | bash "$classifier_script")"; then
-                if [[ "$classification" == true ]]; then
+            # A subshell contains a classifier that exits; only a complete result narrows the run.
+            if classification="$(
+                source "$preflight_root/scripts/changed-files.sh" &&
+                    skip_result="$(changed_files_skip_build <<< "$changed")" &&
+                    printf '%s\n' "$skip_result" &&
+                    changed_files_path_scopes <<< "$changed" &&
+                    printf 'complete\n'
+            )" && [[ "${classification##*$'\n'}" == complete && "${classification%%$'\n'*}" =~ ^(true|false)$ ]]; then
+                selection="${classification#*$'\n'}"
+                selection="${selection%complete}"
+                if [[ "${classification%%$'\n'*}" == true ]]; then
                     skip_build=true
                 fi
+                path_scopes="${selection//$'\n'/ }"
             else
                 printf 'changed-file classification failed; running all gates\n'
             fi
@@ -116,29 +130,29 @@ preflight_main() {
     fi
     preflight_gate scripts script-syntax windows no
     preflight_gate scripts script-syntax-tests windows no
-    preflight_gate preflight-tests preflight-tests any no
+    preflight_gate preflight-tests preflight-tests any preflight-tests
     preflight_gate docs docs any no
-    preflight_gate build-script build-script windows yes
-    preflight_gate build-script aislop-tests windows yes
-    preflight_gate build-script coverage-child windows yes
-    preflight_gate coverage-status coverage-status any yes
-    preflight_gate generate-test-report generate-test-report any yes
-    preflight_gate release-offline release-offline any yes
+    preflight_gate build-script build-script windows build-script
+    preflight_gate build-script aislop-tests windows aislop-tests
+    preflight_gate build-script coverage-child windows coverage-child
+    preflight_gate coverage-status coverage-status any coverage-status
+    preflight_gate generate-test-report generate-test-report any generate-test-report
+    preflight_gate release-offline release-offline any release-offline
     if [[ "$mode" == only && " ${scopes[*]} " == *" windows "* && " ${scopes[*]} " != *" init "* ]]; then
-        preflight_gate windows init-windows windows yes
+        preflight_gate windows init-windows windows init
     else
-        preflight_gate init init-windows windows yes
+        preflight_gate init init-windows windows init
     fi
     if [[ "$mode" == only && " ${scopes[*]} " == *" linux "* && " ${scopes[*]} " != *" init "* ]]; then
-        preflight_gate linux init-linux linux yes
+        preflight_gate linux init-linux linux init
     else
-        preflight_gate init init-linux linux yes
+        preflight_gate init init-linux linux init
     fi
     preflight_gate windows windows windows yes
     preflight_gate windows windows-package-smoke windows yes
-    preflight_gate sync sync any yes
+    preflight_gate sync sync any sync
     preflight_gate linux linux linux yes
-    preflight_gate linux-package linux-package-tests linux yes
+    preflight_gate linux-package linux-package-tests linux linux-package-tests
     preflight_gate linux-package linux-package-build linux yes
     preflight_gate linux-package linux-package-check linux yes
     preflight_gate linux-package linux-package-smoke linux yes
@@ -157,7 +171,6 @@ preflight_main() {
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    cd "$repository_root" || exit 2
+    cd "$preflight_root" || exit 2
     preflight_main "$@"
 fi

@@ -3,6 +3,7 @@
 set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$root/tools/ci-preflight.sh" || exit 1
+source "$root/scripts/changed-files.sh" || exit 1
 
 failures=0
 checks=0
@@ -97,7 +98,7 @@ if [[ "$output" == *'EXECUTED windows'* ]]; then failures=$((failures + 1)); fi
 
 check_path_case() {
     local expected="$1" paths="$2" decision decision_status
-    decision="$(printf '%s' "$paths" | bash "$root/scripts/changed-files.sh")"
+    decision="$(changed_files_skip_build <<< "$paths")"
     decision_status=$?
     assert_equal 0 "$decision_status"
     assert_equal "$expected" "$decision"
@@ -107,11 +108,10 @@ check_path_case() {
     assert_equal 0 "$status"
     if [[ "$expected" == true ]]; then
         assert_contains "$output" 'SKIP windows: workflow docs-only/pin-only filter'
-        assert_contains "$output" 'SKIP init-windows: workflow docs-only/pin-only filter'
-        assert_contains "$output" 'SKIP generate-test-report: workflow docs-only/pin-only filter'
+        assert_contains "$output" 'SKIP init-windows: changed paths exercise none of its inputs'
+        assert_contains "$output" 'SKIP generate-test-report: changed paths exercise none of its inputs'
     else
         assert_contains "$output" 'PASS windows'
-        assert_contains "$output" 'PASS generate-test-report'
     fi
     assert_contains "$output" 'PASS docs'
     assert_contains "$output" 'PASS script-syntax'
@@ -137,6 +137,141 @@ for paths in \
     check_path_case false "$paths"
 done
 
+# Path scopes: each tooling self-test is selected by its own inputs; unknown, unsafe or empty input selects all.
+all_path_scopes='preflight-tests build-script aislop-tests coverage-child coverage-status generate-test-report release-offline init sync linux-package-tests'
+check_scope_case() {
+    local expected="$1" paths="$2" selection
+    selection="$(changed_files_path_scopes <<< "$paths")"
+    assert_equal 0 "$?"
+    selection="${selection//$'\n'/ }"
+    selection="${selection% }"
+    if [[ "$expected" != "$selection" ]]; then
+        printf 'FAIL: path scopes for [%s]\n' "$paths" >&2
+    fi
+    assert_equal "$expected" "$selection"
+}
+while IFS='|' read -r expected paths; do
+    [[ "$expected" == all ]] && expected="$all_path_scopes"
+    check_scope_case "$expected" "$(printf '%b' "$paths")"
+done <<'CASES'
+|MFTLib/Index/FileIndex.cs
+|MFTLib/Index/FileIndex.cs\ndocs/page.md\nREADME.md
+|MFTLib.Tests/Index/FileIndexTests.cs\nMFTLibTestExtensions/JournalIsolation.cs
+|MFTLibNative/src/parse.cpp\nMFTLibNative/CMakeLists.txt
+|SampleProgram.Direct/Program.cs\nSampleProgram.Shared/Host.cs\nSampleProgram.Watch/Program.cs
+|Benchmark/baselines/report.json\nExternalAnnotations/MFTLib.xml\nDirectory.Build.targets
+|.plan\n.maintenance.json\nLICENSE.txt\nMFTLib.sln.DotSettings\nTEST-REPORT.md
+|scripts/package-smoke/Program.cs\nscripts/package-smoke/Directory.Build.props\nscripts/package-smoke/packages.lock.json
+build-script|MFTLibNative/MFTLibNative.vcxproj
+build-script|MFTLib/MFTLib.csproj
+build-script|scripts/package-smoke/PackageSmoke.csproj
+build-script|Directory.Build.props\nMFTLib.sln\nMFTLibNative.Linux.props\nnative-coverage.runsettings
+build-script coverage-status|MFTLib.Tests/MFTLib.Tests.csproj
+preflight-tests coverage-child|scripts/ci-post-clean-destructive.ps1
+build-script coverage-child|scripts/build-windows.tests.ps1
+build-script coverage-child|scripts/coverage-log.ps1
+build-script coverage-child init|scripts/build-windows.ps1
+build-script coverage-child release-offline init|scripts/windows-tools.ps1
+aislop-tests coverage-child|scripts/ci-aislop.ps1
+aislop-tests|.gitignore
+coverage-child|scripts/native-coverage-elevated.ps1
+coverage-child|scripts/smoke-package-windows.ps1
+coverage-child coverage-status generate-test-report|scripts/coverage-status.ps1
+build-script coverage-child coverage-status|scripts/run-coverage.ps1
+coverage-child coverage-status|scripts/coverage-linux.sh
+coverage-child generate-test-report|scripts/generate-test-report.tests.ps1
+coverage-child release-offline|scripts/test-release-notes.ps1
+build-script coverage-child release-offline|scripts/release.ps1
+release-offline|CHANGELOG.md
+init|scripts/optional-provisioning/Program.cs
+init|scripts/optional-provisioning/tests/AdapterTests.cs
+init|init.bat
+build-script init|init.sh
+build-script init|init.ps1
+coverage-child init|scripts/build-linux.sh
+coverage-child sync|scripts/sync_consumers.sh
+coverage-child linux-package-tests|scripts/check-linux-native.tests.sh
+build-script coverage-child coverage-status|scripts/test-coverage-status.ps1\nMFTLib/Code.cs\nMFTLib/MFTLib.csproj
+all|
+all|\n
+all|
+all|.gitea/workflows/test.yml
+all|.gitea/workflows/aislop.yml
+all|scripts/changed-files.sh
+all|scripts/ci-changed-files.sh
+all|tools/ci-preflight.sh
+all|scripts/ci-preflight.tests.sh
+all|newdir/file.txt
+all|scripts/new-tool.py
+coverage-child|scripts/package-smoke/Fixture.PS1
+coverage-child init|scripts/optional-provisioning/Fixture.PS1
+coverage-child|scripts/Tool.SH\nscripts/nested/Tool.Cmd
+all|scripts/package-smoke/Notes.txt
+all|.editorconfig
+all|MFTLib/Code.cs\nunknown.txt
+all|mftlib/Code.cs
+all|Scripts/build-windows.ps1
+all|MFTLib\\Code.cs
+all|/MFTLib/Code.cs
+all|MFTLib/../scripts/x.ps1
+all|MFTLib//Code.cs
+all|MFTLib/
+CASES
+selection="$(printf 'MFTLib/Code.cs\n' | bash "$root/scripts/changed-files.sh" --unknown-option 2> /dev/null)"
+assert_equal 2 "$?"
+assert_equal '' "$selection"
+# The documented no-argument CLI and the --path-scopes CLI each get one real launch of the executable.
+cli_output="$(printf 'docs/page.md\n' | bash "$root/scripts/changed-files.sh")"
+assert_equal 0 "$?"
+assert_equal true "$cli_output"
+cli_output="$(printf 'CHANGELOG.md\n' | bash "$root/scripts/changed-files.sh" --path-scopes)"
+assert_equal 0 "$?"
+assert_equal release-offline "$cli_output"
+
+# Local --changed-from applies the same path scopes as CI.
+check_gate_selection() {
+    local paths="$1" gate
+    shift
+    changed_paths="$paths"
+    inspection_status=0
+    run_case --changed-from main
+    assert_equal 0 "$status"
+    assert_contains "$output" 'PASS windows'
+    assert_contains "$output" 'PASS docs'
+    assert_contains "$output" 'PASS aislop'
+    for gate in preflight-tests build-script aislop-tests coverage-child coverage-status generate-test-report release-offline init-windows sync; do
+        if [[ " $* " == *" $gate "* ]]; then
+            assert_contains "$output" "PASS $gate"
+        else
+            assert_contains "$output" "SKIP $gate: changed paths exercise none of its inputs"
+        fi
+    done
+}
+check_gate_selection 'MFTLib/Index/FileIndex.cs'
+check_gate_selection $'MFTLib/Index/FileIndex.cs\ndocs/page.md'
+check_gate_selection 'scripts/ci-aislop.ps1' aislop-tests coverage-child
+check_gate_selection 'init.bat' init-windows
+check_gate_selection 'scripts/sync_consumers.sh' coverage-child sync
+check_gate_selection 'scripts/test-release-offline.sh' coverage-child release-offline
+check_gate_selection 'tools/ci-preflight.sh' preflight-tests build-script aislop-tests coverage-child coverage-status generate-test-report release-offline init-windows sync
+check_gate_selection 'unknown.txt' preflight-tests build-script aislop-tests coverage-child coverage-status generate-test-report release-offline init-windows sync
+changed_paths='CHANGELOG.md'
+run_case --changed-from main
+assert_equal 0 "$status"
+assert_contains "$output" 'SKIP windows: workflow docs-only/pin-only filter'
+assert_contains "$output" 'PASS release-offline'
+changed_paths='docs/Example.csproj'
+run_case --changed-from main
+assert_equal 0 "$status"
+assert_contains "$output" 'SKIP windows: workflow docs-only/pin-only filter'
+assert_contains "$output" 'PASS build-script'
+assert_contains "$output" 'SKIP aislop-tests: changed paths exercise none of its inputs'
+changed_paths='MFTLib/Code.cs'
+for selection in all only; do
+    if [[ "$selection" == all ]]; then run_case --all; else run_case --only build-script; fi
+    assert_contains "$output" 'PASS build-script'
+done
+
 # A sourceable classifier must not inherit case-insensitive matching.
 decision="$(
     shopt -s nocasematch
@@ -150,6 +285,8 @@ changed_paths='docs/page.md'
 run_case --changed-from missing-reference
 assert_contains "$output" 'changed-file inspection failed; running all gates'
 assert_contains "$output" 'PASS windows'
+assert_contains "$output" 'PASS build-script'
+assert_contains "$output" 'PASS init-windows'
 
 preflight_platform() { printf 'linux'; }
 failing_gate=linux-package-tests
@@ -283,17 +420,65 @@ assert_contains "$output" 'FAIL init-linux: exit 1'
 scratch="$(mktemp -d)" || exit 1
 trap 'rm -rf -- "$scratch"' EXIT
 git_log="$scratch/git calls.txt"
+emitted_outputs="$scratch/emitted outputs.txt"
 export GITHUB_OUTPUT="$scratch/actions output.txt"
-before_commit=1111111111111111111111111111111111111111
-after_commit=2222222222222222222222222222222222222222
-zero_commit=0000000000000000000000000000000000000000
 
+mkdir -p "$scratch/tools" "$scratch/scripts"
+cp "$root/tools/ci-preflight.sh" "$scratch/tools/"
+output="$(
+    exec 2>&1
+    source "$scratch/tools/ci-preflight.sh" || exit 2
+    preflight_platform() { printf 'windows'; }
+    preflight_execute() { :; }
+    preflight_changed_paths() { printf 'docs/page.md\n'; }
+    preflight_main --changed-from main && preflight_main --all && preflight_main --only docs
+)"
+assert_equal 0 "$?"
+assert_contains "$output" 'changed-file classification failed; running all gates'
+assert_equal 2 "$(grep -cx 'PASS windows' <<< "$output")"
+assert_equal 2 "$(grep -cx 'PASS build-script' <<< "$output")"
+assert_equal 3 "$(grep -cx 'PASS docs' <<< "$output")"
+
+# A classifier that exits, even successfully, cannot end preflight or select fewer gates.
+for early_exit in 'exit 9' 'exit 0' 'changed_files_skip_build() { printf "true\n"; return 9; }' 'changed_files_path_scopes() { printf "release-offline\n"; return 9; }'; do
+    printf 'source "%s/scripts/changed-files.sh"\n' "$root" > "$scratch/scripts/changed-files.sh"
+    printf '%s\n' "$early_exit" >> "$scratch/scripts/changed-files.sh"
+    [[ "$early_exit" == exit* ]] && printf '%s\n' "$early_exit" > "$scratch/scripts/changed-files.sh"
+    output="$(
+        exec 2>&1
+        source "$scratch/tools/ci-preflight.sh" || exit 2
+        preflight_platform() { printf 'windows'; }
+        preflight_execute() { printf 'EXECUTED %s\n' "$1"; }
+        preflight_changed_paths() { printf 'docs/page.md\n'; }
+        preflight_main --changed-from main
+    )"
+    assert_equal 0 "$?"
+    assert_contains "$output" 'changed-file classification failed; running all gates'
+    assert_contains "$output" 'EXECUTED windows'
+    assert_contains "$output" 'PASS build-script'
+    assert_contains "$output" 'PREFLIGHT PASS'
+done
+
+expected_ci_outputs() {
+    local skip="$1" selected="$2" scope value
+    [[ "$selected" == all ]] && selected="$all_path_scopes"
+    printf 'existing=value\nskip_build=%s' "$skip"
+    for scope in $all_path_scopes; do
+        value=false
+        if [[ " $selected " == *" $scope "* ]]; then value=true; fi
+        printf '\nrun_%s=%s' "${scope//-/_}" "$value"
+    done
+}
 run_ci_case() {
-    local expected="$1"
+    local expected="$1" selected="${2:-all}"
     : > "$git_log"
     printf 'existing=value\n' > "$GITHUB_OUTPUT"
     output="$(
         source "$root/scripts/ci-changed-files.sh" || exit 2
+        case "${failing_classifier:-}" in
+            skip-build) changed_files_skip_build() { printf 'true\n'; return 9; } ;;
+            path-scopes) changed_files_path_scopes() { return 9; } ;;
+        esac
         git() {
             printf '%s\n' "$*" >> "$git_log"
             case "$1" in
@@ -310,39 +495,48 @@ run_ci_case() {
     )"
     status=$?
     assert_equal 0 "$status"
-    assert_equal "$(printf 'existing=value\nskip_build=%s' "$expected")" "$(cat "$GITHUB_OUTPUT")"
+    assert_equal "$(expected_ci_outputs "$expected" "$selected")" "$(cat "$GITHUB_OUTPUT")"
 }
 
 export GITHUB_EVENT_NAME=pull_request GITHUB_BASE_REF=main
-export EVENT_BEFORE="$before_commit" EVENT_AFTER="$after_commit"
 fetch_status=0 diff_status=0 diff_paths=$'docs/page.md\nREADME.md\n'
-run_ci_case true
+run_ci_case true none
 assert_equal $'fetch --depth=1 origin main\ndiff --no-renames --name-only FETCH_HEAD HEAD --' "$(cat "$git_log")"
 
-GITHUB_EVENT_NAME=push
-run_ci_case true
-assert_equal "$(printf 'fetch --depth=1 origin %s\ndiff --no-renames --name-only %s %s --' "$before_commit" "$before_commit" "$after_commit")" "$(cat "$git_log")"
+for diff_paths in '' $'docs/page.md\nnew.cs' 'Docs/page.md' '.gitea/workflows/test.yml' 'scripts/changed-files.sh'; do
+    run_ci_case false
+done
+diff_paths=$'MFTLib/Code.cs\ndocs/page.md\n'
+run_ci_case false none
+diff_paths='scripts/build-windows.tests.ps1'
+run_ci_case false 'build-script coverage-child'
+diff_paths=$'scripts/optional-provisioning/Program.cs\nMFTLib/Code.cs'
+run_ci_case false init
+diff_paths='CHANGELOG.md'
+run_ci_case true release-offline
+diff_paths='docs/Example.csproj'
+run_ci_case true build-script
+diff_paths='docs/page.md'
+diff_status=23
+run_ci_case false
+assert_contains "$(cat "$git_log")" 'diff --no-renames --name-only'
+diff_status=0
+fetch_status=24
+run_ci_case false
+assert_equal 'fetch --depth=1 origin main' "$(cat "$git_log")"
+fetch_status=0
 
-for GITHUB_EVENT_NAME in pull_request push; do
-    for diff_paths in '' 'MFTLib/Code.cs' $'docs/page.md\nnew.cs' 'Docs/page.md'; do
+# A failing classifier runs everything, whatever it printed.
+for diff_paths in 'MFTLib/Code.cs' 'docs/page.md'; do
+    for failing_classifier in skip-build path-scopes; do
         run_ci_case false
     done
-    diff_paths='docs/page.md'
-    diff_status=23
-    run_ci_case false
-    assert_contains "$(cat "$git_log")" 'diff --no-renames --name-only'
-    diff_status=0
-    fetch_status=24
-    run_ci_case false
-    if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-        assert_equal 'fetch --depth=1 origin main' "$(cat "$git_log")"
-    else
-        assert_equal "fetch --depth=1 origin $before_commit" "$(cat "$git_log")"
-    fi
-    fetch_status=0
 done
+failing_classifier=''
 
-for GITHUB_EVENT_NAME in '' workflow_dispatch unknown; do
+# Even a docs-only push with valid endpoints gets the full run without inspecting Git.
+export EVENT_BEFORE=1111111111111111111111111111111111111111 EVENT_AFTER=2222222222222222222222222222222222222222
+for GITHUB_EVENT_NAME in '' workflow_dispatch unknown push schedule; do
     run_ci_case false
     assert_equal '' "$(cat "$git_log")"
 done
@@ -356,15 +550,6 @@ run_ci_case false
 assert_equal 'fetch --depth=1 origin missing-reference' "$(cat "$git_log")"
 fetch_status=0
 GITHUB_BASE_REF=main
-GITHUB_EVENT_NAME=push
-for invalid_commit in '' "$zero_commit" missing-reference; do
-    EVENT_BEFORE="$invalid_commit" EVENT_AFTER="$after_commit"
-    run_ci_case false
-    assert_equal '' "$(cat "$git_log")"
-    EVENT_BEFORE="$before_commit" EVENT_AFTER="$invalid_commit"
-    run_ci_case false
-    assert_equal '' "$(cat "$git_log")"
-done
 
 # Direct CLI proves execution guard, env inputs, append semantics, and spaced path.
 # Unknown event cannot legitimately invoke Git.
@@ -379,7 +564,8 @@ GITHUB_EVENT_NAME=unknown
 printf 'existing=value\n' > "$GITHUB_OUTPUT"
 output="$(bash "$root/scripts/ci-changed-files.sh")"
 assert_equal 0 "$?"
-assert_equal $'existing=value\nskip_build=false' "$(cat "$GITHUB_OUTPUT")"
+assert_equal "$(expected_ci_outputs false all)" "$(cat "$GITHUB_OUTPUT")"
+cp "$GITHUB_OUTPUT" "$emitted_outputs"
 assert_equal '' "$(cat "$git_log")"
 output="$(GITHUB_OUTPUT="$scratch/missing/output" bash "$root/scripts/ci-changed-files.sh" 2>&1)"
 status=$?
@@ -449,18 +635,25 @@ for job in windows linux linux-package; do
     block="$(workflow_job "$job")"
     assert_equal 1 "$(printf '%s\n' "$block" | grep -c 'id: changed-files')"
     assert_equal 1 "$(printf '%s\n' "$block" | grep -c 'bash scripts/ci-changed-files.sh')"
-    assert_contains "$block" 'EVENT_BEFORE: ${{ github.event.before }}'
-    assert_contains "$block" 'EVENT_AFTER: ${{ github.event.after }}'
     for obsolete in 'check_files()' 'git fetch' 'git diff' '-notmatch'; do
         assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c -- "$obsolete")"
     done
 done
-# Every step after a job's detector must be guarded by skip_build (exempt: none); upload and status steps also run always().
-unguarded_steps() {
+# Every step after a job's detector is guarded: tooling self-tests by their own run_<scope> output, everything
+# else (build, coverage, package, upload, status) by skip_build. Upload and status steps also run always().
+step_guards() {
     workflow_job "$1" | awk '
         function flush() {
-            if (name != "" && seen && index(condition, "steps.changed-files.outputs.skip_build != '\''true'\''") == 0) print name
-            else if (name ~ /^(Upload|Post coverage status)/ && seen && index(condition, "always()") == 0) print name
+            if (name != "" && seen) {
+                guard = "unguarded"
+                if (index(condition, "steps.changed-files.outputs.skip_build != '\''true'\''")) guard = "skip_build"
+                else if (match(condition, /steps\.changed-files\.outputs\.run_[a-z_]+ != '\''false'\''/)) {
+                    guard = substr(condition, RSTART + 28, RLENGTH - 39)
+                    if (condition != "        if: steps.changed-files.outputs." guard " != '\''false'\''") guard = "invalid " condition
+                }
+                if (name ~ /^(Upload|Post coverage status)/ && index(condition, "always()") == 0) guard = guard " without always()"
+                print name ": " guard
+            }
             name = ""; condition = ""
         }
         /^      - / { flush() }
@@ -471,16 +664,55 @@ unguarded_steps() {
         END { flush() }
     '
 }
+unemitted_guards() {
+    local line guard
+    while IFS= read -r line; do
+        guard="${line##*: }"
+        if ! grep -q "^$guard=" "$emitted_outputs"; then printf '%s\n' "$line"; fi
+    done <<< "$(step_guards "$1")"
+}
+assert_equal 'Setup MSBuild: skip_build
+Select runner-provisioned reportgenerator: skip_build
+Test the CI preflight dispatcher: run_preflight_tests
+Test Windows build script: run_build_script
+Test optional provisioning and Windows init: run_init
+Test pinned aislop checkout gate: run_aislop_tests
+Test coverage status guard: run_coverage_status
+Test summary report generator: run_generate_test_report
+Test shared coverage child runner: run_coverage_child
+Test offline release guards: run_release_offline
+Run coverage: skip_build
+Smoke Windows NuGet native resolution: skip_build
+Upload coverage artifact: skip_build
+Post coverage status: skip_build
+Verify post-clean initialization (destructive): skip_build' "$(step_guards windows)"
+assert_equal 'Test the consumer sync script: run_sync
+Test the CI preflight dispatcher: run_preflight_tests
+Test optional provisioning and Linux init: run_init
+Compute NuGet cache key: skip_build
+Cache NuGet packages: skip_build
+Verify Linux init Release x64 output: skip_build
+Run coverage: skip_build
+Upload coverage artifact: skip_build' "$(step_guards linux)"
+assert_equal 'Test Linux native acceptance checks: run_linux_package_tests
+Build the Release library and run the managed Smoke tier: skip_build
+Check the library: skip_build
+Smoke test the package: skip_build
+Upload library artifact: skip_build' "$(step_guards linux-package)"
 for job in windows linux linux-package; do
-    assert_equal '' "$(unguarded_steps "$job")"
+    assert_equal '' "$(unemitted_guards "$job")"
 done
 real_root="$root"
 mkdir -p "$scratch/negative/.gitea/workflows"
 root="$scratch/negative"
 sed "0,/^        if: steps.changed-files.outputs.skip_build != 'true'\$/s//        if: true/" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
-assert_equal 'Setup MSBuild' "$(unguarded_steps windows)"
+assert_equal 'Setup MSBuild: unguarded' "$(step_guards windows | head -n 1)"
 sed 's/always() && //' "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
-assert_equal 'Upload coverage artifact' "$(unguarded_steps linux | head -n 1)"
+assert_equal 'Upload coverage artifact: skip_build without always()' "$(step_guards linux | grep '^Upload')"
+sed 's/outputs\.run_build_script /outputs.run_build_scripts /' "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+assert_equal 'Test Windows build script: run_build_scripts' "$(unemitted_guards windows)"
+sed "s/if: steps.changed-files.outputs.run_build_script/if: false \&\& steps.changed-files.outputs.run_build_script/" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+assert_equal "Test Windows build script: invalid         if: false && steps.changed-files.outputs.run_build_script != 'false'" "$(unemitted_guards windows)"
 root="$real_root"
 block="$(workflow_job windows)"
 assert_contains "$block" 'run: bash scripts/ci-preflight.tests.sh'
@@ -495,6 +727,9 @@ assert_contains "$block" 'bash scripts/test-agent-instructions.sh'
 assert_equal 0 "$(printf '%s\n' "$block" | grep -c 'skip_build')"
 assert_equal 0 "$(grep -c 'skip_build' "$root/.gitea/workflows/aislop.yml")"
 assert_equal 0 "$(grep -E -c '^[[:space:]]+paths(-ignore)?:' "$root/.gitea/workflows/test.yml")"
+block="$(workflow_job publish-report)"
+assert_contains "$block" "github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || (github.event_name == 'push' && github.actor != 'test-report-bot'))"
 
 if [[ "$OSTYPE" == msys* ]] && command -v pwsh > /dev/null; then
     fixture="$(mktemp -d)"

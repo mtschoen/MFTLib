@@ -19,8 +19,9 @@ languages fail. Generated ignored files are not maintained inputs. Stage intende
 deletions before checking so Git's inventory reflects the change.
 
 **Windows**, **Linux**, and **Linux package** refer to the corresponding jobs in
-.gitea/workflows/test.yml. Behavioral steps retain their documented docs-only
-skip conditions; Syntax runs even for docs-only changes. A syntax check establishes
+.gitea/workflows/test.yml. On pull requests, behavioral steps retain their documented docs-only
+skip conditions, and self-test steps also follow their
+[path scopes](quality-gates.md#path-scopes); Syntax runs even for docs-only changes. A syntax check establishes
 parseability, not successful elevation, publication, WSL builds, or raw-volume I/O.
 Pure helpers use the offline suites named below. Orchestration-only tools may
 have Syntax as their baseline coverage.
@@ -34,7 +35,7 @@ have Syntax as their baseline coverage.
 | `scripts/build-linux.sh` | Build Release Linux native library and managed Smoke tier | agent, release, CI | Syntax; Linux package build step |
 | `scripts/build-windows.ps1` | Restore and build native and managed Windows projects | attended, agent, release, CI | Syntax; Windows build-windows.tests.ps1 and coverage build |
 | `scripts/build-windows.tests.ps1` | Check build discovery, callers and project outputs | agent, CI | Syntax; Windows Test Windows build script |
-| `scripts/changed-files.sh` | Classify docs and pin-only changes | agent, CI via preflight | Syntax; Windows and Linux ci-preflight.tests.sh |
+| `scripts/changed-files.sh` | Classify docs and pin-only changes and tooling self-test path scopes | agent, CI via preflight | Syntax; Windows and Linux ci-preflight.tests.sh |
 | `scripts/check-linux-native.sh` | Validate ELF architecture, exports, paths and runtime floors | agent, release, CI | Syntax; Linux package check-linux-native.tests.sh and real library check |
 | `scripts/check-linux-native.tests.sh` | Exercise native acceptance rules with offline command doubles | agent, CI | Syntax; Linux package Test Linux native acceptance checks |
 | `scripts/ci-aislop-evidence.ps1` | Write uploaded scanner evidence summary | CI, agent | Syntax; Windows ci-aislop.tests.ps1 |

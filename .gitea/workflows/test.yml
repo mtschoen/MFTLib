@@ -19,8 +19,6 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 45
-    outputs:
-      skip_build: ${{ steps.changed-files.outputs.skip_build }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,20 +30,11 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/script-syntax.tests.ps1
 
-      # Docs-only and pin-only PRs (.aislop/fork-commit, docs/, or top-level *.md)
-      # don't touch anything this job builds or tests.
-      # Detect that case and skip the rest of the job's steps (still SUCCESS,
-      # not skipped-as-failure, so branch protection's required check is
-      # satisfied) instead of paying for a full build+test cycle. Never use
-      # workflow-level paths/paths-ignore for this: on Gitea that leaves the
-      # required check permanently pending for any PR that doesn't touch the
-      # matched paths (gitea issue 36895).
+      # Filter steps only on PRs. Workflow-level paths leave required checks
+      # pending on Gitea (issue 36895). See docs/quality-gates.md for path scopes.
       - name: Determine changed files (docs-only or pin-only early exit)
         id: changed-files
         shell: pwsh
-        env:
-          EVENT_BEFORE: ${{ github.event.before }}
-          EVENT_AFTER: ${{ github.event.after }}
         run: |
           bash scripts/ci-changed-files.sh
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -64,42 +53,42 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ReportGenerator is not provisioned; run runner-converge" }
 
       - name: Test the CI preflight dispatcher
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_preflight_tests != 'false'
         shell: bash
         run: bash scripts/ci-preflight.tests.sh
 
       - name: Test Windows build script
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_build_script != 'false'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/build-windows.tests.ps1
 
       - name: Test optional provisioning and Windows init
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_init != 'false'
         shell: pwsh
         run: dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 -- --adapters .
 
       - name: Test pinned aislop checkout gate
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_aislop_tests != 'false'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/ci-aislop.tests.ps1
 
       - name: Test coverage status guard
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_coverage_status != 'false'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
 
       - name: Test summary report generator
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_generate_test_report != 'false'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/generate-test-report.ps1
 
       - name: Test shared coverage child runner
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_coverage_child != 'false'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-native-coverage-elevated.ps1
 
       - name: Test offline release guards
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_release_offline != 'false'
         shell: bash
         run: bash scripts/test-release-offline.sh
 
@@ -169,25 +158,12 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    outputs:
-      skip_build: ${{ steps.changed-files.outputs.skip_build }}
     steps:
       - uses: actions/checkout@v4
 
-      # Docs-only and pin-only PRs (.aislop/fork-commit, docs/, or top-level *.md)
-      # don't touch anything this job builds or tests.
-      # Detect that case and skip the rest of the job's steps (still SUCCESS,
-      # not skipped-as-failure, so branch protection's required check is
-      # satisfied) instead of paying for a full build+test cycle. Never use
-      # workflow-level paths/paths-ignore for this: on Gitea that leaves the
-      # required check permanently pending for any PR that doesn't touch the
-      # matched paths (gitea issue 36895).
       - name: Determine changed files (docs-only or pin-only early exit)
         id: changed-files
         shell: bash
-        env:
-          EVENT_BEFORE: ${{ github.event.before }}
-          EVENT_AFTER: ${{ github.event.after }}
         run: bash scripts/ci-changed-files.sh
 
       # Needs only bash, git and jq, all present on ubuntu-latest, so it runs
@@ -195,15 +171,15 @@ jobs:
       # script itself. Issue #194: the script reported success while matching
       # no consumer at all, and nothing in CI exercised it.
       - name: Test the consumer sync script
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_sync != 'false'
         run: bash scripts/sync_consumers.tests.sh
 
       - name: Test the CI preflight dispatcher
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_preflight_tests != 'false'
         run: bash scripts/ci-preflight.tests.sh
 
       - name: Test optional provisioning and Linux init
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_init != 'false'
         shell: bash
         run: |
           dotnet restore scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --locked-mode
@@ -283,13 +259,10 @@ jobs:
       - name: Determine changed files (docs-only or pin-only early exit)
         id: changed-files
         shell: bash
-        env:
-          EVENT_BEFORE: ${{ github.event.before }}
-          EVENT_AFTER: ${{ github.event.after }}
         run: bash scripts/ci-changed-files.sh
 
       - name: Test Linux native acceptance checks
-        if: steps.changed-files.outputs.skip_build != 'true'
+        if: steps.changed-files.outputs.run_linux_package_tests != 'false'
         shell: bash
         run: bash scripts/check-linux-native.tests.sh
 
@@ -342,11 +315,10 @@ jobs:
 
   publish-report:
     needs: [windows, linux]
-    # The shared docs-only early exit also suppresses report-only bot pushes.
+    # Validate the report bot's push in full without publishing another report for it.
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
-      needs.windows.outputs.skip_build != 'true' && needs.linux.outputs.skip_build != 'true'
+      (github.event_name == 'schedule' || (github.event_name == 'push' && github.actor != 'test-report-bot'))
     runs-on: windows-latest
     timeout-minutes: 10
     steps:

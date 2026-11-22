@@ -90,14 +90,15 @@ for an instruction violation. It does not execute that negative DLL.
 ## CI
 
 The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push;
-when every changed path is docs-only or the scanner pin, its `skip_build` detection skips the
+when a pull request changes only docs or the scanner pin, its `skip_build` detection skips the
 steps below and the upload, and the job finishes green ([CI and quality gates](quality-gates.md)).
 
 Before building, the Linux package job runs
 `bash scripts/check-linux-native.tests.sh`. This offline self-test replaces
 readelf, nm and objdump output to exercise architecture, export, instrumentation,
 search-path and version-ordering checks without elevation or a native build.
-It shares the job's skip-build condition and runs first in the local
+On pull requests the `linux-package-tests` [path scope](quality-gates.md#path-scopes)
+selects it (a change to either script, or any fail-open case). It runs first in the local
 linux-package preflight scope. The subsequent real-library check remains the
 integration evidence for the package artifact.
 

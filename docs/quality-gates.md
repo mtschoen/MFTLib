@@ -10,10 +10,10 @@ on docs-only changes. Windows, Linux and Linux-package use `id: changed-files`
 to control their build and behavioral steps. All three call
 `bash scripts/ci-changed-files.sh`; Windows launches it from
 PowerShell using runner-provisioned Git Bash. The adapter writes
-`skip_build=true|false` to `GITHUB_OUTPUT`. For a pull request it fetches the
+`skip_build=true|false` and one `run_<scope>=true|false` per
+[path scope](#path-scopes) to `GITHUB_OUTPUT`. For a pull request it fetches the
 base branch tip and compares `FETCH_HEAD` directly with `HEAD`, not their
-merge base. For a push it fetches the nonzero `before` commit and compares
-the event's `before` and `after` commits.
+merge base. On other events it selects the full run without inspecting Git.
 
 `scripts/changed-files.sh` is the single executable classifier used by CI
 and local preflight. It accepts newline-delimited repository-relative paths,
@@ -29,14 +29,78 @@ Whitespace-only records do not qualify. Git-quoted unusual names can
 conservatively cause full execution.
 
 Skipping requires a successfully inspected, nonempty, entirely allowed path
-set. Empty input, unknown events, missing references, missing/zero push
-endpoints, and failed fetch/diff commands run the jobs in full. Output from
+set on a pull request. Empty input, missing references, and failed
+fetch/diff commands run the jobs in full. Output from
 a failed inspection is never classified, even if it contains allowed paths.
 An unwritable Actions output file fails the detector step. With a valid
 skip decision, compilation, test, and package steps are skipped and the
 three jobs finish green with their status checks present. Workflow-level
 `paths` and `paths-ignore` filters are avoided because they leave required
 status checks pending permanently on Gitea (issue 36895).
+
+### Path scopes
+
+On a pull request, tooling self-tests are selected by their inputs. The
+same classifier, run as `bash scripts/changed-files.sh --path-scopes`, prints
+the selected scopes one per line. Each rule in its
+`changed_files_path_scope_rules` table pairs a fixed, case-sensitive path or
+glob (`*` also matches `/`) with the scope it selects, `all`, or `none`. A
+path collects the scopes of every rule it matches. A path that matches no rule
+and is not a docs-only path selects every scope, as does an unsafe path (the
+rejections above) or an empty path set. Docs-only paths select nothing, except
+`CHANGELOG.md`, which selects `release-offline`.
+
+The adapter writes `run_<scope>` with `-` replaced by `_`. The value is
+`false` only when the inspection and both classifications succeeded and
+the scope was not selected; `skip_build` never overrides a selected scope (a
+tracked `docs/Example.csproj` still selects `build-script`). A failed fetch,
+diff or classification writes
+`skip_build=false` and every
+`run_<scope>=true`. Tooling steps are guarded by
+`steps.changed-files.outputs.run_<scope> != 'false'`, so a missing output
+also runs the step. Main pushes, merge-train pushes and nightly runs execute
+all tooling self-tests and product suites as a backstop for missed inputs.
+Build, coverage, package, upload, status and post-clean steps keep the
+`skip_build` guard, so every non-docs change still builds and runs the
+managed and native test suites.
+
+Changes to `.gitea/workflows/*`, `scripts/changed-files.sh`,
+`scripts/ci-changed-files.sh`, `tools/ci-preflight.sh` and
+`scripts/ci-preflight.tests.sh` select every scope. Paths under
+`MFTLib/`, `MFTLib.Tests/`, `MFTLibTestExtensions/`, `MFTLibNative/`, the
+three sample directories, `Benchmark/` and `ExternalAnnotations/`, plus
+`scripts/package-smoke/Directory.Build.props`, `Program.cs` and
+`packages.lock.json`, `Directory.Build.targets`, `MFTLib.sln.DotSettings`,
+`LICENSE.txt`, `.plan` and `.maintenance.json`, are known and select no scope
+by themselves. A project file under them still selects its scopes below; any
+other file under `scripts/package-smoke/` (such as `Notes.txt`) is unknown
+and selects every scope.
+
+Each scope's inputs are the script under test, its test script, what it
+dot-sources or runs, and the tracked files it reads, found by reading each
+test script's `.`/`source` lines, invocations and `Join-Path $sourceRoot`
+or `$PSScriptRoot` reads. Fixture files a test writes into a temporary
+directory are not inputs.
+
+| Scope (output) | CI steps | Inputs |
+| --- | --- | --- |
+| `preflight-tests` (`run_preflight_tests`) | Windows and Linux Test the CI preflight dispatcher | the all-scope files above (the suite sources the dispatcher and classifier and reads `test.yml` and `aislop.yml`), `scripts/ci-post-clean-destructive.ps1` |
+| `build-script` (`run_build_script`) | Windows Test Windows build script | `scripts/build-windows.ps1`, `build-windows.tests.ps1`, `windows-tools.ps1`, `coverage-child.ps1`, `coverage-log.ps1`, `native-coverage.ps1`, `run-coverage.ps1`, `release.ps1`, `Test-ReleasePackages.ps1`; `init.ps1`, `init.sh`, `MFTLib.sln`, `Directory.Build.props`, `MFTLibNative.Linux.props`, `native-coverage.runsettings`, every `*.csproj` and `*.vcxproj` |
+| `aislop-tests` (`run_aislop_tests`) | Windows Test pinned aislop checkout gate | `scripts/ci-aislop.ps1`, `ci-aislop.tests.ps1`, `ci-aislop-evidence.ps1`, `ci-aislop-link-repair.ps1`, `.gitignore` |
+| `coverage-child` (`run_coverage_child`) | Windows Test shared coverage child runner | every `scripts/**` file ending `.ps1`, `.psm1`, `.sh`, `.bat` or `.cmd` in any letter case: the test sources `coverage-child.ps1`, `coverage-log.ps1`, `run-coverage.ps1` and `native-coverage-elevated.ps1`, and scans every such script for the `runas` spelling |
+| `coverage-status` (`run_coverage_status`) | Windows Test coverage status guard | `scripts/coverage-status.ps1`, `test-coverage-status.ps1`, `run-coverage.ps1`, `coverage-linux.sh`; `MFTLib.Tests/MFTLib.Tests.csproj` |
+| `generate-test-report` (`run_generate_test_report`) | Windows Test summary report generator | `scripts/generate-test-report.ps1`, `generate-test-report.tests.ps1`, `coverage-status.ps1` |
+| `release-offline` (`run_release_offline`) | Windows Test offline release guards | `scripts/test-release-offline.sh`, `test-release-package-validation.ps1`, `test-release-notes.ps1`, `Test-ReleasePackages.ps1`, `WindowsNativeInstructions.ps1`, `windows-tools.ps1`, `release.ps1`; `CHANGELOG.md` |
+| `init` (`run_init`) | Windows and Linux Test optional provisioning and platform init | `init.ps1`, `init.sh`, `init.bat`, `scripts/build-windows.ps1`, `windows-tools.ps1`, `build-linux.sh` (the files the harness copies into its fixture), `scripts/optional-provisioning/**` |
+| `sync` (`run_sync`) | Linux Test the consumer sync script | `scripts/sync_consumers.sh`, `sync_consumers.tests.sh`, `mftlib_submodules.sh`, `auto_bump_pull_request.sh` |
+| `linux-package-tests` (`run_linux_package_tests`) | Linux package Test Linux native acceptance checks | `scripts/check-linux-native.sh`, `check-linux-native.tests.sh` |
+
+The script syntax steps run before the detector and stay unconditional. The
+Linux initialization check, which runs a real `./init.sh --build`, keeps the
+`skip_build` guard because it builds the product. No step exercises native code
+alone: managed tests load the native library, Linux native line coverage comes
+from the managed suite, and the package job runs the managed Smoke tier, so
+native-relevant paths gate nothing separately.
 
 The `docs` job always runs without an early exit. Running on the fleet Linux runner image, it restores `MFTLib.Tests.csproj` with `dotnet restore --locked-mode`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets, document link integrity, scanner and consumer-sync server context, maintained-tool inventory completeness and metadata, and tracked-content portability. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
 
@@ -56,11 +120,11 @@ build ensures initialization produced the expected output.
 
 The `windows` job also runs `scripts/ci-post-clean-destructive.ps1`, the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: the step is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The step stays in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
-Both platform test jobs also run the package-free init/provisioning regression harness before coverage, guarded by the existing skip-build condition. These offline checks exercise the actual entry points with command doubles, including absent and failed optional provisioning, and run on pull requests. They are separate from the Windows main-push-only post-clean verification and the Linux real-build initialization check.
+Both platform test jobs also run the package-free init/provisioning regression harness before coverage, guarded by the `init` [path scope](#path-scopes). These offline checks exercise the actual entry points with command doubles, including absent and failed optional provisioning, and run on pull requests. They are separate from the Windows main-push-only post-clean verification and the Linux real-build initialization check.
 
 The Windows job runs `bash scripts/test-release-offline.sh`, which runs
 `scripts/test-release-package-validation.ps1` and `scripts/test-release-notes.ps1`,
-before coverage when `skip_build` is false. `ci-preflight.sh --all` runs the same bundle as `release-offline`.
+before coverage when `run_release_offline` is not false. `ci-preflight.sh --all` runs the same bundle as `release-offline`.
 These offline checks reject incomplete release packages and verify that a
 failed GitHub tag push stops before GitHub release creation; they also retain
 the release-note extraction and UTF-8 encoding checks.
@@ -86,9 +150,9 @@ by CI, never edited in a PR or written by local coverage scripts.
 
 The `test` workflow also runs nightly at 03:23 UTC. After successful `windows` and
 `linux` coverage jobs, `publish-report` runs only on main pushes and scheduled main
-runs. The existing docs-only early exit suppresses coverage and publication for
-report-only pushes, preventing a bot publication loop without workflow-level path
-filters. Nightly runs collect fresh results even when main has not changed.
+runs. A push by `test-report-bot` runs the full validation suite but skips
+`publish-report`, so publishing a report cannot trigger another publication.
+Nightly runs collect fresh results even when main has not changed.
 
 The publisher downloads the current run's `windows-coverage` and `linux-coverage`
 artifacts with the pinned `ChristopherHX/gitea-download-artifact` action, paired with
@@ -136,11 +200,17 @@ covers only the selected host gates, not the complete remote CI verdict.
 base tip directly with the working tree, including staged and unstaged
 changes, then enumerates untracked, unignored files. It makes no fetch;
 refresh a stale local reference before running. Only after both Git commands
-succeed does `preflight_main` call `bash scripts/changed-files.sh` with their
-combined output. The shared rule above decides whether build, coverage, and
-package gates may be skipped. Empty input, inspection failure (including a
-failed untracked-file enumeration with partial output), and classifier
-failure run all selected gates. Docs, script syntax gates, the preflight regression suite, and aislop remain
+succeed does `preflight_main` source `scripts/changed-files.sh` and pass their
+combined output to `changed_files_skip_build` and `changed_files_path_scopes`. The shared rule
+above decides whether build, coverage, and package gates may be skipped, and
+the [path scopes](#path-scopes) skip each tooling self-test gate
+(`preflight-tests`, `build-script`, `aislop-tests`, `coverage-child`,
+`coverage-status`, `generate-test-report`, `release-offline`, `init-windows`,
+`init-linux`, `sync`, `linux-package-tests`) whose inputs did not change,
+reported as `SKIP <gate>: changed paths exercise none of its inputs`. Empty
+input, inspection failure (including a failed untracked-file enumeration with
+partial output), and failure to load or run the classifier run all selected gates. `--all` and
+`--only` do not load the classifier. Docs, script syntax gates, and aislop remain
 unfiltered, subject to their existing host availability.
 
 | Scope/gate | Windows | Linux | Shared CI implementation |
@@ -163,7 +233,8 @@ unfiltered, subject to their existing host availability.
 
 The `generate-test-report` scope runs the same no-argument offline regression as
 Windows CI. Select it with `bash tools/ci-preflight.sh --only generate-test-report`;
-`--all` includes it, and `--changed-from` skips it for docs-only/pin-only changes.
+`--all` includes it, and `--changed-from` skips it for docs-only/pin-only changes
+and for changes that touch none of its path-scope inputs.
 It requires PowerShell 7 but no publication credentials. Fixture output stays
 under `.lane/fixtures`; the root `TEST-REPORT.md` is not generated. A failing
 regression fails preflight while the remaining selected gates still run.
