@@ -1,8 +1,8 @@
 # Test report: generated on main by CI; must not be edited in a pull request
 
-Source commit: 224d5d54b462bbc86beb171a16df57311c6fb9e0
-Workflow run: 60589
-Generated at: 2026-11-21T11:05:45Z (workflow run creation time).
+Source commit: 3f9112b0a73fd935cd463a1700f295361cf709bc
+Workflow run: 60700
+Generated at: 2026-11-22T03:23:29Z (workflow run creation time).
 
 ## Windows unelevated
 
@@ -12,7 +12,7 @@ Generated at: 2026-11-21T11:05:45Z (workflow run creation time).
 
 | Managed coverage | Line | Branch |
 | --- | ---: | ---: |
-| coverage.xml | 97.35% | 93.95% |
+| coverage.xml | 97.35% | 93.92% |
 
 ## Linux
 
@@ -22,7 +22,7 @@ Generated at: 2026-11-21T11:05:45Z (workflow run creation time).
 
 | Managed coverage | Line | Branch |
 | --- | ---: | ---: |
-| coverage.cobertura.xml | 92.77% | 90.65% |
+| coverage.cobertura.xml | 92.76% | 90.68% |
 
 Native coverage: lines: 95.3% (2000 out of 2099)
 
