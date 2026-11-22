@@ -237,7 +237,7 @@ public sealed class DirectHostTests : IDisposable
                 IsLastWriteTimeUnknown = isLastWriteTimeUnknown
             }
         ]));
-        FileEntry.Dependencies._openById = (_, _, _, access) =>
+        FileEntry.Dependencies._openById = (_, _, _, _, access) =>
             new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
@@ -258,7 +258,7 @@ public sealed class DirectHostTests : IDisposable
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath) { _isElevated = () => true };
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
             [new SyntheticRow(5, ".", 5) { IsDirectory = true }, new SyntheticRow(7, "a.txt", 5) { Size = 3 }]));
-        FileEntry.Dependencies._openById = (_, _, _, access) =>
+        FileEntry.Dependencies._openById = (_, _, _, _, access) =>
             new FileStream(path, FileMode.Open, access, FileShare.Read);
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
 

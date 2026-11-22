@@ -62,6 +62,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Fixed
 
+- `FileEntry.Open` for an MFT entry compares the full 64-bit volume serial of the handle it opened by file id with the serial its block records, and throws `IOException` after closing the handle when they differ, the serial cannot be read or the block records none. A clone retaining the serial and file reference is outside this check.
 - A rescan of a capacity-exhausted block doubles only the exhausted region (rows, name entries or name bytes), for MFT volumes and directory walks alike.
 - A directory-walk block that runs out of rows, name entries or name pool grows in place by doubling only the exhausted region while the walk continues, so the index is never silently truncated and no directory is read twice.
 - A native failure inside the parser, including a failed allocation or thread start, fails the scan instead of terminating the host process.

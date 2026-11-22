@@ -21,8 +21,14 @@ static partial class WindowsFileById
 
     [SupportedOSPlatform("windows")]
     internal static FileStream Open(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
-        FileAccess access)
+        ulong expectedVolumeSerial, FileAccess access)
     {
+        if (expectedVolumeSerial == 0)
+        {
+            throw new IOException(
+                $"The block of '{anyPathOnVolume}' records no volume serial, so the volume cannot be confirmed as the one scanned.");
+        }
+
         using var volumeHandle = Kernel32.Hooks._createFile(anyPathOnVolume, FileReadAttributes, ShareAll, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
         if (volumeHandle.IsInvalid)
@@ -52,6 +58,14 @@ static partial class WindowsFileById
             throw new IOException(
                 $"Could not open record {recordNumber} (sequence {sequenceNumber}) on '{anyPathOnVolume}'.",
                 error);
+        }
+
+        if (!Kernel32.Hooks._readVolumeSerialByHandle(fileHandle, out var actualSerial) ||
+            actualSerial != expectedVolumeSerial)
+        {
+            fileHandle.Dispose();
+            throw new IOException(
+                $"The volume holding '{anyPathOnVolume}' does not have the expected serial; record {recordNumber} was not opened.");
         }
 
         return new FileStream(fileHandle, access);

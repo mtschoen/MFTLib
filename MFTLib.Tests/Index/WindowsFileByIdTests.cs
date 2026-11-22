@@ -28,7 +28,7 @@ public class WindowsFileByIdTests
         var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-        using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.Read);
+        using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, RealSerial(volumeRoot), FileAccess.Read);
         using var reader = new StreamReader(stream);
 
         Assert.AreEqual("round trip", reader.ReadToEnd());
@@ -45,7 +45,7 @@ public class WindowsFileByIdTests
         var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-        using (var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.Write))
+        using (var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, RealSerial(volumeRoot), FileAccess.Write))
         {
             stream.SetLength(0);
             using var writer = new StreamWriter(stream);
@@ -66,7 +66,7 @@ public class WindowsFileByIdTests
         var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-        using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.ReadWrite);
+        using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, RealSerial(volumeRoot), FileAccess.ReadWrite);
         using var reader = new StreamReader(stream);
         Assert.AreEqual("before", reader.ReadToEnd());
 
@@ -95,7 +95,7 @@ public class WindowsFileByIdTests
         };
 
         var failure = Assert.ThrowsExactly<IOException>(
-            () => WindowsFileById.Open(missingPath, recordNumber: 5, sequenceNumber: 1, FileAccess.Read));
+            () => WindowsFileById.Open(missingPath, recordNumber: 5, sequenceNumber: 1, expectedVolumeSerial: 1, FileAccess.Read));
 
         Assert.Contains(missingPath, failure.Message);
     }
@@ -112,7 +112,7 @@ public class WindowsFileByIdTests
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, default));
+            () => WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, RealSerial(volumeRoot), default));
     }
 
     [TestMethod]
@@ -127,10 +127,53 @@ public class WindowsFileByIdTests
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
         var failure = Assert.ThrowsExactly<IOException>(
-            () => WindowsFileById.Open(volumeRoot, recordNumber, (ushort)(sequenceNumber + 1), FileAccess.Read));
+            () => WindowsFileById.Open(volumeRoot, recordNumber, (ushort)(sequenceNumber + 1), RealSerial(volumeRoot), FileAccess.Read));
 
         Assert.Contains(recordNumber.ToString(CultureInfo.InvariantCulture), failure.Message);
     }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
+    public void Open_WhenTheOpenedHandleIsOnAnotherVolume_ThrowsIOExceptionAndClosesTheHandle()
+    {
+        using var temporaryFile = new TempFile("mftlib-openbyid", create: false);
+        var path = temporaryFile.Path;
+        File.WriteAllText(path, "other volume");
+        var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
+        var realSerial = RealSerial(volumeRoot);
+        SafeFileHandle? inspected = null;
+        Kernel32.Hooks._readVolumeSerialByHandle = (handle, out serial) =>
+        {
+            inspected = handle;
+            serial = realSerial ^ (1UL << 63);
+            return true;
+        };
+
+        var failure = Assert.ThrowsExactly<IOException>(
+            () => WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, realSerial, FileAccess.Read));
+
+        Assert.Contains("expected serial", failure.Message);
+        Assert.IsNotNull(inspected);
+        Assert.IsTrue(inspected.IsClosed, "the by-id handle must be closed when the serial differs");
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
+    public void Open_WhenTheBlockRecordsNoSerial_ThrowsIOException()
+    {
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(Path.GetTempPath()))!;
+
+        var failure = Assert.ThrowsExactly<IOException>(
+            () => WindowsFileById.Open(volumeRoot, 5, 1, expectedVolumeSerial: 0, FileAccess.Read));
+
+        Assert.Contains("records no volume serial", failure.Message);
+    }
+
+    [SupportedOSPlatform("windows")]
+    static ulong RealSerial(string volumeRoot) => MFTLib.Index.PlatformVolumeFacts.ReadSerial(volumeRoot, "NTFS");
 }
 
 /// <summary>

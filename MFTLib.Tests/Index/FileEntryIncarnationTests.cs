@@ -155,7 +155,7 @@ public class FileEntryIncarnationTests
         using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
         var temporaryPath = temporaryFile.Path;
         var calls = new List<(uint Record, ushort Sequence)>();
-        FileEntry.Dependencies._openById = (_, record, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, record, sequence, _, _) =>
         {
             calls.Add((record, sequence));
             return new MemoryBackedFileStream(temporaryPath);
@@ -231,7 +231,7 @@ public class FileEntryIncarnationTests
         using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
         var temporaryPath = temporaryFile.Path;
         var calls = new List<ushort>();
-        FileEntry.Dependencies._openById = (_, _, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, _, sequence, _, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream(temporaryPath);
@@ -326,7 +326,7 @@ public class FileEntryIncarnationTests
         using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
         var temporaryPath = temporaryFile.Path;
         var calls = new List<ushort>();
-        FileEntry.Dependencies._openById = (_, _, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, _, sequence, _, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream(temporaryPath);
@@ -383,7 +383,7 @@ public class FileEntryIncarnationTests
         using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
         var temporaryPath = temporaryFile.Path;
         var calls = new List<ushort>();
-        FileEntry.Dependencies._openById = (_, _, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, _, sequence, _, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream(temporaryPath);
