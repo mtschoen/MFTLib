@@ -256,6 +256,54 @@ public class JournalMutatorCloseCoalescingTests
     }
 
     [TestMethod]
+    public async Task BulkParentMovesBeforeOldParentReuse_UpdateEveryChild_Issue1008()
+    {
+        await using var fixture = new MutatorFixture();
+        fixture.Apply(
+        [
+            CreateEntry(8, 6, "second.txt", UsnReason.FileCreate, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(9, 6, "third.txt", UsnReason.FileCreate, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(10, 5, "destination", UsnReason.FileCreate, fixture.Timestamp, sequenceNumber: 1,
+                FileAttributes.Directory)
+        ]);
+
+        fixture.Apply(
+        [
+            CreateEntry(7, 6, "notes.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(8, 6, "second.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(7, 10, "notes.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(9, 10, "third.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(8, 10, "second.txt", UsnReason.RenameOldName | UsnReason.RenameNewName,
+                fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(6, 5, "documents", UsnReason.FileDelete, fixture.Timestamp, sequenceNumber: 0),
+            CreateEntry(6, 5, "replacement.txt", UsnReason.FileCreate, fixture.Timestamp, sequenceNumber: 2)
+        ]);
+
+        foreach (var childRow in new[] { 7, 8, 9 })
+        {
+            Assert.AreEqual(10u, fixture.Block.Rows[childRow].ParentRow,
+                $"Child row {childRow} must follow its move before the old parent slot is reused.");
+            Assert.IsFalse(fixture.Block.Rows[childRow].IsDeleted);
+        }
+
+        Assert.IsFalse(fixture.Block.Rows[6].IsDirectory);
+        Assert.AreEqual((ushort)2, fixture.Block.SequenceNumbers[6]);
+    }
+
+    [TestMethod]
+    public async Task ParentMoveAfterAnUnclosedModification_UpdatesTheParent_Issue1008()
+    {
+        await using var fixture = new MutatorFixture();
+        fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend,
+            fixture.Timestamp, sequenceNumber: 1)]);
+
+        fixture.Apply([CreateEntry(7, 5, "notes.txt", UsnReason.RenameNewName,
+            fixture.Timestamp, sequenceNumber: 1)]);
+
+        Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
+    }
+
+    [TestMethod]
     public async Task SequenceNumberChange_ResetsTheOpenCycleAndReportsTheNewIncarnation()
     {
         await using var fixture = new MutatorFixture();
