@@ -1594,7 +1594,7 @@ session authenticates its broker and the content read should then be limited to 
 
 ## A reread that stalls on failing media is an accepted limit
 
-**Decision (owner ruling 2026-11-21, issue 979):** for 0.3, a reread that stalls on failing media is an accepted,
+**Decision (owner ruling 2026-11-20, issue 979):** for 0.3, a reread that stalls on failing media is an accepted,
 documented limit of the broker's inline content read ([broker lifetime](broker-lifetime.md)). The channel watchdog ends
 the read after 30 seconds without progress and the read reports failure. There is no watchdog or reader change in 0.3.
 

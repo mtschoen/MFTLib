@@ -271,15 +271,17 @@ public partial class BrokerProcessTests
             ReadInlineContent = (_, _, requests, sink, _) =>
             {
                 sink(requests.Span[0].Position, InlineContentOutcome.NotInline, []);
-                sink(999, InlineContentOutcome.NotInline, []);
+                sink(1, InlineContentOutcome.NotInline, []);
             }
         }));
 
+        // Positions 0 and 2 are requested, so position 1 is inside the range but was never asked for.
+        InlineContentRequest[] requested = [new(0, 10L, 1), new(2, 12L, 1)];
         var exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            broker.Process.ReadInlineContentAsync('C', 1, RequestsFor(2), new AnswerLog().Sink, CancellationToken.None)
+            broker.Process.ReadInlineContentAsync('C', 1, requested, new AnswerLog().Sink, CancellationToken.None)
                 .WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        Assert.Contains("999", exception.Message);
+        Assert.Contains("answered position 1 that", exception.Message);
     }
 
     [TestMethod]
