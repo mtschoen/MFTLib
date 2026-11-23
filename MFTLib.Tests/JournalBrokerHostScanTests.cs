@@ -504,6 +504,42 @@ public class JournalBrokerHostScanTests
     }
 
     [TestMethod]
+    public async Task ScanChannel_HeldScanningSampleIsFlushedBeforeThePhaseChangeFrame()
+    {
+        using var blockWriter = new RecordingBlockSectionWriter();
+        var firstReported = new TestGate();
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanVolume = (_, _, reporting, _, _, _) =>
+            {
+                reporting.Progress!.Report(BlockWriteProgress.Scanning(500, 1000));
+                firstReported.MarkEntered();
+                firstReported.WaitForRelease();
+                // The clock never advances, so this sample falls inside the throttle window and is held.
+                reporting.Progress!.Report(BlockWriteProgress.Scanning(1000, 1000));
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
+            },
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null,
+            TimeProvider = new FakeTimeProvider()
+        });
+        await using var harness = new HostChannelHarness(host, blockWriter);
+
+        var pipe = await harness.OpenScanChannelAsync('C');
+
+        await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
+        var firstSample = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
+        Assert.AreEqual(BlockWriteProgress.Scanning(500, 1000), firstSample.Progress);
+        firstReported.Release();
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+
+        var remaining = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
+            .Select(frame => frame.Progress!.Value).ToArray();
+        Assert.AreSequenceEqual([BlockWriteProgress.Scanning(1000, 1000), BlockWriteProgress.Indexing], remaining);
+    }
+
+    [TestMethod]
     public async Task ScanChannel_CancelledBlockScanLeavesIncompleteBlockWithoutErrorOrScanReady()
     {
         using var blockWriter = new RecordingBlockSectionWriter();

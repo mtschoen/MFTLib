@@ -120,7 +120,8 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    // A sample in a new phase is written at once; within a phase, at most one per throttle interval.
+    // A sample in a new phase is written at once, after the newest sample the throttle held from the old phase; within a
+    // phase, at most one per throttle interval.
     static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BlockWriteProgress> reader,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
@@ -138,6 +139,14 @@ sealed partial class JournalBrokerHost
                     var now = timeProvider.GetElapsedTime(started);
                     if (progress.Phase != lastPhase || now - lastEmit >= BrokerLiveness.ProgressThrottleInterval)
                     {
+                        // A phase change must not drop the newest sample the throttle held back from the old phase.
+                        if (progress.Phase != lastPhase && throttled is { } held)
+                        {
+                            await channel.Pipe.WriteFrameAsync(
+                                writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(held)),
+                                cancellationToken).ConfigureAwait(false);
+                        }
+
                         lastPhase = progress.Phase;
                         lastEmit = now;
                         throttled = null;
