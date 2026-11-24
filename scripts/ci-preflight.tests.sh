@@ -628,7 +628,8 @@ block="$(workflow_job windows)"
 prefix="${block%%      - name: Determine changed files*}"
 assert_contains "$prefix" 'run: pwsh -NoProfile -File scripts/test-script-syntax.ps1'
 assert_contains "$prefix" 'run: pwsh -NoProfile -File scripts/script-syntax.tests.ps1'
-assert_equal 0 "$(printf '%s\n' "$prefix" | grep -c 'if:')"
+# Step-level guards only: the job-level WINDOWS_CI switch sits at four spaces and is allowed.
+assert_equal 0 "$(printf '%s\n' "$prefix" | grep -c -E '^      (- |  )if:')"
 block="$(workflow_job linux-package)"
 assert_contains "$block" 'run: bash scripts/check-linux-native.tests.sh'
 for job in windows linux linux-package; do

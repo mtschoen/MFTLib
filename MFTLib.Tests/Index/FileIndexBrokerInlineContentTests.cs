@@ -13,6 +13,10 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class FileIndexBrokerInlineContentTests
 {
+    // A full chunk is more than a million requests. Under the parallel suite with coverage on a CI host, one run
+    // timed out at the shared 10 s guard while the work was still progressing, so this test allows two minutes.
+    static readonly TimeSpan FullChunkHangGuard = TimeSpan.FromMinutes(2);
+
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
@@ -118,7 +122,7 @@ public sealed class FileIndexBrokerInlineContentTests
                 answers++;
                 answered[answer.Index] = true;
             }, CancellationToken.None)
-            .WaitAsync(HangGuard, TestContext.CancellationToken);
+            .WaitAsync(FullChunkHangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(RootOperationOutcome.Failed, result.Outcome);
         Assert.AreEqual("the volume serial no longer matches", result.Failure!.Message);
