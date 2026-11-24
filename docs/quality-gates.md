@@ -177,6 +177,30 @@ sample, supply `-WindowsTrx`, `-WindowsCobertura`, `-LinuxTrx`, `-LinuxCobertura
 `-Commit`, `-RunId`, `-GeneratedAt`, and an ignored `-OutputPath`;
 `-LinuxNativeSummary` is optional. Do not generate the root report locally.
 
+### Windows outage switch
+
+While no Windows runner is available, the repository variable `WINDOWS_CI` set to `off`
+skips the `windows` job in `test.yml` and the `quality-gate` job in `aislop.yml`, for pull
+requests, merge-train pushes and main. The variable has no expiry. While it is `off`,
+Windows coverage and the Windows aislop gate are not validated, and `publish-report` (which
+needs `windows`) does not run, so the nightly run does not refresh `TEST-REPORT.md`.
+This is a temporary exception to the required checks above, not a change to them.
+
+The repository owner suspends Windows CI by setting the repository Actions variable
+`WINDOWS_CI` to `off` in the forge's repository Actions variables settings, and restores it by
+deleting the variable. Do not restore it by setting some other value.
+
+To confirm the restore, push to `main` after deleting the variable. The push must be eligible:
+not a push that only changes `TEST-REPORT.md` (`aislop.yml` ignores it) and not a push by
+`test-report-bot` (`publish-report` skips it). On that fresh `main` push, check that
+`test / windows` and `aislop / quality-gate` execute their steps rather than showing as
+skipped, and that `publish-report` then runs after `windows` and `linux` and either commits a
+fresh `TEST-REPORT.md` or logs `Report is unchanged.`
+
+The nightly run is not a receipt for both Windows checks. Only `test.yml` has a `schedule`;
+`aislop.yml` runs on `pull_request`, `push` and `workflow_dispatch`, with no schedule. The
+nightly confirms the Windows tests and report publication only, never the aislop gate.
+
 ## Local CI preflight
 
 Run from Git Bash on Windows or Bash on Linux:
