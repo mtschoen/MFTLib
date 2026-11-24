@@ -17,6 +17,7 @@ env:
 
 jobs:
   windows:
+    if: vars.WINDOWS_CI != 'off'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
