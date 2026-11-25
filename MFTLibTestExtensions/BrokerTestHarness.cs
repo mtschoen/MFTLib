@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using MFTLib;
 using MFTLib.Index;
 
@@ -51,6 +52,10 @@ public static class BrokerTestHarness
         return new BrokerSession(async cancellationToken =>
             (await launchAsync(cancellationToken).ConfigureAwait(false)).Process);
     }
+
+    internal static Task RunProgressPumpAsync(HostPipeWriter pipe, ChannelReader<BlockWriteProgress> reader,
+        TimeProvider timeProvider, CancellationToken cancellationToken) =>
+        JournalBrokerHost.RunProgressPumpAsync(pipe, reader, timeProvider, cancellationToken);
 
     static JournalBrokerHost CreateHost(ScriptedBrokerVolumes volumes)
     {

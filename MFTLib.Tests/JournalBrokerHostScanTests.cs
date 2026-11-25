@@ -2,6 +2,7 @@ using System.Buffers;
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Threading.Channels;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -501,6 +502,33 @@ public class JournalBrokerHostScanTests
         var remaining = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();
         Assert.AreSequenceEqual([BlockWriteProgress.Indexing], remaining);
+    }
+
+    [TestMethod]
+    public async Task ScanChannel_HeldScanningSampleIsFlushedBeforeThePhaseChangeFrame()
+    {
+        var timeProvider = new FakeTimeProvider();
+        await using var pipes = new InMemoryPipePair();
+        using var owner = new CancellationTokenSource();
+        var pipeWriter = new HostPipeWriter(pipes.Host, "progress-test", timeProvider, heartbeatsWhenIdle: false, owner);
+        var progress = Channel.CreateUnbounded<BlockWriteProgress>();
+        var pump = BrokerTestHarness.RunProgressPumpAsync(pipeWriter, progress.Reader, timeProvider, CancellationToken.None);
+
+        progress.Writer.TryWrite(BlockWriteProgress.Scanning(500, 1000));
+        var firstSample = (await HostChannelHarness.ReadFrameAsync(pipes.Client))!.Value;
+        Assert.AreEqual(BlockWriteProgress.Scanning(500, 1000), firstSample.Progress);
+
+        progress.Writer.TryWrite(BlockWriteProgress.Scanning(750, 1000));
+        progress.Writer.TryWrite(BlockWriteProgress.Scanning(1000, 1000));
+        progress.Writer.TryWrite(BlockWriteProgress.Indexing);
+        progress.Writer.Complete();
+        await pump;
+        await pipes.Host.DisposeAsync();
+        var frames = await HostChannelHarness.ReadToEndAsync(pipes.Client);
+
+        var remaining = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
+            .Select(frame => frame.Progress!.Value).ToArray();
+        Assert.AreSequenceEqual([BlockWriteProgress.Scanning(1000, 1000), BlockWriteProgress.Indexing], remaining);
     }
 
     [TestMethod]

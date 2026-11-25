@@ -286,10 +286,9 @@ public partial class JournalBrokerHostTests
         var frames = await ScanFramesAsync(harness);
 
         var samples = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).Select(f => f.Progress!.Value).ToList();
-        // Frozen time admits at most the first Scanning sample: the rest are held and dropped when the
-        // Indexing sample, a new phase, is written at once.
-        Assert.IsLessThanOrEqualTo(1, samples.Count(sample => sample.Phase == BlockScanPhase.Scanning),
-            "Frozen time admits at most one Scanning frame.");
+        // Frozen time admits at most the first Scanning sample and the newest held sample before Indexing.
+        Assert.IsLessThanOrEqualTo(2, samples.Count(sample => sample.Phase == BlockScanPhase.Scanning),
+            "Frozen time admits at most the first and newest held Scanning frames.");
         Assert.AreEqual(BlockWriteProgress.Indexing, samples[^1]);
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
