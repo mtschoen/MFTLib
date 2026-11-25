@@ -56,8 +56,8 @@ formatting (`BrokerLiveness.FormatSeconds`):
   for the caller's control pipe and each volume pipe.
 - `DiagnosticsFlushTimeout` (2 seconds): elevated `--broker` exit wait for diagnostic
   log flushing.
-- `ProgressThrottleInterval` (250 milliseconds): default minimum interval between
-  `ScanProgress` frames of one phase during a root block scan; the first sample of a new phase is written at once.
+- `ProgressThrottleInterval` (250 milliseconds): minimum interval between regular `ScanProgress` frames of one phase during a root block scan.
+  The pump flushes its newest held sample before the first frame of a new phase or on normal completion, even inside that interval.
 
 ## Session ownership
 

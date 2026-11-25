@@ -69,7 +69,7 @@ sealed partial class JournalBrokerHost
             });
 
         var pumpTask = Task.Run(
-            () => RunProgressPumpAsync(channel, progressChannel.Reader, _timeProvider, cancellationToken),
+            () => RunProgressPumpAsync(channel.Pipe, progressChannel.Reader, _timeProvider, cancellationToken),
             CancellationToken.None);
 
         try
@@ -120,9 +120,9 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    // A sample in a new phase is written at once, after the newest sample the throttle held from the old phase; within a
-    // phase, at most one per throttle interval.
-    internal static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BlockWriteProgress> reader,
+    // Regular same-phase samples are throttled. A phase change or normal completion flushes the newest
+    // held sample without waiting for the interval; on a phase change the new sample follows immediately.
+    internal static async Task RunProgressPumpAsync(HostPipeWriter pipe, ChannelReader<BlockWriteProgress> reader,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetTimestamp();
@@ -142,7 +142,7 @@ sealed partial class JournalBrokerHost
                         // A phase change must not drop the newest sample the throttle held back from the old phase.
                         if (progress.Phase != lastPhase && throttled is { } held)
                         {
-                            await channel.Pipe.WriteFrameAsync(
+                            await pipe.WriteFrameAsync(
                                 writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(held)),
                                 cancellationToken).ConfigureAwait(false);
                         }
@@ -151,7 +151,7 @@ sealed partial class JournalBrokerHost
                         lastEmit = now;
                         throttled = null;
                         var progressToEmit = progress;
-                        await channel.Pipe.WriteFrameAsync(
+                        await pipe.WriteFrameAsync(
                             writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(progressToEmit)),
                             cancellationToken).ConfigureAwait(false);
                     }
@@ -167,7 +167,7 @@ sealed partial class JournalBrokerHost
             // Cancellation must not reach this flush - a cancelled scan emits no partial final frame.
             if (throttled is { } pending)
             {
-                await channel.Pipe.WriteFrameAsync(
+                await pipe.WriteFrameAsync(
                     writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(pending)),
                     cancellationToken).ConfigureAwait(false);
             }

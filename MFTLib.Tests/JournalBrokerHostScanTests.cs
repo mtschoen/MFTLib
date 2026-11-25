@@ -511,9 +511,8 @@ public class JournalBrokerHostScanTests
         await using var pipes = new InMemoryPipePair();
         using var owner = new CancellationTokenSource();
         var pipeWriter = new HostPipeWriter(pipes.Host, "progress-test", timeProvider, heartbeatsWhenIdle: false, owner);
-        var channel = new JournalBrokerHost.VolumeChannel(pipes.Host, new VolumeKey('C'), pipeWriter);
         var progress = Channel.CreateUnbounded<BlockWriteProgress>();
-        var pump = JournalBrokerHost.RunProgressPumpAsync(channel, progress.Reader, timeProvider, CancellationToken.None);
+        var pump = BrokerTestHarness.RunProgressPumpAsync(pipeWriter, progress.Reader, timeProvider, CancellationToken.None);
 
         progress.Writer.TryWrite(BlockWriteProgress.Scanning(500, 1000));
         var firstSample = (await HostChannelHarness.ReadFrameAsync(pipes.Client))!.Value;
