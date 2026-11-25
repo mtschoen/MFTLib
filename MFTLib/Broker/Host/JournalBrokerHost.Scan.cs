@@ -122,7 +122,7 @@ sealed partial class JournalBrokerHost
 
     // A sample in a new phase is written at once, after the newest sample the throttle held from the old phase; within a
     // phase, at most one per throttle interval.
-    static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BlockWriteProgress> reader,
+    internal static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BlockWriteProgress> reader,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetTimestamp();

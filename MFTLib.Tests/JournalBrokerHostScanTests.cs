@@ -2,6 +2,7 @@ using System.Buffers;
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Threading.Channels;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -506,33 +507,25 @@ public class JournalBrokerHostScanTests
     [TestMethod]
     public async Task ScanChannel_HeldScanningSampleIsFlushedBeforeThePhaseChangeFrame()
     {
-        using var blockWriter = new RecordingBlockSectionWriter();
-        var firstReported = new TestGate();
-        var host = BrokerHostFactory.Create(new()
-        {
-            QueryCursor = _ => ArmedCursor,
-            ScanVolume = (_, _, reporting, _, _, _) =>
-            {
-                reporting.Progress!.Report(BlockWriteProgress.Scanning(500, 1000));
-                firstReported.MarkEntered();
-                firstReported.WaitForRelease();
-                // The clock never advances, so this sample falls inside the throttle window and is held.
-                reporting.Progress!.Report(BlockWriteProgress.Scanning(1000, 1000));
-                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
-            },
-            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
-            ProcessorCount = null,
-            TimeProvider = new FakeTimeProvider()
-        });
-        await using var harness = new HostChannelHarness(host, blockWriter);
+        var timeProvider = new FakeTimeProvider();
+        await using var pipes = new InMemoryPipePair();
+        using var owner = new CancellationTokenSource();
+        var pipeWriter = new HostPipeWriter(pipes.Host, "progress-test", timeProvider, heartbeatsWhenIdle: false, owner);
+        var channel = new JournalBrokerHost.VolumeChannel(pipes.Host, new VolumeKey('C'), pipeWriter);
+        var progress = Channel.CreateUnbounded<BlockWriteProgress>();
+        var pump = JournalBrokerHost.RunProgressPumpAsync(channel, progress.Reader, timeProvider, CancellationToken.None);
 
-        var pipe = await harness.OpenScanChannelAsync('C');
-
-        await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
-        var firstSample = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
+        progress.Writer.TryWrite(BlockWriteProgress.Scanning(500, 1000));
+        var firstSample = (await HostChannelHarness.ReadFrameAsync(pipes.Client))!.Value;
         Assert.AreEqual(BlockWriteProgress.Scanning(500, 1000), firstSample.Progress);
-        firstReported.Release();
-        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+
+        progress.Writer.TryWrite(BlockWriteProgress.Scanning(750, 1000));
+        progress.Writer.TryWrite(BlockWriteProgress.Scanning(1000, 1000));
+        progress.Writer.TryWrite(BlockWriteProgress.Indexing);
+        progress.Writer.Complete();
+        await pump;
+        await pipes.Host.DisposeAsync();
+        var frames = await HostChannelHarness.ReadToEndAsync(pipes.Client);
 
         var remaining = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();

@@ -8,7 +8,7 @@ sealed partial class JournalBrokerHost
     // One volume pipe and what its operation needs to write to it. The pipe writer's lock keeps a
     // scan's progress pump, its operation and the heartbeat sender from interleaving frames on
     // this pipe only; the pipe writer is also the operation state the channel's source reports to.
-    sealed class VolumeChannel(Stream stream, VolumeKey volume, HostPipeWriter pipe)
+    internal sealed class VolumeChannel(Stream stream, VolumeKey volume, HostPipeWriter pipe)
     {
         public Stream Stream { get; } = stream;
         public VolumeKey Volume { get; } = volume;
