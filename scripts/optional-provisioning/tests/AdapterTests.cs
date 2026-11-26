@@ -7,6 +7,7 @@ internal static class AdapterTests
     internal static void Check(ProcessResult result, ProcessFixture fixture, int installed, int provisionerExit)
     {
         TestProgram.Equal(0, result.ExitCode, "init exit");
+        TestProgram.Contains("fixture dotnet restore output", result.Output);
         var calls = fixture.Calls();
         var provisioning = calls.Where(call => call[0] is "schoen-lab-onboard" or "schoen-lab").ToArray();
         TestProgram.Equal(installed == 0 ? 0 : 1, provisioning.Length, "selected provisioner invocation");
@@ -68,7 +69,6 @@ internal static class AdapterTests
             TestProgram.Equal(false, failing.Calls().Any(call => call[0] == (OperatingSystem.IsWindows() ? "MSBuild" : "cmake")),
                 "worktree-only restore failure stops before the native build");
         }
-        if (OperatingSystem.IsWindows()) return;
         using var missing = new ProcessFixture(root, 3, 0);
         File.Delete(Path.Combine(missing.Commands, "dotnet"));
         var missingResult = missing.Invoke(entry, true, worktreeOnly: true);
@@ -212,6 +212,9 @@ internal static class AdapterTests
             TestProgram.Equal(true, calls.Any(call => call[0] == (OperatingSystem.IsWindows() ? "MSBuild" : "cmake")), "native build forwarding");
             if (!OperatingSystem.IsWindows()) CheckManagedSmokeInvocation(failed, calls);
         }
+        // Windows init.ps1 branch logic (launcher, restore and build failure) is tested in process by
+        // scripts/init.tests.ps1; Linux has no in-process tests, so init.sh keeps these launches.
+        if (OperatingSystem.IsWindows()) return;
         using (var launcher = new ProcessFixture(root, 3, 0))
         {
             launcher.EnvironmentValues["MFTLIB_INIT_LAUNCHER_FAILURE"] = "1";
@@ -250,14 +253,32 @@ internal static class AdapterTests
         ProcessFixture.BuildSharedHelper(root);
         var entry = OperatingSystem.IsWindows() ? "init.ps1" : "init.sh";
         CheckProvisioningOutcomes(root, entry);
-        CheckWorktreeOnly(root, entry);
+        // Windows worktree-only paths are tested in process (scripts/init.tests.ps1) and through init.bat in CheckBatchEntry.
+        if (!OperatingSystem.IsWindows()) CheckWorktreeOnly(root, entry);
         if (OperatingSystem.IsWindows())
         {
             CheckBatchEntry(root);
             using var errorPreferenceFixture = new ProcessFixture(root, 3, 23);
-            var script = "$PSNativeCommandUseErrorActionPreference=$true; & './init.ps1'; exit $LASTEXITCODE";
-            Check(ProcessFixture.Run(ProcessFixture.Host, new[] { "-NoProfile", "-Command", script },
-                errorPreferenceFixture.Repository, errorPreferenceFixture.EnvironmentValues), errorPreferenceFixture, 3, 23);
+            var script = """
+                $PSNativeCommandUseErrorActionPreference = $true
+                $env:MFTLIB_INIT_REQUIRED_FAILURE = '1'
+                try {
+                    & './init.ps1' | ForEach-Object { "failure pipeline: $_" }
+                    throw 'Expected restore to terminate init'
+                } catch [System.Management.Automation.NativeCommandExitException] {
+                    if ($_.Exception.ExitCode -ne 17) { throw }
+                }
+                Remove-Item Env:MFTLIB_INIT_REQUIRED_FAILURE
+                & './init.ps1' | ForEach-Object { "success pipeline: $_" }
+                exit $LASTEXITCODE
+                """;
+            var result = ProcessFixture.Run(ProcessFixture.Host, new[] { "-NoProfile", "-Command", script },
+                errorPreferenceFixture.Repository, errorPreferenceFixture.EnvironmentValues);
+            Check(result, errorPreferenceFixture, 3, 23);
+            TestProgram.Contains("failure pipeline: fixture dotnet restore output", result.Output);
+            var restore = result.Output.IndexOf("success pipeline: fixture dotnet restore output", StringComparison.Ordinal);
+            TestProgram.Equal(true, restore >= 0 && restore < result.Output.IndexOf("Done.", StringComparison.Ordinal),
+                "restore stdout reaches the caller's success stream before the summary");
         }
         Console.WriteLine("Init adapter regression tests passed.");
         return 0;

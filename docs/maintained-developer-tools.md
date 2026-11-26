@@ -70,6 +70,8 @@ have Syntax as their baseline coverage.
 | `scripts/test-release-package-validation.ps1` | Regress package requirements and native rejection controls | agent, release, CI | Syntax; Windows offline release guards and Windows package smoke native integration |
 | `scripts/test-release-packaging.ps1` | Validate full two-platform release packages and package smoke | release, attended | Syntax; full WSL packaging is hand-run |
 | `scripts/test-script-syntax.ps1` | Parse the discovered script set without running it | agent, CI | Syntax; Windows script-syntax.tests.ps1 |
+| `scripts/init.tests.ps1` | Pester 6 tests of `init.ps1` branch logic, exit paths and worktree-only mode with mocked commands | agent, CI | Syntax; Windows Test init.ps1 in process (Pester) |
+| `scripts/test-init-pester.ps1` | Run `init.tests.ps1` in one process; fail clearly when Pester 6 is absent | agent, CI | Syntax; Windows Test init.ps1 in process (Pester) |
 | `scripts/windows-tools.ps1` | Discover checked Windows build and inspection tools | attended, agent, release via callers | Syntax; Windows build-windows.tests.ps1 |
 | `scripts/optional-provisioning/OptionalProvisioning.csproj` | Dispatch optional checkout provisioning | attended, agent via init | Windows and Linux optional-provisioning adapter regression harness |
 | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj` | Run offline provisioning and init regression fixtures | agent, CI | Windows and Linux Test optional provisioning and platform init steps |

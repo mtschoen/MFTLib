@@ -30,6 +30,7 @@ preflight_execute() {
         generate-test-report) pwsh -NoProfile -File scripts/generate-test-report.ps1 ;;
         release-offline) bash scripts/test-release-offline.sh ;;
         windows) pwsh -NoProfile -File scripts/run-coverage.ps1 -NonInteractive ;;
+        init-pester) pwsh -NoProfile -File scripts/test-init-pester.ps1 ;;
         windows-package-smoke) pwsh -NoProfile -File scripts/smoke-package-windows.ps1 ;;
         linux) bash scripts/coverage-linux.sh ;;
         sync) bash scripts/sync_consumers.tests.sh ;;
@@ -142,6 +143,11 @@ preflight_main() {
         preflight_gate windows init-windows windows init
     else
         preflight_gate init init-windows windows init
+    fi
+    if [[ "$mode" == only && " ${scopes[*]} " == *" windows "* && " ${scopes[*]} " != *" init "* ]]; then
+        preflight_gate windows init-pester windows yes
+    else
+        preflight_gate init init-pester windows yes
     fi
     if [[ "$mode" == only && " ${scopes[*]} " == *" linux "* && " ${scopes[*]} " != *" init "* ]]; then
         preflight_gate linux init-linux linux init

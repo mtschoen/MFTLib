@@ -120,6 +120,8 @@ build ensures initialization produced the expected output.
 
 The `windows` job also runs `scripts/ci-post-clean-destructive.ps1`, the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: the step is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The step stays in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
+The `windows` job also runs `scripts/test-init-pester.ps1` (Pester 6, one process, mocks) for the branch logic of `init.ps1`, guarded by the same skip-build condition. Pester 6 is a checked, never installed, Windows prerequisite: a runner without it fails that step and is fixed at the service.
+
 Both platform test jobs also run the package-free init/provisioning regression harness before coverage, guarded by the `init` [path scope](#path-scopes). These offline checks exercise the actual entry points with command doubles, including absent and failed optional provisioning, and run on pull requests. They are separate from the Windows main-push-only post-clean verification and the Linux real-build initialization check.
 
 The Windows job runs `bash scripts/test-release-offline.sh`, which runs
@@ -249,6 +251,7 @@ unfiltered, subject to their existing host availability.
 | `coverage-status` | Run (pwsh) | Run (requires pwsh) | `scripts/test-coverage-status.ps1`, offline publisher regression tests |
 | `generate-test-report` | Run (pwsh) | Run (requires pwsh) | `scripts/generate-test-report.ps1` with no arguments, offline summary-generator regressions |
 | `init` / `init-windows`, `init-linux` | Windows adapter matrix | Linux adapter matrix | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --adapters`; also selected by the matching platform scope |
+| `init` / `init-pester` | Run | Skip | `scripts/test-init-pester.ps1`, in-process Pester 6 tests of `init.ps1` branch logic; also selected by the Windows scope |
 | `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
 | `linux-package` | Skip | Run | `check-linux-native.tests.sh`, `build-linux.sh` (builds, then runs the managed `TestCategory=Smoke` tier), `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |

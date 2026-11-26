@@ -112,15 +112,29 @@ That shim combines spaces, a literal `%NAME%` with a hostile value, `!`, `^` and
 complete argument vector and exit code. The entry point (`init.ps1` on Windows, `init.sh` on Linux) is launched for:
 the real `dotnet run` from the fixture copy (installed provisioners, exit 0; this verifies the copied helper file list,
 the delegation and the completion summary), no provisioner installed, a failing provisioner with `-Build`/`--build`
-forwarding, launcher failure, required restore failure, required build failure, and worktree-only mode (without and
-with build, restore failure, and on Linux a missing dotnet). Windows adds the `PSNativeCommandUseErrorActionPreference`
-case and three `init.bat` launches. With only `-WorktreeOnly`, the Windows PowerShell fallback restores the solution
+forwarding, and on Linux also launcher failure, required restore failure, required build failure and worktree-only
+mode (without and with build, restore failure, and a missing dotnet); on Windows those four are tested in process
+(below). Windows adds the `PSNativeCommandUseErrorActionPreference`
+case (restore stdout reaches the caller before `Done.` and survives a terminating restore error)
+and three `init.bat` launches. With only `-WorktreeOnly`, the Windows PowerShell fallback restores the solution
 without a managed or native build. With `-Build -WorktreeOnly`, the preferred `pwsh` double returns exit code 37
 through the wrapper. Those two check the exact arguments received by the selected shell. The third runs a full init under
 Windows PowerShell with no `pwsh` and a failing optional provisioner, and requires exit 0 with the diagnostics.
 
-Local CI preflight includes this gate under `--only init` and under the matching
-`windows` or `linux` scope. The other platform is reported as unavailable.
+`init.ps1` is functions plus a thin entry point that runs only when the script is executed, never when it is
+dot-sourced. `scripts/init.tests.ps1` dot-sources it and tests the branch logic in one PowerShell process with
+Pester 6 mocks for `dotnet`, `aislop`, `git` and the helper functions that reach the machine, plus a temporary
+`build-windows.ps1` that can throw or return a nonzero exit code. The worktree-only success and restore-failure cases invoke a
+temporary copy of `init.ps1` in that same process to check switch binding, the commands dispatched and the caller-visible exit code. The tests cover
+every `exit` path (`Invoke-Init` sets the status by reference and the entry point exits once), `-WorktreeOnly` with and without
+`-Build`, restore, hook-install and build failure, the `settings.json` line-ending normalization, and each
+optional-provisioning status. Run it with `pwsh -NoProfile -File scripts/test-init-pester.ps1`. The real launches
+above remain only where an entry point's own behavior is the subject: the real `dotnet run`, `init.bat`
+argument transport and exit codes, the `PSNativeCommandUseErrorActionPreference` case and self-location.
+
+Local CI preflight includes the harness gate under `--only init` and under the matching
+`windows` or `linux` scope, and the Pester gate (`init-pester`, Windows only) under the same Windows selections.
+The other platform is reported as unavailable.
 
 For real-build acceptance, commit the implementation locally, provision the
 documented dependencies beforehand, and run:
@@ -135,4 +149,4 @@ a successful optional command and once with a failed one. Windows covers
 The existing Windows main-push-only post-clean verification remains a separate
 check of the original CI checkout and is not replaced by these regressions.
 
-Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (managed coverage summaries and HTML reports). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).
+Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (managed coverage summaries and HTML reports), Pester 6 (the in-process init tests; a runner without it is fixed at the service, never by a workflow step). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).

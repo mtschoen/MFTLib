@@ -218,14 +218,16 @@ try {
     Assert-Throws { Get-WindowsCodeCoverage } 'Visual Studio with MSBuild was not found'
     $discoveryResult = $visualStudio
 
-    $initProbe = Get-ScriptSection (Join-Path (Split-Path $PSScriptRoot) 'init.ps1') `
-        "Write-Host 'Checking prerequisites...'" "if (-not (Test-CommandAvailable 'dotnet'))"
+    $discoveryCommand = ${function:Invoke-WindowsBuildCommand}
     $discoveryFailure = $true
     try {
         & {
-            $missingPrerequisites = [Collections.Generic.List[string]]::new()
+            # Dot-sourcing init.ps1 loads its functions and its own windows-tools.ps1; keep this test's command seam.
+            . (Join-Path (Split-Path $PSScriptRoot) 'init.ps1')
+            ${function:Invoke-WindowsBuildCommand} = $discoveryCommand
             function Test-CommandAvailable { param([string] $Name) return $false }
-            & ([scriptblock]::Create($initProbe)) 6>$null
+            function Get-InstalledPesterVersion { return [version]'6.2.0' }
+            $missingPrerequisites = (Write-PrerequisiteReport 6>$null).Missing
             Assert-Equal $missingPrerequisites.Count 4 'init collects every missing prerequisite'
             Assert-Equal ($missingPrerequisites[1].Contains('vswhere exited with code 23')) $true 'init reports discovery error'
             Assert-Equal ($missingPrerequisites[3].StartsWith('reportgenerator')) $true 'init continues after discovery failure'
@@ -257,7 +259,7 @@ finally {
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 $callers = @(
     @{ Path = 'scripts/run-coverage.ps1'; Invocation = '& "$PSScriptRoot/build-windows.ps1" -Configuration $Configuration' },
-    @{ Path = 'init.ps1'; Invocation = '& "$repositoryRoot/scripts/build-windows.ps1" -Configuration Release -NoRestore' },
+    @{ Path = 'init.ps1'; Invocation = '& "$RepositoryRoot/scripts/build-windows.ps1" -Configuration Release -NoRestore' },
     @{ Path = '.gitea/workflows/aislop.yml'; Invocation = '& "$env:GITHUB_WORKSPACE/scripts/build-windows.ps1" -Configuration Release' },
     @{ Path = 'scripts/native-coverage.ps1'; Invocation = '& "$PSScriptRoot/build-windows.ps1" -Configuration Debug' }
 )

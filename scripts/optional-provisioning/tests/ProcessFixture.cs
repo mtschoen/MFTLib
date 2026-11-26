@@ -148,6 +148,7 @@ internal sealed class ProcessFixture : IDisposable
                 arguments.Any(argument => argument.EndsWith("OptionalProvisioning.csproj", StringComparison.Ordinal)):
                 return Forward(Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_DOTNET")!, arguments);
             case "dotnet" when arguments.FirstOrDefault() is "restore" or "build":
+                Console.WriteLine($"fixture dotnet {arguments[0]} output");
                 return Environment.GetEnvironmentVariable("MFTLIB_INIT_REQUIRED_FAILURE") == "1" ||
                     (arguments[0] == "build" && Environment.GetEnvironmentVariable("MFTLIB_INIT_BUILD_FAILURE") == "1") ? 17 : 0;
             case "pwsh":

@@ -77,9 +77,11 @@ assert_equal 0 "$status"
 assert_contains "$output" 'PASS windows'
 assert_contains "$output" 'PASS windows-package-smoke'
 assert_contains "$output" 'PASS init-windows'
+assert_contains "$output" 'PASS init-pester'
 run_case --only init
 assert_equal 0 "$status"
 assert_contains "$output" 'PASS init-windows'
+assert_contains "$output" 'PASS init-pester'
 assert_contains "$output" 'SKIP init-linux: requires linux (host windows)'
 failing_gate=init-windows
 run_case --only windows
@@ -676,6 +678,7 @@ assert_equal 'Setup MSBuild: skip_build
 Select runner-provisioned reportgenerator: skip_build
 Test the CI preflight dispatcher: run_preflight_tests
 Test Windows build script: run_build_script
+Test init.ps1 in process (Pester): skip_build
 Test optional provisioning and Windows init: run_init
 Test pinned aislop checkout gate: run_aislop_tests
 Test coverage status guard: run_coverage_status
@@ -717,6 +720,7 @@ assert_equal "Test Windows build script: invalid         if: false && steps.chan
 root="$real_root"
 block="$(workflow_job windows)"
 assert_contains "$block" 'run: bash scripts/ci-preflight.tests.sh'
+assert_contains "$block" 'run: pwsh -NoProfile -File scripts/test-init-pester.ps1'
 assert_contains "$block" 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
 assert_contains "$block" "- name: Verify post-clean initialization (destructive)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'

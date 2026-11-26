@@ -63,6 +63,11 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/build-windows.tests.ps1
 
+      - name: Test init.ps1 in process (Pester)
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-init-pester.ps1
+
       - name: Test optional provisioning and Windows init
         if: steps.changed-files.outputs.run_init != 'false'
         shell: pwsh
