@@ -7,7 +7,8 @@
 
 param(
     [string]$Configuration = "Release",
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [switch]$NativeOutputSupplied
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,7 +84,7 @@ foreach ($path in @($jsonFile, $coberturaFile, $reportDir)) {
     }
 }
 
-& "$PSScriptRoot/build-windows.ps1" -Configuration $Configuration
+& "$PSScriptRoot/build-windows.ps1" -Configuration $Configuration -NativeOutputSupplied:$NativeOutputSupplied
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 $testResultsDirectory = Join-Path $reportDir 'test-results'

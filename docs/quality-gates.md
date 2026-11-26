@@ -144,6 +144,54 @@ Windows jobs run on the host-mode `windows-latest` runner, where toolchains are 
 
 Keep `pwsh` on the runner account's PATH and configure `DOTNET_INSTALL_DIR` at the runner service, never through workflow bootstrap steps. Use amd64 MSBuild and the shared Windows build script. Keep coverlet's comma-separated include filter in the project file rather than passing it through PowerShell. Compute file hashes in the shell because `hashFiles()` can evaluate empty on this runner. Every workflow upload uses the pinned `ChristopherHX/gitea-upload-artifact` action, because `actions/upload-artifact@v3` uploads are not listed by this Gitea deployment's artifacts REST API, which pr-crew reviews read.
 
+## Native build cache
+
+The Windows job, the Linux job (coverage build) and the Linux-package job cache their native build output with
+`actions/cache@v4`, so a run whose native inputs are unchanged restores the output and skips only the native build.
+Everything else runs: managed builds, tests, coverage, checks and artifacts. The cache applies to every event type
+(pull requests, main pushes, merge train, nightly); it is not path filtering.
+
+Each job computes its key with `bash scripts/native-build-cache-key.sh <flavor>` (`windows-release`,
+`linux-coverage`, `linux-release`; `windows-debug` is also accepted) in one step, in the shell, because `hashFiles()`
+can evaluate to an empty string on act_runner. The key hashes, in order: the flavor; the toolchain identity (the MSVC
+toolsets and Windows SDKs found through `Get-WindowsVisualStudioInstallation` in `scripts/windows-tools.ps1`, or the
+`g++ --version` and `cmake --version` banners); the tree hash `git rev-parse HEAD:MFTLibNative`; the blob hashes of
+`Directory.Build.props`, `Directory.Build.targets`, `MFTLibNative.Linux.props`, `scripts/build-linux.sh`,
+`scripts/build-windows.ps1`, `scripts/coverage-linux.sh`, `scripts/native-build-cache-key.sh` and
+`scripts/windows-tools.ps1`; and, on Linux, the workspace path (CMake and gcov record absolute build paths, so the
+coverage directory restores only at the same path). `vars.CACHE_EPOCH` is hashed for manual invalidation. The
+list lives in `native_cache_key_files`; `scripts/native-build-cache.tests.sh` pins it, shows that each input, the flavor,
+the toolchain and the epoch change the key, and, where `g++` exists, runs the compiler's dependency list over every
+tracked native source. On Linux it also preprocesses the translation units with the compile commands CMake generates
+for Release and Debug with coverage. Both checks reject non-system headers outside `MFTLibNative/`; neither inspects
+Windows-only includes. Make-escaped dependency names (including names with spaces) fail these checks.
+
+Windows Actions builds exclude `Microsoft.Cpp.x64.user.props` from `UserRootDir`: a runner's personal property sheet
+is not a cache input. Local Debug and Release builds still import it when present. No Windows key is produced outside Actions
+or when `CL` or `_CL_` supplies additional compiler options.
+
+Linux cache keys are for the workflow's clean CMake configurations with `CXX=g++`. A different or unset `CXX`,
+custom `CXXFLAGS` or `LDFLAGS`, GCC include/library/tool search overrides, or a CMake toolchain file or compiler/linker
+launcher bypasses the cache. The key does not describe arbitrary local CMake arguments or system headers; retire keys
+with `CACHE_EPOCH` when changing the runner image without changing the version banners.
+
+The key is exact. The cache steps never use `restore-keys`: a prefix match would restore a binary built from different
+sources and report `cache-hit` false while still leaving the files in place. Cached paths: Windows
+`x64/Release/MFTLibNative.{dll,pdb,lib}`; Linux coverage `build/linux-coverage` (including any `*.gcda`, which the
+script discards before testing); Linux release `build/linux/libMFTLibNative.so`. The post step saves only when the job succeeds, and an
+exact hit is never saved again.
+
+A successful restore with an exact hit passes one input to the build scripts: `-NativeOutputSupplied` for `run-coverage.ps1` and
+`build-windows.ps1`, `--native-output-supplied` for `build-linux.sh` and `coverage-linux.sh`. The script validates the
+restored files itself (Windows: dll, pdb and lib present and non-empty; coverage: library, `CMakeCache.txt` and a
+non-empty `.gcno` note for every object in Ninja's library input list; release: the library) and skips only the native
+step. Without a validated hit, Actions rebuilds coverage from an empty directory: a failed extraction can leave
+up-to-date objects without their notes. Local builds without the supplied-output flag remain incremental. MSBuild's
+incremental checks are not relied on, because restored timestamps and absent tlogs make them untrustworthy. A key
+failure, a cache miss or a failed restore builds as before, and a bad cache entry can be retired by changing
+`CACHE_EPOCH`. The Linux job's `init.sh --build` and the post-clean `init` step on main still build natively, because
+they verify initialization itself.
+
 ## Generated test summary
 
 `test / report-guard` runs on every pull request and rejects any PR diff touching

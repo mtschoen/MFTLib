@@ -29,6 +29,17 @@ function Get-WindowsVisualStudioInstallation {
     return $installation.Trim()
 }
 
+function Get-WindowsNativeCacheToolchain {
+    $ErrorActionPreference = 'Stop'
+    $installation = Get-WindowsVisualStudioInstallation
+    $compilerRoot = Join-Path $installation 'VC/Tools/MSVC'
+    $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/Include'
+    $toolsets = Get-ChildItem -LiteralPath $compilerRoot -Directory | Sort-Object Name | ForEach-Object Name
+    $sdks = Get-ChildItem -LiteralPath $sdkRoot -Directory | Sort-Object Name | ForEach-Object Name
+    if (-not $toolsets -or -not $sdks) { throw 'Native cache requires both MSVC toolsets and Windows SDKs.' }
+    "msvc=$($toolsets -join ',') sdk=$($sdks -join ',')"
+}
+
 function Get-WindowsMSBuild {
     $installation = Get-WindowsVisualStudioInstallation
     $msbuild = Join-Path $installation 'MSBuild/Current/Bin/amd64/MSBuild.exe'

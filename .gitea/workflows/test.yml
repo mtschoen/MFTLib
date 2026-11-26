@@ -98,11 +98,38 @@ jobs:
         shell: bash
         run: bash scripts/test-release-offline.sh
 
+      # The native build cache key is computed in the shell for the same reason as the NuGet key below. The key is
+      # exact (no restore-keys), so a hit is the binary built from identical native inputs; any other outcome builds.
+      - name: Compute the native build cache key
+        id: native-key
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: bash
+        env:
+          CACHE_EPOCH: ${{ vars.CACHE_EPOCH }}
+        run: bash scripts/native-build-cache-key.sh windows-release
+
+      # All three native restores rely on closed Gitea sign-up and owner-only writers
+      # (including the owner's bots). Revisit before accepting outside pull requests.
+      - name: Cache the native build output
+        id: native-cache
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true' && steps.native-key.outcome == 'success' && steps.native-key.outputs.key != ''
+        uses: actions/cache@v4
+        with:
+          path: |
+            x64/Release/MFTLibNative.dll
+            x64/Release/MFTLibNative.pdb
+            x64/Release/MFTLibNative.lib
+          key: ${{ steps.native-key.outputs.key }}
+
       - name: Run coverage
         id: coverage
         if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         working-directory: ${{ github.workspace }}
+        env:
+          NATIVE_CACHE_HIT: ${{ steps.native-cache.outcome == 'success' && steps.native-cache.outputs.cache-hit == 'true' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $stdout = 'MFTLib.Tests/coverage-run.stdout.log'
@@ -112,8 +139,10 @@ jobs:
           # alive for their 15-minute idle timeout, which held this step open long
           # after the tests had passed (PR 251, run 35963). Reading .Handle before
           # the child exits keeps ExitCode readable after WaitForExit.
+          $coverageArguments = @('-NoProfile', '-File', 'scripts/run-coverage.ps1', '-NonInteractive')
+          if ($env:NATIVE_CACHE_HIT -eq 'true') { $coverageArguments += '-NativeOutputSupplied' }
           $process = Start-Process -FilePath (Get-Command pwsh).Source `
-            -ArgumentList '-NoProfile', '-File', 'scripts/run-coverage.ps1', '-NonInteractive' `
+            -ArgumentList $coverageArguments `
             -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
             -NoNewWindow -PassThru
           $null = $process.Handle
@@ -163,6 +192,8 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
+    env:
+      CXX: g++
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -183,6 +214,10 @@ jobs:
       - name: Test the CI preflight dispatcher
         if: steps.changed-files.outputs.run_preflight_tests != 'false'
         run: bash scripts/ci-preflight.tests.sh
+
+      - name: Test the native build cache
+        if: steps.changed-files.outputs.skip_build != 'true'
+        run: bash scripts/native-build-cache.tests.sh
 
       - name: Test optional provisioning and Linux init
         if: steps.changed-files.outputs.run_init != 'false'
@@ -218,9 +253,29 @@ jobs:
           dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter 'FullyQualifiedName~AgentInstructionsTests'
           bash scripts/test-agent-instructions.sh
 
+      - name: Compute the native build cache key
+        id: native-key
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: bash
+        env:
+          CACHE_EPOCH: ${{ vars.CACHE_EPOCH }}
+        run: bash scripts/native-build-cache-key.sh linux-coverage
+
+      # The coverage build directory restores at this same workspace path (CMake and gcov record absolute paths; the
+      # key includes the path). Restored .gcda counters are discarded before testing.
+      - name: Cache the native coverage build
+        id: native-cache
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true' && steps.native-key.outcome == 'success' && steps.native-key.outputs.key != ''
+        uses: actions/cache@v4
+        with:
+          path: build/linux-coverage
+          key: ${{ steps.native-key.outputs.key }}
+
       - name: Run coverage
         if: steps.changed-files.outputs.skip_build != 'true'
-        run: bash scripts/coverage-linux.sh
+        run: bash scripts/coverage-linux.sh ${{ steps.native-cache.outcome == 'success' && steps.native-cache.outputs.cache-hit == 'true' && '--native-output-supplied' || '' }}
 
       - name: Upload coverage artifact
         if: always() && steps.changed-files.outputs.skip_build != 'true'
@@ -258,6 +313,8 @@ jobs:
   # See [Linux package](../../docs/linux-package.md); the coverage build is never shipped.
   linux-package:
     runs-on: ubuntu-latest
+    env:
+      CXX: g++
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -272,9 +329,27 @@ jobs:
         shell: bash
         run: bash scripts/check-linux-native.tests.sh
 
+      - name: Compute the native build cache key
+        id: native-key
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: bash
+        env:
+          CACHE_EPOCH: ${{ vars.CACHE_EPOCH }}
+        run: bash scripts/native-build-cache-key.sh linux-release
+
+      - name: Cache the native Release library
+        id: native-cache
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true' && steps.native-key.outcome == 'success' && steps.native-key.outputs.key != ''
+        uses: actions/cache@v4
+        with:
+          path: build/linux/libMFTLibNative.so
+          key: ${{ steps.native-key.outputs.key }}
+
       - name: Build the Release library and run the managed Smoke tier
         if: steps.changed-files.outputs.skip_build != 'true'
-        run: bash scripts/build-linux.sh
+        run: bash scripts/build-linux.sh ${{ steps.native-cache.outcome == 'success' && steps.native-cache.outputs.cache-hit == 'true' && '--native-output-supplied' || '' }}
 
       # Explicit bash with pipefail: the container default is sh -e, which would return tee's status and let a failing check pass.
       - name: Check the library

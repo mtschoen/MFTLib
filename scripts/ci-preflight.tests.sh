@@ -637,6 +637,11 @@ assert_contains "$block" 'run: bash scripts/check-linux-native.tests.sh'
 for job in windows linux linux-package; do
     block="$(workflow_job "$job")"
     assert_equal 1 "$(printf '%s\n' "$block" | grep -c 'id: changed-files')"
+    assert_contains "$block" 'id: native-key
+        continue-on-error: true'
+    assert_contains "$block" "id: native-cache
+        continue-on-error: true
+        if: steps.changed-files.outputs.skip_build != 'true' && steps.native-key.outcome == 'success' && steps.native-key.outputs.key != ''"
     assert_equal 1 "$(printf '%s\n' "$block" | grep -c 'bash scripts/ci-changed-files.sh')"
     for obsolete in 'check_files()' 'git fetch' 'git diff' '-notmatch'; do
         assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c -- "$obsolete")"
@@ -685,6 +690,8 @@ Test coverage status guard: run_coverage_status
 Test summary report generator: run_generate_test_report
 Test shared coverage child runner: run_coverage_child
 Test offline release guards: run_release_offline
+Compute the native build cache key: skip_build
+Cache the native build output: skip_build
 Run coverage: skip_build
 Smoke Windows NuGet native resolution: skip_build
 Upload coverage artifact: skip_build
@@ -692,13 +699,18 @@ Post coverage status: skip_build
 Verify post-clean initialization (destructive): skip_build' "$(step_guards windows)"
 assert_equal 'Test the consumer sync script: run_sync
 Test the CI preflight dispatcher: run_preflight_tests
+Test the native build cache: skip_build
 Test optional provisioning and Linux init: run_init
 Compute NuGet cache key: skip_build
 Cache NuGet packages: skip_build
 Verify Linux init Release x64 output: skip_build
+Compute the native build cache key: skip_build
+Cache the native coverage build: skip_build
 Run coverage: skip_build
 Upload coverage artifact: skip_build' "$(step_guards linux)"
 assert_equal 'Test Linux native acceptance checks: run_linux_package_tests
+Compute the native build cache key: skip_build
+Cache the native Release library: skip_build
 Build the Release library and run the managed Smoke tier: skip_build
 Check the library: skip_build
 Smoke test the package: skip_build

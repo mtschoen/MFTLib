@@ -106,6 +106,22 @@ try {
         if (($Arguments -join '|') -ceq $script:failureArguments) { throw 'build tool exited with code 23' }
     }
 
+    & {
+        $compilerRoot = Join-Path $visualStudio 'VC/Tools/MSVC'
+        $sdkRoot = Join-Path $programFiles 'Windows Kits/10/Include'
+        New-Item -ItemType Directory -Path (Join-Path $sdkRoot '10.0') -Force | Out-Null
+        $ErrorActionPreference = 'Continue' # Match a fresh pwsh -Command process.
+        Assert-Throws { Get-WindowsNativeCacheToolchain } $compilerRoot
+        New-Item -ItemType Directory -Path $compilerRoot -Force | Out-Null
+        Assert-Throws { Get-WindowsNativeCacheToolchain } 'requires both'
+        New-Item -ItemType Directory -Path (Join-Path $compilerRoot '14.44') | Out-Null
+        Assert-Equal (Get-WindowsNativeCacheToolchain) 'msvc=14.44 sdk=10.0' 'complete toolchain identity'
+        Remove-Item -LiteralPath (Join-Path $sdkRoot '10.0')
+        Assert-Throws { Get-WindowsNativeCacheToolchain } 'requires both'
+        Remove-Item -LiteralPath $sdkRoot
+        Assert-Throws { Get-WindowsNativeCacheToolchain } $sdkRoot
+    }
+
     foreach ($configuration in @('Release', 'Debug')) {
         foreach ($noRestore in @($false, $true)) {
             $commands.Clear()
@@ -207,6 +223,34 @@ try {
         Assert-Equal (Get-Location).Path $originalLocation 'failure restores location'
     }
     $failureArguments = $null
+
+    # A supplied native output skips only the native build, and only when dll, pdb and lib are all present and non-empty.
+    $suppliedDirectory = Join-Path $repository 'x64/Release'
+    foreach ($case in @(
+        @{ Name = 'valid'; Skips = $true },
+        @{ Name = 'missing dll'; Absent = 'dll'; Skips = $false },
+        @{ Name = 'missing pdb'; Absent = 'pdb'; Skips = $false },
+        @{ Name = 'empty lib'; Hollow = 'lib'; Skips = $false }
+    )) {
+        New-Item -ItemType Directory -Path $suppliedDirectory -Force | Out-Null
+        foreach ($extension in @('dll', 'pdb', 'lib')) {
+            Set-Content -LiteralPath (Join-Path $suppliedDirectory "MFTLibNative.$extension") -Value 'restored'
+        }
+        if ($case.Absent) { Remove-Item -LiteralPath (Join-Path $suppliedDirectory "MFTLibNative.$($case.Absent)") }
+        if ($case.Hollow) { Clear-Content -LiteralPath (Join-Path $suppliedDirectory "MFTLibNative.$($case.Hollow)") }
+        $commands.Clear()
+        # A valid supplied output needs no Visual Studio discovery at all.
+        $discoveryFailure = $case.Skips
+        Invoke-WindowsBuild -RepositoryRoot $repository -NoRestore -NativeOutputSupplied 6>$null
+        $discoveryFailure = $false
+        $expected = @(Get-ExpectedBuildCommands 'Release' $true)
+        if ($case.Skips) { $expected = @($expected | Where-Object { $_.FilePath -ne $msbuild }) }
+        Assert-Equal ($commands.ToArray() | ConvertTo-Json -Depth 5 -Compress) ($expected | ConvertTo-Json -Depth 5 -Compress) "supplied native output: $($case.Name)"
+    }
+    $commands.Clear()
+    Remove-Item -LiteralPath $suppliedDirectory -Recurse -Force
+    Invoke-WindowsBuild -RepositoryRoot $repository -NoRestore 6>$null
+    Assert-Equal (@($commands | Where-Object { $_.FilePath -eq $msbuild }).Count) 1 'native build runs when no output is supplied'
 
     $commands.Clear()
     $discoveryFailure = $true

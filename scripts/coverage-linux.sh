@@ -19,9 +19,58 @@ BUILD_DIR="$ROOT/build/linux-coverage"
 REPORT_DIR="$ROOT/coverage-report"
 MANAGED_REPORT_DIR="$REPORT_DIR/managed"
 
+coverage_linux_notes_complete() {
+    local inputs object found=false
+    inputs="$(ninja -C "$BUILD_DIR" -t inputs libMFTLibNative.so)" || return 1
+    while IFS= read -r object; do
+        [[ "$object" == *.o ]] || continue
+        [[ -s "$BUILD_DIR/${object%.o}.gcno" ]] || return 1
+        found=true
+    done <<< "$inputs"
+    [[ "$found" == true ]]
+}
+
+# --native-output-supplied: CI restored build/linux-coverage (libMFTLibNative.so, CMake state and the .gcno notes) from
+# the native build cache at this same workspace path. Skip only the native configure and build, and only when the
+# restored directory is complete; otherwise build as usual.
+coverage_linux_native() {
+    local supplied="$1"
+    if [ "$supplied" = true ] &&
+        [ -s "$BUILD_DIR/libMFTLibNative.so" ] &&
+        [ -s "$BUILD_DIR/CMakeCache.txt" ] && coverage_linux_notes_complete; then
+        echo "==> [native] using the supplied build directory; skipping configure and build"
+    else
+        if [[ "$supplied" = true || "${GITHUB_ACTIONS:-}" = true ]]; then
+            # Even a failed restore can leave up-to-date objects without their gcov notes.
+            echo "==> [native] no complete cache hit; rebuilding the coverage directory from scratch"
+            rm -rf -- "$BUILD_DIR"
+        fi
+        echo "==> [native] configuring (Debug + coverage)"
+        cmake -S "$ROOT/MFTLibNative" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMFTLIB_ENABLE_COVERAGE=ON \
+            >/dev/null
+
+        echo "==> [native] building"
+        cmake --build "$BUILD_DIR"
+    fi
+
+    echo "==> [native] clearing previous gcda data"
+    find "$BUILD_DIR" -name '*.gcda' -delete
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
 # Any failure, including a missing prerequisite or a failed build, must not leave stale evidence behind.
 rm -f "$REPORT_DIR/managed.trx" "$REPORT_DIR/commit.txt" "$MANAGED_REPORT_DIR/test-results/managed.trx"
 
+NATIVE_OUTPUT_SUPPLIED=false
+if [ "${1:-}" = "--native-output-supplied" ]; then
+    NATIVE_OUTPUT_SUPPLIED=true
+    shift
+fi
 if [ "$#" -gt 0 ]; then
     echo "unknown flag: $1" >&2
     exit 2
@@ -39,17 +88,7 @@ fi
 
 # --- Native build ---------------------------------------------------------------
 
-echo "==> [native] configuring (Debug + coverage)"
-cmake -S "$ROOT/MFTLibNative" -B "$BUILD_DIR" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Debug \
-    -DMFTLIB_ENABLE_COVERAGE=ON \
-    >/dev/null
-
-echo "==> [native] building"
-cmake --build "$BUILD_DIR"
-
-echo "==> [native] clearing previous gcda data"
-find "$BUILD_DIR" -name '*.gcda' -delete
+coverage_linux_native "$NATIVE_OUTPUT_SUPPLIED"
 
 mkdir -p "$REPORT_DIR"
 
