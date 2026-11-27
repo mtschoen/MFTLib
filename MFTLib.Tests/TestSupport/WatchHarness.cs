@@ -225,7 +225,7 @@ sealed partial class WatchHarness : IDisposable
 
     public static JournalBatch Batch(uint recordNumber, string fileName, long nextUsn = NextUsn + 100)
     {
-        return new JournalBatch([Create(recordNumber, fileName)], JournalIdentifier, nextUsn);
+        return new JournalBatch([Create(recordNumber, fileName)], JournalIdentifier, nextUsn, []);
     }
 
     public static UsnJournalEntry Create(uint recordNumber, string fileName, ulong parentRecordNumber = 5)

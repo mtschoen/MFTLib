@@ -279,6 +279,19 @@ bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t 
 
 }  // namespace
 
+namespace mftlib::ntfs::detail {
+RecordName ScanRecordName(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geometry) {
+    RecordAttributes attributes{};
+    RecordName result;
+    result.readable = ScanRecordAttributes(record, geometry, &attributes);
+    if (result.readable) {
+        result.name = attributes.nameAttribute;
+        result.attributeListPresent = attributes.attributeListPresent;
+    }
+    return result;
+}
+}  // namespace mftlib::ntfs::detail
+
 void KeepExtensionFacts(CompactOutput& output, const SliceResult& slice) {
     output.extensionDataSizes.insert(output.extensionDataSizes.end(), slice.extensionDataSizes.begin(),
                                      slice.extensionDataSizes.end());

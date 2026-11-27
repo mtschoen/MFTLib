@@ -184,7 +184,7 @@ public class FileIndexWatchFailedRescanTests
         Assert.IsNull(root.Watch.CheckpointLoss);
         Assert.AreEqual(WatchState.CatchingUp, root.Watch.State);
         var handle = harness.Source.WatchFor('T');
-        await handle.Publish(new JournalBatch([WatchHarness.Create(9, "recovered.txt")], 13, 9500));
+        await handle.Publish(new JournalBatch([WatchHarness.Create(9, "recovered.txt")], 13, 9500, []));
         var caughtUp = harness.IndexFor('T').WaitForCatchUpAsync(Token);
         await handle.Publish(new VolumeCaughtUp());
         await caughtUp.WaitAsync(HangGuard, TestContext.CancellationToken);

@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 13;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 14;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -151,7 +151,20 @@ enum MftInlineOutcome : uint8_t {
     MftInlineUnreadable = 3
 };
 
-// One wanted record. The caller fills recordNumber and expectedSequenceNumber; the read fills
+// What a request asks of its record.
+enum MftInlineKind : uint32_t {
+    // The unnamed resident $DATA, judged as MftInlineOutcome describes.
+    MftInlineKindContent = 0,
+    // The name and parent a scan gives the file: the first non-DOS $FILE_NAME of the in-use base record or, when
+    // the base holds none, of the lowest-numbered extension record its resident $ATTRIBUTE_LIST names for
+    // $FILE_NAME that is in use, refers back to this base incarnation and holds one. MftInlineReturned content is
+    // the 8-byte parent file reference followed by the name's UTF-16 units; MftInlineSuperseded is as for content;
+    // every other shape, including a nonresident $ATTRIBUTE_LIST and an extension record read that fails, is
+    // MftInlineUnreadable.
+    MftInlineKindFileName = 1
+};
+
+// One wanted record. The caller fills recordNumber, expectedSequenceNumber and kind; the read fills
 // outcome and, for MftInlineReturned, the content's place in the caller's buffer.
 struct MftInlineRequest {
     uint64_t recordNumber;
@@ -159,7 +172,7 @@ struct MftInlineRequest {
     uint32_t outcome;
     uint64_t contentOffset;
     uint32_t contentLength;
-    uint32_t reserved;
+    uint32_t kind;
 };
 
 static_assert(sizeof(MftInlineRequest) == 32, "MftInlineRequest is the 32-byte request the managed side fills");

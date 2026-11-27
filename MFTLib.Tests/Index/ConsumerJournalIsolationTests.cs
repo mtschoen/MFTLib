@@ -164,7 +164,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         index.WatchFaulted += _ => announced.TrySetResult();
         await index.StartWatchingAsync(Token);
         var handle = source.WatchFor('T');
-        await handle.Publish(new JournalBatch([], JournalIdentifier: 7, NextUsn: 2_000));
+        await handle.Publish(new JournalBatch([], JournalIdentifier: 7, NextUsn: 2_000, []));
         windows['T'] = observation switch
         {
             1 => new SyntheticJournalWindow(7, 2_500, 6_000, 64, 8_192),

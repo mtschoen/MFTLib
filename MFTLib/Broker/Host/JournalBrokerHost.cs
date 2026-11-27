@@ -79,8 +79,10 @@ sealed partial class JournalBrokerHost
                 var filtered = logFilter?.Filter(volume, entries) ?? entries;
                 if (filtered.Length > 0)
                 {
+                    var fileNames = ResolveLinkChanges(channel, filtered, cancellationToken);
                     await channel.Pipe.WriteFrameAsync(
-                        writer => BrokerProtocol.WriteJournalBatch(writer, BrokerFrame.JournalBatch(cursor, filtered)),
+                        writer => BrokerProtocol.WriteJournalBatch(writer,
+                            BrokerFrame.JournalBatch(cursor, filtered, fileNames)),
                         cancellationToken).ConfigureAwait(false);
                 }
 

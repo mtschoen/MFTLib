@@ -122,7 +122,7 @@ public class FileIndexMidSessionCheckpointLossTests
         using var harness = await StartedHarnessAsync();
         await harness.Source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "applied.txt")],
-            JournalIdentifier: WatchedJournalIdentifier, NextUsn: ArmedUsn + 2_000));
+            JournalIdentifier: WatchedJournalIdentifier, NextUsn: ArmedUsn + 2_000, []));
         Assert.AreEqual(ArmedUsn + 2_000, harness.BlockFor('T').Header.UsnNextUsn);
 
 

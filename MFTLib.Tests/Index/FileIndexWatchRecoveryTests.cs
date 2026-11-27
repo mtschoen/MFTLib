@@ -65,7 +65,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.IndexFor('T').StartWatchingAsync(Token);
         var producedBefore = harness.ProductionCount('T');
 
-        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, 5000));
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, 5000, []));
         await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         await harness.WaitForRecoveryAsync('T');
 

@@ -83,7 +83,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
         Assert.AreEqual(WatchState.CatchingUp, healthy.Watch.State);
 
         await source.WatchFor('U').Publish(new JournalBatch(
-            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_500));
+            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_500, []));
         Assert.AreEqual(9_500L, indexU.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
 
         await indexU.StopWatchingAsync(Token);
@@ -124,7 +124,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
         Assert.IsTrue(recovered.Watch.IsRequested);
         Assert.AreEqual(WatchState.CatchingUp, indexT.Status.Watch.State);
         await source.WatchFor('T').Publish(new JournalBatch(
-            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 5_000));
+            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 5_000, []));
         Assert.AreEqual(5_000L, indexT.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
 
         await indexT.StopWatchingAsync(Token);
@@ -185,7 +185,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
 
         // U is unaffected by T's failed rescan.
         await source.WatchFor('U').Publish(new JournalBatch(
-            [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_000));
+            [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_000, []));
         Assert.AreEqual(9_000L, indexU.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
 
         await indexU.StopWatchingAsync(Token);

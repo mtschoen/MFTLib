@@ -216,7 +216,7 @@ public partial class FileIndexPerRootWatchTests
         await harness.IndexFor('T').StartWatchingAsync(Token);
         var cursorBefore = harness.BlockFor('T').Header.UsnNextUsn;
 
-        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, NextUsn: 900));
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, NextUsn: 900, []));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
 
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);

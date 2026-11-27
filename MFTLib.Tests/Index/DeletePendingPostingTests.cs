@@ -138,7 +138,7 @@ public sealed class DeletePendingPostingTests : IDisposable
             Assert.AreEqual(WriteRefusal.None, writer.TryWriteRow(3, "fills-the-delta.txt", FileColumns));
             var entries = block.NameEntryCount;
             var pool = block.NamePoolUsed;
-            var mutator = new JournalMutator(writer, (_, _, _) => true);
+            var mutator = new JournalMutator(writer, isDeletePendingRename: (_, _, _) => true);
 
             var result = mutator.ApplyUntilRefusal(snapshot[0],
                 [Entry(1, "$deleted-name", UsnReason.RenameNewName, usn: 700)], 0, journalIdentifier: 9, nextUsn: 900);

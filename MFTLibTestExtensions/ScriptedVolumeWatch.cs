@@ -73,7 +73,7 @@ public sealed class ScriptedVolumeWatch
         Queue(ToBatch(entries, cursor));
 
     static JournalBatch ToBatch(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
-        new(entries.ToProduction(), cursor.JournalIdentifier, cursor.NextUsn);
+        new(entries.ToProduction(), cursor.JournalIdentifier, cursor.NextUsn, []);
 
     /// <summary>Delivers the caught-up marker and completes once the index's pump has taken the item after it.</summary>
     /// <returns>A task that completes when the pump is done with the marker.</returns>
@@ -106,7 +106,7 @@ public sealed class ScriptedVolumeWatch
     public void FailApply(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        Queue(new JournalBatch(new FailingEntryList(exception), 0, 0));
+        Queue(new JournalBatch(new FailingEntryList(exception), 0, 0, []));
     }
 
     /// <summary>The channel is lost: the index reports <see cref="WatchFaultKind.Channel" />.</summary>

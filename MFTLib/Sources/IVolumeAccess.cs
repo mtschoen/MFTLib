@@ -47,6 +47,20 @@ interface IVolumeAccess
     void ReadInlineContent(VolumeKey volume, ulong volumeSerial, ReadOnlyMemory<InlineContentRequest> requests,
         InlineContentSink sink, CancellationToken cancellationToken);
 
+    /// <summary>
+    ///     Reads the name and parent a scan gives each requested file from the volume's MFT, which needs the same
+    ///     access as a scan. Answers every request exactly once through <paramref name="sink" />, as
+    ///     <see cref="ReadInlineContent" /> does; a returned answer is the 8-byte parent file reference followed by
+    ///     the name's UTF-16 units. The volume is opened for the call and closed before it returns. A watch asks this
+    ///     of the files a journal batch reports a hard-link change for, on the volume whose journal it reads.
+    /// </summary>
+    /// <param name="volume">The volume to read.</param>
+    /// <param name="requests">The requests, ascending by record number.</param>
+    /// <param name="sink">Receives each answer.</param>
+    /// <param name="cancellationToken">Stops the read with <see cref="OperationCanceledException" />.</param>
+    void ReadFileNames(VolumeKey volume, ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink,
+        CancellationToken cancellationToken);
+
     UsnJournalGrowthResult GrowUsnJournal(
         VolumeKey volume,
         long maximumSize,

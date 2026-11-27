@@ -149,7 +149,7 @@ public partial class FileIndexWatchStateChangedTests
         var recorder = new WatchStateRecorder(harness.Index);
         await harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, 5000));
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, 5000, []));
         await recorder.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         await harness.WaitForRecoveryAsync('T');
 

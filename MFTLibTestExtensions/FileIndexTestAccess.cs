@@ -27,5 +27,5 @@ public static class FileIndexTestAccess
 
     internal static JournalMutator CreateJournalMutator(BlockWriter writer,
         JournalMutator.DeletePendingRenameDetector? isDeletePendingRename = null) =>
-        new(writer, isDeletePendingRename);
+        new(writer, isDeletePendingRename: isDeletePendingRename);
 }

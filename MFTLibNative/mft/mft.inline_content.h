@@ -47,4 +47,6 @@ struct MftInlineReader {
     // The bytes of the group being evaluated, page-aligned so a volume group read lands in them directly. Kept
     // between calls so a long request reuses one allocation.
     mftlib::platform::AlignedBuffer scratch;
+    // One extension record a file name request reads while the group's bytes stay in scratch.
+    mftlib::platform::AlignedBuffer extensionScratch;
 };

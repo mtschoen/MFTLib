@@ -19,7 +19,7 @@ public class BrokerFrameWriteLimitTests
         var buffer = new ArrayBufferWriter<byte>();
 
         Assert.ThrowsExactly<InvalidOperationException>(() =>
-            BrokerProtocol.WriteJournalBatch(buffer, BrokerFrame.JournalBatch(Armed, entries)));
+            BrokerProtocol.WriteJournalBatch(buffer, BrokerFrame.JournalBatch(Armed, entries, [])));
 
         Assert.AreEqual(0, buffer.WrittenCount);
     }

@@ -25,6 +25,10 @@ sealed class LiveVolumeAccess : IVolumeAccess
     public void ReadInlineContent(VolumeKey volume, ulong volumeSerial, ReadOnlyMemory<InlineContentRequest> requests,
         InlineContentSink sink, CancellationToken cancellationToken) =>
         LiveVolumeSources.ReadInlineContent(volume, volumeSerial, requests, sink, cancellationToken);
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public void ReadFileNames(VolumeKey volume, ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink,
+        CancellationToken cancellationToken) =>
+        LiveVolumeSources.ReadFileNames(volume, requests, sink, cancellationToken);
     public UsnJournalGrowthResult GrowUsnJournal(
         VolumeKey volume,
         long maximumSize,

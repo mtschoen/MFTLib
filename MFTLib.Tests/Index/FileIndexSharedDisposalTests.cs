@@ -29,7 +29,7 @@ public sealed class FileIndexSharedDisposalTests
             held.WaitForRelease();
         };
         var delivery = watches.Watches.Single().Publish(new JournalBatch(
-            [SharedScanFixture.Record(40, 30, "new.txt", UsnReason.FileCreate)], 7, 5001));
+            [SharedScanFixture.Record(40, 30, "new.txt", UsnReason.FileCreate)], 7, 5001, []));
         try
         {
             await held.Entered.WaitAsync(HangGuard);

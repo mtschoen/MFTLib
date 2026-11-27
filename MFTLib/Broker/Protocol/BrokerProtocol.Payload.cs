@@ -108,6 +108,15 @@ static partial class BrokerProtocol
             _payload.Advance(2);
         }
 
+        // [recordNumber u64][sequenceNumber u16][outcome byte][parentRecordNumber u64][name string]
+        public void FileName(FileNameResolution fileName)
+        {
+            UInt64(fileName.RecordNumber);
+            BinaryPrimitives.WriteUInt16LittleEndian(_payload.GetSpan(2), fileName.SequenceNumber);
+            _payload.Advance(2);
+            Byte((byte)fileName.Outcome).UInt64(fileName.ParentRecordNumber).String(fileName.Name);
+        }
+
         public void InlineAnswer(BrokerInlineContentAnswer answer, ReadOnlySpan<byte> content)
         {
             Int32(answer.Position).Byte((byte)answer.Outcome).Int32(content.Length);
@@ -138,6 +147,9 @@ static partial class BrokerProtocol
         // RecordNumber, ParentRecordNumber, SequenceNumber, Usn, Timestamp, Reason, FileAttributes
         // and the name length: the fixed part of one journal entry.
         const int EntryFixedBytes = 8 + 8 + 2 + 8 + 8 + 4 + 4 + 4;
+
+        // RecordNumber, SequenceNumber, outcome, ParentRecordNumber and the name length: the fixed part of one file name.
+        const int FileNameFixedBytes = 8 + 2 + 1 + 8 + 4;
 
         readonly ReadOnlySpan<byte> _payload = payload;
         int _offset;
@@ -227,6 +239,35 @@ static partial class BrokerProtocol
         public int InlineContentRequestCount() => Count(InlineContentRequestBytes);
 
         public int InlineContentAnswerCount() => Count(InlineContentAnswerFixedBytes);
+
+        public int FileNameCount() => Count(FileNameFixedBytes);
+
+        // Only a resolved answer carries a parent and a name.
+        public FileNameResolution FileName()
+        {
+            var recordNumber = UInt64();
+            var sequenceNumber = BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
+            var outcomeRaw = Byte();
+            var outcome = (FileNameLookupOutcome)outcomeRaw;
+            if (!Enum.IsDefined(outcome))
+            {
+                throw new InvalidDataException($"Unknown file name lookup outcome: {outcomeRaw}");
+            }
+
+            var parentRecordNumber = UInt64();
+            var name = String();
+            if (outcome != FileNameLookupOutcome.Resolved && (parentRecordNumber != 0 || name.Length != 0))
+            {
+                throw new InvalidDataException($"File name lookup outcome {outcome} carries a parent or a name");
+            }
+
+            if (outcome == FileNameLookupOutcome.Resolved && name.Length == 0)
+            {
+                throw new InvalidDataException("A resolved file name lookup carries no name");
+            }
+
+            return new FileNameResolution(recordNumber, sequenceNumber, outcome, parentRecordNumber, name);
+        }
 
         public InlineContentRequest InlineRequest()
         {

@@ -20,12 +20,13 @@ public sealed partial class FileIndex
         ///     which a pump reports as <see cref="WatchFaultKind.CapacityExhausted" /> once per lineage.
         /// </returns>
         public async Task<JournalApplication> ApplyJournalEntriesCoreAsync(WatchInstance? instance,
-            IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn,
-            Action<IReadOnlyList<RoutedChanges>> deliverBeforePark, CancellationToken cancellationToken)
+            JournalBatch journalBatch, Action<IReadOnlyList<RoutedChanges>> deliverBeforePark,
+            CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(IsClosing, typeof(FileIndex));
-            ArgumentNullException.ThrowIfNull(entries);
+            ArgumentNullException.ThrowIfNull(journalBatch);
             ArgumentNullException.ThrowIfNull(deliverBeforePark);
+            var entries = journalBatch.Entries;
 
             lock (StateLock)
             {
@@ -41,7 +42,7 @@ public sealed partial class FileIndex
                 Hooks.ApplyJournalEntriesEntered?.Invoke(Root);
             }
 
-            var batch = new BatchApplication(entries, journalIdentifier, nextUsn);
+            var batch = new BatchApplication(journalBatch);
             MappedBlock? lineage = null;
             while (true)
             {

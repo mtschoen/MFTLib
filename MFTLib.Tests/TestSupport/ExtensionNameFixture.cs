@@ -36,7 +36,16 @@ static class ExtensionNameFixture
 
         /// <summary>The base is a file with no data attribute of its own instead of a directory.</summary>
         internal bool File { get; init; }
+
+        /// <summary>
+        ///     The base's <c>$ATTRIBUTE_LIST</c> holds real entries, as NTFS writes them: a <c>$FILE_NAME</c> entry for
+        ///     the base itself and one for each extension record, instead of the placeholder payload.
+        /// </summary>
+        internal bool ListsExtensions { get; init; }
     }
+
+    /// <summary>The sequence number every extension record of the fixture carries.</summary>
+    internal const ushort ExtensionSequenceNumber = 9;
 
     internal static byte[] Build(Options? options = null)
     {
@@ -48,6 +57,7 @@ static class ExtensionNameFixture
             Size = null,
             SequenceNumber = BaseSequenceNumber,
             AttributeList = options.BaseHasAttributeList,
+            AttributeListEntries = options.ListsExtensions ? ListEntries(options) : null,
             OmitFileName = !options.BaseKeepsDosName,
             FileNameNamespace = 2
         };
@@ -61,12 +71,30 @@ static class ExtensionNameFixture
         return MftDumpFixture.Build(1024, 32, records);
     }
 
+    static List<(uint TypeCode, ulong SegmentReference)> ListEntries(Options options)
+    {
+        const uint fileNameType = 0x30;
+        static ulong Reference(int record, ushort sequence) => ((ulong)sequence << 48) | (uint)record;
+        List<(uint TypeCode, ulong SegmentReference)> entries =
+        [
+            (0x10, Reference(BaseRecordNumber, BaseSequenceNumber)),
+            (fileNameType, Reference(BaseRecordNumber, BaseSequenceNumber)),
+            (fileNameType, Reference(options.ExtensionRecordNumber, ExtensionSequenceNumber))
+        ];
+        if (options.SecondExtensionRecordNumber is { } second)
+        {
+            entries.Add((fileNameType, Reference(second, ExtensionSequenceNumber)));
+        }
+
+        return entries;
+    }
+
     static DumpRecord Extension(string name, Options options, byte nameSpace) =>
         new(name, 5)
         {
             InUse = options.ExtensionInUse,
             Size = null,
-            SequenceNumber = 9,
+            SequenceNumber = ExtensionSequenceNumber,
             OmitStandardInformation = true,
             FileNameNamespace = nameSpace,
             BaseReference = ((ulong)options.ReferencedSequenceNumber << 48) | BaseRecordNumber

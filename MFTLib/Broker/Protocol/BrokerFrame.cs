@@ -71,6 +71,10 @@ readonly record struct BrokerFrame
     public bool DeleteOnClose { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
+
+    /// <summary>A journal batch's re-read of each file its entries report a hard-link change for, ascending by record.</summary>
+    public FileNameResolution[] FileNames { get; private init; }
+
     public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
 
@@ -292,9 +296,10 @@ readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.ScanReady, 0) with { SkippedRecordCount = skippedRecordCount };
     }
 
-    public static BrokerFrame JournalBatch(UsnJournalCursor cursor, UsnJournalEntry[] entries)
+    public static BrokerFrame JournalBatch(UsnJournalCursor cursor, UsnJournalEntry[] entries,
+        FileNameResolution[] fileNames)
     {
-        return Empty(BrokerFrameKind.JournalBatch, 0) with { Cursor = cursor, Entries = entries };
+        return Empty(BrokerFrameKind.JournalBatch, 0) with { Cursor = cursor, Entries = entries, FileNames = fileNames };
     }
 
     public static BrokerFrame StartWatch(UsnJournalCursor since)
@@ -348,6 +353,7 @@ readonly record struct BrokerFrame
             Kind = kind,
             RequestId = requestId,
             Entries = [],
+            FileNames = [],
             InlineContentRequests = default,
             InlineContentAnswers = []
         };

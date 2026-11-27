@@ -139,7 +139,7 @@ The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. Every frame kind must consume its declared payload completely; any
 unconsumed bytes inside a frame's declared payload fail decoding with
 `InvalidDataException`, including for payload-free frames, while bytes after the
-declared frame length belong to subsequent frames in a combined input. A native-source watch `JournalBatch` is one 64 KiB journal read;
+declared frame length belong to subsequent frames in a combined input. A native-source watch `JournalBatch` is one 64 KiB journal read plus at most one file name answer per entry ([watch protocol](#watch-protocol));
 `Error` and `Stalled` text is truncated to 32,768 UTF-16 units. An oversized journal
 batch fails that watch with `Error`, like any source failure.
 
@@ -204,6 +204,29 @@ host reads EOF and cancels its read quietly, with no terminal frame, and no othe
 touched. A host `Error` frame on one volume faults only that read with `InvalidOperationException` carrying the host's text;
 a `Stalled` frame (no progress for 30 seconds) faults it with `BrokerChannelLostException` carrying the host's message.
 Control EOF still ends every channel with `BrokerChannelLostException`.
+
+## Watch protocol
+
+A `JournalBatch` (kind 15) carries the cursor after the batch (journal identifier `u64`, next USN `i64`), the entry
+count `i32` and the entries, then the file name count `i32` and the file names. A file name is record number `u64`,
+sequence number `u16`, outcome byte (`Resolved` 0, `Superseded` 1, `Unreadable` 2), parent record number `u64` and the
+length-prefixed UTF-16 name; only `Resolved` carries a parent and a name, and it always carries a name, so any other
+shape, like an unknown outcome, is malformed (`InvalidDataException`). The index applies them as
+[journal mutation](index-format.md#mft-blocks) describes.
+
+Before writing a batch, the host looks up each distinct (record number, sequence number) whose entries carry
+`USN_REASON_HARD_LINK_CHANGE`, once per batch and in ascending record order, through
+`IVolumeAccess.ReadFileNames`: `NativeInlineContentReader.ReadFileNames` over a volume handle opened for that call,
+with `MftInlineKindFileName` requests to the same native record reader an inline content read uses. A returned answer is
+the name and parent a scan gives the file (`MftInlineKind` in `MFTLibNative/mft_api.h`); a free or reused
+record is `Superseded`; any other shape, including a nonresident `$ATTRIBUTE_LIST` and a failed extension read, is
+`Unreadable`. No serial is checked: the files are the ones the same volume's journal just reported. The lookup parses
+nothing and takes no part in the parse-thread budget. It runs while the batch's `Processing` step (`journal batch`) is
+published and republishes it per answer, so the 30-second processing limit measures the time between answers. A lookup
+that throws is logged to broker diagnostics with its message, never classified, and leaves every file it did not
+answer `Unreadable`; the watch continues. A batch whose entries carry no hard-link change makes no lookup. A 64 KiB
+journal read holds at most 1,024 entries (a `USN_RECORD_V2` is at least 64 bytes), and an answer is at most 533 bytes
+(23 fixed bytes, the 4-byte name length and 255 UTF-16 units), so the file names add at most about 546 KB to a frame.
 
 ## Control requests
 

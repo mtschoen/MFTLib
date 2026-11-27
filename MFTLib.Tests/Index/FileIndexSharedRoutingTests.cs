@@ -95,7 +95,7 @@ public sealed class FileIndexSharedRoutingTests
             gate.WaitForRelease();
         };
         var watch = watches.Watches.Single();
-        var batch = watch.Publish(new JournalBatch([SharedScanFixture.Record(40, 32, "first.txt", UsnReason.FileCreate)], 7, 5001));
+        var batch = watch.Publish(new JournalBatch([SharedScanFixture.Record(40, 32, "first.txt", UsnReason.FileCreate)], 7, 5001, []));
         await gate.Entered.WaitAsync(HangGuard);
         FileIndex work;
         var delivered = 0;
@@ -112,7 +112,7 @@ public sealed class FileIndexSharedRoutingTests
         await batch;
         Assert.IsNotNull(work.Find(Path.Combine(fixture.WorkPath, "first.txt")));
         Assert.AreEqual(0, delivered);
-        await watch.Publish(new JournalBatch([SharedScanFixture.Record(41, 32, "second.txt", UsnReason.FileCreate)], 7, 5002));
+        await watch.Publish(new JournalBatch([SharedScanFixture.Record(41, 32, "second.txt", UsnReason.FileCreate)], 7, 5002, []));
         Assert.AreEqual(1, delivered);
     }
 
@@ -149,7 +149,7 @@ public sealed class FileIndexSharedRoutingTests
                 gate.WaitForRelease();
             };
             var batch = watches.Watches.Single().Publish(new JournalBatch(
-                [SharedScanFixture.Record(40, 30, "created.txt", UsnReason.FileCreate)], 7, 5001));
+                [SharedScanFixture.Record(40, 30, "created.txt", UsnReason.FileCreate)], 7, 5001, []));
             Task<RootOperationResult> stop;
             try
             {

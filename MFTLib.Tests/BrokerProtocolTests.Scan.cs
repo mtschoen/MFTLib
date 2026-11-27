@@ -208,7 +208,7 @@ public partial class BrokerProtocolTests
         };
         var cursor = new UsnJournalCursor(99UL, 20L);
 
-        var frame = RoundTrip(BrokerFrame.JournalBatch(cursor, entries), BrokerProtocol.WriteJournalBatch);
+        var frame = RoundTrip(BrokerFrame.JournalBatch(cursor, entries, []), BrokerProtocol.WriteJournalBatch);
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
@@ -221,7 +221,7 @@ public partial class BrokerProtocolTests
     public void JournalBatchFrame_EmptyEntries_RoundTrips()
     {
         var frame = RoundTrip(BrokerFrame.JournalBatch(
-            new UsnJournalCursor(1UL, 0L), []), BrokerProtocol.WriteJournalBatch);
+            new UsnJournalCursor(1UL, 0L), [], []), BrokerProtocol.WriteJournalBatch);
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.IsEmpty(frame.Entries);
@@ -380,14 +380,71 @@ public partial class BrokerProtocolTests
     public void WireBytes_Golden_JournalBatchFrame()
     {
         AssertWireBytes(
-            w => BrokerProtocol.WriteJournalBatch(w, BrokerFrame.JournalBatch(new UsnJournalCursor(1UL, 2L), [])),
+            w => BrokerProtocol.WriteJournalBatch(w, BrokerFrame.JournalBatch(new UsnJournalCursor(1UL, 2L), [], [])),
             [
-                0x15, 0x00, 0x00, 0x00, // totalLength = 21
+                0x19, 0x00, 0x00, 0x00, // totalLength = 25
                 0x0F, // kind = JournalBatch
                 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalIdentifier = 1
                 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 2
-                0x00, 0x00, 0x00, 0x00 // entryCount = 0
+                0x00, 0x00, 0x00, 0x00, // entryCount = 0
+                0x00, 0x00, 0x00, 0x00 // fileNameCount = 0
             ]);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_JournalBatchFrameWithAFileName()
+    {
+        AssertWireBytes(
+            w => BrokerProtocol.WriteJournalBatch(w, BrokerFrame.JournalBatch(new UsnJournalCursor(1UL, 2L), [],
+                [new FileNameResolution(30, 6, FileNameLookupOutcome.Resolved, 21, "a")])),
+            [
+                0x32, 0x00, 0x00, 0x00, // totalLength = 50
+                0x0F, // kind = JournalBatch
+                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalIdentifier = 1
+                0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 2
+                0x00, 0x00, 0x00, 0x00, // entryCount = 0
+                0x01, 0x00, 0x00, 0x00, // fileNameCount = 1
+                0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordNumber = 30
+                0x06, 0x00, // sequenceNumber = 6
+                0x00, // outcome = Resolved
+                0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // parentRecordNumber = 21
+                0x02, 0x00, 0x00, 0x00, // name byte length = 2
+                0x61, 0x00 // "a"
+            ]);
+    }
+
+    [TestMethod]
+    public void RoundTrip_JournalBatchFileNames_KeepEveryOutcome()
+    {
+        FileNameResolution[] fileNames =
+        [
+            new(30, 6, FileNameLookupOutcome.Resolved, 21, "AppIcon.scale-125.png"),
+            new(31, 2, FileNameLookupOutcome.Superseded, 0, ""),
+            FileNameResolution.Unreadable(32, 1)
+        ];
+
+        var frame = RoundTrip(BrokerFrame.JournalBatch(new UsnJournalCursor(7UL, 110L), [], fileNames),
+            BrokerProtocol.WriteJournalBatch);
+
+        CollectionAssert.AreEqual(fileNames, frame.FileNames);
+    }
+
+    [TestMethod]
+    [DataRow(3, 0UL, "", "Unknown file name lookup outcome: 3")]
+    [DataRow(2, 21UL, "", "carries a parent or a name")]
+    [DataRow(1, 0UL, "a", "carries a parent or a name")]
+    [DataRow(0, 21UL, "", "carries no name")]
+    public void ReadFrame_JournalBatchFileNameOfAnImpossibleShape_ThrowsInvalidDataException(int outcome,
+        ulong parentRecordNumber, string name, string expectedMessage)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteJournalBatch(buffer, BrokerFrame.JournalBatch(new UsnJournalCursor(1UL, 2L), [],
+            [new FileNameResolution(30, 6, (FileNameLookupOutcome)outcome, parentRecordNumber, name)]));
+
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
+            BrokerProtocol.ReadFrame(buffer.WrittenSpan.ToArray(), out _));
+
+        Assert.Contains(expectedMessage, exception.Message);
     }
 
     [TestMethod]
@@ -408,7 +465,7 @@ public partial class BrokerProtocolTests
         var cursor = new UsnJournalCursor(7UL, 110L);
         var entries = new[] { JournalEntries.Create(1, 10, "a") };
 
-        var frame = BrokerFrame.JournalBatch(cursor, entries);
+        var frame = BrokerFrame.JournalBatch(cursor, entries, []);
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);

@@ -11,7 +11,7 @@ static partial class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 13;
+    internal const uint ExpectedMftNativeAbiVersion = 14;
     internal const uint NativeCompactEntrySize = 52;
 
     internal static readonly NativeHooks Hooks = new();

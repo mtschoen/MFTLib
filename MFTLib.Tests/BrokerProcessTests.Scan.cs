@@ -163,7 +163,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed))),
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0))),
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteJournalBatch(writer, BrokerFrame.JournalBatch(Armed, []))));
+                writer => BrokerProtocol.WriteJournalBatch(writer, BrokerFrame.JournalBatch(Armed, [], []))));
 
         Assert.AreEqual('C', lost.Volume);
         Assert.Contains("JournalBatch", lost.Message);

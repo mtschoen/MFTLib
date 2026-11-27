@@ -33,7 +33,8 @@ sealed class BrokerWatchChannel(BrokerVolumeChannel channel) : IIndexVolumeWatch
                     break;
 
                 case BrokerFrameKind.JournalBatch:
-                    yield return new JournalBatch(frame.Entries, frame.Cursor.JournalIdentifier, frame.Cursor.NextUsn);
+                    yield return new JournalBatch(frame.Entries, frame.Cursor.JournalIdentifier, frame.Cursor.NextUsn,
+                        frame.FileNames);
                     break;
 
                 case BrokerFrameKind.CaughtUp:

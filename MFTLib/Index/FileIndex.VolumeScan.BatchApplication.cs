@@ -9,11 +9,14 @@ public sealed partial class FileIndex
         ///     apply, the refusal the latest growth remedied, the growth failure that ends growing for the rest of
         ///     the batch, and the first record the batch skipped.
         /// </summary>
-        sealed class BatchApplication(IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
+        sealed class BatchApplication(JournalBatch batch)
         {
-            public IReadOnlyList<UsnJournalEntry> Entries { get; } = entries;
-            public ulong JournalIdentifier { get; } = journalIdentifier;
-            public long NextUsn { get; } = nextUsn;
+            public IReadOnlyList<UsnJournalEntry> Entries { get; } = batch.Entries;
+
+            /// <summary>The source's answers for the files the batch reports a hard-link change for.</summary>
+            public IReadOnlyList<FileNameResolution> FileNames { get; } = batch.FileNames;
+            public ulong JournalIdentifier { get; } = batch.JournalIdentifier;
+            public long NextUsn { get; } = batch.NextUsn;
 
             /// <summary>
             ///     The lineage the batch first skipped a record on, with that skip's cause; null before any. A watch
@@ -78,7 +81,7 @@ public sealed partial class FileIndex
             var changes = new List<FileChange>();
             while (true)
             {
-                var mutator = new JournalMutator(new BlockWriter(rootBlock.Block));
+                var mutator = new JournalMutator(new BlockWriter(rootBlock.Block), batch.FileNames);
                 var result = mutator.ApplyUntilRefusal(rootBlock, batch.Entries, batch.NextIndex, batch.JournalIdentifier,
                     batch.NextUsn);
                 changes.AddRange(result.Changes);

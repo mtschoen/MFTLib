@@ -66,6 +66,18 @@ static class LiveVolumeSources
         reader.Read(requests.Span, sink, cancellationToken);
     }
 
+    // Opens the volume, reads the name and parent of the requested records through the native reader and closes the
+    // volume. No serial is checked: the caller asks about files the same volume's journal just reported.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal static void ReadFileNames(VolumeKey volume, ReadOnlyMemory<InlineContentRequest> requests,
+        InlineContentSink sink, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var mftVolume = MftVolume.Open(volume);
+        using var reader = mftVolume.OpenInlineContentReader();
+        reader.ReadFileNames(requests.Span, sink, cancellationToken);
+    }
+
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     static void RequireVolumeSerial(MftVolume opened, VolumeKey volume, ulong expected)
     {

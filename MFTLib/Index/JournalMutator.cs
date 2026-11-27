@@ -27,17 +27,26 @@ namespace MFTLib.Index;
 ///     chain that cannot be rendered degrades that one change to the bare name, so the batch still commits and the
 ///     cursor still advances.
 /// </summary>
-sealed class JournalMutator
+sealed partial class JournalMutator
 {
     internal delegate bool DeletePendingRenameDetector(BlockFile block, ulong newParentRecordNumber, string newName);
 
     readonly DeletePendingRenameDetector _isDeletePendingRename;
 
-    public JournalMutator(BlockWriter writer, DeletePendingRenameDetector? isDeletePendingRename = null)
+    /// <summary>A mutator of the block <paramref name="writer" /> writes.</summary>
+    /// <param name="writer">The writer of the block this mutator applies batches to.</param>
+    /// <param name="fileNames">
+    ///     The source's re-read of each file the batch reports a hard-link change for; a link change of a file it does
+    ///     not answer for is applied as unreadable.
+    /// </param>
+    /// <param name="isDeletePendingRename">Recognizes a rename into <c>\$Extend\$Deleted</c>; null is the NTFS default.</param>
+    public JournalMutator(BlockWriter writer, IReadOnlyList<FileNameResolution>? fileNames = null,
+        DeletePendingRenameDetector? isDeletePendingRename = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
         Writer = writer;
         _isDeletePendingRename = isDeletePendingRename ?? ExtendDeletedTarget.Matches;
+        RememberFileNames(fileNames);
     }
 
     public BlockWriter Writer { get; }
@@ -155,35 +164,7 @@ sealed class JournalMutator
             classification |= UsnReason.RenameNewName;
         }
 
-        ApplyOutcome outcome;
-        if ((classification & UsnReason.FileCreate) == 0 && IsEarlierIncarnation(rowIndex, entry))
-        {
-            outcome = ApplyOutcome.Applied(null);
-        }
-        else if ((classification & UsnReason.FileCreate) != 0)
-        {
-            outcome = ApplyCreate(rootBlock, entry, rowIndex);
-        }
-        else if ((classification & UsnReason.FileDelete) != 0)
-        {
-            outcome = ApplyDelete(rootBlock, entry, rowIndex);
-        }
-        else if ((classification & UsnReason.RenameNewName) != 0)
-        {
-            outcome = ApplyRenameArm(rootBlock, entry, rowIndex, classification);
-        }
-        else if (classification != UsnReason.None)
-        {
-            outcome = ApplyModification(rootBlock, entry, rowIndex, classification);
-        }
-        else
-        {
-            outcome = ApplyOutcome.Applied(null);
-            if (entry.IsClose && ApplyCloseMetadata(entry, rowIndex))
-            {
-                rowMutated = true;
-            }
-        }
+        var outcome = ApplyClassified(rootBlock, entry, rowIndex, classification, meaningful, ref rowMutated);
 
         // A refused record is applied whole later, so its cycle must not read as reported: a later close record
         // of the same cycle would otherwise be taken for an echo.
@@ -203,6 +184,48 @@ sealed class JournalMutator
         }
 
         return outcome;
+    }
+
+    /// <summary>Applies one record by the first arm its classification selects.</summary>
+    ApplyOutcome ApplyClassified(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex, UsnReason classification,
+        UsnReason meaningful, ref bool rowMutated)
+    {
+        if ((classification & UsnReason.FileCreate) == 0 && IsEarlierIncarnation(rowIndex, entry))
+        {
+            return ApplyOutcome.Applied(null);
+        }
+
+        if ((classification & UsnReason.FileDelete) != 0)
+        {
+            return ApplyDelete(rootBlock, entry, rowIndex);
+        }
+
+        if ((meaningful & UsnReason.HardLinkChange) != 0)
+        {
+            return ApplyLinkChange(rootBlock, entry, rowIndex, classification, ref rowMutated);
+        }
+
+        if ((classification & UsnReason.FileCreate) != 0)
+        {
+            return ApplyCreate(rootBlock, entry, rowIndex, entry.FileName, entry.ParentRecordNumber);
+        }
+
+        if ((classification & UsnReason.RenameNewName) != 0)
+        {
+            return ApplyRenameArm(rootBlock, entry, rowIndex, classification);
+        }
+
+        if (classification != UsnReason.None)
+        {
+            return ApplyModification(rootBlock, entry, rowIndex, classification);
+        }
+
+        if (entry.IsClose && ApplyCloseMetadata(entry, rowIndex))
+        {
+            rowMutated = true;
+        }
+
+        return ApplyOutcome.Applied(null);
     }
 
     ApplyOutcome ApplyDelete(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
@@ -259,7 +282,7 @@ sealed class JournalMutator
                 entry.TimestampUtc));
         }
 
-        return ApplyRename(rootBlock, entry, rowIndex, classification);
+        return ApplyRename(rootBlock, entry, rowIndex, classification, entry.FileName, entry.ParentRecordNumber);
     }
 
     /// <summary>
@@ -272,15 +295,16 @@ sealed class JournalMutator
         return Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, RowFreshness.Unchanged);
     }
 
-    ApplyOutcome ApplyCreate(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
+    ApplyOutcome ApplyCreate(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex, string name,
+        ulong parentRecordNumber)
     {
-        if (entry.ParentRecordNumber > uint.MaxValue)
+        if (parentRecordNumber > uint.MaxValue)
         {
             return ApplyOutcome.Refused(WriteRefusal.Slots, growable: false);
         }
 
-        var columns = BuildColumns(entry);
-        var refusal = Writer.TryWriteRow(rowIndex, entry.FileName, in columns);
+        var columns = BuildColumns(entry, (uint)parentRecordNumber);
+        var refusal = Writer.TryWriteRow(rowIndex, name, in columns);
         if (refusal != WriteRefusal.None)
         {
             return ApplyOutcome.Refused(refusal);
@@ -292,16 +316,17 @@ sealed class JournalMutator
             IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex), entry.TimestampUtc));
     }
 
+    /// <summary>Moves the row to <paramref name="name" /> under <paramref name="parentRecordNumber" />.</summary>
     ApplyOutcome ApplyRename(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
-        UsnReason classification)
+        UsnReason classification, string name, ulong parentRecordNumber)
     {
-        if (entry.ParentRecordNumber > uint.MaxValue)
+        if (parentRecordNumber > uint.MaxValue)
         {
             return ApplyOutcome.Refused(WriteRefusal.Slots, growable: false);
         }
 
         var previousPath = IndexNavigation.BuildChangePath(Written(rootBlock), rowIndex);
-        if (_isDeletePendingRename(Writer.Block, entry.ParentRecordNumber, entry.FileName))
+        if (_isDeletePendingRename(Writer.Block, parentRecordNumber, name))
         {
             var pendingRefusal = Writer.MarkDeletePending(rowIndex, previousPath);
             return pendingRefusal != WriteRefusal.None
@@ -311,7 +336,7 @@ sealed class JournalMutator
         }
 
         // A refused rename leaves the row whole: the record's attributes are not applied without its name.
-        var renameRefusal = Writer.TryRenameRow(rowIndex, entry.FileName, (uint)entry.ParentRecordNumber);
+        var renameRefusal = Writer.TryRenameRow(rowIndex, name, (uint)parentRecordNumber);
         if (renameRefusal != WriteRefusal.None)
         {
             return ApplyOutcome.Refused(renameRefusal);
@@ -374,41 +399,5 @@ sealed class JournalMutator
     bool IsDeletedRow(uint rowIndex)
     {
         return (Writer.ReadRowFlags(rowIndex) & FileRow.DeletedFlags) != 0;
-    }
-
-    /// <summary>
-    ///     Writes the row of a record whose row the index never had. A refusal is returned as the outcome and writes
-    ///     nothing; otherwise the outcome is applied with no change and <paramref name="hydrated" /> says whether a row
-    ///     was written.
-    /// </summary>
-    ApplyOutcome TryHydrateRow(UsnJournalEntry entry, uint rowIndex, out bool hydrated)
-    {
-        hydrated = false;
-        if ((Writer.ReadRowFlags(rowIndex) & RowFlags.InUse) != 0)
-        {
-            return ApplyOutcome.Applied(null);
-        }
-
-        if (entry.ParentRecordNumber > uint.MaxValue)
-        {
-            return ApplyOutcome.Refused(WriteRefusal.Slots, growable: false);
-        }
-
-        var columns = BuildColumns(entry);
-        var refusal = Writer.TryWriteRow(rowIndex, entry.FileName, in columns);
-        hydrated = refusal == WriteRefusal.None;
-        return refusal == WriteRefusal.None ? ApplyOutcome.Applied(null) : ApplyOutcome.Refused(refusal);
-    }
-
-    static RowColumns BuildColumns(UsnJournalEntry entry)
-    {
-        var flags = RowFlags.InUse | RowFlags.SizeUnknown | RowFlags.LastWriteTimeUnknown;
-        if ((entry.FileAttributes & FileAttributes.Directory) != 0)
-        {
-            flags |= RowFlags.Directory;
-        }
-
-        return new RowColumns((uint)entry.ParentRecordNumber, flags, (uint)entry.FileAttributes, Size: 0,
-            ModifiedTicks: 0, entry.SequenceNumber);
     }
 }

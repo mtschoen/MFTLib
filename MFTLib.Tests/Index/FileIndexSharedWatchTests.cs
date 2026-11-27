@@ -362,7 +362,7 @@ public sealed class FileIndexSharedWatchTests
         volume.Changed += _ => Interlocked.Increment(ref changes);
 
         await watches.Watches.Single().Publish(new JournalBatch(
-            [SharedScanFixture.Record(40, 30, "new.txt", UsnReason.FileCreate)], 7, 5001));
+            [SharedScanFixture.Record(40, 30, "new.txt", UsnReason.FileCreate)], 7, 5001, []));
         Assert.AreEqual(WatchFaultKind.Subscriber, (await ownFault.Task.WaitAsync(HangGuard)).Kind);
         Assert.AreEqual(0, otherFaults);
         Assert.AreEqual(1, changes);

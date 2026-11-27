@@ -22,6 +22,10 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
         InlineContentRead
     { get; init; } = UnsupportedInlineContentRead;
 
+    /// <summary>Answers a watch's file name lookups; by default every lookup throws, so its files read as unresolved.</summary>
+    internal Action<VolumeKey, ReadOnlyMemory<InlineContentRequest>, InlineContentSink, CancellationToken> FileNameRead
+    { get; init; } = UnsupportedFileNameRead;
+
     /// <summary>Runs as a scan opens, with the serial the caller asked to be checked; a throw refuses the scan as a serial mismatch would.</summary>
     internal Action<VolumeKey, ulong>? ScanOpened { get; init; }
 
@@ -29,6 +33,12 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
         ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink, CancellationToken cancellationToken)
     {
         throw new NotSupportedException("Broker has no inline content source");
+    }
+
+    internal static void UnsupportedFileNameRead(VolumeKey volume, ReadOnlyMemory<InlineContentRequest> requests,
+        InlineContentSink sink, CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException("Broker has no file name source");
     }
 
     internal static IEnumerable<IReadOnlyList<MftRecord>> UnsupportedScan(
@@ -73,6 +83,8 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
     public void ReadInlineContent(VolumeKey volume, ulong expectedVolumeSerial,
         ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink, CancellationToken cancellationToken) =>
         InlineContentRead(volume, expectedVolumeSerial, requests, sink, cancellationToken);
+    public void ReadFileNames(VolumeKey volume, ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink,
+        CancellationToken cancellationToken) => FileNameRead(volume, requests, sink, cancellationToken);
     public UsnJournalGrowthResult GrowUsnJournal(
         VolumeKey volume,
         long maximumSize,

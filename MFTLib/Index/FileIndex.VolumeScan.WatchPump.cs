@@ -106,8 +106,8 @@ public sealed partial class FileIndex
             JournalApplication application;
             try
             {
-                application = await ApplyJournalEntriesCoreAsync(instance, batch.Entries, batch.JournalIdentifier,
-                    batch.NextUsn, Deliver, stopToken).ConfigureAwait(false);
+                application = await ApplyJournalEntriesCoreAsync(instance, batch, Deliver, stopToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (!(exception is OperationCanceledException &&
                                                 stopToken.IsCancellationRequested))

@@ -860,6 +860,30 @@ reason bit alone. The state is runtime-only - it is not part of this format, is 
 persisted, and is discarded with the block a rescan replaces. A sequence-number change on
 the row resets the cycle, since the MFT segment was reused by a new file.
 
+A row stores one link of its file: the name and parent a scan gives it, the first non-DOS
+`$FILE_NAME` of the base record or, for a base that holds none, of its lowest-numbered
+extension record. A `USN_REASON_HARD_LINK_CHANGE` record does not say whether a link was
+added or removed, nor which link survives, so its name and parent do not identify the
+surviving link. For every distinct (record number, sequence number) a batch reports a
+hard-link change for, the broker re-reads the file's MFT record once and ships the answer
+with the batch (`FileNameResolution`, [broker lifetime](broker-lifetime.md#watch-protocol)).
+A classifying delete still deletes the row. A classifying create writes a fresh row and
+invalidates deleted descendants as usual: it uses the resolved name and parent, the
+journal name with a detached parent for an unreadable or missing answer, or the journal
+name and parent until deletion for a superseded answer. Otherwise, a resolved name and parent
+the row does not already show is a rename (`Renamed`, or `DeletePending` into
+`$Extend\$Deleted`, as for a rename record); a resolved answer the row already shows changes
+nothing beyond the record's attributes (`Modified` when the reason is new to the cycle); a
+superseded answer (the record is free or carries another sequence number) leaves the name
+and parent to the journal's later records, which delete the row; an unreadable answer, a
+lookup that failed or a batch with no answer for the file detaches the row
+(`BlockLayout.DetachedParentRow`, reported `Renamed` to its bare name), because its parent
+can no longer be verified. A row the index never had is written with the resolved name and
+parent and reported `Created`. A link change keeps the row's size and last-write
+observations: adding or removing a link changes names only. A direct journal apply
+(`FileIndex.ApplyJournalEntriesAsync`, test access) has no source to ask and so detaches
+every row it reports a hard-link change for.
+
 ## Watch catch-up
 
 An MFT-backed `FileIndex` has one watch instance and catch-up state for its root. Each

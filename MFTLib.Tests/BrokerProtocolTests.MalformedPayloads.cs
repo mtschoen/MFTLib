@@ -36,7 +36,7 @@ public partial class BrokerProtocolTests
                 TimestampUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 FileName = fileName
             })
-        ]));
+        ], []));
         return [.. buffer.WrittenSpan];
     }
 
@@ -185,13 +185,14 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    [DataRow(2, "46 bytes needed, 0 left")]
+    [DataRow(2, "46 bytes needed, 4 left")]
     [DataRow(-1, "declares -1 items")]
     [DataRow(int.MaxValue, "declares 2147483647 items")]
     public void ReadFrame_JournalBatchWithAnInvalidEntryCount_ThrowsInvalidDataException(int count, string expectedMessage)
     {
         // One entry whose name is exactly one fixed part long: the payload then holds two fixed
-        // parts, so a count of two passes the count check, but the first entry takes every byte.
+        // parts and the file name count, so a count of two passes the count check, but the first
+        // entry takes every byte before that count.
         var frame = BatchFrameWithOneEntry(new string('n', EntryFixedBytes / 2));
         BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(5 + 16), count);
 

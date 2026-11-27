@@ -44,6 +44,12 @@ sealed record DumpRecord(string Name, ulong Parent)
     /// <summary>The record carries an <c>$ATTRIBUTE_LIST</c> attribute, as a file whose attributes spill into extension records does.</summary>
     public bool AttributeList { get; init; }
 
+    /// <summary>
+    ///     The entries of the <c>$ATTRIBUTE_LIST</c>, each an attribute type and the file reference of the record that
+    ///     holds it; null writes an 8-byte placeholder with no entries.
+    /// </summary>
+    public IReadOnlyList<(uint TypeCode, ulong SegmentReference)>? AttributeListEntries { get; init; }
+
     /// <summary>The record carries a second unnamed data attribute after the first.</summary>
     public bool SecondUnnamedData { get; init; }
 
@@ -174,7 +180,7 @@ static class MftDumpFixture
 
         if (values.AttributeList)
         {
-            offset += WriteAttributeList(record[offset..]);
+            offset += WriteAttributeList(record[offset..], values.AttributeListEntries);
         }
 
         if (values.ReparsePoint)
@@ -283,11 +289,29 @@ static class MftDumpFixture
         return length;
     }
 
-    static int WriteAttributeList(Span<byte> attribute)
+    // Each entry is the 26-byte entry header with no attribute name, padded to 32 bytes.
+    static int WriteAttributeList(Span<byte> attribute, IReadOnlyList<(uint TypeCode, ulong SegmentReference)>? entries)
     {
-        const int length = 0x20;
-        WriteResidentHeader(attribute, 0x20, length, 8);
-        return length;
+        const int entryLength = 0x20;
+        if (entries is null)
+        {
+            const int length = 0x20;
+            WriteResidentHeader(attribute, 0x20, length, 8);
+            return length;
+        }
+
+        var valueLength = entries.Count * entryLength;
+        WriteResidentHeader(attribute, 0x20, 0x18 + valueLength, (uint)valueLength);
+        for (var index = 0; index < entries.Count; index++)
+        {
+            var entry = attribute.Slice(0x18 + (index * entryLength), entryLength);
+            BinaryPrimitives.WriteUInt32LittleEndian(entry, entries[index].TypeCode);
+            BinaryPrimitives.WriteUInt16LittleEndian(entry[4..], entryLength);
+            entry[7] = 0x1A;
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[0x10..], entries[index].SegmentReference);
+        }
+
+        return 0x18 + valueLength;
     }
 
     static int WriteReparsePoint(Span<byte> attribute)

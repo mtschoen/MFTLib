@@ -109,6 +109,16 @@ bool ReadNonResidentData(const RawVolume& volume, const ATTRIBUTE_RECORD_HEADER*
 // failure message: an uncovered, failed or short read, invalid FILE magic, or invalid fixup.
 const wchar_t* ReadMFTRecord(const RawVolume& volume, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                              ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
+
+// What a fixed-up record's own attributes say about its name, by the rule the scan applies (mft.records.cpp): the
+// first $FILE_NAME that is not DOS-only, null when it holds none, and whether it carries an $ATTRIBUTE_LIST. readable
+// is false when a $STANDARD_INFORMATION, a $FILE_NAME or the attribute chain is malformed.
+struct RecordName {
+    const FILE_NAME* name = nullptr;
+    bool attributeListPresent = false;
+    bool readable = false;
+};
+RecordName ScanRecordName(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geometry);
 }  // namespace detail
 }  // namespace mftlib::ntfs
 

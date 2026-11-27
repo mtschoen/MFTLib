@@ -1,6 +1,7 @@
-// Reads the resident $DATA of specific MFT records. A reader knows where the $MFT's bytes live
-// (segments) and how to read them; the volume, image and dump inputs differ only in that. Every
-// record read is untrusted input: nothing in it is believed before it is checked.
+// Reads the resident $DATA, or the name and parent, of specific MFT records. A reader knows where the $MFT's bytes
+// live (segments) and how to read them; the volume, image and dump inputs differ only in that. Every record read is
+// untrusted input: nothing in it is believed before it is checked. Over 500 lines because both request kinds share
+// one grouping, reread and answer machinery, which splitting would expose outside this translation unit.
 #include "pch.h"
 
 #include <algorithm>
@@ -31,8 +32,13 @@ constexpr size_t kStandardInformationAttributesEnd = 36;
 // The size of a nonresident attribute header up to and including its mapping pairs offset field.
 constexpr uint32_t kNonresidentAttributeHeaderSize = 0x40;
 
+// The longest file name answer: the 8-byte parent reference and the 255 UTF-16 units a $FILE_NAME holds at most.
+constexpr uint32_t kParentReferenceBytes = 8;
+constexpr uint32_t kFileNameContentMaximum = kParentReferenceBytes + static_cast<uint32_t>(255 * sizeof(uint16_t));
+
 // What one record held, judged once however many requests name it. verdict is what the record is
-// when it is in use and carries the sequence number the request expects.
+// when it is in use and carries the sequence number the request expects. A content answer points into
+// the record's bytes; a file name answer is assembled in nameContent.
 struct RecordEvaluation {
     bool readable = false;  // FILE magic and a valid update sequence array
     bool inUse = false;
@@ -40,6 +46,7 @@ struct RecordEvaluation {
     MftInlineOutcome verdict = MftInlineUnreadable;
     const uint8_t* content = nullptr;
     uint32_t contentLength = 0;
+    uint8_t nameContent[kFileNameContentMaximum] = {};
 };
 
 // The unnamed $DATA of a base file record as a verdict: resident, plain and inside its attribute is
@@ -148,28 +155,35 @@ bool IsAllZero(const uint8_t* bytes, uint32_t length) {
     return std::all_of(bytes, bytes + length, [](uint8_t value) { return value == 0; });
 }
 
-// Judges the record at record[0, recordSize). Fixes the record up in place, so it is judged once.
-RecordEvaluation EvaluateRecord(uint8_t* record, uint32_t recordSize) {
-    RecordEvaluation evaluation;
+// Checks the record at record[0, recordSize) and reads its header: whether it is readable, in use and which sequence
+// number it carries. An in-use record whose used length exceeds the record is unreadable. Fixes the record up in
+// place, so it is judged once. True when an in-use, readable record is left for its kind to classify.
+bool EvaluateHeader(uint8_t* record, uint32_t recordSize, RecordEvaluation* evaluation, uint32_t* usedLength) {
     const auto* header = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record);
     if (IsAllZero(record, recordSize)) {
         // A slot NTFS never wrote is zero-filled throughout: free, not damaged.
-        evaluation.readable = true;
-        return evaluation;
+        evaluation->readable = true;
+        return false;
     }
     if (header->MultiSectorHeader.Magic != kFileRecordMagic || !ApplyFixup(record, recordSize)) {
-        return evaluation;
+        return false;
     }
-    evaluation.readable = true;
-    evaluation.sequenceNumber = header->SequenceNumber;
-    evaluation.inUse = (header->Flags & kRecordInUse) != 0;
-    const uint32_t usedLength = header->Reserved3[0];
-    if (evaluation.inUse) {
-        if (usedLength > recordSize) {
-            evaluation.readable = false;
-        } else {
-            ClassifyInUseRecord(record, usedLength, &evaluation);
-        }
+    evaluation->readable = true;
+    evaluation->sequenceNumber = header->SequenceNumber;
+    evaluation->inUse = (header->Flags & kRecordInUse) != 0;
+    *usedLength = header->Reserved3[0];
+    if (evaluation->inUse && *usedLength > recordSize) {
+        evaluation->readable = false;
+    }
+    return evaluation->inUse && evaluation->readable;
+}
+
+// Judges the record at record[0, recordSize) for its resident content.
+RecordEvaluation EvaluateRecord(uint8_t* record, uint32_t recordSize) {
+    RecordEvaluation evaluation;
+    uint32_t usedLength = 0;
+    if (EvaluateHeader(record, recordSize, &evaluation, &usedLength)) {
+        ClassifyInUseRecord(record, usedLength, &evaluation);
     }
     return evaluation;
 }
@@ -204,6 +218,7 @@ struct Call {
     uint64_t bufferLength = 0;
     const MftParseControl* control = nullptr;
     MftInlineReadResult* result = nullptr;
+    MftInlineKind kind = MftInlineKindContent;  // every request of a call asks the same
     uint64_t next = 0;
     uint64_t bytesUsed = 0;
 
@@ -286,6 +301,133 @@ uint64_t ReadGroup(const Call* call, const Group& group) {
     return group.firstByte + ReadGroupBytes(call, group, group.firstByte, group.lastByte - group.firstByte);
 }
 
+// A file name answer: the parent reference as the $FILE_NAME stores it, then the name's UTF-16 units.
+void KeepName(const FILE_NAME* name, RecordEvaluation* evaluation) {
+    const uint32_t nameBytes = static_cast<uint32_t>(name->FileNameLength) * sizeof(uint16_t);
+    memcpy(evaluation->nameContent, &name->ParentDirectory, kParentReferenceBytes);
+    memcpy(evaluation->nameContent + kParentReferenceBytes, name->FileName, nameBytes);
+    evaluation->contentLength = kParentReferenceBytes + nameBytes;
+    evaluation->verdict = MftInlineReturned;
+}
+
+bool IsBaseRecord(const FILE_RECORD_SEGMENT_HEADER& header) {
+    const auto& base = header.BaseFileRecordSegment;
+    return base.SegmentNumberLowPart == 0 && base.SegmentNumberHighPart == 0 && base.SequenceNumber == 0;
+}
+
+uint64_t SegmentNumberOf(const MFT_SEGMENT_REFERENCE& reference) {
+    return static_cast<uint64_t>(reference.SegmentNumberLowPart) |
+           (static_cast<uint64_t>(reference.SegmentNumberHighPart) << 32);
+}
+
+// The records other than the base that a resident attribute list names for $FILE_NAME, ascending and distinct. False
+// when an entry is shorter than the entry header or runs past the end of the list.
+bool NameExtensionRecords(const uint8_t* list, uint64_t listSize, uint64_t baseRecordNumber,
+                          std::vector<uint64_t>* records) {
+    constexpr size_t kEntryHeaderSize = offsetof(ATTRIBUTE_LIST_ENTRY, AttributeName);
+    uint64_t offset = 0;
+    while (offset + kEntryHeaderSize <= listSize) {
+        const auto* entry = reinterpret_cast<const ATTRIBUTE_LIST_ENTRY*>(list + offset);
+        if (entry->RecordLength == 0) {
+            break;
+        }
+        if (entry->RecordLength < kEntryHeaderSize || entry->RecordLength > listSize - offset) {
+            return false;
+        }
+        const uint64_t number = SegmentNumberOf(entry->SegmentReference);
+        if (entry->AttributeTypeCode == FileName && number != baseRecordNumber) {
+            records->push_back(number);
+        }
+        offset += entry->RecordLength;
+    }
+    std::sort(records->begin(), records->end());
+    records->erase(std::unique(records->begin(), records->end()), records->end());
+    return true;
+}
+
+// Reads one record into the reader's extension scratch buffer. Null when it does not lie inside one segment or its
+// read fails or comes up short.
+uint8_t* ReadExtensionRecord(const Call* call, uint64_t recordNumber) {
+    MftInlineReader& reader = *call->reader;
+    const uint64_t recordSize = call->RecordSize();
+    const uint64_t start = recordNumber * recordSize;
+    const Segment* segment = FindSegment(call, start, recordSize);
+    if (segment == nullptr) {
+        return nullptr;
+    }
+    reader.extensionScratch.Reserve(static_cast<size_t>(recordSize));
+    const uint64_t arrived = reader.read(reader, segment->sourceOffset + (start - segment->mftOffset),
+                                         reader.extensionScratch.data(), static_cast<size_t>(recordSize));
+    call->result->readCalls++;
+    call->result->bytesRead += arrived;
+    return arrived == recordSize ? reader.extensionScratch.data() : nullptr;
+}
+
+// The name of a base whose own attributes hold no non-DOS $FILE_NAME, from the extension records its resident
+// attribute list names, as the scan names such a base: the lowest-numbered one that is in use, refers back to this
+// base incarnation and holds a non-DOS name. A slot past the MFT, without FILE magic or with a bad fixup is passed
+// over, as the scan passes it over. A nonresident or malformed list, or an extension read that fails, leaves the
+// answer Unreadable, because a lower-numbered candidate cannot be ruled out.
+void FindExtensionName(const Call* call, uint8_t* base, uint64_t baseRecordNumber, uint16_t baseSequence,
+                       RecordEvaluation* evaluation) {
+    const uint32_t recordSize = call->reader->geometry.recordSize;
+    const AttributeSearch search = FindAttribute(base, recordSize, AttributeList);
+    const ATTRIBUTE_RECORD_HEADER* list = search.attribute;
+    if (search.malformed || list == nullptr || list->FormCode != 0 ||
+        list->Form.Resident.ValueOffset < kResidentAttributeHeaderSize ||
+        static_cast<uint64_t>(list->Form.Resident.ValueOffset) + list->Form.Resident.ValueLength > list->RecordLength) {
+        return;
+    }
+    std::vector<uint64_t> extensions;
+    if (!NameExtensionRecords(reinterpret_cast<const uint8_t*>(list) + list->Form.Resident.ValueOffset,
+                              list->Form.Resident.ValueLength, baseRecordNumber, &extensions)) {
+        return;
+    }
+    for (const uint64_t number : extensions) {
+        if (number >= call->reader->totalRecords) {
+            continue;
+        }
+        uint8_t* record = ReadExtensionRecord(call, number);
+        if (record == nullptr) {
+            return;
+        }
+        auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
+        if (header->MultiSectorHeader.Magic != kFileRecordMagic || !ApplyFixup(record, recordSize) ||
+            (header->Flags & kRecordInUse) == 0 || SegmentNumberOf(header->BaseFileRecordSegment) != baseRecordNumber ||
+            header->BaseFileRecordSegment.SequenceNumber != baseSequence) {
+            continue;
+        }
+        const RecordName name = ScanRecordName(header, call->reader->geometry);
+        if (name.readable && name.name != nullptr) {
+            KeepName(name.name, evaluation);
+            return;
+        }
+    }
+}
+
+// Judges the record at record[0, recordSize) for the name and parent a scan gives it.
+RecordEvaluation EvaluateNameRecord(const Call* call, uint8_t* record, uint64_t recordNumber) {
+    RecordEvaluation evaluation;
+    uint32_t usedLength = 0;
+    if (!EvaluateHeader(record, call->reader->geometry.recordSize, &evaluation, &usedLength)) {
+        return evaluation;
+    }
+    auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
+    if (!IsBaseRecord(*header)) {
+        return evaluation;
+    }
+    const RecordName own = ScanRecordName(header, call->reader->geometry);
+    if (!own.readable) {
+        return evaluation;
+    }
+    if (own.name != nullptr) {
+        KeepName(own.name, &evaluation);
+    } else if (own.attributeListPresent) {
+        FindExtensionName(call, record, recordNumber, header->SequenceNumber, &evaluation);
+    }
+    return evaluation;
+}
+
 // Whether the bytes of one record are in the scratch buffer. A record the group read covered is. One it did not is read
 // again on its own, a bounded read observed by cancellation, unless the group was that one record, whose own read
 // has then already failed. *cancelled is set, and false returned, when cancellation stops the retry.
@@ -316,8 +458,10 @@ void AnswerGroup(Call* call, const Group& group, uint64_t validEnd) {
             const uint64_t recordStart = request.recordNumber * call->RecordSize();
             bool cancelled = false;
             if (HaveRecordBytes(call, group, validEnd, recordStart, &cancelled)) {
-                evaluation = EvaluateRecord(call->reader->scratch.data() + (recordStart - group.firstByte),
-                                            call->reader->geometry.recordSize);
+                uint8_t* record = call->reader->scratch.data() + (recordStart - group.firstByte);
+                evaluation = call->kind == MftInlineKindFileName
+                                 ? EvaluateNameRecord(call, record, request.recordNumber)
+                                 : EvaluateRecord(record, call->reader->geometry.recordSize);
             } else if (cancelled) {
                 call->result->cancelled = 1;
                 return;
@@ -335,7 +479,9 @@ void AnswerGroup(Call* call, const Group& group, uint64_t validEnd) {
             request.contentOffset = call->bytesUsed;
             request.contentLength = evaluation.contentLength;
             if (evaluation.contentLength != 0) {
-                memcpy(call->buffer + call->bytesUsed, evaluation.content, evaluation.contentLength);
+                const uint8_t* content =
+                    call->kind == MftInlineKindFileName ? evaluation.nameContent : evaluation.content;
+                memcpy(call->buffer + call->bytesUsed, content, evaluation.contentLength);
             }
             call->bytesUsed += evaluation.contentLength;
         } else {
@@ -361,6 +507,19 @@ bool IsAscending(const MftInlineRequest* requests, uint64_t count) {
     return true;
 }
 
+// Whether every request asks the first request's kind, and that kind is one the reader answers.
+bool IsOneKnownKind(const MftInlineRequest* requests, uint64_t count) {
+    if (count == 0) {
+        return true;
+    }
+    const uint32_t kind = requests[0].kind;
+    if (kind != MftInlineKindContent && kind != MftInlineKindFileName) {
+        return false;
+    }
+    return std::all_of(requests + 1, requests + count,
+                       [kind](const MftInlineRequest& request) { return request.kind == kind; });
+}
+
 // Answers requests from startIndex until one group has been read, so a caller sees the answers of every read as soon
 // as it completes. Requests that need no read (past the end of the MFT, or straddling two runs) are answered on the
 // way, without I/O: a call makes one run lookup per distinct record it meets before its one group read, and a request
@@ -372,6 +531,11 @@ void ReadRequests(Call* call, uint64_t startIndex) {
     if (startIndex == 0 && !IsAscending(call->requests, call->requestCount)) {
         result->failed = 1;
         SetErrorMessage(result->errorMessage, L"The requests are not in ascending record order");
+        return;
+    }
+    if (startIndex == 0 && !IsOneKnownKind(call->requests, call->requestCount)) {
+        result->failed = 1;
+        SetErrorMessage(result->errorMessage, L"The requests do not all ask one known kind");
         return;
     }
     uint64_t straddlingRecord = (std::numeric_limits<uint64_t>::max)();
@@ -441,6 +605,8 @@ EXPORT void ReadMftInlineContent(MftInlineReader* reader, const MftInlineReadCal
             call.bufferLength = request->bufferLength;
             call.control = request->control;
             call.result = result;
+            call.kind = request->requestCount == 0 ? MftInlineKindContent
+                                                   : static_cast<MftInlineKind>(request->requests[0].kind);
             call.next = request->startIndex;
             ReadRequests(&call, request->startIndex);
             return 0;

@@ -177,7 +177,14 @@ static partial class BrokerProtocol
             entries.Add(payload.Entry());
         }
 
-        return BrokerFrame.JournalBatch(cursor, [.. entries]);
+        var fileNameCount = payload.FileNameCount();
+        var fileNames = new List<FileNameResolution>(fileNameCount);
+        while (fileNames.Count < fileNameCount)
+        {
+            fileNames.Add(payload.FileName());
+        }
+
+        return BrokerFrame.JournalBatch(cursor, [.. entries], [.. fileNames]);
     }
 
     // Requests must ascend by record number, the order the native reader coalesces in, and name no negative record.

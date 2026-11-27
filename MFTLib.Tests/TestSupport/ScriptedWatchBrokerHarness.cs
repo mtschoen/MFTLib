@@ -42,6 +42,7 @@ sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
                 RecordBatches = scanVolume ?? ((_, _, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
                 JournalRead = seams.ReadJournal ?? ((_, since, _) => ([], since)),
                 JournalWatch = (volume, since, operation, token) => Watch(volume.Letter).RunAsync(since, operation, token),
+                FileNameRead = seams.ReadFileNames ?? ScriptedVolumeAccess.UnsupportedFileNameRead,
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 100, 1024)
             },
             processorCount: 4,
@@ -136,6 +137,16 @@ sealed record ScriptedBrokerSeams
 {
     /// <summary>The host's journal catch-up source; the default reads nothing and stays at the cursor it is given.</summary>
     public Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
+
+    /// <summary>
+    ///     The host's file name lookup for a batch's hard-link changes, answering as the native record reader does; the
+    ///     default throws, so every such file reads as unresolved.
+    /// </summary>
+    public Action<VolumeKey, ReadOnlyMemory<InlineContentRequest>, InlineContentSink, CancellationToken>? ReadFileNames
+    {
+        get;
+        init;
+    }
 
     /// <summary>The host's clock; null reads the system clock.</summary>
     public TimeProvider? HostClock { get; init; }
@@ -244,8 +255,11 @@ sealed class ScriptedWatchRun
 
     /// <summary>Delivers one batch of one created file, ending at <paramref name="nextUsn" />.</summary>
     public void Push(uint recordNumber, string fileName, long nextUsn) =>
-        _items.Writer.TryWrite(([WatchHarness.Create(recordNumber, fileName)],
-            new UsnJournalCursor(WatchHarness.JournalIdentifier, nextUsn)));
+        Push([WatchHarness.Create(recordNumber, fileName)], nextUsn);
+
+    /// <summary>Delivers one batch of <paramref name="entries" />, ending at <paramref name="nextUsn" />.</summary>
+    public void Push(UsnJournalEntry[] entries, long nextUsn) =>
+        _items.Writer.TryWrite((entries, new UsnJournalCursor(WatchHarness.JournalIdentifier, nextUsn)));
 
     /// <summary>The host's watch fails: the client reads an <c>Error</c> frame carrying the exception's message.</summary>
     public void Fail(Exception exception) => _items.Writer.TryComplete(exception);

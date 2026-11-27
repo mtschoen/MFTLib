@@ -46,7 +46,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
         Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('T').Watch.State);
 
         await harness.Source.WatchFor('T').Publish(
-            new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500));
+            new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500, []));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.IndexFor('T').StopWatchingAsync(Token);
         await harness.IndexFor('U').StopWatchingAsync(Token);
@@ -125,7 +125,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
         Assert.AreEqual(WatchState.Faulted, harness.RootFor('U').Watch.State);
 
         await harness.Source.WatchFor('T').Publish(
-            new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500));
+            new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500, []));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.IndexFor('T').StopWatchingAsync(Token);
         var failure = await RootResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('U').StopWatchingAsync(Token));
@@ -182,7 +182,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
         Assert.AreEqual(WatchState.Recovering, harness.RootFor('U').Watch.State, "U's recovery is still held");
 
         await harness.Source.WatchFor('T').Publish(
-            new JournalBatch([WatchHarness.Create(10, "t.txt")], 13, 9500));
+            new JournalBatch([WatchHarness.Create(10, "t.txt")], 13, 9500, []));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
 
         await harness.IndexFor('T').StopWatchingAsync(Token);
@@ -317,7 +317,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
         Assert.AreEqual(new IndexWatchTarget(new VolumeKey('T'), 7, 4096), source.TargetsFor('T').Single());
         Assert.AreEqual(WatchState.CatchingUp, indexT.Status.Watch.State);
 
-        await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(9, "after.txt")], 7, 5000));
+        await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(9, "after.txt")], 7, 5000, []));
         Assert.AreEqual(5000L, indexT.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
 
         var caughtUp = indexT.WaitForCatchUpAsync(Token);
@@ -347,7 +347,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
 
         // The other root never noticed.
         Assert.AreEqual(0, source.WatchFor('U').DisposeCount);
-        await source.WatchFor('U').Publish(new JournalBatch([WatchHarness.Create(9, "u.txt")], 22, 8500));
+        await source.WatchFor('U').Publish(new JournalBatch([WatchHarness.Create(9, "u.txt")], 22, 8500, []));
         Assert.AreEqual(8500L, indexU.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
         await indexU.StopWatchingAsync(Token);
         await RootResultAssertions.NotApplicableAsync(() => indexT.StopWatchingAsync(Token));
@@ -370,7 +370,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
 
         Assert.HasCount(2, source.TargetsFor('T'));
         Assert.AreEqual(1, firstHandle.DisposeCount);
-        await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(10, "second.txt")], 7, 6000));
+        await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(10, "second.txt")], 7, 6000, []));
         Assert.AreEqual(6000L, indexT.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
         await indexT.StopWatchingAsync(Token);
         await indexU.StopWatchingAsync(Token);
@@ -392,7 +392,7 @@ public partial class FileIndexWatchRescanTests : IndexTreeTestBase
         var fault = await faulted.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsNotNull(indexU.Status.Watch.FailureMessage);
 
-        await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(9, "surviving.txt")], 7, 5500));
+        await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(9, "surviving.txt")], 7, 5500, []));
         Assert.AreEqual(5500L, indexT.Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
         Assert.IsNull(indexT.Status.Watch.FailureMessage);
 

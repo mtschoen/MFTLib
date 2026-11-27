@@ -76,6 +76,17 @@ sealed unsafe class NativeInlineContentReader : IDisposable
     /// <exception cref="OperationCanceledException">The token stopped the read.</exception>
     /// <exception cref="InvalidOperationException">The native read failed or answered inconsistently.</exception>
     internal void Read(ReadOnlySpan<InlineContentRequest> requests, InlineContentSink sink,
+        CancellationToken cancellationToken) => Read(requests, MftInlineKind.Content, sink, cancellationToken);
+
+    /// <summary>
+    ///     Answers every request exactly once, as <see cref="Read(ReadOnlySpan{InlineContentRequest}, InlineContentSink, CancellationToken)" />
+    ///     does, with the name and parent a scan gives each file instead of its content: a returned answer is the
+    ///     8-byte parent file reference followed by the name's UTF-16 units.
+    /// </summary>
+    internal void ReadFileNames(ReadOnlySpan<InlineContentRequest> requests, InlineContentSink sink,
+        CancellationToken cancellationToken) => Read(requests, MftInlineKind.FileName, sink, cancellationToken);
+
+    void Read(ReadOnlySpan<InlineContentRequest> requests, MftInlineKind kind, InlineContentSink sink,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
@@ -83,7 +94,7 @@ sealed unsafe class NativeInlineContentReader : IDisposable
         try
         {
             using var registration = cancellationToken.Register(() => RequestCancel(control));
-            var state = new ReadState(Math.Min(requests.Length, BatchRequests), control, sink, cancellationToken);
+            var state = new ReadState(Math.Min(requests.Length, BatchRequests), kind, control, sink, cancellationToken);
             for (var start = 0; start < requests.Length; start += BatchRequests)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -97,8 +108,11 @@ sealed unsafe class NativeInlineContentReader : IDisposable
     }
 
     /// <summary>What one <see cref="Read" /> reuses across its batches and native calls.</summary>
-    sealed class ReadState(int batchLength, IntPtr control, InlineContentSink sink, CancellationToken cancellationToken)
+    sealed class ReadState(int batchLength, MftInlineKind kind, IntPtr control, InlineContentSink sink,
+        CancellationToken cancellationToken)
     {
+        internal MftInlineKind Kind { get; } = kind;
+
         internal byte[] Buffer { get; } = GC.AllocateUninitializedArray<byte>(ContentBufferBytes, pinned: true);
 
         internal MftInlineRequest[] Batch { get; } =
@@ -119,7 +133,8 @@ sealed unsafe class NativeInlineContentReader : IDisposable
             state.Batch[filled++] = new MftInlineRequest
             {
                 RecordNumber = checked((ulong)request.RecordNumber),
-                ExpectedSequenceNumber = request.SequenceNumber
+                ExpectedSequenceNumber = request.SequenceNumber,
+                Kind = state.Kind
             };
         }
 

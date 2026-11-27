@@ -39,6 +39,10 @@ public sealed partial class LiveVolumeSourcesIncludeFreedTests
             ReadOnlyMemory<InlineContentRequest> requests, InlineContentSink sink, CancellationToken cancellationToken) =>
             Live.ReadInlineContent(volume, volumeSerial, requests, sink, cancellationToken);
 
+        public void ReadFileNames(VolumeKey volume, ReadOnlyMemory<InlineContentRequest> requests,
+            InlineContentSink sink, CancellationToken cancellationToken) =>
+            throw new AssertFailedException("These tests watch no journal.");
+
         public UsnJournalGrowthResult GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta,
             bool allowAboveMaximumRecommendedSize = false) =>
             throw new AssertFailedException("These tests grow no journal.");

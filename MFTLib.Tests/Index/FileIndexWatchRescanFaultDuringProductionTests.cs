@@ -43,7 +43,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         var applyFailure = new IOException("T's in-flight batch could not be applied");
         var applyGate = harness.TrackGate();
         var consumed = handle.Queue(new JournalBatch(new GatedFailingEntries(applyGate, applyFailure),
-            WatchHarness.JournalIdentifier, WatchHarness.NextUsn + 300));
+            WatchHarness.JournalIdentifier, WatchHarness.NextUsn + 300, []));
         await applyGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         applyGate.Release();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');

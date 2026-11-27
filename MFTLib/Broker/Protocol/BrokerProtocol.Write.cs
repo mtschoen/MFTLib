@@ -132,13 +132,19 @@ static partial class BrokerProtocol
         new PayloadWriter().Int64(frame.SkippedRecordCount).WriteTo(writer, BrokerFrameKind.ScanReady);
     }
 
-    // payload: [journalIdentifier u64][nextUsn i64][entryCount i32][entries]
+    // payload: [journalIdentifier u64][nextUsn i64][entryCount i32][entries][fileNameCount i32][file names]
     public static void WriteJournalBatch(IBufferWriter<byte> writer, BrokerFrame frame)
     {
         var payload = new PayloadWriter().Cursor(frame.Cursor).Int32(frame.Entries.Length);
         foreach (var entry in frame.Entries)
         {
             payload.Entry(entry);
+        }
+
+        payload.Int32(frame.FileNames.Length);
+        foreach (var fileName in frame.FileNames)
+        {
+            payload.FileName(fileName);
         }
 
         payload.WriteTo(writer, BrokerFrameKind.JournalBatch);
