@@ -17,6 +17,12 @@ indent_size = 2
 [*.sh]
 end_of_line = lf
 
+[*.{yml,yaml}]
+end_of_line = lf
+
+[AGENTS.md]
+end_of_line = lf
+
 [*.md]
 trim_trailing_whitespace = false
 

@@ -1,7 +1,15 @@
 ###############################################################################
 # Set default behavior to automatically normalize line endings.
 ###############################################################################
-* text=auto
+* text=auto eol=crlf
+
+###############################################################################
+# Every text file checks out with CRLF on every platform, matching the
+# end_of_line = crlf default in .editorconfig: the dotnet format whitespace check
+# that aislop runs reports every LF-checked-out C# file as misformatted. A Windows
+# checkout already has CRLF through core.autocrlf, so only Linux checkouts change;
+# the index stays LF. The exceptions below pin LF, and .editorconfig agrees.
+###############################################################################
 
 ###############################################################################
 # Shell scripts must check out with LF on every platform. With CRLF endings a
@@ -15,6 +23,13 @@
 # on Windows and Linux; CRLF would add one character per line on Windows only.
 ###############################################################################
 AGENTS.md text eol=lf
+
+###############################################################################
+# Workflow files are read by the Linux runner, whose bash run blocks would carry
+# a trailing carriage return per line under CRLF. .editorconfig says the same.
+###############################################################################
+*.yml text eol=lf
+*.yaml text eol=lf
 
 ###############################################################################
 # Batch files must check out with CRLF. cmd.exe tolerates LF for simple
