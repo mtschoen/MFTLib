@@ -647,6 +647,15 @@ for job in windows linux linux-package; do
         assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c -- "$obsolete")"
     done
 done
+# The NuGet cache key hashes CACHE_EPOCH: a raw comma-bearing epoch is an invalid actions/cache key.
+for job in linux docs; do
+    block="$(workflow_job "$job")"
+    assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c "linux-nuget-\${{ steps.nuget-hash.outputs.sha }}-")"
+    nuget_run="$(printf '%s\n' "$block" | sed -n '/id: nuget-hash/,/^$/p' | sed -n 's/^ *run: //p')"
+    nuget_output="$scratch/nuget-output-$job"
+    (cd "$root" && GITHUB_OUTPUT="$nuget_output" CACHE_EPOCH='review,epoch' bash -c "$nuget_run")
+    assert_equal 1 "$(grep -c -E '^sha=[0-9a-f]{64}$' "$nuget_output")"
+done
 # Every step after a job's detector is guarded: tooling self-tests by their own run_<scope> output, everything
 # else (build, coverage, package, upload, status) by skip_build. Upload and status steps also run always().
 step_guards() {

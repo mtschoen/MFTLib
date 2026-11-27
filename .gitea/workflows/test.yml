@@ -227,18 +227,21 @@ jobs:
           dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 --no-restore -- --adapters .
 
       # The hash is computed in the shell: hashFiles() can evaluate to an empty
-      # string on act_runner, which freezes the cache at its first snapshot.
+      # string on act_runner, which freezes the cache at its first snapshot. CACHE_EPOCH is hashed in too: a raw epoch
+      # containing a comma makes the actions/cache key invalid.
       - name: Compute NuGet cache key
         id: nuget-hash
         if: steps.changed-files.outputs.skip_build != 'true'
-        run: echo "sha=$(git ls-files '*.csproj' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        env:
+          CACHE_EPOCH: ${{ vars.CACHE_EPOCH }}
+        run: echo "sha=$({ git ls-files '*.csproj' | sort | xargs sha256sum; printf 'epoch %s\n' "$CACHE_EPOCH"; } | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache NuGet packages
         if: steps.changed-files.outputs.skip_build != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: linux-nuget-${{ steps.nuget-hash.outputs.sha }}-${{ vars.CACHE_EPOCH }}
+          key: linux-nuget-${{ steps.nuget-hash.outputs.sha }}
           restore-keys: |
             linux-nuget-
 
@@ -295,13 +298,15 @@ jobs:
 
       - name: Compute NuGet cache key
         id: nuget-hash
-        run: echo "sha=$(git ls-files '*.csproj' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        env:
+          CACHE_EPOCH: ${{ vars.CACHE_EPOCH }}
+        run: echo "sha=$({ git ls-files '*.csproj' | sort | xargs sha256sum; printf 'epoch %s\n' "$CACHE_EPOCH"; } | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: linux-nuget-${{ steps.nuget-hash.outputs.sha }}-${{ vars.CACHE_EPOCH }}
+          key: linux-nuget-${{ steps.nuget-hash.outputs.sha }}
           restore-keys: |
             linux-nuget-
 
