@@ -251,6 +251,58 @@ The nightly run is not a receipt for both Windows checks. Only `test.yml` has a 
 `aislop.yml` runs on `pull_request`, `push` and `workflow_dispatch`, with no schedule. The
 nightly confirms the Windows tests and report publication only, never the aislop gate.
 
+## Benchmark report refresh
+
+`.gitea/workflows/benchmark-report.yml` refreshes the one committed release report under `Benchmark/baselines/`
+(the [owner ruling](api-decisions.md#release-benchmark-baselines-are-committed-reports)). It is separate from
+`test.yml`, runs nightly at 05:17 UTC and on manual dispatch, and has no push trigger, so its own commit can never
+start another refresh. `runs-on: benchmark-quiet-host` selects the owner's quiet benchmark workstation: the runner
+there must advertise that label, and no other runner may. The job runs only on main and is skipped while the
+`WINDOWS_CI` variable is `off`.
+
+Steps, all in `scripts/benchmark-report-refresh.ps1`:
+
+1. **Decide.** The run is skipped when the committed report's short sha already prefixes main's head, or when every
+   commit after that revision is by `test-report-bot` (TEST-REPORT and report commits). A revision missing from the
+   history runs. Manual dispatch with `force` true runs regardless.
+2. **Build** Release x64 with `scripts/build-windows.ps1`.
+3. **Quiet gate** (`scripts/benchmark-quiet-gate.ps1`). It samples every 5 seconds and requires every sample in a
+   60 second window to be at or under 15 percent total CPU and 10 percent busy on the volume that holds the temporary
+   folder the walk benchmark writes to (a disk-activity check precedes every quiet-box measurement). One busy sample
+   restarts the window; after 30 minutes without a quiet window the gate gives up. All five values are script
+   parameters; the dispatch input `cpu_percent_limit` overrides the CPU limit (an impossible value exercises the busy
+   path). The counters are `\Processor Information(_Total)\% Processor Utility`, which is what Task Manager shows
+   because it accounts for frequency scaling and boost (`% Processor Time` counts busy time at any frequency), and
+   `\LogicalDisk(<drive>)\% Idle Time` of the temporary folder's drive, whose busy percentage is 100 minus idle. Run
+   `pwsh -NoProfile -File scripts/benchmark-quiet-gate.ps1` to read the gate on a host; it exits 0 when quiet and 3
+   when busy. The gate does not pause the runner's own process, services or other runners.
+4. **Busy box.** The run files the issue titled exactly `Benchmark needed when the box is quiet`
+   (`scripts/benchmark-report-issue.ps1`; Mechanism, Evidence with the observed peaks and the run link, Detection,
+   Done when), or comments on the open one with that exact title, and ends successfully with no commit.
+5. **Capture** (`scripts/benchmark-report-capture.ps1`). It runs the three commands of the
+   [release benchmark checklist](handoff-release-0.3.0.md#benchmark-release-checklist) in that order, combines their
+   reports, runs `Benchmark.exe compare` of the candidate against the committed report for the eight recipe
+   scenarios, writes `Benchmark/baselines/<yyyy-MM-dd>-<short sha>.txt` and removes the previous report so exactly one
+   remains. The report file holds only what the Benchmark runner writes; the gate observation goes in the commit
+   message.
+6. **Publish**, following `publish-report`: the push is by `test-report-bot` with `CI_REPORT_TOKEN`, nothing is
+   committed when the files are unchanged or when main advanced since the checkout (the next nightly measures the new
+   head), and the commit is `chore: refresh the release benchmark report from <short sha>` with the report name, the
+   quiet gate observation, the temporary volume and the compare outcome in the body. A compare that exceeds a limit is
+   recorded in the message and does not block publication; timing is evidence, never a gate. A published report
+   comments on and closes the open "benchmark needed" issue.
+
+The bot's push runs the whole `test` workflow (its `publish-report` job skips the bot) and is ignored by `aislop.yml`
+and `sync-consumers.yml` through `paths-ignore: Benchmark/baselines/**`. `report-guard` does not cover the folder:
+the release recipe and performance work commit reports by hand.
+
+Offline tests: `pwsh -NoProfile -File scripts/benchmark-report.tests.ps1` (quiet gate with injected samples and
+clock, capture naming and the single-file invariant, the skip decision, the issue dedupe and close, the orchestration
+order) and `bash scripts/benchmark-report-workflow.tests.sh` (trigger shape, runner label, token and server
+environment, ignore lists, with negative controls). The Windows job runs the first and the Linux job the second.
+The counters, the runner label, publication and the issue calls need the benchmark host and the forge; their first
+run is the check.
+
 ## Local CI preflight
 
 Run from Git Bash on Windows or Bash on Linux:

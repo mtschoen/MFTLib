@@ -98,6 +98,11 @@ jobs:
         shell: bash
         run: bash scripts/test-release-offline.sh
 
+      - name: Test benchmark report tooling
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/benchmark-report.tests.ps1
+
       # The native build cache key is computed in the shell for the same reason as the NuGet key below. The key is
       # exact (no restore-keys), so a hit is the binary built from identical native inputs; any other outcome builds.
       - name: Compute the native build cache key
@@ -218,6 +223,10 @@ jobs:
       - name: Test the native build cache
         if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/native-build-cache.tests.sh
+
+      - name: Test the benchmark report workflow
+        if: steps.changed-files.outputs.skip_build != 'true'
+        run: bash scripts/benchmark-report-workflow.tests.sh
 
       - name: Test optional provisioning and Linux init
         if: steps.changed-files.outputs.run_init != 'false'

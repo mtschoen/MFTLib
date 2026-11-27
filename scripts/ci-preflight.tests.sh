@@ -699,6 +699,7 @@ Test coverage status guard: run_coverage_status
 Test summary report generator: run_generate_test_report
 Test shared coverage child runner: run_coverage_child
 Test offline release guards: run_release_offline
+Test benchmark report tooling: skip_build
 Compute the native build cache key: skip_build
 Cache the native build output: skip_build
 Run coverage: skip_build
@@ -709,6 +710,7 @@ Verify post-clean initialization (destructive): skip_build' "$(step_guards windo
 assert_equal 'Test the consumer sync script: run_sync
 Test the CI preflight dispatcher: run_preflight_tests
 Test the native build cache: skip_build
+Test the benchmark report workflow: skip_build
 Test optional provisioning and Linux init: run_init
 Compute NuGet cache key: skip_build
 Cache NuGet packages: skip_build

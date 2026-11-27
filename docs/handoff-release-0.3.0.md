@@ -218,6 +218,11 @@ A different machine's result is not a comparable release-performance verdict.
 Investigate failed comparisons rather than replacing a reference to hide a
 regression. These measurements are attended release work, not a CI timing gate.
 
+The `benchmark-report` workflow normally keeps the committed report current on a quiet benchmark host
+([benchmark report refresh](quality-gates.md#benchmark-report-refresh)); before a release, confirm the committed
+report names the release candidate's revision or a later one with no benchmark-relevant change between them. The
+recipe below is the same sequence by hand, for an attended capture or when the refresh has not run.
+
 This recipe saves the three compact `--out` reports outside the checkout, combines
 their report sections into one candidate, compares all eight scenarios, and
 copies only the accepted small report into the release convention without

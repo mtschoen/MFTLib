@@ -26,25 +26,33 @@ first touch) and the owner approves MFTLib deciding when to clear its own cache.
 
 ## Release benchmark baselines are committed reports
 
-**Decision (owner ruling 2026-11-13, refining the 2026-10-26 ruling B13):** Exactly one hand-captured release report
-is committed, as `Benchmark/baselines/<date>-<short sha>.txt`, measured on a quiet machine. A new report replaces the
-previous one in the same change. It is the deliberate exception to the no-measurement-dumps rule (logs and raw captures
-remain excluded), and it is the reference that `Benchmark.exe compare` runs against. Keep only scenarios the current
-runner emits.
+**Decision (owner ruling 2026-11-13, refining the 2026-10-26 ruling B13):** Exactly one release report is committed,
+as `Benchmark/baselines/<date>-<short sha>.txt`, measured on a quiet machine. A new report replaces the previous one in
+the same change. It is the deliberate exception to the no-measurement-dumps rule (logs and raw captures remain
+excluded), and it is the reference that `Benchmark.exe compare` runs against. Keep only scenarios the current runner
+emits.
 
 **The report stays (owner reaffirmed 2026-11-13):** no general rule against committing logs, raw tool output or
 measurement dumps applies to this file, whichever instruction file, memory note or reviewer states that rule. A change
 that deletes the report without committing its replacement, or that moves it to an attachment, artifact or release
 asset, contradicts this ruling: close it instead of merging it.
 
-**Reason:** people browsing the code can see the results beside it. Benchmark numbers need a quiet machine, so the
-report is captured by hand rather than by CI; CI runners share load, which makes their timing numbers noisy.
+**Reason:** people browsing the code can see the results beside it. Benchmark numbers need a quiet machine, so CI
+runners that share load do not capture it.
 
-**Freshness:** the report should track main, but that is relaxed for now. It is refreshed at release time, and a stale
-report is not a defect, until an automated refresh exists that captures it on a clean machine on every push to main.
+**Freshness (owner ruling 2026-11-27):** the report tracks main through an automated refresh, the
+`benchmark-report` workflow ([quality gates](quality-gates.md#benchmark-report-refresh)). The rulings that shaped it:
 
-**Revisit only if:** that automated refresh exists (the freshness relaxation then ends), or the owner approves a
-different home for the report.
+- It captures on the owner's quiet benchmark workstation, the same hardware as the report it replaces, so numbers stay
+  comparable. The runner label `benchmark-quiet-host` selects it.
+- It runs nightly, only when main has commits other than the report bot's own since the measured revision, and on
+  manual dispatch. It never runs on every push.
+- It publishes the way `TEST-REPORT.md` is published: a bot commit to main by `test-report-bot`.
+- There is no lease broker. A quiet gate waits up to 30 minutes for the box to quiet; if it never does, the run files
+  the issue "Benchmark needed when the box is quiet" and ends without failing.
+
+**Revisit only if:** the owner approves a different home for the report, or a lease broker for a clean machine
+replaces the quiet gate.
 
 ## Release baselines include MFT enumeration throughput
 

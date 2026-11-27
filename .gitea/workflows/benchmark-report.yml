@@ -1,0 +1,72 @@
+# .gitea/workflows/benchmark-report.yml
+name: benchmark-report
+# Refreshes the one committed release benchmark report under Benchmark/baselines/ the way test.yml's publish-report
+# refreshes TEST-REPORT.md: a bot commit to main. It runs nightly, and by hand, on the owner's quiet benchmark
+# workstation (the runner that advertises the benchmark-quiet-host label), and only when main has commits other than
+# the report bot's own since the measured revision. There is deliberately no push trigger, so a report commit can
+# never start another refresh. The quiet gate waits up to 30 minutes for the box to quiet; if it never does the run
+# files (or comments on) the "Benchmark needed when the box is quiet" issue and ends successfully.
+# Tests assert this shape: scripts/benchmark-report-workflow.tests.sh. Contract: docs/quality-gates.md.
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Capture even when main has not moved since the committed report'
+        required: false
+        default: 'false'
+      cpu_percent_limit:
+        description: 'Quiet gate CPU limit in percent; empty keeps the default (an impossible value exercises the issue path)'
+        required: false
+        default: ''
+
+concurrency:
+  group: benchmark-report
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: 'true'
+
+jobs:
+  refresh:
+    if: github.ref == 'refs/heads/main' && vars.WINDOWS_CI != 'off'
+    runs-on: benchmark-quiet-host
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.CI_REPORT_TOKEN }}
+
+      - name: Decide whether main has moved since the committed report
+        id: decide
+        shell: pwsh
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          $arguments = @{ Action = 'Decide' }
+          if ($env:FORCE -eq 'true') { $arguments.Force = $true }
+          & ./scripts/benchmark-report-refresh.ps1 @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Release x64
+        if: steps.decide.outputs.run == 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/build-windows.ps1
+
+      - name: Wait for a quiet box, capture and publish the report
+        if: steps.decide.outputs.run == 'true'
+        shell: pwsh
+        env:
+          GITEA_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_RUN: ${{ github.run_id }}
+          CPU_PERCENT_LIMIT: ${{ github.event.inputs.cpu_percent_limit }}
+        run: |
+          $arguments = @{ Action = 'Refresh' }
+          if ($env:CPU_PERCENT_LIMIT) { $arguments.CpuPercentLimit = [double] $env:CPU_PERCENT_LIMIT }
+          & ./scripts/benchmark-report-refresh.ps1 @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
