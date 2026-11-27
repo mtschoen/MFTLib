@@ -43,7 +43,7 @@ run_case --only scripts
 assert_equal 0 "$status"
 assert_contains "$output" 'PASS script-syntax'
 assert_contains "$output" 'PASS script-syntax-tests'
-failing_gate=script-syntax
+failing_gate='script-syntax'
 run_case --only scripts
 assert_equal 1 "$status"
 assert_contains "$output" 'FAIL script-syntax'
@@ -327,12 +327,12 @@ assert_equal 0 "$status"
 assert_contains "$output" 'SKIP script-syntax: requires windows (host linux)'
 assert_contains "$output" 'SKIP script-syntax-tests: requires windows (host linux)'
 
-for gate in build-script generate-test-report; do
-    case "$gate" in
+for dispatch_gate in build-script generate-test-report; do
+    case "$dispatch_gate" in
         build-script) script='scripts/build-windows.tests.ps1' ;;
         generate-test-report) script='scripts/generate-test-report.ps1' ;;
     esac
-    for selection in only all; do
+    for dispatch_selection in only all; do
         output="$(
             # Restore the real executor; double only external script launchers.
             source "$root/tools/ci-preflight.sh"
@@ -347,8 +347,8 @@ for gate in build-script generate-test-report; do
             }
             bash() { printf 'INVOKED %s\n' "$*"; }
             dotnet() { printf 'INVOKED %s\n' "$*"; }
-            if [[ "$selection" == only ]]; then
-                preflight_main --only "$gate"
+            if [[ "$dispatch_selection" == only ]]; then
+                preflight_main --only "$dispatch_gate"
             else
                 preflight_main --all
             fi
@@ -356,12 +356,12 @@ for gate in build-script generate-test-report; do
         status=$?
         assert_equal 1 "$status"
         assert_contains "$output" "INVOKED -NoProfile -File $script"
-        assert_contains "$output" "FAIL $gate: exit 23"
-        if [[ "$gate" == build-script ]]; then
+        assert_contains "$output" "FAIL $dispatch_gate: exit 23"
+        if [[ "$dispatch_gate" == build-script ]]; then
             assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.tests.ps1'
             assert_contains "$output" 'INVOKED -NoProfile -File scripts/test-native-coverage-elevated.ps1'
         fi
-        if [[ "$selection" == all ]]; then
+        if [[ "$dispatch_selection" == all ]]; then
             assert_contains "$output" 'INVOKED -NoProfile -File scripts/smoke-package-windows.ps1'
         fi
     done
@@ -472,7 +472,7 @@ expected_ci_outputs() {
     done
 }
 run_ci_case() {
-    local expected="$1" selected="${2:-all}"
+    local expected="$1" requested_scopes="${2:-all}"
     : > "$git_log"
     printf 'existing=value\n' > "$GITHUB_OUTPUT"
     output="$(
@@ -497,7 +497,7 @@ run_ci_case() {
     )"
     status=$?
     assert_equal 0 "$status"
-    assert_equal "$(expected_ci_outputs "$expected" "$selected")" "$(cat "$GITHUB_OUTPUT")"
+    assert_equal "$(expected_ci_outputs "$expected" "$requested_scopes")" "$(cat "$GITHUB_OUTPUT")"
 }
 
 export GITHUB_EVENT_NAME=pull_request GITHUB_BASE_REF=main
@@ -742,7 +742,7 @@ root="$real_root"
 block="$(workflow_job windows)"
 assert_contains "$block" 'run: bash scripts/ci-preflight.tests.sh'
 assert_contains "$block" 'run: pwsh -NoProfile -File scripts/test-init-pester.ps1'
-assert_contains "$block" 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
+assert_contains "$block" "if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }"
 assert_contains "$block" "- name: Verify post-clean initialization (destructive)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
@@ -774,11 +774,15 @@ if [[ "$OSTYPE" == msys* ]] && command -v pwsh > /dev/null; then
     assert_contains "$output" 'Dirty tree after git clean -ffxd'
     printf 'exit 0\n' > "$fixture/init.ps1"
     fake_git="$(mktemp -d)"
-    printf '%s\n' 'if ($args[0] -eq "status") {' \
-        '    $n = 1 + [int](Get-Content -LiteralPath "$PSScriptRoot/count" -ErrorAction SilentlyContinue)' \
-        '    Set-Content -LiteralPath "$PSScriptRoot/count" -Value $n' \
-        '    if ($n -eq [int]$env:FAIL_STATUS_AT) { exit 128 }' \
-        '}' '& $env:REAL_GIT @args' 'exit $LASTEXITCODE' > "$fake_git/git.ps1"
+    cat > "$fake_git/git.ps1" <<'POWERSHELL'
+if ($args[0] -eq "status") {
+    $n = 1 + [int](Get-Content -LiteralPath "$PSScriptRoot/count" -ErrorAction SilentlyContinue)
+    Set-Content -LiteralPath "$PSScriptRoot/count" -Value $n
+    if ($n -eq [int]$env:FAIL_STATUS_AT) { exit 128 }
+}
+& $env:REAL_GIT @args
+exit $LASTEXITCODE
+POWERSHELL
     for observation in 1 2 3 4 5; do
         rm -f "$fake_git/count"
         output="$(REAL_GIT="$(cygpath -m "$(command -v git)")" FAIL_STATUS_AT=$observation PATH="$fake_git:$PATH" \
