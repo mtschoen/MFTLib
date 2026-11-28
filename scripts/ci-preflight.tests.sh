@@ -755,9 +755,35 @@ assert_contains "$block" 'bash scripts/test-agent-instructions.sh'
 assert_equal 0 "$(printf '%s\n' "$block" | grep -c 'skip_build')"
 assert_equal 0 "$(grep -c 'skip_build' "$root/.gitea/workflows/aislop.yml")"
 assert_equal 0 "$(grep -E -c '^[[:space:]]+paths(-ignore)?:' "$root/.gitea/workflows/test.yml")"
-block="$(workflow_job publish-report)"
-assert_contains "$block" "github.ref == 'refs/heads/main' &&
-      (github.event_name == 'schedule' || (github.event_name == 'push' && github.actor != 'test-report-bot'))"
+job_condition() {
+    workflow_job "$1" | awk '
+        /^    if: >-\r?$/ { multi = 1; next }
+        multi && /^      / { sub(/^      /, ""); line = (line == "" ? $0 : line " " $0); next }
+        multi { print line; exit }
+        /^    if: / { sub(/^    if: /, ""); print; exit }
+        /^    [a-z]/ && !/^    (needs|if):/ { print ""; exit }
+    '
+}
+assert_equal "vars.WINDOWS_CI != 'off' && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')" "$(job_condition windows)"
+for job in linux docs linux-package; do
+    assert_equal "(github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')" "$(job_condition "$job")"
+done
+assert_equal "github.event_name == 'pull_request'" "$(job_condition report-guard)"
+assert_equal "github.ref == 'refs/heads/main' && ((github.event_name == 'schedule' && vars.NIGHTLY_CI != 'off') || (github.event_name == 'push' && github.actor != 'test-report-bot'))" "$(job_condition publish-report)"
+root="$scratch/negative"
+sed "s/ && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')//" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+assert_equal "vars.WINDOWS_CI != 'off'" "$(job_condition windows)"
+sed "s/(github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')/vars.NIGHTLY_CI != 'off'/" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+assert_equal "vars.WINDOWS_CI != 'off' && vars.NIGHTLY_CI != 'off'" "$(job_condition windows)"
+for job in linux docs linux-package; do
+    sed "/^  $job:\$/{n;s/^    if: .*/    if: true/;}" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+    assert_equal 'true' "$(job_condition "$job")"
+    sed "/^  $job:\$/{n;s/^    if: .*/    if: vars.NIGHTLY_CI != 'off'/;}" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+    assert_equal "vars.NIGHTLY_CI != 'off'" "$(job_condition "$job")"
+    sed "/^  $job:\$/{n;/^    if: /d;}" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+    assert_equal '' "$(job_condition "$job")"
+done
+root="$real_root"
 
 if [[ "$OSTYPE" == msys* ]] && command -v pwsh > /dev/null; then
     fixture="$(mktemp -d)"

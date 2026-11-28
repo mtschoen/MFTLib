@@ -6,7 +6,8 @@ on:
     branches: [main, 'pr-crew/merge-train/**']
   pull_request:
   schedule:
-    - cron: '23 3 * * *'
+    # Scheduled runs skip every job while the repository variable NIGHTLY_CI is "off" (unset runs them).
+    - cron: '23 5 * * *'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -17,7 +18,7 @@ env:
 
 jobs:
   windows:
-    if: vars.WINDOWS_CI != 'off'
+    if: vars.WINDOWS_CI != 'off' && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -196,6 +197,7 @@ jobs:
         run: pwsh -NoProfile -File scripts/ci-post-clean-destructive.ps1
 
   linux:
+    if: (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')
     runs-on: ubuntu-latest
     env:
       CXX: g++
@@ -300,6 +302,7 @@ jobs:
   # invariants (AgentInstructionsTests character budgets and doc links) without building
   # the native C++ library or running the full test suite.
   docs:
+    if: (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -326,6 +329,7 @@ jobs:
   # A release rebuilds in WSL from its validated release commit through scripts/build-linux-native.ps1.
   # See [Linux package](../../docs/linux-package.md); the coverage build is never shipped.
   linux-package:
+    if: (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')
     runs-on: ubuntu-latest
     env:
       CXX: g++
@@ -413,7 +417,7 @@ jobs:
     # Validate the report bot's push in full without publishing another report for it.
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'schedule' || (github.event_name == 'push' && github.actor != 'test-report-bot'))
+      ((github.event_name == 'schedule' && vars.NIGHTLY_CI != 'off') || (github.event_name == 'push' && github.actor != 'test-report-bot'))
     runs-on: windows-latest
     timeout-minutes: 10
     steps:

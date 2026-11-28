@@ -27,6 +27,7 @@ workflow_violations() {
     grep -Eq '^    - cron: ' "$file" || echo 'no cron entry'
     grep -qx '    runs-on: benchmark-quiet-host' "$file" || echo 'runs-on does not name the benchmark host label'
     grep -q "github.ref == 'refs/heads/main'" "$file" || echo 'the job is not limited to main'
+    grep -qx "    if: github.ref == 'refs/heads/main' && vars.WINDOWS_CI != 'off' && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')" "$file" || echo 'the refresh job does not honour WINDOWS_CI and NIGHTLY_CI while preserving workflow_dispatch'
     grep -q 'token: ${{ secrets.CI_REPORT_TOKEN }}' "$file" || echo 'checkout does not use the report bot token'
     grep -q 'GITEA_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}' "$file" || echo 'issue and push token missing'
     grep -q 'SERVER_URL: ${{ github.server_url }}' "$file" || echo 'server url is not taken from the workflow'
@@ -48,6 +49,8 @@ expect 'negative control: a push trigger is rejected' test -n "$(mutated_violati
 expect 'negative control: a generic runner label is rejected' test -n "$(mutated_violations 's/benchmark-quiet-host/windows-latest/')"
 expect 'negative control: a missing schedule is rejected' test -n "$(mutated_violations 's/^  schedule:/  scheduled:/')"
 expect 'negative control: a hard-coded server is rejected' test -n "$(mutated_violations 's/SERVER_URL: .*/SERVER_URL: x/')"
+expect 'negative control: removing NIGHTLY_CI opt-out is rejected' test -n "$(mutated_violations "s/ && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')//")"
+expect 'negative control: disabling workflow_dispatch when NIGHTLY_CI is off is rejected' test -n "$(mutated_violations "s/(github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')/vars.NIGHTLY_CI != 'off'/")"
 
 # The script the workflow calls guards against the bot's own commits and has a default bot identity.
 expect 'the refresh script skips bot-only commits' grep -q 'only report bot commits follow the measured revision' "$root/scripts/benchmark-report-refresh.ps1"

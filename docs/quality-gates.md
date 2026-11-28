@@ -198,7 +198,7 @@ they verify initialization itself.
 `TEST-REPORT.md`, including additions and deletions. The report is generated on main
 by CI, never edited in a PR or written by local coverage scripts.
 
-The `test` workflow also runs nightly at 03:23 UTC. After successful `windows` and
+The `test` workflow also runs nightly at 05:23 UTC. After successful `windows` and
 `linux` coverage jobs, `publish-report` runs only on main pushes and scheduled main
 runs. A push by `test-report-bot` runs the full validation suite but skips
 `publish-report`, so publishing a report cannot trigger another publication.

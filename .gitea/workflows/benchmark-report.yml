@@ -9,6 +9,7 @@ name: benchmark-report
 # Tests assert this shape: scripts/benchmark-report-workflow.tests.sh. Contract: docs/quality-gates.md.
 on:
   schedule:
+    # Scheduled runs skip every job while the repository variable NIGHTLY_CI is "off" (unset runs them).
     - cron: '17 5 * * *'
   workflow_dispatch:
     inputs:
@@ -30,7 +31,7 @@ env:
 
 jobs:
   refresh:
-    if: github.ref == 'refs/heads/main' && vars.WINDOWS_CI != 'off'
+    if: github.ref == 'refs/heads/main' && vars.WINDOWS_CI != 'off' && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')
     runs-on: benchmark-quiet-host
     timeout-minutes: 120
     steps:
