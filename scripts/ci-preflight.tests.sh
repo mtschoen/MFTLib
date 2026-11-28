@@ -178,10 +178,11 @@ aislop-tests coverage-child|scripts/ci-aislop.ps1
 aislop-tests|.gitignore
 coverage-child|scripts/native-coverage-elevated.ps1
 coverage-child|scripts/smoke-package-windows.ps1
-coverage-child coverage-status generate-test-report|scripts/coverage-status.ps1
+coverage-child coverage-status|scripts/coverage-status.ps1
 build-script coverage-child coverage-status|scripts/run-coverage.ps1
 coverage-child coverage-status|scripts/coverage-linux.sh
-coverage-child generate-test-report|scripts/generate-test-report.tests.ps1
+generate-test-report|tools/generate_test_report.py
+generate-test-report|tools/test_generate_test_report.py
 coverage-child release-offline|scripts/test-release-notes.ps1
 build-script coverage-child release-offline|scripts/release.ps1
 release-offline|CHANGELOG.md
@@ -329,8 +330,8 @@ assert_contains "$output" 'SKIP script-syntax-tests: requires windows (host linu
 
 for dispatch_gate in build-script generate-test-report; do
     case "$dispatch_gate" in
-        build-script) script='scripts/build-windows.tests.ps1' ;;
-        generate-test-report) script='scripts/generate-test-report.ps1' ;;
+        build-script) command='-NoProfile -File scripts/build-windows.tests.ps1' ;;
+        generate-test-report) command='-B tools/test_generate_test_report.py' ;;
     esac
     for dispatch_selection in only all; do
         output="$(
@@ -339,8 +340,16 @@ for dispatch_gate in build-script generate-test-report; do
             preflight_platform() { printf 'windows'; }
             pwsh() {
                 printf 'INVOKED %s\n' "$*"
-                if [[ "${3:-}" == "$script" ]]; then
-                    [[ "$#" -eq 3 && "$1" == -NoProfile && "$2" == -File ]] || return 97
+                if [[ "$dispatch_gate" == build-script && "$*" == "$command" ]]; then
+                    [[ "$#" -eq 3 ]] || return 97
+                    return 23
+                fi
+                return 0
+            }
+            python3() {
+                printf 'INVOKED %s\n' "$*"
+                if [[ "$dispatch_gate" == generate-test-report && "$*" == "$command" ]]; then
+                    [[ "$#" -eq 2 ]] || return 97
                     return 23
                 fi
                 return 0
@@ -355,7 +364,7 @@ for dispatch_gate in build-script generate-test-report; do
         )"
         status=$?
         assert_equal 1 "$status"
-        assert_contains "$output" "INVOKED -NoProfile -File $script"
+        assert_contains "$output" "INVOKED $command"
         assert_contains "$output" "FAIL $dispatch_gate: exit 23"
         if [[ "$dispatch_gate" == build-script ]]; then
             assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.tests.ps1'
@@ -696,7 +705,6 @@ Test init.ps1 in process (Pester): skip_build
 Test optional provisioning and Windows init: run_init
 Test pinned aislop checkout gate: run_aislop_tests
 Test coverage status guard: run_coverage_status
-Test summary report generator: run_generate_test_report
 Test shared coverage child runner: run_coverage_child
 Test offline release guards: run_release_offline
 Test benchmark report tooling: skip_build
@@ -711,6 +719,7 @@ assert_equal 'Test the consumer sync script: run_sync
 Test the CI preflight dispatcher: run_preflight_tests
 Test the native build cache: skip_build
 Test the benchmark report workflow: skip_build
+Test summary report generator: run_generate_test_report
 Test optional provisioning and Linux init: run_init
 Compute NuGet cache key: skip_build
 Cache NuGet packages: skip_build
@@ -769,7 +778,13 @@ for job in linux docs linux-package; do
     assert_equal "(github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')" "$(job_condition "$job")"
 done
 assert_equal "github.event_name == 'pull_request'" "$(job_condition report-guard)"
-assert_equal "github.ref == 'refs/heads/main' && ((github.event_name == 'schedule' && vars.NIGHTLY_CI != 'off') || (github.event_name == 'push' && github.actor != 'test-report-bot'))" "$(job_condition publish-report)"
+assert_equal "always() && !cancelled() && needs.linux.result == 'success' && (needs.windows.result == 'success' || needs.windows.result == 'skipped') && github.ref == 'refs/heads/main' && ((github.event_name == 'schedule' && vars.NIGHTLY_CI != 'off') || (github.event_name == 'push' && github.actor != 'test-report-bot'))" "$(job_condition publish-report)"
+block="$(workflow_job publish-report)"
+assert_contains "$block" 'runs-on: ubuntu-latest'
+assert_contains "$block" "- name: Download the Windows coverage artifact
+        if: needs.windows.result == 'success'"
+assert_contains "$block" 'skipped) windows_arguments=(--windows-skipped)'
+assert_contains "$(workflow_job linux)" 'run: python3 -B tools/test_generate_test_report.py'
 root="$scratch/negative"
 sed "s/ && (github.event_name != 'schedule' || vars.NIGHTLY_CI != 'off')//" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
 assert_equal "vars.WINDOWS_CI != 'off'" "$(job_condition windows)"

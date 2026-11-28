@@ -84,11 +84,6 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
 
-      - name: Test summary report generator
-        if: steps.changed-files.outputs.run_generate_test_report != 'false'
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/generate-test-report.ps1
-
       - name: Test shared coverage child runner
         if: steps.changed-files.outputs.run_coverage_child != 'false'
         shell: pwsh
@@ -229,6 +224,10 @@ jobs:
       - name: Test the benchmark report workflow
         if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/benchmark-report-workflow.tests.sh
+
+      - name: Test summary report generator
+        if: steps.changed-files.outputs.run_generate_test_report != 'false'
+        run: python3 -B tools/test_generate_test_report.py
 
       - name: Test optional provisioning and Linux init
         if: steps.changed-files.outputs.run_init != 'false'
@@ -416,9 +415,12 @@ jobs:
     needs: [windows, linux]
     # Validate the report bot's push in full without publishing another report for it.
     if: >-
+      always() && !cancelled() &&
+      needs.linux.result == 'success' &&
+      (needs.windows.result == 'success' || needs.windows.result == 'skipped') &&
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'schedule' && vars.NIGHTLY_CI != 'off') || (github.event_name == 'push' && github.actor != 'test-report-bot'))
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -426,6 +428,7 @@ jobs:
           ref: ${{ github.sha }}
           token: ${{ secrets.CI_REPORT_TOKEN }}
       - name: Download the Windows coverage artifact
+        if: needs.windows.result == 'success'
         # Gitea-native fork, paired with the upload pin: the stock download action cannot read artifacts uploaded by it.
         uses: ChristopherHX/gitea-download-artifact@75635f32b4c1c41c4b3d64e8f85210112ed4c9c7
         with:
@@ -438,65 +441,58 @@ jobs:
           path: ${{ runner.temp }}/test-report-linux
       - name: Generate the summary from the downloaded artifacts
         id: summary
-        shell: pwsh
+        shell: bash
         env:
           GITEA_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}
           SERVER_URL: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
           SOURCE_COMMIT: ${{ github.sha }}
           WORKFLOW_RUN: ${{ github.run_id }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
         run: |
-          $ErrorActionPreference = 'Stop'
+          set -euo pipefail
           git fetch origin main
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect main before publication' }
-          $mainCommit = git rev-parse FETCH_HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve main' }
-          if ($mainCommit -ne $env:SOURCE_COMMIT) {
-            Write-Host 'Main advanced; a newer run owns report publication.'
+          main_commit=$(git rev-parse FETCH_HEAD)
+          if [[ "$main_commit" != "$SOURCE_COMMIT" ]]; then
+            echo 'Main advanced; a newer run owns report publication.'
             exit 0
-          }
-          $headers = @{ Authorization = "token $env:GITEA_TOKEN" }
-          $api = "$env:SERVER_URL/api/v1/repos/$env:REPOSITORY"
-          $run = Invoke-RestMethod "$api/actions/runs/$env:WORKFLOW_RUN" -Headers $headers
-          if ($run.head_sha -ne $env:SOURCE_COMMIT) { throw 'Workflow source commit mismatch' }
-          $roots = @{}
-          foreach ($platform in @('windows', 'linux')) {
-            $directory = Join-Path $env:RUNNER_TEMP "test-report-$platform"
-            $markers = @(Get-ChildItem $directory -Recurse -Filter commit.txt)
-            if ($markers.Count -ne 1 -or (Get-Content $markers[0].FullName -Raw).Trim() -ne $env:SOURCE_COMMIT) {
-              throw "$platform artifact source commit mismatch"
-            }
-            $roots[$platform] = $markers[0].Directory.FullName
-          }
-          $timestamp = ([DateTimeOffset]$run.created_at).ToUniversalTime().ToString('o')
-          $arguments = @{
-            WindowsTrx = @(Join-Path $roots.windows 'non-admin.trx')
-            WindowsCobertura = @(Join-Path (Split-Path $roots.windows -Parent) 'coverage.xml')
-            LinuxTrx = @(Join-Path $roots.linux 'managed.trx')
-            LinuxCobertura = @(Join-Path $roots.linux 'managed/coverage.cobertura.xml')
-            Commit = $env:SOURCE_COMMIT; RunId = $env:WORKFLOW_RUN
-            GeneratedAt = $timestamp
-          }
-          $native = Join-Path $roots.linux 'summary.txt'
-          if (Test-Path -LiteralPath $native) { $arguments.LinuxNativeSummary = $native }
-          & ./scripts/generate-test-report.ps1 @arguments
-          'publish=true' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          fi
+          run=$(curl -fsS -H "Authorization: token $GITEA_TOKEN" \
+            "$SERVER_URL/api/v1/repos/$REPOSITORY/actions/runs/$WORKFLOW_RUN")
+          if [[ $(jq -er '.head_sha' <<< "$run") != "$SOURCE_COMMIT" ]]; then
+            echo 'Workflow source commit mismatch' >&2
+            exit 1
+          fi
+          generated_at=$(jq -er '.created_at' <<< "$run")
+          case "$WINDOWS_RESULT" in
+            success) windows_arguments=(--windows-artifact "$RUNNER_TEMP/test-report-windows") ;;
+            skipped) windows_arguments=(--windows-skipped) ;;
+            *) echo "Unexpected Windows job result: $WINDOWS_RESULT" >&2; exit 1 ;;
+          esac
+          python3 -B tools/generate_test_report.py "${windows_arguments[@]}" \
+            --linux-artifact "$RUNNER_TEMP/test-report-linux" --commit "$SOURCE_COMMIT" \
+            --run-id "$WORKFLOW_RUN" --generated-at "$generated_at" --output-path TEST-REPORT.md
+          printf 'publish=true\n' >> "$GITHUB_OUTPUT"
       - name: Commit the generated report as test-report-bot
         if: steps.summary.outputs.publish == 'true'
-        shell: pwsh
+        shell: bash
         env:
           WORKFLOW_RUN: ${{ github.run_id }}
           SERVER_URL: ${{ github.server_url }}
         run: |
-          $ErrorActionPreference = 'Stop'
+          set -euo pipefail
           git add -- TEST-REPORT.md
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage generated report' }
-          git diff --cached --quiet -- TEST-REPORT.md
-          if ($LASTEXITCODE -eq 0) { Write-Host 'Report is unchanged.'; exit 0 }
-          if ($LASTEXITCODE -ne 1) { throw 'Cannot compare generated report' }
+          if git diff --cached --quiet -- TEST-REPORT.md; then
+            echo 'Report is unchanged.'
+            exit 0
+          else
+            test "$?" -eq 1
+          fi
           # The bot's registered address is the server host without its service label.
-          $domain = ([Uri]$env:SERVER_URL).Host.Split('.', 2)[1]
-          git -c user.name=test-report-bot -c "user.email=test-report-bot@$domain" commit -m "chore: regenerate TEST-REPORT.md from $env:WORKFLOW_RUN"
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit generated report' }
+          host=${SERVER_URL#*://}
+          host=${host%%/*}
+          host=${host%%:*}
+          domain=${host#*.}
+          git -c user.name=test-report-bot -c "user.email=test-report-bot@$domain" \
+            commit -m "chore: regenerate TEST-REPORT.md from $WORKFLOW_RUN"
           git push origin HEAD:main
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish report; main may have advanced' }

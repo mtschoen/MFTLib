@@ -27,7 +27,7 @@ preflight_execute() {
         coverage-child) pwsh -NoProfile -File scripts/test-native-coverage-elevated.ps1 ;;
         aislop-tests) pwsh -NoProfile -File scripts/ci-aislop.tests.ps1 ;;
         coverage-status) pwsh -NoProfile -File scripts/test-coverage-status.ps1 ;;
-        generate-test-report) pwsh -NoProfile -File scripts/generate-test-report.ps1 ;;
+        generate-test-report) python3 -B tools/test_generate_test_report.py ;;
         release-offline) bash scripts/test-release-offline.sh ;;
         windows) pwsh -NoProfile -File scripts/run-coverage.ps1 -NonInteractive ;;
         init-pester) pwsh -NoProfile -File scripts/test-init-pester.ps1 ;;

@@ -55,8 +55,8 @@ have Syntax as their baseline coverage.
 | `scripts/coverage-linux.sh` | Collect Linux native and managed coverage | agent, CI | Syntax; Linux Run coverage; Linux native-build-cache.tests.sh supplied-output cases |
 | `scripts/coverage-log.ps1` | Incrementally stream coverage logs, retaining partial lines | attended, agent via coverage children | Syntax; Windows test-native-coverage-elevated.ps1 |
 | `scripts/coverage-status.ps1` | Validate measurements and choose coverage status | agent, CI via publisher | Syntax; Windows test-coverage-status.ps1 |
-| `scripts/generate-test-report.ps1` | Generate the deterministic CI summary from TRX and Cobertura artifacts; run offline regressions with no arguments | CI publish-report, local preflight, agent with explicit output path | Syntax; Windows Test summary report generator |
-| `scripts/generate-test-report.tests.ps1` | Exercise summary counts, coverage, provenance and invalid inputs offline | agent, CI through generator with no arguments | Syntax; Windows Test summary report generator |
+| `tools/generate_test_report.py` | Generate the deterministic CI summary from TRX and Cobertura artifacts | CI publish-report, agent with explicit output path | Linux Test summary report generator |
+| `tools/test_generate_test_report.py` | Exercise summary counts, coverage, provenance and invalid inputs offline | agent, CI, local preflight | Linux Test summary report generator |
 | `scripts/mftlib_submodules.sh` | Resolve consumer submodule repository identities | release, CI via sync | Syntax; Linux sync_consumers.tests.sh |
 | `scripts/native-build-cache-key.sh` | Compute the exact CI cache key for a native build output | CI, agent | Syntax; Windows, Linux and Linux package key steps; Linux native-build-cache.tests.sh |
 | `scripts/native-build-cache.tests.sh` | Pin the key input list and regress key sensitivity and the supplied-output build inputs | agent, CI | Syntax; Linux Test the native build cache |

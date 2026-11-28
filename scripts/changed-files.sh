@@ -44,9 +44,8 @@ changed_files_path_scope_rules=(
     'scripts/run-coverage.ps1' coverage-status
     'scripts/coverage-linux.sh' coverage-status
     'MFTLib.Tests/MFTLib.Tests.csproj' coverage-status
-    'scripts/generate-test-report.ps1' generate-test-report
-    'scripts/generate-test-report.tests.ps1' generate-test-report
-    'scripts/coverage-status.ps1' generate-test-report
+    'tools/generate_test_report.py' generate-test-report
+    'tools/test_generate_test_report.py' generate-test-report
     'scripts/test-release-offline.sh' release-offline
     'scripts/test-release-package-validation.ps1' release-offline
     'scripts/test-release-notes.ps1' release-offline

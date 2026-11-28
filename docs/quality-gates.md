@@ -89,7 +89,7 @@ directory are not inputs.
 | `aislop-tests` (`run_aislop_tests`) | Windows Test pinned aislop checkout gate | `scripts/ci-aislop.ps1`, `ci-aislop.tests.ps1`, `ci-aislop-evidence.ps1`, `ci-aislop-link-repair.ps1`, `.gitignore` |
 | `coverage-child` (`run_coverage_child`) | Windows Test shared coverage child runner | every `scripts/**` file ending `.ps1`, `.psm1`, `.sh`, `.bat` or `.cmd` in any letter case: the test sources `coverage-child.ps1`, `coverage-log.ps1`, `run-coverage.ps1` and `native-coverage-elevated.ps1`, and scans every such script for the `runas` spelling |
 | `coverage-status` (`run_coverage_status`) | Windows Test coverage status guard | `scripts/coverage-status.ps1`, `test-coverage-status.ps1`, `run-coverage.ps1`, `coverage-linux.sh`; `MFTLib.Tests/MFTLib.Tests.csproj` |
-| `generate-test-report` (`run_generate_test_report`) | Windows Test summary report generator | `scripts/generate-test-report.ps1`, `generate-test-report.tests.ps1`, `coverage-status.ps1` |
+| `generate-test-report` (`run_generate_test_report`) | Linux Test summary report generator | `tools/generate_test_report.py`, `tools/test_generate_test_report.py` |
 | `release-offline` (`run_release_offline`) | Windows Test offline release guards | `scripts/test-release-offline.sh`, `test-release-package-validation.ps1`, `test-release-notes.ps1`, `Test-ReleasePackages.ps1`, `WindowsNativeInstructions.ps1`, `windows-tools.ps1`, `release.ps1`; `CHANGELOG.md` |
 | `init` (`run_init`) | Windows and Linux Test optional provisioning and platform init | `init.ps1`, `init.sh`, `init.bat`, `scripts/build-windows.ps1`, `windows-tools.ps1`, `build-linux.sh` (the files the harness copies into its fixture), `scripts/optional-provisioning/**` |
 | `sync` (`run_sync`) | Linux Test the consumer sync script | `scripts/sync_consumers.sh`, `sync_consumers.tests.sh`, `mftlib_submodules.sh`, `auto_bump_pull_request.sh` |
@@ -198,21 +198,24 @@ they verify initialization itself.
 `TEST-REPORT.md`, including additions and deletions. The report is generated on main
 by CI, never edited in a PR or written by local coverage scripts.
 
-The `test` workflow also runs nightly at 05:23 UTC. After successful `windows` and
-`linux` coverage jobs, `publish-report` runs only on main pushes and scheduled main
-runs. A push by `test-report-bot` runs the full validation suite but skips
+The `test` workflow also runs nightly at 05:23 UTC. The `publish-report` job runs on
+`ubuntu-latest` on main pushes and enabled nightly runs. It requires `linux` to
+succeed and accepts `windows` succeeding or being skipped, not failing or being
+cancelled. A push by `test-report-bot` runs the full validation suite but skips
 `publish-report`, so publishing a report cannot trigger another publication.
 Nightly runs collect fresh results even when main has not changed.
 
-The publisher downloads the current run's `windows-coverage` and `linux-coverage`
-artifacts with the pinned `ChristopherHX/gitea-download-artifact` action, paired with
-the upload pin, verifies their `commit.txt` markers against the
-source commit, and runs `scripts/generate-test-report.ps1`. The summary stays below
+The publisher downloads the current run's `linux-coverage` artifact and, when
+Windows succeeded, `windows-coverage`. It uses the pinned
+`ChristopherHX/gitea-download-artifact` action paired with the upload pin and runs
+`tools/generate_test_report.py`, which verifies each downloaded `commit.txt`
+against the source commit. When Windows was skipped, its section says it did not
+run. The summary stays below
 4096 UTF-8 bytes: per-project TRX Counters totals, passed, failed and skipped counts,
 managed Cobertura line and branch coverage, optional Linux native line coverage,
 source commit and workflow run id as plain text (no host links, so the tracked file passes the portability guard), and the run's creation timestamp. Skipped counts come from the per-result NotExecuted outcomes, because the producer leaves the Counters notExecuted attribute at zero. Full TRX
-and coverage output remain CI artifacts. The generator reuses the coverage status
-helper's invariant percentage validation. Identical inputs produce identical bytes.
+and coverage output remain CI artifacts. Identical inputs produce identical bytes.
+The separate `pr-crew/coverage` gate still reads only the Windows reports.
 
 Publication uses `CI_REPORT_TOKEN`, the `test-report-bot` credential (the only bot allowed to
 push to a default branch), for the checkout, the push and the workflow-run lookup, and commits
@@ -221,19 +224,18 @@ file is not committed. A run whose source is no longer main's tip does not publi
 a concurrent main update makes the ordinary non-force push fail safely. The first
 report is created by CI after this workflow reaches main.
 
-Run the offline fixtures with `pwsh -NoProfile -File scripts/generate-test-report.ps1`
-or `pwsh -NoProfile -File scripts/generate-test-report.tests.ps1`. To generate a local
-sample, supply `-WindowsTrx`, `-WindowsCobertura`, `-LinuxTrx`, `-LinuxCobertura`,
-`-Commit`, `-RunId`, `-GeneratedAt`, and an ignored `-OutputPath`;
-`-LinuxNativeSummary` is optional. Do not generate the root report locally.
+Run the offline fixtures with `python3 -B tools/test_generate_test_report.py`.
+To generate a local sample from unpacked artifacts, pass `--windows-artifact`
+(or `--windows-skipped`), `--linux-artifact`, `--commit`, `--run-id`,
+`--generated-at`, and an ignored `--output-path`. Do not generate the root report locally.
 
 ### Windows outage switch
 
 While no Windows runner is available, the repository variable `WINDOWS_CI` set to `off`
 skips the `windows` job in `test.yml` and the `quality-gate` job in `aislop.yml`, for pull
 requests, merge-train pushes and main. The variable has no expiry. While it is `off`,
-Windows coverage and the Windows aislop gate are not validated, and `publish-report` (which
-needs `windows`) does not run, so the nightly run does not refresh `TEST-REPORT.md`.
+Windows coverage and the Windows aislop gate are not validated. The publisher
+still refreshes `TEST-REPORT.md` after a successful Linux run and marks Windows skipped.
 This is a temporary exception to the required checks above, not a change to them.
 
 The repository owner suspends Windows CI by setting the repository Actions variable
@@ -349,7 +351,7 @@ unfiltered, subject to their existing host availability.
 | `build-script` / `coverage-child` | Run | Skip | `scripts/test-native-coverage-elevated.ps1`, shared child protocol and both coverage callers |
 | `release-offline` | Run (pwsh) | Run (requires pwsh) | `scripts/test-release-offline.sh`, offline package-validation and release-note regressions |
 | `coverage-status` | Run (pwsh) | Run (requires pwsh) | `scripts/test-coverage-status.ps1`, offline publisher regression tests |
-| `generate-test-report` | Run (pwsh) | Run (requires pwsh) | `scripts/generate-test-report.ps1` with no arguments, offline summary-generator regressions |
+| `generate-test-report` | Run (Python 3.11+) | Run (Python 3.11+) | `tools/test_generate_test_report.py`, offline summary-generator regressions |
 | `init` / `init-windows`, `init-linux` | Windows adapter matrix | Linux adapter matrix | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --adapters`; also selected by the matching platform scope |
 | `init` / `init-pester` | Run | Skip | `scripts/test-init-pester.ps1`, in-process Pester 6 tests of `init.ps1` branch logic; also selected by the Windows scope |
 | `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
@@ -358,12 +360,12 @@ unfiltered, subject to their existing host availability.
 | `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |
 | `aislop` | Run | Skip | Windows build plus `scripts/ci-aislop.ps1`, shared with the quality workflow |
 
-The `generate-test-report` scope runs the same no-argument offline regression as
-Windows CI. Select it with `bash tools/ci-preflight.sh --only generate-test-report`;
+The `generate-test-report` scope runs the same offline regression as Linux CI.
+Select it with `bash tools/ci-preflight.sh --only generate-test-report`;
 `--all` includes it, and `--changed-from` skips it for docs-only/pin-only changes
 and for changes that touch none of its path-scope inputs.
-It requires PowerShell 7 but no publication credentials. Fixture output stays
-under `.lane/fixtures`; the root `TEST-REPORT.md` is not generated. A failing
+It requires Python 3.11 or newer but no publication credentials. Fixture output stays in a
+temporary directory; the root `TEST-REPORT.md` is not generated. A failing
 regression fails preflight while the remaining selected gates still run.
 
 Install the same prerequisites as the selected CI jobs beforehand: .NET 10,
